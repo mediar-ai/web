@@ -314,6 +314,7 @@ export default function Home() {
   const [stabilityDelay, setStabilityDelay] = useState<number>(3000); // ms
   const [screenshotQuality, setScreenshotQuality] = useState<number>(0.6);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
+  const [pixelDifferenceThreshold, setPixelDifferenceThreshold] = useState<number>(20); // NEW: Threshold for pixel comparison (0-255)
   
   const [stream, setStream] = useState<MediaStream | null>(null);
   const streamRef = useRef<MediaStream | null>(null); // Add ref to track current stream
@@ -343,7 +344,7 @@ Context: You have access to previous analysis results for reference. Focus on id
 
   // Auto-detection state & refs for stable callbacks
   const [isMonitoring, setIsMonitoring] = useState<boolean>(false);
-  const [lastFrameData, setLastFrameData] = useState<string | null>(null);
+  const [lastFrameData, setLastFrameData] = useState<Uint8ClampedArray | null>(null);
   const [activityDetected, setActivityDetected] = useState<boolean>(false);
   const [lastActivityTime, setLastActivityTime] = useState<number>(0);
   const monitoringIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -365,7 +366,7 @@ Context: You have access to previous analysis results for reference. Focus on id
   useEffect(() => { monitoringFrequencyRef.current = monitoringFrequency; }, [monitoringFrequency]);
   const isMonitoringRef = useRef<boolean>(isMonitoring); 
   useEffect(() => { isMonitoringRef.current = isMonitoring; }, [isMonitoring]);
-  const lastFrameDataRef = useRef<string | null>(null);
+  const lastFrameDataRef = useRef<Uint8ClampedArray | null>(null);
   useEffect(() => { lastFrameDataRef.current = lastFrameData; }, [lastFrameData]);
 
   // Prompt autosave animation
@@ -546,27 +547,47 @@ Context: You have access to previous analysis results for reference. Focus on id
   }, [stream, isProcessingFrame, customPrompt, workflowSteps, events, eventsPrompt, EVENTS_MODEL_NAME, screenshotQuality, logToUI, logError, parseAnalysis, currentChangePercentRef, setError, setMainStatus, setIsProcessingFrame, setWorkflowSteps, setEvents]);
 
   // 4. Auto-detection helper functions
-  const getFrameDataForComparison = useCallback((video: HTMLVideoElement): string => {
-    if (!monitoringCanvasRef.current) return '';
+  const getFrameDataForComparison = useCallback((video: HTMLVideoElement): Uint8ClampedArray | null => {
+    if (!monitoringCanvasRef.current) return null;
     const canvas = monitoringCanvasRef.current;
-    const context = canvas.getContext('2d');
-    if (!context) return '';
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return null;
     const smallWidth = 160;
     const smallHeight = 120;
     canvas.width = smallWidth;
     canvas.height = smallHeight;
     context.drawImage(video, 0, 0, smallWidth, smallHeight);
-    return canvas.toDataURL('image/jpeg', 0.3); // Low quality for comparison, separate from screenshotQuality
+    return context.getImageData(0, 0, smallWidth, smallHeight).data;
   }, []);
 
-  const calculateChangePercentage = useCallback((current: string, previous: string): number => {
-    if (current === previous) return 0;
-    let differences = 0;
-    const minLength = Math.min(current.length, previous.length);
-    for (let i = 0; i < minLength; i++) {
-      if (current[i] !== previous[i]) differences++;
+  const calculateChangePercentage = useCallback((current: Uint8ClampedArray | null, previous: Uint8ClampedArray | null, threshold: number): number => {
+    if (!current || !previous) return 0; // If either frame is null, no change
+    if (current === previous) return 0; // Should not happen with pixel data but good check
+    if (current.length !== previous.length) {
+      // This case should ideally not happen if frames are always from the same size canvas
+      // but if it does, it implies a 100% change or an error state.
+      console.warn("[calculateChangePercentage] Frame lengths differ, returning 100% change.");
+      return 100;
     }
-    return (differences / minLength) * 100;
+
+    let changedPixels = 0;
+    const pixelCount = current.length / 4; // Each pixel is 4 values (R,G,B,A)
+
+    for (let i = 0; i < current.length; i += 4) {
+      // Calculate the absolute difference for R, G, B channels
+      const diffR = Math.abs(current[i] - previous[i]);
+      const diffG = Math.abs(current[i + 1] - previous[i + 1]);
+      const diffB = Math.abs(current[i + 2] - previous[i + 2]);
+      // Alpha channel (current[i+3]) is ignored for now, but could be included
+
+      // Average difference for the pixel
+      const avgDifference = (diffR + diffG + diffB) / 3;
+
+      if (avgDifference > threshold) {
+        changedPixels++;
+      }
+    }
+    return (changedPixels / pixelCount) * 100;
   }, []);
 
   const handleActivityDetection = useCallback(() => {
@@ -851,7 +872,7 @@ Context: You have access to previous analysis results for reference. Focus on id
     const currentFrame = getFrameDataForComparison(video);
     
     if (lastFrameDataRef.current) {
-      const changePercent = calculateChangePercentage(currentFrame, lastFrameDataRef.current);
+      const changePercent = calculateChangePercentage(currentFrame, lastFrameDataRef.current, pixelDifferenceThreshold);
       currentChangePercentRef.current = changePercent;
       
       if (Math.abs(changePercent - lastDisplayChangeRef.current) > 0.1) {
@@ -870,7 +891,8 @@ Context: You have access to previous analysis results for reference. Focus on id
     autoDetectionEnabledRef, changeThresholdRef, // These are stable refs updated by their own useEffects
     getFrameDataForComparison, calculateChangePercentage, 
     handleActivityDetection, checkForStability, // These are stable callbacks
-    setDisplayChangePercent, setLastFrameData // These are stable state setters
+    setDisplayChangePercent, setLastFrameData, // These are stable state setters
+    pixelDifferenceThreshold // This is a new state
   ]);
 
   const startMonitoring = useCallback(() => {
@@ -1078,6 +1100,12 @@ Context: You have access to previous analysis results for reference. Focus on id
                         <label className="text-xs text-muted-foreground mb-1 block">Max Screenshots (DB): {maxScreenshots}</label> {/* Clarified label */}
                         <input type="range" min="10" max="200" step="10" value={maxScreenshots} onChange={(e) => setMaxScreenshots(Number(e.target.value))} className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer" />
                         <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>10</span><span>200</span></div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">Pixel Difference Threshold: {pixelDifferenceThreshold}</label>
+                        <input type="range" min="0" max="255" step="1" value={pixelDifferenceThreshold} onChange={(e) => setPixelDifferenceThreshold(Number(e.target.value))} className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer" />
+                        <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>0</span><span>255</span></div>
                       </div>
                     </div>
                   </div>
