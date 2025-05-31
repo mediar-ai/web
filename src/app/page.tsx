@@ -21,6 +21,21 @@ const MAX_SCREENSHOTS = 50; // Keep only last 50 screenshots
 // Stable style object for ScrollAreas, defined globally for the module
 const scrollAreaStyle = { overflow: 'scroll', scrollbarWidth: 'thin' } as const;
 
+interface BufferedFrame {
+  id: string;
+  imageDataUrl: string;
+  timestamp: number;
+  percentChange: number;
+}
+
+// Updated Event interface
+interface Event {
+  id: string;
+  summary: string; // The concise summary
+  thoughts?: string; // Optional thought process from the model
+  timestamp: string;
+}
+
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -167,7 +182,7 @@ interface ParsedAnalysis {
   context: string;
 }
 
-const saveEvents = async (events: Array<{id: string, summary: string, timestamp: string}>) => {
+const saveEvents = async (events: Array<Event>) => {
   try {
     const db = await openDB();
     const transaction = db.transaction([EVENTS_STORE], 'readwrite');
@@ -194,8 +209,12 @@ const loadEvents = async (): Promise<Array<{id: string, summary: string, timesta
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         const events = request.result || [];
-        // Sort by timestamp descending (newest first)
-        events.sort((a, b) => new Date(b.id).getTime() - new Date(a.id).getTime());
+        // Sort by timestamp descending (newest first), using robust ID parsing
+        events.sort((a, b) => {
+          const timeA = new Date(a.id.split('-change-')[0].split('-event')[0]).getTime();
+          const timeB = new Date(b.id.split('-change-')[0].split('-event')[0]).getTime();
+          return timeB - timeA;
+        });
         resolve(events);
       };
     });
@@ -311,7 +330,7 @@ export default function Home() {
   const [autoDetectionEnabled, setAutoDetectionEnabled] = useState<boolean>(true);
   const [monitoringFrequency, setMonitoringFrequency] = useState<number>(200); // ms
   const [changeThreshold, setChangeThreshold] = useState<number>(1.0); // percentage
-  const [stabilityDelay, setStabilityDelay] = useState<number>(3000); // ms
+  const [stabilityDelay, setStabilityDelay] = useState<number>(200); // ms
   const [screenshotQuality, setScreenshotQuality] = useState<number>(0.6);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
   const [pixelDifferenceThreshold, setPixelDifferenceThreshold] = useState<number>(20); // NEW: Threshold for pixel comparison (0-255)
@@ -323,9 +342,11 @@ export default function Home() {
   const monitoringCanvasRef = useRef<HTMLCanvasElement>(null); // Ref for change detection
   const [error, setError] = useState<string | null>(null);
   const [showError, setShowError] = useState<boolean>(false);
-  const [isProcessingFrame, setIsProcessingFrame] = useState(false); // More specific than isProcessing
+  const [isCapturingForBuffer, setIsCapturingForBuffer] = useState(false); // New state for managing buffer capture process
   const [workflowSteps, setWorkflowSteps] = useState<Array<{id: string, analysis: string, parsed: ParsedAnalysis | null, timestamp: string}>>([]); // Added parsed field
-  const [events, setEvents] = useState<Array<{id: string, summary: string, timestamp: string}>>([]); // New events state
+  const [events, setEvents] = useState<Event[]>([]); // Use updated Event interface for state
+  const [frameBuffer, setFrameBuffer] = useState<BufferedFrame[]>([]); // New state for frame buffer
+  const [activeAnalysesCount, setActiveAnalysesCount] = useState<number>(0); // New state for active analyses
   const [customPrompt, setCustomPrompt] = useState<string>(`You are an expert business workflow assistant that analyzes screen data to identify business processes. Provide your analysis in the following structured format:
 
 workflow_name_best_guess_latest: [Best guess of the overall workflow/process name based on what you see]
@@ -433,118 +454,251 @@ Context: You have access to previous analysis results for reference. Focus on id
   }, [logError]);
 
   // 3. Core capture and analysis function
-  const captureFrameAndSend = useCallback(async () => {
-    if (!stream) {
-      setError("Screen sharing is not active."); setMainStatus("Error: Share not active"); return;
+  const captureFrameToBuffer = useCallback(async (changePercent: number) => {
+    if (!streamRef.current) { // Use streamRef.current for consistency
+      logError("[captureFrameToBuffer] Stream not active."); // Log instead of setError for background operation
+      return;
     }
-    if (isProcessingFrame) return;
+    if (isCapturingForBuffer) return; // Prevent concurrent captures for buffer
+
     if (videoRef.current && canvasRef.current && videoRef.current.readyState >= videoRef.current.HAVE_METADATA && videoRef.current.videoWidth > 0) {
-      setIsProcessingFrame(true); setMainStatus("Capturing frame..."); setError(null); 
-      logToUI("[captureFrameAndSend] 🎯 Frame capture triggered - Change:", currentChangePercentRef.current.toFixed(2) + "%");
-      const video = videoRef.current; const canvas = canvasRef.current;
+      setIsCapturingForBuffer(true); 
+      logToUI("[captureFrameToBuffer] 🎞️ Capturing frame for buffer - Change:", changePercent.toFixed(2) + "%");
+      
+      const video = videoRef.current; 
+      const canvas = canvasRef.current;
+      
+      // Ensure canvas dimensions match video for capture
       if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth; 
+        canvas.height = video.videoHeight;
       }
+      
       const context = canvas.getContext("2d");
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageDataUrl = canvas.toDataURL("image/png", screenshotQuality); // Use state for quality
-        
-        const screenshotId = new Date().toISOString();
-        try {
-          await saveScreenshot(screenshotId, canvas); // saveScreenshot uses its own quality param for blob
-          logToUI("[captureFrameAndSend] Screenshot saved with ID:", screenshotId);
-        } catch (screenshotErr) {
-          logError("[captureFrameAndSend] Screenshot save failed:", screenshotErr);
-        }
-        
-        const historyForPrompt = workflowSteps.map(step => step.analysis).slice(-5).reverse();
-        logToUI("[captureFrameAndSend] Sending frame for analysis. History items:", historyForPrompt.length);
-        
-        setMainStatus("Sending to Gemini AI...");
-        try {
-          const response = await fetch("/api/capture", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: imageDataUrl, timestamp: new Date().toISOString(), prompt: customPrompt, history: historyForPrompt }),
-          });
-          
-          setMainStatus("Processing AI response...");
-          const result = await response.json();
-          if (!response.ok) {
-            logError("[captureFrameAndSend] Backend error:", result);
-            setError(`Analysis failed: ${result.error || 'Unknown error'} (Details: ${result.details || 'N/A'})`);
-          } else {
-            const newAnalysis = result.analysis || "No analysis text returned.";
-            const parsedAnalysis = parseAnalysis(newAnalysis);
-            logToUI("[captureFrameAndSend] Analysis received:", newAnalysis.substring(0, 50) + "...");
-            logToUI("[captureFrameAndSend] Parsed fields:", parsedAnalysis ? Object.keys(parsedAnalysis).length : 0);
-            setError(null);
-            setMainStatus("Generating event summary...");
-            setWorkflowSteps(prevSteps => [{ 
-              id: new Date().toISOString(), 
-              analysis: newAnalysis, 
-              parsed: parsedAnalysis,
-              timestamp: new Date().toLocaleTimeString() 
-            }, ...prevSteps].slice(0, 10)); 
-            
-            try {
-              const eventHistory = events.map(event => event.summary).slice(-3);
-              const eventsResponse = await fetch("/api/capture", {
-                method: "POST", 
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                  analysisText: newAnalysis, 
-                  prompt: eventsPrompt, 
-                  model: EVENTS_MODEL_NAME,
-                  history: eventHistory,
-                  isEventsSummary: true
-                }),
-              });
-              
-              const eventsResult = await eventsResponse.json();
-              if (eventsResponse.ok) {
-                const eventSummary = eventsResult.analysis || "No event summary generated.";
-                logToUI("[captureFrameAndSend] Event summary received:", eventSummary);
-                setEvents(prevEvents => [{
-                  id: new Date().toISOString(),
-                  summary: eventSummary,
-                  timestamp: new Date().toLocaleTimeString()
-                }, ...prevEvents].slice(0, 20));
-                setMainStatus("Analysis complete!");
-              } else {
-                logError("[captureFrameAndSend] Events API error:", eventsResult);
-                setMainStatus("Analysis complete (events failed)!");
+        const timestamp = Date.now();
+        const newFrame: BufferedFrame = {
+          id: new Date(timestamp).toISOString() + `-change-${changePercent.toFixed(2)}`,
+          imageDataUrl,
+          timestamp,
+          percentChange: changePercent
+        };
+
+        setFrameBuffer((prevBuffer: BufferedFrame[]) => {
+          const newBufferFull = [...prevBuffer, newFrame]; // Use a different name to avoid conflict if prevBuffer is used later for size logging
+          let newBufferTrimmed = newBufferFull;
+          if (newBufferFull.length > 10) { // MAX_BUFFER_SIZE = 10
+            // Sort by percentChange ascending, then by timestamp ascending for tie-breaking
+            const sortedForEviction = [...newBufferFull].sort((a, b) => {
+              if (a.percentChange !== b.percentChange) {
+                return a.percentChange - b.percentChange;
               }
-            } catch (eventsErr) {
-              logError("[captureFrameAndSend] Events network error:", eventsErr);
-              setMainStatus("Analysis complete (events failed)!");
-            }
-            
-            setTimeout(() => {
-              setMainStatus(stream ? "Recording (Preview Active)" : "Idle");
-            }, 1500);
+              return a.timestamp - b.timestamp;
+            });
+            sortedForEviction.shift(); // Remove the one with least change (or oldest if tie)
+            newBufferTrimmed = sortedForEviction;
+            logToUI("[captureFrameToBuffer] Buffer full. Evicted frame with least change.");
           }
-        } catch (err) { 
-          let errorMessage = "Network error during analysis.";
-          if (err instanceof Error) errorMessage = err.message;
-          logError("[captureFrameAndSend] Network error:", errorMessage, err);
-          setError(errorMessage);
-          setMainStatus("Error during analysis");
+          // Ensure buffer is sorted by timestamp for chronological processing later
+          return newBufferTrimmed.sort((a,b) => a.timestamp - b.timestamp);
+        });
+        logToUI("[captureFrameToBuffer] Frame added to buffer. Current buffer size will be reflected in next render cycle.");
+        
+        // Optionally, save screenshot to DB immediately if desired, 
+        // or do it when frame is picked for analysis. For now, let's do it here.
+        try {
+          // Need a temporary canvas to draw the image data URL back for saving blob
+          const tempCanvasForSave = document.createElement('canvas');
+          const tempCtx = tempCanvasForSave.getContext('2d');
+          const img = new Image();
+          img.onload = async () => {
+            tempCanvasForSave.width = img.width;
+            tempCanvasForSave.height = img.height;
+            tempCtx?.drawImage(img, 0, 0);
+            await saveScreenshot(newFrame.id, tempCanvasForSave);
+            logToUI("[captureFrameToBuffer] Screenshot for buffered frame saved:", newFrame.id);
+          };
+          img.onerror = () => {
+            logError("[captureFrameToBuffer] Failed to load image from data URL for saving screenshot.");
+          };
+          img.src = imageDataUrl;
+        } catch (screenshotErr) {
+          logError("[captureFrameToBuffer] Screenshot save for buffered frame failed:", screenshotErr);
         }
+
       } else {
-        logError("[captureFrameAndSend] Error: Could not get 2D context.");
-        setError("Failed to capture frame from video context.");
-        setMainStatus("Error: Canvas context");
+        logError("[captureFrameToBuffer] Error: Could not get 2D context for buffer capture.");
       }
-      setIsProcessingFrame(false);
+      setIsCapturingForBuffer(false);
     } else {
-       if (stream && videoRef.current) {
-           logToUI("[captureFrameAndSend] Video not ready for capture. State:", { readyState: videoRef.current.readyState, videoWidth: videoRef.current.videoWidth });
-           setError("Video not ready. Ensure preview is active.");
+       if (streamRef.current && videoRef.current) {
+           logToUI("[captureFrameToBuffer] Video not ready for capture to buffer. State:", { readyState: videoRef.current.readyState, videoWidth: videoRef.current.videoWidth });
        }
-       setMainStatus(stream ? "Recording (Video Not Ready)" : "Idle");
     }
-  }, [stream, isProcessingFrame, customPrompt, workflowSteps, events, eventsPrompt, EVENTS_MODEL_NAME, screenshotQuality, logToUI, logError, parseAnalysis, currentChangePercentRef, setError, setMainStatus, setIsProcessingFrame, setWorkflowSteps, setEvents]);
+  }, [isCapturingForBuffer, screenshotQuality, logToUI, logError, setFrameBuffer, setIsCapturingForBuffer, streamRef]); // Added streamRef
+
+  // Analysis processing function - to be called by dispatcher
+  const processFrameAnalysis = useCallback(async (frameToAnalyze: BufferedFrame) => {
+    let currentAnalyses = 0;
+    setActiveAnalysesCount(prev => {
+      currentAnalyses = prev + 1;
+      return currentAnalyses;
+    });
+    setMainStatus(`Analyzing (${currentAnalyses})...`); 
+    logToUI("[processFrameAnalysis] 🚀 Starting analysis for frame:", frameToAnalyze.id, "Change:", frameToAnalyze.percentChange + "%");
+
+    try {
+      const { imageDataUrl, timestamp: frameTimestamp, id: frameId } = frameToAnalyze;
+      const historyForPrompt = workflowSteps.map(step => step.analysis).slice(-5).reverse();
+      logToUI("[processFrameAnalysis] Sending frame for AI analysis. History items:", historyForPrompt.length);
+
+      const response = await fetch("/api/capture", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          image: imageDataUrl, 
+          timestamp: new Date(frameTimestamp).toISOString(), // Use original frame timestamp
+          prompt: customPrompt, 
+          history: historyForPrompt 
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        logError("[processFrameAnalysis] Backend error for frame", frameId, ":", result);
+        setError(`Analysis for ${frameId} failed: ${result.error || 'Unknown error'}`);
+      } else {
+        let newAnalysisRawText: string = "No analysis text returned.";
+        let parsedMainAnalysis: ParsedAnalysis | null = null;
+
+        if (typeof result.analysis === 'object' && result.analysis !== null) {
+          // Backend sent structured JSON directly for main analysis
+          parsedMainAnalysis = result.analysis as ParsedAnalysis; // Assume it matches the ParsedAnalysis interface
+          newAnalysisRawText = JSON.stringify(result.analysis, null, 2); // Store stringified JSON as raw text
+          logToUI("[processFrameAnalysis] Structured analysis received for frame", frameId, ": Step: ", parsedMainAnalysis.step);
+        } else if (typeof result.analysis === 'string') {
+          // Fallback or old system: Backend sent a string that needs parsing (should not happen for main analysis anymore)
+          newAnalysisRawText = result.analysis;
+          parsedMainAnalysis = parseAnalysis(newAnalysisRawText);
+          logToUI("[processFrameAnalysis] String analysis received (fallback) for frame", frameId, ":", newAnalysisRawText.substring(0, 50) + "...");
+        } else {
+           logError("[processFrameAnalysis] Unexpected analysis format from backend for frame", frameId, result.analysis);
+        }
+        
+        logToUI("[processFrameAnalysis] Parsed fields for frame", frameId, ":", parsedMainAnalysis ? Object.keys(parsedMainAnalysis).length : 0);
+        
+        const newWorkflowStep = {
+          id: frameId, 
+          analysis: newAnalysisRawText, // Store raw text (stringified JSON or original string)
+          parsed: parsedMainAnalysis,
+          timestamp: new Date(frameTimestamp).toLocaleTimeString() 
+        };
+
+        setWorkflowSteps(prevSteps => 
+          [...prevSteps, newWorkflowStep]
+            .sort((a,b) => new Date(b.id.split('-change-')[0]).getTime() - new Date(a.id.split('-change-')[0]).getTime()) // Sort by original timestamp desc
+            .slice(0, 20) // Keep more steps if analyzing in parallel
+        );
+
+        // Event summary generation - now with its own try/catch
+        try {
+          const eventHistory = events.map(event => event.summary).slice(-3);
+          logToUI("[processFrameAnalysis] Attempting event summary for frame:", frameId);
+          const eventsResponse = await fetch("/api/capture", {
+            method: "POST", 
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              analysisText: newAnalysisRawText, 
+              prompt: eventsPrompt, 
+              model: EVENTS_MODEL_NAME,
+              history: eventHistory,
+              isEventsSummary: true
+            }),
+          });
+          const eventsResult = await eventsResponse.json();
+          if (eventsResponse.ok) {
+            let eventSummary = "No event summary generated.";
+            let eventThoughts: string | undefined = undefined;
+
+            if (typeof eventsResult.analysis === 'object' && eventsResult.analysis !== null && eventsResult.analysis.summary) {
+              // New backend structure: { summary: "...", thoughts: "..." }
+              eventSummary = eventsResult.analysis.summary;
+              eventThoughts = eventsResult.analysis.thoughts;
+            } else if (typeof eventsResult.analysis === 'string') {
+              // Old backend structure or fallback: plain string
+              // Basic attempt to split if backend adopts a convention before full object support
+              const summaryMarker = "SUMMARY:";
+              const thoughtsMarker = "THOUGHTS:"; // Or similar, depends on backend convention
+              const rawAnalysis = eventsResult.analysis;
+
+              if (rawAnalysis.includes(thoughtsMarker) && rawAnalysis.includes(summaryMarker)) {
+                const thoughtsEndIndex = rawAnalysis.indexOf(summaryMarker);
+                eventThoughts = rawAnalysis.substring(thoughtsMarker.length, thoughtsEndIndex).trim();
+                eventSummary = rawAnalysis.substring(thoughtsEndIndex + summaryMarker.length).trim();
+              } else if (rawAnalysis.includes(summaryMarker)) {
+                eventSummary = rawAnalysis.substring(rawAnalysis.indexOf(summaryMarker) + summaryMarker.length).trim();
+              } else {
+                eventSummary = rawAnalysis; // Use the whole string as summary
+              }
+            }
+
+            logToUI("[processFrameAnalysis] Event summary for", frameId, "received:", eventSummary);
+            if (eventThoughts) {
+              logToUI("[processFrameAnalysis] Event thoughts for", frameId, "received (first 50 chars):", eventThoughts.substring(0,50) + "...");
+            }
+            const newEvent: Event = {
+              id: frameId + "-event",
+              summary: eventSummary,
+              thoughts: eventThoughts,
+              timestamp: new Date(frameTimestamp).toLocaleTimeString()
+            };
+            setEvents(prevEvents => 
+              [...prevEvents, newEvent]
+              .sort((a,b) => {
+                const dateStringA = a.id.split('-event')[0].split('-change-')[0];
+                const dateStringB = b.id.split('-event')[0].split('-change-')[0];
+                return new Date(dateStringB).getTime() - new Date(dateStringA).getTime();
+              })
+              .slice(0, 100) // Keep up to 100 events
+            );
+          } else {
+            logError("[processFrameAnalysis] Events API error for frame", frameId, ":", eventsResult);
+          }
+        } catch (eventsErr) {
+          let eventErrorMessage = "Network error during event summary generation.";
+          if (eventsErr instanceof Error) eventErrorMessage = eventsErr.message;
+          logError("[processFrameAnalysis] Event summary fetch/network error for frame", frameId, ":", eventErrorMessage, eventsErr);
+          // Do not set general error here, main analysis might have succeeded.
+        }
+        setError(null); // Clear general error if this specific analysis was successful
+      }
+    } catch (err) {
+      let errorMessage = "Network error during analysis.";
+      if (err instanceof Error) errorMessage = err.message;
+      logError("[processFrameAnalysis] Network error for frame", frameToAnalyze.id, ":", errorMessage, err);
+      setError(`Analysis for ${frameToAnalyze.id} failed: ${errorMessage}`);
+    } finally {
+      let finalAnalysesCount = 0;
+      setActiveAnalysesCount(prev => {
+        finalAnalysesCount = Math.max(0, prev - 1);
+        return finalAnalysesCount;
+      });
+      logToUI("[processFrameAnalysis] ✅ Finished analysis for frame:", frameToAnalyze.id, ". Active analyses now:", finalAnalysesCount);
+      // setMainStatus will be updated by the useEffect hook that depends on activeAnalysesCount
+    }
+  }, [customPrompt, workflowSteps, events, eventsPrompt, EVENTS_MODEL_NAME, logToUI, logError, parseAnalysis, setWorkflowSteps, setEvents, setActiveAnalysesCount, setMainStatus, setError]); // Removed activeAnalysesCount from here as it's handled via functional updates
+
+  // useEffect for dispatching frames from buffer for analysis
+  useEffect(() => {
+    if (activeAnalysesCount < 5 && frameBuffer.length > 0) {
+      const frameToProcess = frameBuffer[0]; // Oldest frame
+      logToUI("[Dispatcher] Picking frame from buffer for analysis:", frameToProcess.id, "Buffer size:", frameBuffer.length);
+      setFrameBuffer(prevBuffer => prevBuffer.slice(1)); // Remove the processed frame
+      processFrameAnalysis(frameToProcess);
+    }
+  }, [frameBuffer, activeAnalysesCount, processFrameAnalysis, logToUI, setFrameBuffer]);
 
   // 4. Auto-detection helper functions
   const getFrameDataForComparison = useCallback((video: HTMLVideoElement): Uint8ClampedArray | null => {
@@ -591,33 +745,41 @@ Context: You have access to previous analysis results for reference. Focus on id
   }, []);
 
   const handleActivityDetection = useCallback(() => {
+    // This function no longer directly triggers full analysis.
+    // It's main role is to signal that a change occurred which might be captured.
+    // The actual capture-to-buffer is now triggered by the monitoringLoop when change > threshold.
     const now = Date.now();
     setLastActivityTime(now); 
     if (!activityDetectedRef.current) { 
       setActivityDetected(true); 
-      logToUI("[Auto-Detection] 🟡 Activity period started - Change:", currentChangePercentRef.current.toFixed(2) + "%");
+      logToUI("[Auto-Detection] 🟡 Activity period started - Current Change:", currentChangePercentRef.current.toFixed(2) + "%");
     }
-  }, [logToUI, currentChangePercentRef, setLastActivityTime, setActivityDetected]);
+  }, [logToUI, setLastActivityTime, setActivityDetected]);
 
   const checkForStability = useCallback(() => {
+    // This function's role changes. It no longer triggers analysis directly.
+    // It still helps in identifying end of an activity burst for logging or other UI cues.
     const now = Date.now();
     if (activityDetectedRef.current && (now - lastActivityTimeRef.current > stabilityDelayRef.current)) {
       setActivityDetected(false); 
-      logToUI("[Auto-Detection] 🟢 Stability detected after", Math.round((now - lastActivityTimeRef.current) / 1000) + "s - Triggering analysis");
-      captureFrameAndSend();
+      logToUI("[Auto-Detection] 🟢 Screen relatively stable after activity burst. Last change:", currentChangePercentRef.current.toFixed(2) + "%");
+      // No longer calls captureFrameAndSend() here.
     }
-  }, [logToUI, captureFrameAndSend, setActivityDetected]);
+  }, [logToUI, stabilityDelayRef, activityDetectedRef, lastActivityTimeRef, currentChangePercentRef, setActivityDetected]); // Removed captureFrameAndSend
  
   // 5. Memoized UI content
   const memoizedEventsContent = useMemo(() => {
     return events.length > 0 ? (
       <div className="relative">
         <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-border"></div>
-        {events.slice(0, 10).map((event) => (
+        {events.map((event) => (
           <div key={event.id} className="relative flex items-center gap-3 pb-3">
             <div className="relative z-10 w-4 h-4 bg-primary rounded-full border-2 border-background flex-shrink-0"></div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+              <div 
+                className="flex items-center gap-2" 
+                title={event.thoughts ? `Thoughts: ${event.thoughts}` : undefined}
+              >
                 <span className="text-[10px] text-muted-foreground font-mono">{event.timestamp}</span>
                 <span className="text-xs text-foreground truncate">{event.summary}</span>
               </div>
@@ -633,7 +795,7 @@ Context: You have access to previous analysis results for reference. Focus on id
   const memoizedWorkflowStepsContent = useMemo(() => {
     return workflowSteps.length > 0 ? (
       <ul className="space-y-4">
-        {workflowSteps.slice(0, 10).map(step => (
+        {workflowSteps.slice(0, 20).map(step => (
           <li key={step.id} className="p-4 border rounded-md bg-background">
             <p className="font-medium text-muted-foreground text-[10px] mb-3">{step.timestamp}</p>
             {step.parsed ? (
@@ -714,7 +876,7 @@ Context: You have access to previous analysis results for reference. Focus on id
     }
     setStream(null);
     streamRef.current = null;
-    setIsProcessingFrame(false);
+    setIsCapturingForBuffer(false);
     setMainStatus("Idle");
   }, [stream, logToUI]);
 
@@ -729,7 +891,7 @@ Context: You have access to previous analysis results for reference. Focus on id
     }
     setStream(null);
     streamRef.current = null;
-    setIsProcessingFrame(false);
+    setIsCapturingForBuffer(false);
     setMainStatus("Initializing...");
     try {
       const mediaStream = await navigator.mediaDevices.getDisplayMedia({ 
@@ -796,15 +958,18 @@ Context: You have access to previous analysis results for reference. Focus on id
 
   // Update main status text
   const updateMainStatus = useCallback(() => {
-    if (isProcessingFrame) { return; } // Handled by captureFrameAndSend
-    if (error) { return; } // Handled by error effect or captureFrameAndSend
-    if (stream) { setMainStatus("Recording"); }
-    else { setMainStatus("Idle"); }
-  }, [stream, error, isProcessingFrame]);
+    if (activeAnalysesCount > 0) {
+      setMainStatus(`Analyzing (${activeAnalysesCount})...`);
+    } else if (streamRef.current) {
+      setMainStatus(videoRef.current && videoRef.current.videoWidth > 0 ? "Recording (Preview Active)" : "Recording (Video Not Ready)");
+    } else {
+      setMainStatus("Idle");
+    }
+  }, [stream, error, activeAnalysesCount, setMainStatus, videoRef, streamRef]); // Added activeAnalysesCount, streamRef, videoRef
 
   useEffect(() => {
     updateMainStatus();
-  }, [stream, error, isProcessingFrame, updateMainStatus]);
+  }, [stream, error, activeAnalysesCount, setMainStatus]);
   
   // Screen sharing and video element effects
   useEffect(() => {
@@ -869,10 +1034,10 @@ Context: You have access to previous analysis results for reference. Focus on id
     const video = videoRef.current;
     if (video.readyState < video.HAVE_METADATA) return; // Ensure video is ready
     
-    const currentFrame = getFrameDataForComparison(video);
+    const currentFrameData = getFrameDataForComparison(video); // Renamed for clarity
     
-    if (lastFrameDataRef.current) {
-      const changePercent = calculateChangePercentage(currentFrame, lastFrameDataRef.current, pixelDifferenceThreshold);
+    if (lastFrameDataRef.current && currentFrameData) { // Ensure currentFrameData is not null
+      const changePercent = calculateChangePercentage(currentFrameData, lastFrameDataRef.current, pixelDifferenceThreshold);
       currentChangePercentRef.current = changePercent;
       
       if (Math.abs(changePercent - lastDisplayChangeRef.current) > 0.1) {
@@ -881,18 +1046,18 @@ Context: You have access to previous analysis results for reference. Focus on id
       }
       
       if (changePercent > changeThresholdRef.current) {
-        handleActivityDetection();
+        handleActivityDetection(); // Signals activity has started or continues
+        captureFrameToBuffer(changePercent); // Directly capture to buffer if change is significant
       }
     }
     
-    setLastFrameData(currentFrame);
-    checkForStability();
+    setLastFrameData(currentFrameData); // Store the original Uint8ClampedArray
+    checkForStability(); // Still useful for logging/UI cues about stability periods
   }, [
-    autoDetectionEnabledRef, changeThresholdRef, // These are stable refs updated by their own useEffects
     getFrameDataForComparison, calculateChangePercentage, 
-    handleActivityDetection, checkForStability, // These are stable callbacks
-    setDisplayChangePercent, setLastFrameData, // These are stable state setters
-    pixelDifferenceThreshold // This is a new state
+    handleActivityDetection, checkForStability, captureFrameToBuffer, // Added captureFrameToBuffer
+    pixelDifferenceThreshold, changeThresholdRef, autoDetectionEnabledRef, // Added changeThresholdRef and autoDetectionEnabledRef
+    setDisplayChangePercent, setLastFrameData, streamRef // Added streamRef
   ]);
 
   const startMonitoring = useCallback(() => {
@@ -939,15 +1104,14 @@ Context: You have access to previous analysis results for reference. Focus on id
 
   return (
     <div className="container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl">
-      {/* Header with Controls - All in one line */}
+      {/* Header with Controls */}
       <div className="w-full max-w-7xl mb-6 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+        {/* Left Group: Title, Subtitle, and Buttons */}
+        <div className="flex items-center gap-3"> 
           <h1 className="text-2xl font-bold tracking-tight">Workflow Capture</h1>
           <p className="text-sm text-muted-foreground">Insights from your screen</p>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
+          {/* Button Group moved inside this left div */}
+          <div className="flex items-center gap-2 pl-4"> {/* Added pl-4 for spacing from subtitle */}
             <Button 
               onClick={stream ? handleStopScreenShare : handleStartScreenShare} 
               size="default" 
@@ -955,18 +1119,34 @@ Context: You have access to previous analysis results for reference. Focus on id
             >
               {stream ? "Stop" : "Start"}
             </Button>
-            <Button onClick={captureFrameAndSend} size="default" variant="outline" className="w-32" disabled={!stream || isProcessingFrame}>
-              {isProcessingFrame ? "Analyzing..." : "Analyze"}
+            <Button 
+              onClick={() => { 
+                if (streamRef.current && videoRef.current && videoRef.current.readyState >= videoRef.current.HAVE_METADATA && videoRef.current.videoWidth > 0) {
+                  logToUI("[Manual Capture] Triggered. Adding current view to buffer.");
+                  captureFrameToBuffer(100); 
+                } else {
+                  logError("[Manual Capture] Cannot capture, stream/video not ready.");
+                  setError("Cannot manually capture: Preview not active or ready.");
+                }
+              }} 
+              size="default" 
+              variant="outline" 
+              className="w-32" 
+              disabled={!streamRef.current || isCapturingForBuffer} 
+            >
+              {activeAnalysesCount > 0 ? `Analyzing (${activeAnalysesCount})...` : "Capture Frame"} 
             </Button>
           </div>
-          <div className={`text-sm rounded-md px-3 py-1.5 min-w-[280px] text-center bg-background flex items-center justify-between ${isProcessingFrame ? 'text-blue-600 bg-blue-50 animate-pulse border border-blue-200' : error ? 'text-red-600 bg-red-50 border border-red-200' : 'text-muted-foreground'}`}>
-            <span className="truncate">Status: {mainStatus}</span>
-            {autoDetectionEnabled && (
-              <span className="text-xs opacity-75 pl-2 ml-2 border-l whitespace-nowrap" style={{ minWidth: '85px' }}>
-                %Ch: [{isMonitoring ? displayChangePercent.toFixed(1).padStart(3, ' ') : ' --'}]
-              </span>
-            )}
-          </div>
+        </div>
+        
+        {/* Right Group: Now only Status */}
+        <div className={`text-sm rounded-md px-3 py-1.5 min-w-[280px] text-center bg-background flex items-center justify-between ${activeAnalysesCount > 0 ? 'text-blue-600 bg-blue-50 animate-pulse border border-blue-200' : error ? 'text-red-600 bg-red-50 border border-red-200' : 'text-muted-foreground'}`}>
+          <span className="truncate">Status: {mainStatus}</span>
+          {autoDetectionEnabled && (
+            <span className="text-xs opacity-75 pl-2 ml-2 border-l whitespace-nowrap" style={{ minWidth: '85px' }}>
+              %Ch: [{isMonitoring ? displayChangePercent.toFixed(1).padStart(3, ' ') : ' --'}]
+            </span>
+          )}
         </div>
       </div>
 
@@ -1041,7 +1221,7 @@ Context: You have access to previous analysis results for reference. Focus on id
                         placeholder="Enter analysis prompt..." 
                         className="text-xs min-h-[120px] resize-none overflow-y-scroll" 
                         style={{scrollbarWidth: 'thin'}}
-                        disabled={!!stream && isProcessingFrame} 
+                        disabled={!!stream && activeAnalysesCount > 0} 
                       />
                       {promptSaveStatus !== 'idle' && (
                         <div className={`absolute top-2 right-2 px-3 py-1 rounded-md text-xs font-medium transition-all duration-300 ${promptSaveStatus === 'saving' ? 'bg-blue-100 text-blue-700 animate-pulse' : 'bg-green-100 text-green-700'}`}>

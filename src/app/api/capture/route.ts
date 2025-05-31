@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part, Schema, SchemaType } from '@google/generative-ai';
 import fs from 'fs/promises'; // For file system operations
 import path from 'path'; // For path manipulation
 
@@ -47,52 +47,105 @@ export async function POST(request: Request) {
 
     // Handle events summary request (text-only)
     if (isEventsSummary && analysisText) {
-      let fullPrompt = userPrompt;
-      if (history.length > 0) {
-        fullPrompt += `\n\nPrevious events context:\n`;
-        history.slice(0, 3).forEach((h, index) => {
-          fullPrompt += `${index + 1}. ${h}\n`;
-        });
-      }
-      fullPrompt += `\n\nAnalysis to summarize: ${analysisText}`;
+      // baseUserPrompt is no longer needed here as structuredPrompt is self-contained for schema guidance.
+      // const baseUserPrompt = (body.prompt as string) || "Describe the user's action."; 
 
-      await writeToLog(`Sending events request to Gemini (${modelName}). Prompt (first 200 chars): ${fullPrompt.substring(0,200)}...`);
+      // New prompt for structured output, guiding content for schema fields
+      let structuredPrompt = `Based on the provided context, generate a thought process and a concise summary of the user's action. 
+Thought Process: Explain your reasoning step-by-step for determining the user's primary action. 
+Concise Summary: Provide the summary of the action in 10 words or less.`;
+
+      if (history.length > 0) {
+        structuredPrompt += `\n\nPrevious events context to consider for your thought process:\n`;
+        history.slice(0, 3).forEach((h, index) => {
+          structuredPrompt += `${index + 1}. ${h}\n`;
+        });
+        structuredPrompt += "\n";
+      }
+      structuredPrompt += `Main analysis context to use: ${analysisText}`;
+
+      await writeToLog(`Sending events request to Gemini (${modelName}) for structured output. Prompt (first 200 chars): ${structuredPrompt.substring(0,200)}...`);
       
+      const eventSummarySchema: Schema = {
+        type: SchemaType.OBJECT,
+        properties: {
+          thoughts: { 
+            type: SchemaType.STRING,
+            description: "The model's detailed thought process for arriving at the summary." 
+          },
+          summary: { 
+            type: SchemaType.STRING,
+            description: "Concise summary of the user's action (10 words or less)."
+          }
+        },
+        required: ['summary'] 
+      };
+
       const generationConfig = {
         temperature: 0.3, 
         topK: 32,
         topP: 0.8,
-        maxOutputTokens: 500, // Increased for pro model thinking tokens
+        maxOutputTokens: 4096, // Increased significantly for thoughts + summary in JSON
+        responseMimeType: "application/json", // Crucial for structured output
+        responseSchema: eventSummarySchema     // Provide the defined schema
       };
 
       const result = await activeModel.generateContent({ 
-        contents: [{ role: "user", parts: [{ text: fullPrompt }] }], 
+        contents: [{ role: "user", parts: [{ text: structuredPrompt }] }], 
         generationConfig 
       });
       
-      await writeToLog(`Raw Gemini events response: ${JSON.stringify(result, null, 2)}`);
+      await writeToLog(`Raw Gemini events response (expecting JSON): ${JSON.stringify(result, null, 2)}`);
       
       const response = result.response;
       if (response && response.candidates && response.candidates.length > 0) {
         const candidate = response.candidates[0];
         if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-          const eventSummary = candidate.content.parts
+          const jsonString = candidate.content.parts
             .map(part => part.text || '')
             .join('')
             .trim();
           
-          if (eventSummary) {
-            await writeToLog(`Gemini events response successful (length: ${eventSummary.length}): ${eventSummary}`);
-            return NextResponse.json({
-              message: 'Events summary generated successfully.',
-              analysis: eventSummary,
-              serverTimestamp: new Date().toISOString()
-            });
+          if (jsonString) {
+            try {
+              const structuredData = JSON.parse(jsonString);
+              let thoughts = structuredData.thoughts || "Thoughts not provided by model."; // Fallback
+              let summary = structuredData.summary || "Summary not provided by model.";   // Fallback
+
+              // Check if the required summary is missing or truly empty despite schema requiring it.
+              if (!structuredData.summary || String(structuredData.summary).trim() === ""){
+                summary = "Summary was missing or empty in model output.";
+                await writeToLog(`WARN: Gemini returned JSON but the required 'summary' field was missing or empty.`);
+                // Thoughts might still be valuable
+                thoughts = structuredData.thoughts || "Thoughts also missing or model output incomplete.";
+              }
+              
+              if (summary === "Summary not provided by model." && thoughts === "Thoughts not provided by model.") {
+                await writeToLog('WARN: Gemini returned JSON but with no thoughts or summary fields filled meaningfully.');
+              }
+
+              await writeToLog(`Gemini events response (structured JSON). Thoughts (first 50): ${thoughts.substring(0,50)}... Summary: ${summary}`);
+              return NextResponse.json({
+                message: 'Events summary and thoughts generated successfully (structured JSON).',
+                analysis: { summary, thoughts }, // Already structured
+                serverTimestamp: new Date().toISOString()
+              });
+            } catch (e) {
+              await writeToLog(`ERROR: Failed to parse JSON response from Gemini for event summary. JSON String: ${jsonString}. Error: ${e}`);
+              return NextResponse.json({ error: 'Failed to parse structured JSON from Gemini for event summary.', details: (e as Error).message }, { status: 500 });
+            }
           }
         }
       }
-      await writeToLog('WARN: Gemini events request failed or returned empty response.');
-      return NextResponse.json({ error: 'Failed to generate events summary.' }, { status: 500 });
+      await writeToLog('WARN: Gemini events request (structured JSON attempt) failed or returned empty/invalid content part.');
+      // Provide more context if possible for this warning case
+      // let detailMessage = "Model did not return expected content parts for structured JSON.";
+      // if (result && result.response && result.response.promptFeedback) {
+      //   detailMessage += ` Prompt Feedback: ${JSON.stringify(result.response.promptFeedback)}`;
+      // }
+      // Simplified for linter diagnosis
+      const simplifiedDetailMessage = "Model returned empty/invalid content.";
+      return NextResponse.json({ error: 'Failed to generate events summary from Gemini response (structured JSON attempt).', details: simplifiedDetailMessage }, { status: 500 });
     }
 
     // Handle regular image analysis request
@@ -111,11 +164,28 @@ export async function POST(request: Request) {
 
     await writeToLog(`Processing ${mimeType} image (size: ${imageDataBase64.length} chars)`);
 
+    const mainAnalysisSchema: Schema = {
+      type: SchemaType.OBJECT,
+      properties: {
+        workflow: { type: SchemaType.STRING, description: "Best guess of the overall workflow/process name based on what you see." },
+        step: { type: SchemaType.STRING, description: "Concise name for this specific step, 3-5 words max." },
+        description: { type: SchemaType.STRING, description: "What is happening in 10 or less words. Focus on fresh and unique information compared to previous logs, what has changed." },
+        facts: { type: SchemaType.STRING, description: "Key observable facts from the screen - buttons, text, UI elements, data visible. Can be a list or paragraph." },
+        logic: { type: SchemaType.STRING, description: "Business rules or logic you can infer from this step." },
+        tech: { type: SchemaType.STRING, description: "Technical details like application, browser, file types, etc." },
+        apps: { type: SchemaType.STRING, description: "List of applications, windows, or programs visible on screen. Can be a list or paragraph." },
+        context: { type: SchemaType.STRING, description: "Specific context like browser tab titles, URLs, file names, chat names, document titles, etc. if available." }
+      },
+      required: ['workflow', 'step', 'description', 'facts', 'logic', 'tech', 'apps', 'context'] 
+    };
+
     const generationConfig = {
       temperature: 0.3, 
       topK: 32,
       topP: 0.8,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 4096, // Keep it generous for potentially detailed facts in JSON
+      responseMimeType: "application/json",
+      responseSchema: mainAnalysisSchema
     };
 
     const safetySettings = [
@@ -128,7 +198,8 @@ export async function POST(request: Request) {
     const imageInputPart: Part = { inlineData: { mimeType, data: imageDataBase64 } };
     
     // Enhanced prompt for more consistent structured output
-    let fullPrompt = userPrompt;
+    let fullPrompt = `Analyze the provided screenshot and recent activity context. Populate the defined JSON schema with your analysis. The schema fields are: workflow, step, description, facts, logic, tech, apps, and context. Refer to the schema field descriptions for specific instructions on what to populate in each. The original detailed instructions for each field (if they were part of the userPrompt) are also in this prompt below:\n\n${userPrompt}`;
+    
     if (history.length > 0) {
       fullPrompt += `\n\nRecent activity context (last ${history.length} steps):\n`;
       history.slice(0, 5).forEach((h, index) => {
@@ -145,28 +216,39 @@ export async function POST(request: Request) {
     await writeToLog(`Sending request to Gemini (${modelName}). Prompt (first 200 chars): ${fullPrompt.substring(0,200)}...`);
     const result = await activeModel.generateContent({ contents, generationConfig, safetySettings });
     
-    await writeToLog(`Raw Gemini response: ${JSON.stringify(result, null, 2)}`);
+    await writeToLog(`Raw Gemini response (expecting JSON for main analysis): ${JSON.stringify(result, null, 2)}`);
     
     const response = result.response;
     if (response && response.candidates && response.candidates.length > 0) {
       const candidate = response.candidates[0];
       if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-        const analysisText = candidate.content.parts
+        const jsonString = candidate.content.parts // Expecting JSON string here
           .map(part => part.text || '')
           .join('')
           .trim();
         
-        if (analysisText) {
-          await writeToLog(`Gemini response successful (length: ${analysisText.length}): ${analysisText.substring(0, 200)}...`);
-          return NextResponse.json({
-            message: 'Capture analyzed successfully by Gemini.',
-            analysis: analysisText,
-            receivedTimestamp: clientTimestamp,
-            serverTimestamp: new Date().toISOString()
-          });
+        if (jsonString) {
+          try {
+            const structuredAnalysis = JSON.parse(jsonString);
+            // Basic validation: check if a few key required fields are present
+            if (!structuredAnalysis.workflow || !structuredAnalysis.step) {
+              await writeToLog(`WARN: Gemini returned JSON for main analysis, but required fields like workflow or step are missing. Data: ${jsonString}`);
+              // Fallback or handle as partial data
+            }
+            await writeToLog(`Gemini main analysis response (structured JSON processed). Step name: ${structuredAnalysis.step}`);
+            return NextResponse.json({
+              message: 'Capture analyzed successfully by Gemini (structured JSON).',
+              analysis: structuredAnalysis, // Send the parsed JSON object directly
+              receivedTimestamp: clientTimestamp,
+              serverTimestamp: new Date().toISOString()
+            });
+          } catch (e) {
+            await writeToLog(`ERROR: Failed to parse JSON response from Gemini for main analysis. JSON String: ${jsonString}. Error: ${e}`);
+            return NextResponse.json({ error: 'Failed to parse structured JSON from Gemini for main analysis.', details: (e as Error).message }, { status: 500 });
+          }
         } else {
-          await writeToLog('WARN: Gemini returned empty analysis text.');
-          return NextResponse.json({ error: 'Gemini returned empty analysis.', details: 'Empty text in parts' }, { status: 500 });
+          await writeToLog('WARN: Gemini returned empty analysis text (structured JSON attempt for main analysis).');
+          return NextResponse.json({ error: 'Gemini returned empty analysis.', details: 'Empty text in parts (structured main analysis attempt)' }, { status: 500 });
         }
       } else {
         await writeToLog(`WARN: Gemini API content structure invalid. Content: ${JSON.stringify(candidate.content)}`);
