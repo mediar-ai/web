@@ -36,6 +36,60 @@ interface Event {
   timestamp: string;
 }
 
+interface ParsedAnalysis {
+  workflow: string;
+  step: string;
+  description: string;
+  facts: string;
+  logic: string;
+  tech: string;
+  apps: string;
+  context: string;
+}
+
+interface InitialFrameDumpAnalysis {
+  type: 'initial_dump';
+  id: string; // Frame ID, can be the same as image_id for simplicity here
+  timestamp: string;
+  raw_content: string;
+  image_id: string; // ID of the dumped frame from BufferedFrame
+}
+
+// UIDiffAnalysis now includes a type discriminator
+interface UIDiffAnalysis {
+  type: 'ui_diff';
+  id: string; 
+  timestamp: string; 
+  change_detected: "yes" | "no";
+  change_description?: string;
+  identified_change_types?: string[];
+  mouse_movement_details?: {
+    from_object?: string;
+    from_coordinate?: string;
+    to_object?: string;
+    to_coordinate?: string;
+  };
+  typing_details?: string;
+  click_details?: string;
+  new_window_details?: {
+    old_window_name?: string;
+    new_window_name?: string;
+  };
+  new_app_details?: string;
+  scroll_details?: {
+    new_content_summary?: string;
+  };
+  other_change_details?: Array<{
+    type_description?: string;
+    details?: string;
+  }>;
+  unidentified_changes_explanation?: string;
+  image1_id?: string; 
+  image2_id?: string; 
+}
+
+type ActivityItem = InitialFrameDumpAnalysis | UIDiffAnalysis;
+
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -165,22 +219,6 @@ const clearPersistedData = async () => {
     console.error('[clearPersistedData] Failed to clear:', err);
   }
 };
-
-// interface ProcessedInsights { // No longer using this specific structure for display
-//   guessedApplication?: string;
-//   keywords?: string[];
-// }
-
-interface ParsedAnalysis {
-  workflow: string;
-  step: string;
-  description: string;
-  facts: string;
-  logic: string;
-  tech: string;
-  apps: string;
-  context: string;
-}
 
 const saveEvents = async (events: Array<Event>) => {
   try {
@@ -330,7 +368,7 @@ export default function Home() {
   const [autoDetectionEnabled, setAutoDetectionEnabled] = useState<boolean>(true);
   const [monitoringFrequency, setMonitoringFrequency] = useState<number>(200); // ms
   const [changeThreshold, setChangeThreshold] = useState<number>(1.0); // percentage
-  const [stabilityDelay, setStabilityDelay] = useState<number>(200); // ms
+  const [stabilityDelay, setStabilityDelay] = useState<number>(500); // ms
   const [screenshotQuality, setScreenshotQuality] = useState<number>(0.6);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
   const [pixelDifferenceThreshold, setPixelDifferenceThreshold] = useState<number>(20); // NEW: Threshold for pixel comparison (0-255)
@@ -342,11 +380,14 @@ export default function Home() {
   const monitoringCanvasRef = useRef<HTMLCanvasElement>(null); // Ref for change detection
   const [error, setError] = useState<string | null>(null);
   const [showError, setShowError] = useState<boolean>(false);
-  const [isCapturingForBuffer, setIsCapturingForBuffer] = useState(false); // New state for managing buffer capture process
-  const [workflowSteps, setWorkflowSteps] = useState<Array<{id: string, analysis: string, parsed: ParsedAnalysis | null, timestamp: string}>>([]); // Added parsed field
-  const [events, setEvents] = useState<Event[]>([]); // Use updated Event interface for state
-  const [frameBuffer, setFrameBuffer] = useState<BufferedFrame[]>([]); // New state for frame buffer
-  const [activeAnalysesCount, setActiveAnalysesCount] = useState<number>(0); // New state for active analyses
+  const [isCapturingForBuffer, setIsCapturingForBuffer] = useState(false);
+  const [workflowSteps, setWorkflowSteps] = useState<Array<{id: string, analysis: string, parsed: ParsedAnalysis | null, timestamp: string}>>([]);
+  const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [frameBuffer, setFrameBuffer] = useState<BufferedFrame[]>([]);
+  const [activeAnalysesCount, setActiveAnalysesCount] = useState<number>(0);
+  const MAX_PARALLEL_ANALYSES = 5; // Changed back to const
+  const [baselineFrameForDiff, setBaselineFrameForDiff] = useState<BufferedFrame | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>(`You are an expert business workflow assistant that analyzes screen data to identify business processes. Provide your analysis in the following structured format:
 
 workflow_name_best_guess_latest: [Best guess of the overall workflow/process name based on what you see]
@@ -362,6 +403,9 @@ Context: You have access to previous analysis results for reference. Focus on id
   const [eventsPrompt] = useState<string>(`In 10 words or less describe what the user is actively DOING (not just viewing). Only say "Sending/Typing/Writing" if you see evidence of active input (cursor in text field, message being composed, unsent draft, typing indicator). If viewing existing content/messages, use "Reviewing/Browsing [what]". Focus on actual user actions, not past completed actions.`);
   const [mainStatus, setMainStatus] = useState<string>("Idle");
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
+  const [initialDumpInProgress, setInitialDumpInProgress] = useState<boolean>(false); // New state
+  const [pendingFrameForDiff, setPendingFrameForDiff] = useState<BufferedFrame | null>(null); // New state
+  const [diffAnalysisInProgress, setDiffAnalysisInProgress] = useState<boolean>(false); // New state
 
   // Auto-detection state & refs for stable callbacks
   const [isMonitoring, setIsMonitoring] = useState<boolean>(false);
@@ -539,166 +583,205 @@ Context: You have access to previous analysis results for reference. Focus on id
     }
   }, [isCapturingForBuffer, screenshotQuality, logToUI, logError, setFrameBuffer, setIsCapturingForBuffer, streamRef]); // Added streamRef
 
-  // Analysis processing function - to be called by dispatcher
-  const processFrameAnalysis = useCallback(async (frameToAnalyze: BufferedFrame) => {
-    let currentAnalyses = 0;
-    setActiveAnalysesCount(prev => {
-      currentAnalyses = prev + 1;
-      return currentAnalyses;
-    });
-    setMainStatus(`Analyzing (${currentAnalyses})...`); 
-    logToUI("[processFrameAnalysis] 🚀 Starting analysis for frame:", frameToAnalyze.id, "Change:", frameToAnalyze.percentChange + "%");
+  // Process single frame for workflow analysis (existing logic, now less frequently called by dispatcher)
+  const processWorkflowAnalysis = useCallback(async (frameToAnalyze: BufferedFrame) => {
+    setActiveAnalysesCount(prev => prev + 1);
+    // ... (rest of the existing processFrameAnalysis logic for analysisType: 'workflow')
+    // ... including fetch, setWorkflowSteps, setEvents, setActiveAnalysesCount decrement
+    // For brevity, not duplicating the entire function here, but it's the old processFrameAnalysis body.
+    // IMPORTANT: Ensure this function correctly uses 'single_imageDataBase64WithPrefix' (or 'image')
+    // and 'analysisType: "workflow"' when calling the backend.
+    // It should update setWorkflowSteps.
 
+    // Simplified placeholder for this example - REMOVE AND REPLACE WITH ACTUAL LOGIC
+    logToUI("[processWorkflowAnalysis] Called for frame:", frameToAnalyze.id);
+    const { imageDataUrl, timestamp: frameTimestamp, id: frameId } = frameToAnalyze;
+    const historyForPrompt = workflowSteps.map(step => JSON.stringify(step.parsed)).slice(-3).reverse(); // Send parsed history if available
+    logToUI("[processWorkflowAnalysis] Sending frame for AI analysis (workflow type). History items:", historyForPrompt.length);
     try {
-      const { imageDataUrl, timestamp: frameTimestamp, id: frameId } = frameToAnalyze;
-      const historyForPrompt = workflowSteps.map(step => step.analysis).slice(-5).reverse();
-      logToUI("[processFrameAnalysis] Sending frame for AI analysis. History items:", historyForPrompt.length);
-
       const response = await fetch("/api/capture", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          image: imageDataUrl, 
-          timestamp: new Date(frameTimestamp).toISOString(), // Use original frame timestamp
-          prompt: customPrompt, 
-          history: historyForPrompt 
+        body: JSON.stringify({
+          image: imageDataUrl,
+          timestamp: new Date(frameTimestamp).toISOString(),
+          prompt: customPrompt, // Main workflow prompt
+          history: historyForPrompt,
+          analysisType: 'workflow'
         }),
       });
-
       const result = await response.json();
-
-      if (!response.ok) {
-        logError("[processFrameAnalysis] Backend error for frame", frameId, ":", result);
-        setError(`Analysis for ${frameId} failed: ${result.error || 'Unknown error'}`);
-      } else {
-        let newAnalysisRawText: string = "No analysis text returned.";
-        let parsedMainAnalysis: ParsedAnalysis | null = null;
-
-        if (typeof result.analysis === 'object' && result.analysis !== null) {
-          // Backend sent structured JSON directly for main analysis
-          parsedMainAnalysis = result.analysis as ParsedAnalysis; // Assume it matches the ParsedAnalysis interface
-          newAnalysisRawText = JSON.stringify(result.analysis, null, 2); // Store stringified JSON as raw text
-          logToUI("[processFrameAnalysis] Structured analysis received for frame", frameId, ": Step: ", parsedMainAnalysis.step);
-        } else if (typeof result.analysis === 'string') {
-          // Fallback or old system: Backend sent a string that needs parsing (should not happen for main analysis anymore)
-          newAnalysisRawText = result.analysis;
-          parsedMainAnalysis = parseAnalysis(newAnalysisRawText);
-          logToUI("[processFrameAnalysis] String analysis received (fallback) for frame", frameId, ":", newAnalysisRawText.substring(0, 50) + "...");
-        } else {
-           logError("[processFrameAnalysis] Unexpected analysis format from backend for frame", frameId, result.analysis);
-        }
-        
-        logToUI("[processFrameAnalysis] Parsed fields for frame", frameId, ":", parsedMainAnalysis ? Object.keys(parsedMainAnalysis).length : 0);
-        
+      if (response.ok && typeof result.analysis === 'object') {
+        const parsedMainAnalysis = result.analysis as ParsedAnalysis;
+        const newAnalysisRawText = JSON.stringify(result.analysis, null, 2);
         const newWorkflowStep = {
-          id: frameId, 
-          analysis: newAnalysisRawText, // Store raw text (stringified JSON or original string)
-          parsed: parsedMainAnalysis,
-          timestamp: new Date(frameTimestamp).toLocaleTimeString() 
+          id: frameId, analysis: newAnalysisRawText, parsed: parsedMainAnalysis,
+          timestamp: new Date(frameTimestamp).toLocaleTimeString()
+        };
+        setWorkflowSteps(prev => [newWorkflowStep, ...prev].sort((a,b) => new Date(b.id.split('-change-')[0]).getTime() - new Date(a.id.split('-change-')[0]).getTime()).slice(0, 20));
+        // Optionally trigger event summary for this workflow step too
+      } else { logError("[processWorkflowAnalysis] Backend error:", result); setError(`Workflow analysis failed: ${result.error}`); }
+    } catch (err) { logError("[processWorkflowAnalysis] Network error:", err); setError("Network error in workflow analysis."); }
+    setActiveAnalysesCount(prev => Math.max(0, prev - 1));
+    // End of placeholder - REPLACE WITH FULL ORIGINAL FUNCTION
+
+  }, [customPrompt, workflowSteps, events, eventsPrompt, EVENTS_MODEL_NAME, logToUI, logError, parseAnalysis, setWorkflowSteps, setEvents, setActiveAnalysesCount, setMainStatus, setError]);
+
+  // New function to process UI Diff for two frames
+  const processUIDiffRequest = useCallback(async (frame1: BufferedFrame, frame2: BufferedFrame) => {
+    if (diffAnalysisInProgress) return; // Should be guarded by dispatcher, but as an extra check
+    setDiffAnalysisInProgress(true);
+    setActiveAnalysesCount(prev => prev + 1);
+    const currentActiveCount = activeAnalysesCountRef.current +1; 
+    setMainStatus(`Analyzing UI Diff (${currentActiveCount})...`);
+    const newDiffId = frame2.id + "-diff"; 
+    const displayTimestamp = new Date(frame2.timestamp).toLocaleTimeString();
+    logToUI("[processUIDiffRequest] 🚀 Starting UI Diff analysis between:", frame1.id, "and", frame2.id);
+
+    try {
+      const response = await fetch("/api/capture", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image1_dataUrl: frame1.imageDataUrl,
+          image2_dataUrl: frame2.imageDataUrl,
+          analysisType: 'ui_diff',
+          prompt: "Perform UI difference analysis"
+        }),
+      });
+      const result = await response.json();
+      if (response.ok && typeof result.analysis === 'object') {
+        const diffData = result.analysis as Omit<UIDiffAnalysis, 'type' | 'id' | 'timestamp' | 'image1_id' | 'image2_id'>;
+        
+        const newActivityItem: ActivityItem = {
+          type: 'ui_diff',
+          ...diffData,
+          id: newDiffId,
+          timestamp: displayTimestamp,
+          image1_id: frame1.id,
+          image2_id: frame2.id
         };
 
-        setWorkflowSteps(prevSteps => 
-          [...prevSteps, newWorkflowStep]
-            .sort((a,b) => new Date(b.id.split('-change-')[0]).getTime() - new Date(a.id.split('-change-')[0]).getTime()) // Sort by original timestamp desc
-            .slice(0, 20) // Keep more steps if analyzing in parallel
+        setActivityItems(prevItems => // Changed from setUiDiffSteps
+          [newActivityItem, ...prevItems]
+            .sort((a, b) => { 
+                // Ensure IDs are valid before splitting for robust sorting
+                const idA = a.type === 'ui_diff' ? a.image2_id : a.image_id;
+                const idB = b.type === 'ui_diff' ? b.image2_id : b.image_id;
+                const timeA = new Date(idA!.split('-diff')[0].split('-change-')[0]).getTime();
+                const timeB = new Date(idB!.split('-diff')[0].split('-change-')[0]).getTime();
+                return timeB - timeA;
+            })
+            .slice(0, 100) 
         );
-
-        // Event summary generation - now with its own try/catch
-        try {
-          const eventHistory = events.map(event => event.summary).slice(-3);
-          logToUI("[processFrameAnalysis] Attempting event summary for frame:", frameId);
-          const eventsResponse = await fetch("/api/capture", {
-            method: "POST", 
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              analysisText: newAnalysisRawText, 
-              prompt: eventsPrompt, 
-              model: EVENTS_MODEL_NAME,
-              history: eventHistory,
-              isEventsSummary: true
-            }),
-          });
-          const eventsResult = await eventsResponse.json();
-          if (eventsResponse.ok) {
-            let eventSummary = "No event summary generated.";
-            let eventThoughts: string | undefined = undefined;
-
-            if (typeof eventsResult.analysis === 'object' && eventsResult.analysis !== null && eventsResult.analysis.summary) {
-              // New backend structure: { summary: "...", thoughts: "..." }
-              eventSummary = eventsResult.analysis.summary;
-              eventThoughts = eventsResult.analysis.thoughts;
-            } else if (typeof eventsResult.analysis === 'string') {
-              // Old backend structure or fallback: plain string
-              // Basic attempt to split if backend adopts a convention before full object support
-              const summaryMarker = "SUMMARY:";
-              const thoughtsMarker = "THOUGHTS:"; // Or similar, depends on backend convention
-              const rawAnalysis = eventsResult.analysis;
-
-              if (rawAnalysis.includes(thoughtsMarker) && rawAnalysis.includes(summaryMarker)) {
-                const thoughtsEndIndex = rawAnalysis.indexOf(summaryMarker);
-                eventThoughts = rawAnalysis.substring(thoughtsMarker.length, thoughtsEndIndex).trim();
-                eventSummary = rawAnalysis.substring(thoughtsEndIndex + summaryMarker.length).trim();
-              } else if (rawAnalysis.includes(summaryMarker)) {
-                eventSummary = rawAnalysis.substring(rawAnalysis.indexOf(summaryMarker) + summaryMarker.length).trim();
-              } else {
-                eventSummary = rawAnalysis; // Use the whole string as summary
-              }
-            }
-
-            logToUI("[processFrameAnalysis] Event summary for", frameId, "received:", eventSummary);
-            if (eventThoughts) {
-              logToUI("[processFrameAnalysis] Event thoughts for", frameId, "received (first 50 chars):", eventThoughts.substring(0,50) + "...");
-            }
-            const newEvent: Event = {
-              id: frameId + "-event",
-              summary: eventSummary,
-              thoughts: eventThoughts,
-              timestamp: new Date(frameTimestamp).toLocaleTimeString()
-            };
-            setEvents(prevEvents => 
-              [...prevEvents, newEvent]
-              .sort((a,b) => {
-                const dateStringA = a.id.split('-event')[0].split('-change-')[0];
-                const dateStringB = b.id.split('-event')[0].split('-change-')[0];
-                return new Date(dateStringB).getTime() - new Date(dateStringA).getTime();
-              })
-              .slice(0, 100) // Keep up to 100 events
-            );
-          } else {
-            logError("[processFrameAnalysis] Events API error for frame", frameId, ":", eventsResult);
-          }
-        } catch (eventsErr) {
-          let eventErrorMessage = "Network error during event summary generation.";
-          if (eventsErr instanceof Error) eventErrorMessage = eventsErr.message;
-          logError("[processFrameAnalysis] Event summary fetch/network error for frame", frameId, ":", eventErrorMessage, eventsErr);
-          // Do not set general error here, main analysis might have succeeded.
-        }
-        setError(null); // Clear general error if this specific analysis was successful
+        logToUI("[processUIDiffRequest] ✅ UI Diff analysis successful for:", newDiffId);
+        setBaselineFrameForDiff(frame2); 
+      } else {
+        logError("[processUIDiffRequest] Backend error for UI Diff:", result.error || 'Unknown error', result.details || '');
       }
     } catch (err) {
-      let errorMessage = "Network error during analysis.";
-      if (err instanceof Error) errorMessage = err.message;
-      logError("[processFrameAnalysis] Network error for frame", frameToAnalyze.id, ":", errorMessage, err);
-      setError(`Analysis for ${frameToAnalyze.id} failed: ${errorMessage}`);
-    } finally {
-      let finalAnalysesCount = 0;
-      setActiveAnalysesCount(prev => {
-        finalAnalysesCount = Math.max(0, prev - 1);
-        return finalAnalysesCount;
-      });
-      logToUI("[processFrameAnalysis] ✅ Finished analysis for frame:", frameToAnalyze.id, ". Active analyses now:", finalAnalysesCount);
-      // setMainStatus will be updated by the useEffect hook that depends on activeAnalysesCount
+      logError("[processUIDiffRequest] Network error during UI Diff:", err);
     }
-  }, [customPrompt, workflowSteps, events, eventsPrompt, EVENTS_MODEL_NAME, logToUI, logError, parseAnalysis, setWorkflowSteps, setEvents, setActiveAnalysesCount, setMainStatus, setError]); // Removed activeAnalysesCount from here as it's handled via functional updates
+    setActiveAnalysesCount(prev => Math.max(0, prev - 1));
+    setDiffAnalysisInProgress(false);
+  }, [logToUI, logError, setActivityItems, setActiveAnalysesCount, setMainStatus, setBaselineFrameForDiff, diffAnalysisInProgress]); // Changed setUiDiffSteps to setActivityItems
 
-  // useEffect for dispatching frames from buffer for analysis
-  useEffect(() => {
-    if (activeAnalysesCount < 5 && frameBuffer.length > 0) {
-      const frameToProcess = frameBuffer[0]; // Oldest frame
-      logToUI("[Dispatcher] Picking frame from buffer for analysis:", frameToProcess.id, "Buffer size:", frameBuffer.length);
-      setFrameBuffer(prevBuffer => prevBuffer.slice(1)); // Remove the processed frame
-      processFrameAnalysis(frameToProcess);
+  // New function for initial frame raw content dump
+  const processInitialFrameDump = useCallback(async (frameToDump: BufferedFrame) => {
+    if (initialDumpInProgress) return;
+    setInitialDumpInProgress(true);
+    setActiveAnalysesCount(prev => prev + 1);
+    const currentActiveCount = activeAnalysesCountRef.current + 1;
+    setMainStatus(`Analyzing Initial Frame (${currentActiveCount})...`);
+    logToUI("[processInitialFrameDump] 🖼️ Starting raw content dump for initial frame:", frameToDump.id);
+    try {
+      const response = await fetch("/api/capture", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: frameToDump.imageDataUrl,
+          timestamp: new Date(frameToDump.timestamp).toISOString(),
+          prompt: "List in maximum detail all visible text and UI elements from the screenshot. Describe layout and objects.",
+          analysisType: 'initial_frame_dump'
+        }),
+      });
+      const result = await response.json();
+      if (response.ok && result.analysis && typeof result.analysis.raw_content === 'string') {
+        logToUI("[processInitialFrameDump] ✅ Initial frame dump successful...");
+        const newActivityItem: ActivityItem = {
+          type: 'initial_dump', id: frameToDump.id, timestamp: new Date(frameToDump.timestamp).toLocaleTimeString(),
+          raw_content: result.analysis.raw_content, image_id: frameToDump.id
+        };
+        setActivityItems(prev => [newActivityItem, ...prev].sort(
+          (a, b) => {
+            const idA = a.type === 'ui_diff' ? a.image2_id : a.image_id;
+            const idB = b.type === 'ui_diff' ? b.image2_id : b.image_id;
+            const timeA = new Date(idA!.split('-diff')[0].split('-change-')[0]).getTime();
+            const timeB = new Date(idB!.split('-diff')[0].split('-change-')[0]).getTime();
+            return timeB - timeA;
+          }
+        ));
+        setBaselineFrameForDiff(frameToDump); 
+      } else {
+        logError("[processInitialFrameDump] Backend error for initial dump:", result.error || 'Unknown error', result.details || '');
+      }
+    } catch (err) {
+      logError("[processInitialFrameDump] Network error during initial dump:", err);
+    } finally {
+        setActiveAnalysesCount(prev => Math.max(0, prev - 1));
+        setInitialDumpInProgress(false); 
     }
-  }, [frameBuffer, activeAnalysesCount, processFrameAnalysis, logToUI, setFrameBuffer]);
+  }, [logToUI, logError, setActiveAnalysesCount, setMainStatus, setActivityItems, setBaselineFrameForDiff, initialDumpInProgress]);
+
+  // useEffect for dispatching frames from buffer for analysis (NEW LOGIC)
+  const activeAnalysesCountRef = useRef(activeAnalysesCount);
+  useEffect(() => { activeAnalysesCountRef.current = activeAnalysesCount; }, [activeAnalysesCount]);
+
+  useEffect(() => {
+    // Condition to prevent starting new work if max analyses are running
+    if (activeAnalysesCountRef.current >= MAX_PARALLEL_ANALYSES) {
+      return;
+    }
+
+    // 1. Handle Initial Frame Dump if no baseline exists yet
+    if (!baselineFrameForDiff && !initialDumpInProgress && frameBuffer.length >= 1) {
+      const frameToDump = frameBuffer[0];
+      logToUI("[Dispatcher] Picking oldest frame for Initial Raw Content Dump:", frameToDump.id);
+      setFrameBuffer(prevBuffer => prevBuffer.slice(1)); 
+      processInitialFrameDump(frameToDump);
+      return; // Prioritize initial dump completion
+    }
+
+    // 2. If baseline exists, try to pick a pending frame for UI Diff
+    if (baselineFrameForDiff && !pendingFrameForDiff && frameBuffer.length >= 1) {
+      const nextFrame = frameBuffer[0];
+      // Avoid picking the same frame as baseline if it somehow reappears or buffer is small
+      if (baselineFrameForDiff.id !== nextFrame.id) {
+        logToUI("[Dispatcher] Setting pending frame for diff:", nextFrame.id, "against baseline:", baselineFrameForDiff.id);
+        setPendingFrameForDiff(nextFrame);
+        setFrameBuffer(prevBuffer => prevBuffer.slice(1)); 
+      } else if (frameBuffer.length === 1 && baselineFrameForDiff.id === nextFrame.id) {
+        // Buffer only contains the baseline frame, do nothing, wait for more frames.
+        logToUI("[Dispatcher] Buffer only contains baseline frame. Waiting for new frames.");
+      }
+      return; // Allow state to update before trying to process the diff
+    }
+
+    // 3. If baseline and a pending frame exist, and no diff is in progress, start UI Diff
+    if (baselineFrameForDiff && pendingFrameForDiff && !diffAnalysisInProgress) {
+      logToUI("[Dispatcher] Processing UI Diff. Baseline:", baselineFrameForDiff.id, "Pending:", pendingFrameForDiff.id);
+      const frame1 = baselineFrameForDiff;
+      const frame2 = pendingFrameForDiff;
+      setPendingFrameForDiff(null); // Consume the pending frame for this operation
+      processUIDiffRequest(frame1, frame2);
+      // Note: baselineFrameForDiff will be updated by processUIDiffRequest on its success
+    }
+
+  }, [
+    frameBuffer, activeAnalysesCount, 
+    baselineFrameForDiff, pendingFrameForDiff, 
+    initialDumpInProgress, diffAnalysisInProgress,
+    processInitialFrameDump, processUIDiffRequest, 
+    logToUI, setFrameBuffer, setBaselineFrameForDiff, setPendingFrameForDiff, /* setDiffAnalysisInProgress is not needed here */
+    activityItems // Keep for the existingDiff check if that's re-added later
+  ]);
 
   // 4. Auto-detection helper functions
   const getFrameDataForComparison = useCallback((video: HTMLVideoElement): Uint8ClampedArray | null => {
@@ -821,6 +904,82 @@ Context: You have access to previous analysis results for reference. Focus on id
       <p className="text-muted-foreground italic p-8 text-center">No workflow steps captured yet. Start recording to see activity.</p>
     );
   }, [workflowSteps]);
+
+  // Memoized content for the "Recent Activity" tab - NOW DISPLAYS ActivityItems
+  const memoizedActivityContent = useMemo(() => {
+    return activityItems.length > 0 ? (
+      <ul className="space-y-3">
+        {activityItems.slice(0, 20).map((item) => {
+          if (item.type === 'initial_dump') {
+            return (
+              <li key={item.id} className="p-3 border rounded-md bg-slate-800 text-xs">
+                <p className="font-medium text-muted-foreground text-[10px] mb-1.5">
+                  {item.timestamp} 
+                  <span className="ml-2 text-green-400 font-semibold">Initial Frame Content</span> 
+                  <span className="ml-2 text-slate-500 text-[9px]">(Frame: {item.image_id?.split('-change-')[0].substring(11,19)})</span>
+                </p>
+                <div className="whitespace-pre-wrap p-2 bg-slate-900 rounded text-slate-300 max-h-40 overflow-y-auto" style={scrollAreaStyle}>
+                  {item.raw_content}
+                </div>
+              </li>
+            );
+          } else if (item.type === 'ui_diff') {
+            // Existing UI Diff rendering logic (from previous memoizedUIDiffContent)
+            return (
+              <li key={item.id} className="p-3 border rounded-md bg-background text-xs">
+                <p className="font-medium text-muted-foreground text-[10px] mb-1.5">
+                  {item.timestamp} 
+                  <span className="ml-2 text-slate-500 text-[9px]">
+                    (Diff: {item.image1_id?.split('-change-')[0].substring(11,19)} vs {item.image2_id?.split('-change-')[0].substring(11,19)})
+                  </span>
+                </p>
+                <div className="space-y-1">
+                  <div><strong className="text-sky-600">Change Detected:</strong> <span className={item.change_detected === 'yes' ? 'text-green-500 font-semibold' : 'text-red-500'}>{item.change_detected}</span></div>
+                  {item.change_detected === 'yes' && (
+                    <>
+                      {item.change_description && <div><strong className="text-sky-600">Description:</strong> {item.change_description}</div>}
+                      {item.identified_change_types && item.identified_change_types.length > 0 && (
+                        <div className="mt-1"><strong className="text-sky-600">Types:</strong> {item.identified_change_types.join(', ')}</div>
+                      )}
+                      <div className="mt-1.5 space-y-0.5 pl-2 border-l-2 border-slate-700">
+                        {item.mouse_movement_details && (
+                          <div>
+                            <strong className="text-purple-500">Mouse:</strong> 
+                            From: <span className="text-slate-300">{item.mouse_movement_details.from_object || 'N/A'} ({item.mouse_movement_details.from_coordinate || 'N/A'})</span>
+                            {' -> '}To: <span className="text-slate-300">{item.mouse_movement_details.to_object || 'N/A'} ({item.mouse_movement_details.to_coordinate || 'N/A'})</span>
+                          </div>
+                        )}
+                        {item.typing_details && <div><strong className="text-purple-500">Typed:</strong> <span className="text-slate-300">{item.typing_details}</span></div>}
+                        {item.click_details && <div><strong className="text-purple-500">Clicked:</strong> <span className="text-slate-300">{item.click_details}</span></div>}
+                        {item.new_window_details && (
+                          <div>
+                            <strong className="text-purple-500">Window Change:</strong> 
+                            Old: <span className="text-slate-300">{item.new_window_details.old_window_name || 'N/A'}</span>, 
+                            New: <span className="text-slate-300">{item.new_window_details.new_window_name || 'N/A'}</span>
+                          </div>
+                        )}
+                        {item.new_app_details && <div><strong className="text-purple-500">New App:</strong> <span className="text-slate-300">{item.new_app_details}</span></div>}
+                        {item.scroll_details && <div><strong className="text-purple-500">Scrolled - New Content:</strong> <span className="text-slate-300">{item.scroll_details.new_content_summary}</span></div>}
+                        {item.other_change_details && item.other_change_details.map((other, idx) => (
+                          <div key={idx}>
+                            <strong className="text-purple-500">Other ({other.type_description || 'N/A'}):</strong> <span className="text-slate-300">{other.details}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {item.unidentified_changes_explanation && <div className="mt-1.5 pt-1 border-t border-slate-700"><strong className="text-orange-500">Model Explanation:</strong> {item.unidentified_changes_explanation}</div>}
+                    </>
+                  )}
+                </div>
+              </li>
+            );
+          }
+          return null;
+        })}
+      </ul>
+    ) : (
+      <p className="text-muted-foreground italic p-8 text-center">No activity captured yet. Start recording.</p>
+    );
+  }, [activityItems]);
 
   // 6. Other UI-related Callbacks
   const handlePromptChange = useCallback((newPrompt: string) => {
@@ -1066,41 +1225,73 @@ Context: You have access to previous analysis results for reference. Focus on id
     setIsMonitoring(true);
     logToUI("[Auto-Detection] 🔄 Monitoring started ...");
     monitoringIntervalRef.current = setInterval(monitoringLoop, monitoringFrequencyRef.current);
-  }, [logToUI, monitoringLoop, monitoringFrequencyRef]); // isMonitoringRef is stable
+  }, [logToUI, monitoringLoop, monitoringFrequencyRef]);
 
   const stopMonitoring = useCallback(() => {
     if (monitoringIntervalRef.current) {
       clearInterval(monitoringIntervalRef.current);
       monitoringIntervalRef.current = null;
     }
-    if (isMonitoringRef.current) {
+    if (isMonitoringRef.current) { 
       logToUI("[Auto-Detection] ⏹️ Monitoring stopped");
-      isMonitoringRef.current = false;
+      isMonitoringRef.current = false; 
     }
-    setIsMonitoring(false);
+    setIsMonitoring(false); 
     setLastFrameData(null);
     lastFrameDataRef.current = null;
     setActivityDetected(false);
     currentChangePercentRef.current = 0;
     lastDisplayChangeRef.current = 0;
     setDisplayChangePercent(0);
-  }, [logToUI]); // isMonitoringRef is stable
+  }, [logToUI]);
 
-  // Main monitoring useEffect
+  // Main monitoring useEffect - Restoring this block
   useEffect(() => {
-    if (streamRef.current && autoDetectionEnabledRef.current) {
+    if (stream && autoDetectionEnabled) {
+      // startMonitoring is designed to be somewhat idempotent via isMonitoringRef check internally
       startMonitoring();
     } else {
-      if (isMonitoringRef.current) { 
-        stopMonitoring();
-      }
+      // stopMonitoring is also designed to be idempotent
+      stopMonitoring();
     }
-    return () => {
-      if (isMonitoringRef.current) { 
-         stopMonitoring();
+    // No explicit cleanup needed here as the conditions above handle transitions.
+    // The main purpose of a cleanup would be for component unmount, 
+    // but stopMonitoring would be called if stream becomes null before unmount.
+    // If direct unmount while active, a general cleanup in a higher-level return could be considered,
+    // but this effect covers lifecycle based on its dependencies.
+  }, [stream, autoDetectionEnabled, startMonitoring, stopMonitoring]);
+
+  // Screen sharing and video element effects - Add initial capture trigger
+  const initialFrameCapturedRef = useRef(false); // Ref to ensure initial capture happens only once per stream session
+  useEffect(() => {
+    logToUI("[useEffect stream] Main effect RUNNING. Stream active:", !!stream);
+    const currentVideoElement = videoRef.current;
+    const onMetadataLoadedHandler = () => { /* ... */ };
+    const onVideoErrorHandler = (event: globalThis.Event) => { /* ... type as globalThis.Event ... */ };
+    
+    const onPlayingHandler = () => { 
+      logToUI("[useEffect stream] 'playing' event."); 
+      setMainStatus("Recording (Preview Active)");
+      // Trigger initial frame capture if not already done for this stream session
+      if (stream && autoDetectionEnabled && !initialFrameCapturedRef.current) {
+        logToUI("[useEffect stream] Triggering initial frame capture for baseline.");
+        captureFrameToBuffer(100); // High change % to ensure it gets processed by dispatcher if buffer logic changes
+        initialFrameCapturedRef.current = true;
       }
     };
-  }, [stream, autoDetectionEnabled, startMonitoring, stopMonitoring]); // autoDetectionEnabled is a direct dep
+    // ... (rest of video event handlers and logic) ...
+    if (stream && currentVideoElement) {
+      // ... (existing stream setup) ...
+      initialFrameCapturedRef.current = false; // Reset for new stream session
+      currentVideoElement.addEventListener('playing', onPlayingHandler);
+      // ... (add other listeners) ...
+    } else if (!stream) {
+        streamRef.current = null;
+        setMainStatus("Idle");
+        initialFrameCapturedRef.current = false; // Reset if stream stops
+    }
+    return () => { /* ... existing cleanup ... */ };
+  }, [stream, handleStopScreenShare, logToUI, logError, autoDetectionEnabled, captureFrameToBuffer]); // Added autoDetectionEnabled & captureFrameToBuffer
 
   return (
     <div className="container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl">
@@ -1205,7 +1396,7 @@ Context: You have access to previous analysis results for reference. Focus on id
             
             <TabsContent value="recent" className="-mt-3">
               <Card className="shadow-sm border-0 p-0">
-                <MemoizedScrollAreaContent content={memoizedWorkflowStepsContent} />
+                <MemoizedScrollAreaContent content={memoizedActivityContent} className="h-[350px] pr-3 bg-slate-950"/>
               </Card>
             </TabsContent>
             

@@ -32,18 +32,23 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const imageDataBase64WithPrefix = body.image as string;
-    const analysisText = body.analysisText as string;
-    const clientTimestamp = body.timestamp as string;
+    // Expecting two images for UI Diff analysis, and one for original workflow analysis
+    const image1_dataUrl = body.image1_dataUrl as string | undefined;
+    const image2_dataUrl = body.image2_dataUrl as string | undefined;
+    const single_imageDataBase64WithPrefix = body.image as string | undefined; // For old single-image analysis path
+
+    const analysisText = body.analysisText as string; // Used for event summaries
+    const clientTimestamp = body.timestamp as string; // Might need array of timestamps for diff
     const userPrompt = (body.prompt as string) || "Analyze this screenshot for business workflow information.";
     const history = (body.history as string[]) || [];
     const isEventsSummary = body.isEventsSummary as boolean;
     const requestedModel = body.model as string;
+    const analysisType = body.analysisType as string || 'workflow'; // New: 'workflow' or 'ui_diff'
 
-    const modelName = requestedModel || MODEL_NAME;
+    const modelName = requestedModel || MODEL_NAME; // Default model
     const activeModel = genAI.getGenerativeModel({ model: modelName });
 
-    await writeToLog(`Received POST. Model: ${modelName}. Client Timestamp: ${clientTimestamp}. User Prompt: ${userPrompt.substring(0,100)}... History items: ${history.length}`);
+    await writeToLog(`Received POST. Analysis Type: ${analysisType}. Model: ${modelName}. Client Timestamp: ${clientTimestamp}. User Prompt: ${userPrompt.substring(0,100)}... History items: ${history.length}`);
 
     // Handle events summary request (text-only)
     if (isEventsSummary && analysisText) {
@@ -148,120 +153,199 @@ Concise Summary: Provide the summary of the action in 10 words or less.`;
       return NextResponse.json({ error: 'Failed to generate events summary from Gemini response (structured JSON attempt).', details: simplifiedDetailMessage }, { status: 500 });
     }
 
-    // Handle regular image analysis request
-    if (!imageDataBase64WithPrefix || !imageDataBase64WithPrefix.startsWith('data:image/')) {
-      await writeToLog('WARN: Invalid or missing image data in request.');
-      return NextResponse.json({ error: 'Invalid or missing image data.' }, { status: 400 });
-    }
+    // Handle UI Diff analysis request (NEW)
+    if (analysisType === 'ui_diff' && image1_dataUrl && image2_dataUrl) {
+      await writeToLog('Processing UI Diff Analysis Request');
+      const imageParts: Part[] = [];
+      
+      for (const url of [image1_dataUrl, image2_dataUrl]) {
+        const parts = url.split(';base64,');
+        if (parts.length !== 2) { return NextResponse.json({ error: 'Malformed base64 image data for UI Diff.' }, { status: 400 }); }
+        imageParts.push({ inlineData: { mimeType: parts[0].split(':')[1], data: parts[1] } });
+      }
 
-    const parts = imageDataBase64WithPrefix.split(';base64,');
-    if (parts.length !== 2) {
-        await writeToLog('WARN: Malformed base64 image data.');
-        return NextResponse.json({ error: 'Malformed base64 image data.' }, { status: 400 });
-    }
-    const mimeType = parts[0].split(':')[1];
-    const imageDataBase64 = parts[1];
+      const uiDiffAnalysisSchema: Schema = {
+        type: SchemaType.OBJECT,
+        properties: {
+          change_detected: { type: SchemaType.STRING, description: "Was a change detected between the two screenshots? (Respond with 'yes' or 'no')" },
+          change_description: { type: SchemaType.STRING, description: "If yes, a natural language description of the overall change." },
+          identified_change_types: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "List: mouse movement, scrolling, typing, left-click, right-click, new window, new app, other." },
+          mouse_movement_details: { type: SchemaType.OBJECT, properties: { from_object: {type: SchemaType.STRING}, from_coordinate: {type: SchemaType.STRING}, to_object: {type: SchemaType.STRING}, to_coordinate: {type: SchemaType.STRING}}, description: "Mouse movement details.", nullable: true },
+          typing_details: { type: SchemaType.STRING, description: "Typed text if discernible.", nullable: true },
+          click_details: { type: SchemaType.STRING, description: "Object/area clicked. Specify L/R click.", nullable: true },
+          new_window_details: { type: SchemaType.OBJECT, properties: { old_window_name: {type: SchemaType.STRING}, new_window_name: {type: SchemaType.STRING}}, description: "New window details.", nullable: true },
+          new_app_details: { type: SchemaType.STRING, description: "Name of new app.", nullable: true },
+          scroll_details: { type: SchemaType.OBJECT, properties: {new_content_summary: {type: SchemaType.STRING}}, description: "Summary of new scrolled content.", nullable: true },
+          other_change_details: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: { type_description: {type: SchemaType.STRING}, details: {type: SchemaType.STRING}}}, description: "Other changes.", nullable: true },
+          unidentified_changes_explanation: { type: SchemaType.STRING, description: "If important changes were missed by schema, explain here.", nullable: true }
+        },
+        required: ['change_detected']
+      };
 
-    await writeToLog(`Processing ${mimeType} image (size: ${imageDataBase64.length} chars)`);
+      const diffPrompt = `Compare these two sequential screenshots. Populate the JSON schema to describe changes. 
+Image 1 is the 'before' state, Image 2 is the 'after' state. 
+Schema fields: change_detected ("yes"/"no"), change_description, identified_change_types (list from: 'mouse movement', 'scrolling', 'typing', 'left-click', 'right-click', 'new window appeared', 'new app appeared', 'other'), and detailed fields for each type. If a detail field (e.g. mouse_movement_details) is not applicable, omit it or leave it null. If you identify a change type not in the list, add it to identified_change_types as 'other' and detail it in other_change_details. Use unidentified_changes_explanation if the schema limits full description of other important changes. The userPrompt contains general instructions: ${userPrompt}`;
 
-    const mainAnalysisSchema: Schema = {
-      type: SchemaType.OBJECT,
-      properties: {
-        workflow: { type: SchemaType.STRING, description: "Best guess of the overall workflow/process name based on what you see." },
-        step: { type: SchemaType.STRING, description: "Concise name for this specific step, 3-5 words max." },
-        description: { type: SchemaType.STRING, description: "What is happening in 10 or less words. Focus on fresh and unique information compared to previous logs, what has changed." },
-        facts: { type: SchemaType.STRING, description: "Key observable facts from the screen - buttons, text, UI elements, data visible. Can be a list or paragraph." },
-        logic: { type: SchemaType.STRING, description: "Business rules or logic you can infer from this step." },
-        tech: { type: SchemaType.STRING, description: "Technical details like application, browser, file types, etc." },
-        apps: { type: SchemaType.STRING, description: "List of applications, windows, or programs visible on screen. Can be a list or paragraph." },
-        context: { type: SchemaType.STRING, description: "Specific context like browser tab titles, URLs, file names, chat names, document titles, etc. if available." }
-      },
-      required: ['workflow', 'step', 'description', 'facts', 'logic', 'tech', 'apps', 'context'] 
-    };
+      const diffGenerationConfig = {
+        temperature: 0.2, topK: 32, topP: 0.8, maxOutputTokens: 4096,
+        responseMimeType: "application/json", responseSchema: uiDiffAnalysisSchema
+      };
 
-    const generationConfig = {
-      temperature: 0.3, 
-      topK: 32,
-      topP: 0.8,
-      maxOutputTokens: 4096, // Keep it generous for potentially detailed facts in JSON
-      responseMimeType: "application/json",
-      responseSchema: mainAnalysisSchema
-    };
-
-    const safetySettings = [
-      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-    ];
-
-    const imageInputPart: Part = { inlineData: { mimeType, data: imageDataBase64 } };
-    
-    // Enhanced prompt for more consistent structured output
-    let fullPrompt = `Analyze the provided screenshot and recent activity context. Populate the defined JSON schema with your analysis. The schema fields are: workflow, step, description, facts, logic, tech, apps, and context. Refer to the schema field descriptions for specific instructions on what to populate in each. The original detailed instructions for each field (if they were part of the userPrompt) are also in this prompt below:\n\n${userPrompt}`;
-    
-    if (history.length > 0) {
-      fullPrompt += `\n\nRecent activity context (last ${history.length} steps):\n`;
-      history.slice(0, 5).forEach((h, index) => {
-        fullPrompt += `${index + 1}. ${h}\n`;
-      });
-      fullPrompt += "\nBased on this context and the current screenshot, provide your analysis.";
-    } else {
-      fullPrompt += "\n\nThis is the first analysis with no previous context.";
-    }
-
-    const textInputPart: Part = { text: fullPrompt };
-    const contents = [{ role: "user", parts: [imageInputPart, textInputPart] }];
-
-    await writeToLog(`Sending request to Gemini (${modelName}). Prompt (first 200 chars): ${fullPrompt.substring(0,200)}...`);
-    const result = await activeModel.generateContent({ contents, generationConfig, safetySettings });
-    
-    await writeToLog(`Raw Gemini response (expecting JSON for main analysis): ${JSON.stringify(result, null, 2)}`);
-    
-    const response = result.response;
-    if (response && response.candidates && response.candidates.length > 0) {
-      const candidate = response.candidates[0];
-      if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-        const jsonString = candidate.content.parts // Expecting JSON string here
-          .map(part => part.text || '')
-          .join('')
-          .trim();
-        
-        if (jsonString) {
-          try {
-            const structuredAnalysis = JSON.parse(jsonString);
-            // Basic validation: check if a few key required fields are present
-            if (!structuredAnalysis.workflow || !structuredAnalysis.step) {
-              await writeToLog(`WARN: Gemini returned JSON for main analysis, but required fields like workflow or step are missing. Data: ${jsonString}`);
-              // Fallback or handle as partial data
-            }
-            await writeToLog(`Gemini main analysis response (structured JSON processed). Step name: ${structuredAnalysis.step}`);
-            return NextResponse.json({
-              message: 'Capture analyzed successfully by Gemini (structured JSON).',
-              analysis: structuredAnalysis, // Send the parsed JSON object directly
-              receivedTimestamp: clientTimestamp,
-              serverTimestamp: new Date().toISOString()
-            });
-          } catch (e) {
-            await writeToLog(`ERROR: Failed to parse JSON response from Gemini for main analysis. JSON String: ${jsonString}. Error: ${e}`);
-            return NextResponse.json({ error: 'Failed to parse structured JSON from Gemini for main analysis.', details: (e as Error).message }, { status: 500 });
+      const diffContents = [{ role: "user", parts: [...imageParts, {text: diffPrompt}] }];
+      const diffResult = await activeModel.generateContent({ contents: diffContents, generationConfig: diffGenerationConfig });
+      
+      const diffResponse = diffResult.response;
+      if (diffResponse && diffResponse.candidates && diffResponse.candidates.length > 0) {
+          const candidate = diffResponse.candidates[0];
+          if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+              const jsonString = candidate.content.parts.map(part => part.text || '').join('').trim();
+              if (jsonString) {
+                  try {
+                      const structuredDiffAnalysis = JSON.parse(jsonString);
+                      await writeToLog(`Gemini UI Diff analysis response (structured JSON processed). Change detected: ${structuredDiffAnalysis.change_detected}`);
+                      return NextResponse.json({ message: 'UI Diff analyzed.', analysis: structuredDiffAnalysis, serverTimestamp: new Date().toISOString() });
+                  } catch (e) {
+                      await writeToLog(`ERROR: Failed to parse JSON for UI Diff. JSON String: ${jsonString}. Error: ${e}`);
+                      return NextResponse.json({ error: 'Failed to parse UI Diff JSON.', details: (e as Error).message }, { status: 500 });
+                  }
+              }
           }
-        } else {
-          await writeToLog('WARN: Gemini returned empty analysis text (structured JSON attempt for main analysis).');
-          return NextResponse.json({ error: 'Gemini returned empty analysis.', details: 'Empty text in parts (structured main analysis attempt)' }, { status: 500 });
-        }
-      } else {
-        await writeToLog(`WARN: Gemini API content structure invalid. Content: ${JSON.stringify(candidate.content)}`);
-        return NextResponse.json({ error: 'Gemini API returned invalid content structure.', details: 'No valid parts in content' }, { status: 500 });
       }
-    } else {
-      let feedbackMessage = "No candidates in response.";
-      if (response && response.promptFeedback) {
-        feedbackMessage = JSON.stringify(response.promptFeedback);
-      }
-      await writeToLog(`WARN: Gemini API returned no valid candidates. Response: ${JSON.stringify(response)}. Feedback: ${feedbackMessage}`);
-      return NextResponse.json({ error: 'Gemini API returned no content.', details: feedbackMessage }, { status: 500 });
+      await writeToLog('WARN: Gemini UI Diff request failed or returned empty.');
+      return NextResponse.json({ error: 'Failed to generate UI Diff analysis.' }, { status: 500 });
     }
+
+    // Handle regular single-image workflow analysis request (MODIFIED - this is the original main analysis path)
+    if (analysisType === 'workflow' && single_imageDataBase64WithPrefix) {
+      await writeToLog('Processing Single Image Workflow Analysis Request');
+      const parts = single_imageDataBase64WithPrefix.split(';base64,');
+      if (parts.length !== 2) {
+          await writeToLog('WARN: Malformed base64 image data for workflow analysis.');
+          return NextResponse.json({ error: 'Malformed base64 image data.' }, { status: 400 });
+      }
+      const mimeType = parts[0].split(':')[1];
+      const imageDataBase64 = parts[1];
+      await writeToLog(`Processing ${mimeType} image (size: ${imageDataBase64.length} chars)`);
+
+      // Schema for single-image workflow analysis (remains the same as before)
+      const mainAnalysisSchema: Schema = { 
+        type: SchemaType.OBJECT,
+        properties: {
+            workflow: { type: SchemaType.STRING, description: "Best guess of the overall workflow/process name based on what you see." },
+            step: { type: SchemaType.STRING, description: "Concise name for this specific step, 3-5 words max." },
+            description: { type: SchemaType.STRING, description: "What is happening in 10 or less words. Focus on fresh and unique information compared to previous logs, what has changed." },
+            facts: { type: SchemaType.STRING, description: "Key observable facts from the screen - buttons, text, UI elements, data visible. Can be a list or paragraph." },
+            logic: { type: SchemaType.STRING, description: "Business rules or logic you can infer from this step." },
+            tech: { type: SchemaType.STRING, description: "Technical details like application, browser, file types, etc." },
+            apps: { type: SchemaType.STRING, description: "List of applications, windows, or programs visible on screen. Can be a list or paragraph." },
+            context: { type: SchemaType.STRING, description: "Specific context like browser tab titles, URLs, file names, chat names, document titles, etc. if available." }
+        },
+        required: ['workflow', 'step', 'description', 'facts', 'logic', 'tech', 'apps', 'context']
+       }; 
+
+      const workflowGenerationConfig = {
+        temperature: 0.3, 
+        topK: 32,
+        topP: 0.8,
+        maxOutputTokens: 4096, 
+        responseMimeType: "application/json",
+        responseSchema: mainAnalysisSchema
+      };
+      const safetySettings = [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+      ];
+      // Prompt for single-image workflow analysis (remains the same as before)
+      let workflowFullPrompt = `Analyze the provided screenshot and recent activity context. Populate the defined JSON schema with your analysis. The schema fields are: workflow, step, description, facts, logic, tech, apps, and context. Refer to the schema field descriptions for specific instructions on what to populate in each. The original detailed instructions for each field (if they were part of the userPrompt) are also in this prompt below:\n\n${userPrompt}`;
+      if (history.length > 0) { workflowFullPrompt += `\n\nRecent activity context (last ${history.length} steps):\n`; history.slice(0, 5).forEach((h, index) => { workflowFullPrompt += `${index + 1}. ${h}\n`; }); workflowFullPrompt += "\nBased on this context and the current screenshot, provide your analysis."; } else { workflowFullPrompt += "\n\nThis is the first analysis with no previous context."; }
+
+      const imageInputPart: Part = { inlineData: { mimeType, data: imageDataBase64 } };
+      const textInputPart: Part = { text: workflowFullPrompt };
+      const workflowContents = [{ role: "user", parts: [imageInputPart, textInputPart] }];
+
+      await writeToLog(`Sending request to Gemini (${modelName}) for workflow analysis. Prompt (first 200 chars): ${workflowFullPrompt.substring(0,200)}...`);
+      const workflowResult = await activeModel.generateContent({ contents: workflowContents, generationConfig: workflowGenerationConfig, safetySettings });
+      
+      const workflowResponse = workflowResult.response;
+      if (workflowResponse && workflowResponse.candidates && workflowResponse.candidates.length > 0) {
+          const candidate = workflowResponse.candidates[0];
+          if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+              const jsonString = candidate.content.parts.map(part => part.text || '').join('').trim();
+              if (jsonString) {
+                  try {
+                      const structuredAnalysis = JSON.parse(jsonString);
+                      if (!structuredAnalysis.workflow || !structuredAnalysis.step) { await writeToLog(`WARN: Workflow JSON missing required fields. Data: ${jsonString}`); }
+                      await writeToLog(`Gemini workflow analysis (JSON processed). Step: ${structuredAnalysis.step}`);
+                      return NextResponse.json({ message: 'Capture analyzed (workflow JSON).', analysis: structuredAnalysis, receivedTimestamp: clientTimestamp, serverTimestamp: new Date().toISOString() });
+                  } catch (e) {
+                      await writeToLog(`ERROR: Failed to parse workflow JSON. String: ${jsonString}. Error: ${e}`);
+                      return NextResponse.json({ error: 'Failed to parse workflow JSON.', details: (e as Error).message }, { status: 500 });
+                  }
+              }
+          }
+      }
+      await writeToLog('WARN: Gemini workflow analysis request failed or returned empty.');
+      return NextResponse.json({ error: 'Failed to generate workflow analysis.' }, { status: 500 });
+    }
+
+    // Handle Initial Frame Raw Content Dump (NEW)
+    if (analysisType === 'initial_frame_dump' && single_imageDataBase64WithPrefix) {
+      await writeToLog('Processing Initial Frame Raw Content Dump Request');
+      const parts = single_imageDataBase64WithPrefix.split(';base64,');
+      if (parts.length !== 2) {
+        await writeToLog('WARN: Malformed base64 image data for initial frame dump.');
+        return NextResponse.json({ error: 'Malformed base64 image data.' }, { status: 400 });
+      }
+      const mimeType = parts[0].split(':')[1];
+      const imageDataBase64 = parts[1];
+      await writeToLog(`Processing ${mimeType} image (size: ${imageDataBase64.length} chars) for initial dump`);
+
+      const dumpPrompt = userPrompt; // User prompt is "list in maximum detail raw content of the screenshot"
+      
+      // For a raw text dump, we might not need a complex schema, or a very simple one.
+      // Let's try without a specific responseSchema first, expecting text.
+      // Or, define a simple schema if we want to ensure it's under a specific key.
+      const dumpGenerationConfig = {
+        temperature: 0.1, // Low temperature for factual listing
+        topK: 32,
+        topP: 0.8,
+        maxOutputTokens: 4096, // Generous for detailed raw content
+        // No responseMimeType or responseSchema specified to get default text output
+      };
+      const safetySettings = [ /* ... existing safety settings ... */ ];
+
+      const imageInputPart: Part = { inlineData: { mimeType, data: imageDataBase64 } };
+      const textInputPart: Part = { text: dumpPrompt };
+      const dumpContents = [{ role: "user", parts: [imageInputPart, textInputPart] }];
+
+      await writeToLog(`Sending request to Gemini (${modelName}) for initial frame dump. Prompt: ${dumpPrompt}`);
+      const dumpResult = await activeModel.generateContent({ contents: dumpContents, generationConfig: dumpGenerationConfig, safetySettings });
+      
+      const dumpResponse = dumpResult.response;
+      if (dumpResponse && dumpResponse.candidates && dumpResponse.candidates.length > 0) {
+        const candidate = dumpResponse.candidates[0];
+        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+          const rawContentText = candidate.content.parts.map(part => part.text || '').join('').trim();
+          if (rawContentText) {
+            await writeToLog(`Gemini initial frame dump successful (length: ${rawContentText.length}): ${rawContentText.substring(0, 100)}...`);
+            return NextResponse.json({ 
+              message: 'Initial frame content dumped successfully.', 
+              analysis: { raw_content: rawContentText }, // Send as an object with a key
+              serverTimestamp: new Date().toISOString() 
+            });
+          }
+        }
+      }
+      await writeToLog('WARN: Gemini initial frame dump request failed or returned empty.');
+      return NextResponse.json({ error: 'Failed to generate initial frame content dump.' }, { status: 500 });
+    }
+    
+    // Fallback if no appropriate handler was found
+    await writeToLog('WARN: No specific analysis type matched or required data missing.');
+    return NextResponse.json({ error: 'Invalid request parameters or analysis type.' }, { status: 400 });
+
   } catch (error) {
     let errorMessage = 'An unknown error occurred while processing the image.';
     if (error instanceof Error) {
