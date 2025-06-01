@@ -920,61 +920,60 @@ Context: You have access to previous analysis results for reference. Focus on id
         {activityItems.slice(0, 20).map((item) => {
           if (item.type === 'initial_dump') {
             return (
-              <li key={item.id} className="p-3 border rounded-md bg-slate-800 text-xs">
-                <p className="font-medium text-muted-foreground text-[10px] mb-1.5">
+              <li key={item.id} className="p-3 border rounded-md bg-white text-xs text-black"> {/* Added text-black */}
+                <p className="font-medium text-[10px] mb-1.5"> {/* Removed text-muted-foreground */}
                   {item.timestamp} 
-                  <span className="ml-2 text-green-400 font-semibold">Initial Frame Content</span> 
-                  <span className="ml-2 text-slate-500 text-[9px]">(Frame: {item.image_id?.split('-change-')[0].substring(11,19)})</span>
+                  <span className="ml-2 text-black font-semibold">Initial Frame Content</span> {/* Changed text-green-400 to text-black */}
+                  <span className="ml-2 text-black text-[9px] dwindling_opacity">(Frame: {item.image_id?.split('-change-')[0].substring(11,19)})</span> {/* Changed text-slate-500 to text-black */}
                 </p>
-                <div className="whitespace-pre-wrap p-2 bg-slate-900 rounded text-slate-300 max-h-40 overflow-y-auto" style={scrollAreaStyle}>
+                <div className="whitespace-pre-wrap p-2 bg-gray-100 rounded text-black max-h-40 overflow-y-auto" style={scrollAreaStyle}> {/* Changed text-gray-800 to text-black */}
                   {item.raw_content}
                 </div>
               </li>
             );
           } else if (item.type === 'ui_diff') {
-            // Existing UI Diff rendering logic (from previous memoizedUIDiffContent)
             return (
-              <li key={item.id} className="p-3 border rounded-md bg-background text-xs">
-                <p className="font-medium text-muted-foreground text-[10px] mb-1.5">
+              <li key={item.id} className="p-3 border rounded-md bg-white text-xs text-black"> {/* Added text-black */}
+                <p className="font-medium text-[10px] mb-1.5"> {/* Removed text-muted-foreground */}
                   {item.timestamp} 
-                  <span className="ml-2 text-slate-500 text-[9px]">
+                  <span className="ml-2 text-black text-[9px] dwindling_opacity"> {/* Changed text-slate-500 to text-black */}
                     (Diff: {item.image1_id?.split('-change-')[0].substring(11,19)} vs {item.image2_id?.split('-change-')[0].substring(11,19)})
                   </span>
                 </p>
                 <div className="space-y-1">
-                  <div><strong className="text-sky-600">Change Detected:</strong> <span className={item.change_detected === 'yes' ? 'text-green-500 font-semibold' : 'text-red-500'}>{item.change_detected}</span></div>
+                  <div><strong className="text-black">Change Detected:</strong> <span className={item.change_detected === 'yes' ? 'text-black font-semibold' : 'text-black'}>{item.change_detected}</span></div> {/* Changed text-sky-600 and status colors to text-black */}
                   {item.change_detected === 'yes' && (
                     <>
-                      {item.change_description && <div><strong className="text-sky-600">Description:</strong> {item.change_description}</div>}
+                      {item.change_description && <div><strong className="text-black">Description:</strong> {item.change_description}</div>} {/* Changed text-sky-600 to text-black */}
                       {item.identified_change_types && item.identified_change_types.length > 0 && (
-                        <div className="mt-1"><strong className="text-sky-600">Types:</strong> {item.identified_change_types.join(', ')}</div>
+                        <div className="mt-1"><strong className="text-black">Types:</strong> {item.identified_change_types.join(', ')}</div> /* Changed text-sky-600 to text-black */
                       )}
                       <div className="mt-1.5 space-y-0.5 pl-2 border-l-2 border-slate-700">
                         {item.mouse_movement_details && (
                           <div>
-                            <strong className="text-purple-500">Mouse:</strong> 
-                            From: <span className="text-slate-300">{item.mouse_movement_details.from_object || 'N/A'} ({item.mouse_movement_details.from_coordinate || 'N/A'})</span>
-                            {' -> '}To: <span className="text-slate-300">{item.mouse_movement_details.to_object || 'N/A'} ({item.mouse_movement_details.to_coordinate || 'N/A'})</span>
+                            <strong className="text-black">Mouse:</strong> {/* Changed text-purple-500 to text-black */}
+                            From: <span className="text-black">{item.mouse_movement_details.from_object || 'N/A'} ({item.mouse_movement_details.from_coordinate || 'N/A'})</span> {/* Changed text-gray-700 to text-black */}
+                            {' -> '}To: <span className="text-black">{item.mouse_movement_details.to_object || 'N/A'} ({item.mouse_movement_details.to_coordinate || 'N/A'})</span> {/* Changed text-gray-700 to text-black */}
                           </div>
                         )}
-                        {item.typing_details && <div><strong className="text-purple-500">Typed:</strong> <span className="text-slate-300">{item.typing_details}</span></div>}
-                        {item.click_details && <div><strong className="text-purple-500">Clicked:</strong> <span className="text-slate-300">{item.click_details}</span></div>}
+                        {item.typing_details && <div><strong className="text-black">Typed:</strong> <span className="text-black">{item.typing_details}</span></div>} {/* Changed text-purple-500 and text-gray-700 to text-black */}
+                        {item.click_details && <div><strong className="text-black">Clicked:</strong> <span className="text-black">{item.click_details}</span></div>} {/* Changed text-purple-500 and text-gray-700 to text-black */}
                         {item.new_window_details && (
                           <div>
-                            <strong className="text-purple-500">Window Change:</strong> 
-                            Old: <span className="text-slate-300">{item.new_window_details.old_window_name || 'N/A'}</span>, 
-                            New: <span className="text-slate-300">{item.new_window_details.new_window_name || 'N/A'}</span>
+                            <strong className="text-black">Window Change:</strong> {/* Changed text-purple-500 to text-black */}
+                            Old: <span className="text-black">{item.new_window_details.old_window_name || 'N/A'}</span>, {/* Changed text-gray-700 to text-black */}
+                            New: <span className="text-black">{item.new_window_details.new_window_name || 'N/A'}</span> {/* Changed text-gray-700 to text-black */}
                           </div>
                         )}
-                        {item.new_app_details && <div><strong className="text-purple-500">New App:</strong> <span className="text-slate-300">{item.new_app_details}</span></div>}
-                        {item.scroll_details && <div><strong className="text-purple-500">Scrolled - New Content:</strong> <span className="text-slate-300">{item.scroll_details.new_content_summary}</span></div>}
+                        {item.new_app_details && <div><strong className="text-black">New App:</strong> <span className="text-black">{item.new_app_details}</span></div>} {/* Changed text-purple-500 and text-gray-700 to text-black */}
+                        {item.scroll_details && <div><strong className="text-black">Scrolled - New Content:</strong> <span className="text-black">{item.scroll_details.new_content_summary}</span></div>} {/* Changed text-purple-500 and text-gray-700 to text-black */}
                         {item.other_change_details && item.other_change_details.map((other, idx) => (
                           <div key={idx}>
-                            <strong className="text-purple-500">Other ({other.type_description || 'N/A'}):</strong> <span className="text-slate-300">{other.details}</span>
+                            <strong className="text-black">Other ({other.type_description || 'N/A'}):</strong> <span className="text-black">{other.details}</span> {/* Changed text-purple-500 and text-gray-700 to text-black */}
                           </div>
                         ))}
                       </div>
-                      {item.unidentified_changes_explanation && <div className="mt-1.5 pt-1 border-t border-slate-700"><strong className="text-orange-500">Model Explanation:</strong> {item.unidentified_changes_explanation}</div>}
+                      {item.unidentified_changes_explanation && <div className="mt-1.5 pt-1 border-t border-slate-700"><strong className="text-black">Model Explanation:</strong> {item.unidentified_changes_explanation}</div>} {/* Changed text-orange-500 to text-black */}
                     </>
                   )}
                 </div>
@@ -1460,7 +1459,7 @@ Context: You have access to previous analysis results for reference. Focus on id
             
             <TabsContent value="recent" className="-mt-3">
               <Card className="shadow-sm border-0 p-0">
-                <MemoizedScrollAreaContent content={memoizedActivityContent} className="h-[350px] pr-3 bg-slate-950"/>
+                <MemoizedScrollAreaContent content={memoizedActivityContent} className="h-[350px] pr-3 bg-white"/> {/* Changed bg-slate-950 to bg-white */}
               </Card>
             </TabsContent>
             
