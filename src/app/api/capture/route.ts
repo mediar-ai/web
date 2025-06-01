@@ -314,7 +314,12 @@ Schema fields: change_detected ("yes"/"no"), change_description, identified_chan
         maxOutputTokens: 4096, // Generous for detailed raw content
         // No responseMimeType or responseSchema specified to get default text output
       };
-      const safetySettings = [ /* ... existing safety settings ... */ ];
+      const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThreshold}> = [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+      ];
 
       const imageInputPart: Part = { inlineData: { mimeType, data: imageDataBase64 } };
       const textInputPart: Part = { text: dumpPrompt };

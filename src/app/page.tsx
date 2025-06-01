@@ -11,11 +11,12 @@ import { useRef, useState, useCallback, useEffect, useMemo, memo } from "react";
 
 // IndexedDB utilities for persistence
 const DB_NAME = 'WorkflowCaptureDB';
-const DB_VERSION = 3; // Incremented to add screenshots store
+const DB_VERSION = 4; // Incremented to add screenshots store and activity items store
 const WORKFLOW_STORE = 'workflowSteps';
 const LOGS_STORE = 'frontendLogs';
 const EVENTS_STORE = 'events';
 const SCREENSHOTS_STORE = 'screenshots';
+const ACTIVITY_ITEMS_STORE = 'activityItems'; // New store for activity items
 const MAX_SCREENSHOTS = 50; // Keep only last 50 screenshots
 
 // Stable style object for ScrollAreas, defined globally for the module
@@ -123,6 +124,12 @@ const openDB = (): Promise<IDBDatabase> => {
         const screenshotsStore = db.createObjectStore(SCREENSHOTS_STORE, { keyPath: 'id' });
         screenshotsStore.createIndex('timestamp', 'timestamp', { unique: false });
       }
+
+      // Create activity items store
+      if (!db.objectStoreNames.contains(ACTIVITY_ITEMS_STORE)) {
+        db.createObjectStore(ACTIVITY_ITEMS_STORE, { keyPath: 'id' }); // Corrected: removed unused variable
+        // We will sort by timestamp derived from ID in the load function, similar to events
+      }
     };
   });
 };
@@ -210,11 +217,12 @@ const loadFrontendLogs = async (): Promise<string[]> => {
 const clearPersistedData = async () => {
   try {
     const db = await openDB();
-    const transaction = db.transaction([WORKFLOW_STORE, LOGS_STORE, EVENTS_STORE, SCREENSHOTS_STORE], 'readwrite');
+    const transaction = db.transaction([WORKFLOW_STORE, LOGS_STORE, EVENTS_STORE, SCREENSHOTS_STORE, ACTIVITY_ITEMS_STORE], 'readwrite');
     await transaction.objectStore(WORKFLOW_STORE).clear();
     await transaction.objectStore(LOGS_STORE).clear();
     await transaction.objectStore(EVENTS_STORE).clear();
     await transaction.objectStore(SCREENSHOTS_STORE).clear();
+    await transaction.objectStore(ACTIVITY_ITEMS_STORE).clear(); // Clear new store
   } catch (err) {
     console.error('[clearPersistedData] Failed to clear:', err);
   }
@@ -1078,7 +1086,12 @@ Context: You have access to previous analysis results for reference. Focus on id
   useEffect(() => {
     const loadPersistedData = async () => {
       try {
-        const [savedSteps, savedEvents, savedLogs] = await Promise.all([loadWorkflowSteps(), loadEvents(), loadFrontendLogs()]);
+        const [savedSteps, savedEvents, savedLogs, savedActivityItems] = await Promise.all([ // Added savedActivityItems
+          loadWorkflowSteps(), 
+          loadEvents(), 
+          loadFrontendLogs(),
+          loadActivityItems() // Load activity items
+        ]);
         if (savedSteps.length > 0) {
           setWorkflowSteps(savedSteps);
           console.log(`[loadPersistedData] Loaded ${savedSteps.length} workflow steps`);
@@ -1091,6 +1104,10 @@ Context: You have access to previous analysis results for reference. Focus on id
           setFrontendLogs(savedLogs);
           console.log(`[loadPersistedData] Loaded ${savedLogs.length} frontend logs`);
         }
+        if (savedActivityItems.length > 0) { // Set activity items state
+          setActivityItems(savedActivityItems);
+          console.log(`[loadPersistedData] Loaded ${savedActivityItems.length} activity items`);
+        }
       } catch (err) {
         logError('[loadPersistedData] Failed to load persisted data:', err);
       }
@@ -1102,6 +1119,7 @@ Context: You have access to previous analysis results for reference. Focus on id
   useEffect(() => { if (workflowSteps.length > 0) saveWorkflowSteps(workflowSteps); }, [workflowSteps]);
   useEffect(() => { if (events.length > 0) saveEvents(events); }, [events]);
   useEffect(() => { if (frontendLogs.length > 0) saveFrontendLogs(frontendLogs); }, [frontendLogs]);
+  useEffect(() => { if (activityItems.length > 0) saveActivityItems(activityItems); }, [activityItems]); // Save activity items when they change
   
   // Auto-dismiss error
   useEffect(() => {
@@ -1140,7 +1158,7 @@ Context: You have access to previous analysis results for reference. Focus on id
       if (currentVideoElement.videoWidth > 0) setMainStatus("Recording (Preview Active)");
       else { setError("Video has no width after metadata loaded."); setMainStatus("Error: Video dimensions"); }
     };
-    const onVideoErrorHandler = (event: Event) => {
+    const onVideoErrorHandler = (event: globalThis.Event) => {
       if (!currentVideoElement || !stream) return;
       logError("[useEffect stream] 'error' event:", event, currentVideoElement.error);
       setError(`Video error: ${currentVideoElement.error?.message || 'Unknown'}`);
@@ -1292,6 +1310,52 @@ Context: You have access to previous analysis results for reference. Focus on id
     }
     return () => { /* ... existing cleanup ... */ };
   }, [stream, handleStopScreenShare, logToUI, logError, autoDetectionEnabled, captureFrameToBuffer]); // Added autoDetectionEnabled & captureFrameToBuffer
+
+  // New functions for saving and loading ActivityItems
+  const saveActivityItems = async (items: ActivityItem[]) => {
+    try {
+      const db = await openDB();
+      const transaction = db.transaction([ACTIVITY_ITEMS_STORE], 'readwrite');
+      const store = transaction.objectStore(ACTIVITY_ITEMS_STORE);
+      
+      await store.clear(); // Clear existing items
+      for (const item of items) {
+        await store.add(item); // Add new items
+      }
+      // console.log(`[saveActivityItems] Saved ${items.length} activity items.`);
+    } catch (err) {
+      console.error('[saveActivityItems] Failed to save:', err);
+    }
+  };
+
+  const loadActivityItems = async (): Promise<ActivityItem[]> => {
+    try {
+      const db = await openDB();
+      const transaction = db.transaction([ACTIVITY_ITEMS_STORE], 'readonly');
+      const store = transaction.objectStore(ACTIVITY_ITEMS_STORE);
+      const request = store.getAll();
+      
+      return new Promise((resolve, reject) => {
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const items = (request.result as ActivityItem[]) || [];
+          // Sort by timestamp descending (newest first), using robust ID parsing
+          items.sort((a, b) => {
+            const idA = a.type === 'ui_diff' ? a.image2_id : a.image_id;
+            const idB = b.type === 'ui_diff' ? b.image2_id : b.image_id;
+            const timeA = idA ? new Date(idA.split('-diff')[0].split('-change-')[0].split('-event')[0]).getTime() : 0;
+            const timeB = idB ? new Date(idB.split('-diff')[0].split('-change-')[0].split('-event')[0]).getTime() : 0;
+            return timeB - timeA;
+          });
+          // console.log(`[loadActivityItems] Loaded ${items.length} activity items.`);
+          resolve(items);
+        };
+      });
+    } catch (err) {
+      console.error('[loadActivityItems] Failed to load:', err);
+      return [];
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl">
@@ -1490,8 +1554,8 @@ Context: You have access to previous analysis results for reference. Focus on id
                   {copyStatus === 'copied' ? '✓ Copied' : 'Copy'}
                 </Button>
                 <MemoizedDebugLogsScrollArea logs={frontendLogs} />
-                <Button onClick={clearAllData} size="sm" variant="destructive" className="absolute bottom-3 right-3 h-7 text-xs">
-                  Permanently Erase All Data
+                <Button onClick={clearAllData} size="sm" variant="destructive" className="absolute bottom-3 right-3 h-7 text-xs z-10">
+                  Erase All Data
                 </Button>
               </Card>
             </TabsContent>
