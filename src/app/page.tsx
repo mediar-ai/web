@@ -1044,11 +1044,19 @@ Context: You have access to previous analysis results for reference. Focus on id
     streamRef.current = null;
     setIsCapturingForBuffer(false);
     setMainStatus("Idle");
-  }, [stream, logToUI]);
+    // Clear buffer and reset baselines for a fresh start on next recording
+    setFrameBuffer([]);
+    setBaselineFrameForDiff(null);
+    setPendingFrameForDiff(null);
+    if (initialFrameCapturedRef) initialFrameCapturedRef.current = false; // Ensure it's reset
+    logToUI("[handleStopScreenShare] Buffer and baselines cleared for fresh start.");
+  }, [stream, logToUI, setFrameBuffer, setBaselineFrameForDiff, setPendingFrameForDiff]); // Added setters
 
   const handleStartScreenShare = useCallback(async () => {
     logToUI("[handleStartScreenShare] Attempting start...");
     setError(null);
+
+    // Ensure a clean state before starting a new stream
     if (streamRef.current || stream) {
       const currentStream = streamRef.current || stream;
       if (currentStream) {
@@ -1058,6 +1066,12 @@ Context: You have access to previous analysis results for reference. Focus on id
     setStream(null);
     streamRef.current = null;
     setIsCapturingForBuffer(false);
+    setFrameBuffer([]); // Clear buffer
+    setBaselineFrameForDiff(null); // Reset baseline
+    setPendingFrameForDiff(null); // Reset pending diff
+    if (initialFrameCapturedRef) initialFrameCapturedRef.current = false; // Reset initial capture flag
+    logToUI("[handleStartScreenShare] Cleared buffers and baselines for new session.");
+
     setMainStatus("Initializing...");
     try {
       const mediaStream = await navigator.mediaDevices.getDisplayMedia({ 
@@ -1356,6 +1370,59 @@ Context: You have access to previous analysis results for reference. Focus on id
     }
   };
 
+  // Function to handle manual initial dump request
+  const handleManualInitialDump = useCallback(async () => {
+    logToUI("[[VERIFY_CLICK]] Attempting manual initial dump..."); // New verification log
+
+    if (!streamRef.current || !videoRef.current || !canvasRef.current || videoRef.current.readyState < videoRef.current.HAVE_METADATA || videoRef.current.videoWidth <= 0) {
+      logError("[Manual Initial Dump] Cannot capture, stream/video not ready or canvas not available.");
+      setError("Cannot manually capture for initial dump: Preview not active or ready.");
+      return;
+    }
+    if (initialDumpInProgress) {
+      logToUI("[Manual Initial Dump] Initial dump already in progress. Please wait.");
+      return;
+    }
+
+    logToUI("[Manual Initial Dump] 🚀 Triggered. Capturing current view for initial dump.");
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    }
+    
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageDataUrl = canvas.toDataURL("image/png", screenshotQuality); // Use state for quality
+      const timestamp = Date.now();
+      const newFrameId = `manual-dump-${new Date(timestamp).toISOString()}`;
+      const newFrame: BufferedFrame = {
+        id: newFrameId,
+        imageDataUrl,
+        timestamp,
+        percentChange: 100 // Signify high importance, though not used by processInitialFrameDump directly for selection
+      };
+
+      try {
+        await saveScreenshot(newFrame.id, canvas); // Save screenshot to DB
+        logToUI("[Manual Initial Dump] Screenshot for manual dump saved:", newFrame.id);
+      } catch (screenshotErr) {
+        logError("[Manual Initial Dump] Screenshot save failed:", screenshotErr);
+        // Continue with dump attempt even if screenshot save fails for some reason
+      }
+
+      processInitialFrameDump(newFrame); // Directly call processInitialFrameDump
+
+    } else {
+      logError("[Manual Initial Dump] Error: Could not get 2D context for capture.");
+      setError("Failed to get canvas context for manual capture.");
+    }
+  }, [screenshotQuality, logToUI, logError, setError, processInitialFrameDump, initialDumpInProgress, streamRef]); // Added dependencies
+
   return (
     <div className="container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl">
       {/* Header with Controls */}
@@ -1374,21 +1441,13 @@ Context: You have access to previous analysis results for reference. Focus on id
               {stream ? "Stop" : "Start"}
             </Button>
             <Button 
-              onClick={() => { 
-                if (streamRef.current && videoRef.current && videoRef.current.readyState >= videoRef.current.HAVE_METADATA && videoRef.current.videoWidth > 0) {
-                  logToUI("[Manual Capture] Triggered. Adding current view to buffer.");
-                  captureFrameToBuffer(100); 
-                } else {
-                  logError("[Manual Capture] Cannot capture, stream/video not ready.");
-                  setError("Cannot manually capture: Preview not active or ready.");
-                }
-              }} 
+              onClick={handleManualInitialDump} // Changed to call handleManualInitialDump
               size="default" 
               variant="outline" 
               className="w-32" 
-              disabled={!streamRef.current || isCapturingForBuffer} 
+              disabled={!streamRef.current || activeAnalysesCount >= MAX_PARALLEL_ANALYSES || initialDumpInProgress} // Disable if stream not ready, max analyses reached or dump in progress
             >
-              {activeAnalysesCount > 0 ? `Analyzing (${activeAnalysesCount})...` : "Capture Frame"} 
+              {initialDumpInProgress ? "Dumping..." : activeAnalysesCount >= MAX_PARALLEL_ANALYSES ? `Analyzing (${activeAnalysesCount})...` : "Capture Frame"} 
             </Button>
           </div>
         </div>
