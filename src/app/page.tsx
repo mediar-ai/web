@@ -85,6 +85,7 @@ interface UIDiffAnalysis {
     details?: string;
   }>;
   unidentified_changes_explanation?: string;
+  new_content_detected?: string; // Added new field
   image1_id?: string; 
   image2_id?: string; 
 }
@@ -973,6 +974,14 @@ Context: You have access to previous analysis results for reference. Focus on id
                           </div>
                         ))}
                       </div>
+                      {item.new_content_detected && (
+                        <div className="mt-1.5 pt-1 border-t border-slate-700">
+                          <strong className="text-black">Newly Detected Content:</strong>
+                          <div className="whitespace-pre-wrap p-2 mt-1 bg-gray-100 rounded text-black max-h-40 overflow-y-auto" style={scrollAreaStyle}>
+                            {item.new_content_detected}
+                          </div>
+                        </div>
+                      )}
                       {item.unidentified_changes_explanation && <div className="mt-1.5 pt-1 border-t border-slate-700"><strong className="text-black">Model Explanation:</strong> {item.unidentified_changes_explanation}</div>} {/* Changed text-orange-500 to text-black */}
                     </>
                   )}

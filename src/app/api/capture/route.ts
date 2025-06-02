@@ -175,16 +175,25 @@ Concise Summary: Provide the summary of the action in 10 words or less.`;
           click_details: { type: SchemaType.STRING, description: "Object/area clicked. Specify L/R click.", nullable: true },
           new_window_details: { type: SchemaType.OBJECT, properties: { old_window_name: {type: SchemaType.STRING}, new_window_name: {type: SchemaType.STRING}}, description: "New window details.", nullable: true },
           new_app_details: { type: SchemaType.STRING, description: "Name of new app.", nullable: true },
-          scroll_details: { type: SchemaType.OBJECT, properties: {new_content_summary: {type: SchemaType.STRING}}, description: "Summary of new scrolled content.", nullable: true },
+          scroll_details: { type: SchemaType.OBJECT, properties: {new_content_summary: {type: SchemaType.STRING}}, description: "Summary of what and where the user scrolled.", nullable: true },
           other_change_details: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: { type_description: {type: SchemaType.STRING}, details: {type: SchemaType.STRING}}}, description: "Other changes.", nullable: true },
-          unidentified_changes_explanation: { type: SchemaType.STRING, description: "If important changes were missed by schema, explain here.", nullable: true }
+          unidentified_changes_explanation: { type: SchemaType.STRING, description: "If important changes were missed by schema, explain here.", nullable: true },
+          new_content_detected: { type: SchemaType.STRING, description: "List in maximum detail all NEW raw text, UI elements, or other visual information that appeared in Image 2 that was NOT visible or present in Image 1. Focus only on the delta of newly appeared content.", nullable: true }
         },
         required: ['change_detected']
       };
 
       const diffPrompt = `Compare these two sequential screenshots. Populate the JSON schema to describe changes. 
 Image 1 is the 'before' state, Image 2 is the 'after' state. 
-Schema fields: change_detected ("yes"/"no"), change_description, identified_change_types (list from: 'mouse movement', 'scrolling', 'typing', 'left-click', 'right-click', 'new window appeared', 'new app appeared', 'other'), and detailed fields for each type. If a detail field (e.g. mouse_movement_details) is not applicable, omit it or leave it null. If you identify a change type not in the list, add it to identified_change_types as 'other' and detail it in other_change_details. Use unidentified_changes_explanation if the schema limits full description of other important changes. The userPrompt contains general instructions: ${userPrompt}`;
+Schema fields include 'change_detected' ("yes"/"no"), 'change_description', and 'identified_change_types'. 
+For 'identified_change_types', you MUST provide an array listing ALL distinct types of changes observed between Image 1 and Image 2. Choose from the following predefined types: 'mouse movement', 'scrolling', 'typing', 'left-click', 'right-click', 'new window appeared', 'new app appeared'. 
+If a change doesn't fit these, list it as 'other'. 
+Ensure all observed change types are included in this array if multiple types of changes occurred. 
+Also populate detailed fields (like 'mouse_movement_details', 'typing_details', etc.) for each identified type where applicable. If a detail field is not applicable, omit it or leave it null. 
+If you identify a change type as 'other', detail it in 'other_change_details'. 
+Use 'unidentified_changes_explanation' if the schema limits full description of other important changes not covered. 
+For 'new_content_detected', list in maximum detail all NEW raw text, UI elements, or other visual information that appeared in Image 2 that was NOT visible or present in Image 1. Focus only on the delta of newly appeared content. 
+The userPrompt contains general instructions: ${userPrompt}`;
 
       const diffGenerationConfig = {
         temperature: 0.2, topK: 32, topP: 0.8, maxOutputTokens: 4096,
