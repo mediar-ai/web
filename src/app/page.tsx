@@ -409,7 +409,7 @@ Opened_apps: [List of applications, windows, or programs visible on screen]
 Tab_name_Url_filename_chatname_etc: [Specific context like browser tab titles, URLs, file names, chat names, document titles, etc. if available]
 
 Context: You have access to previous analysis results for reference. Focus on identifying the progression of the workflow and any changes from previous steps.`);
-  const [eventsPrompt] = useState<string>(`In 10 words or less describe what the user is actively DOING (not just viewing). Only say "Sending/Typing/Writing" if you see evidence of active input (cursor in text field, message being composed, unsent draft, typing indicator). If viewing existing content/messages, use "Reviewing/Browsing [what]". Focus on actual user actions, not past completed actions.`);
+  const [eventsPrompt] = useState<string>(`Analyze the sequence of activities to determine the user's current workflow action. Focus on what the user is actively doing across these UI changes and interactions. Consider mouse movements, typing, clicks, new windows, and content changes to understand the overall workflow action.`);
   const [mainStatus, setMainStatus] = useState<string>("Idle");
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
   const [initialDumpInProgress, setInitialDumpInProgress] = useState<boolean>(false); // New state
@@ -1323,6 +1323,161 @@ Context: You have access to previous analysis results for reference. Focus on id
       setError("Failed to get canvas context for manual capture.");
     }
   }, [screenshotQuality, logToUI, logError, setError, processInitialFrameDump, initialDumpInProgress, streamRef]); // Added dependencies
+
+  // Add ref to track event generation in progress
+  const eventGenerationInProgressRef = useRef<boolean>(false);
+  // const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for debounce timeout - REMOVED
+
+  // New function to process multiple activities for event generation
+  const processMultiActivityEvent = useCallback(async () => {
+    // Check if already processing
+    if (eventGenerationInProgressRef.current || activeAnalysesCount >= MAX_PARALLEL_ANALYSES) {
+      logToUI("[processMultiActivityEvent] Already processing or max analyses running, skipping");
+      return;
+    }
+
+    // Set flag to prevent duplicate requests
+    eventGenerationInProgressRef.current = true;
+
+    const activityItemsCopy = [...activityItems];
+    
+    // Get last 10 activities
+    const last10Activities = activityItemsCopy.slice(0, 10);
+    
+    // Find the most recent initial dump
+    const mostRecentInitialDump = activityItemsCopy.find(item => item.type === 'initial_dump');
+    
+    // If the most recent initial dump is not in the last 10, include it
+    const activitiesToAnalyze: ActivityItem[] = [...last10Activities];
+    if (mostRecentInitialDump && !last10Activities.some(item => item.id === mostRecentInitialDump.id)) {
+      activitiesToAnalyze.push(mostRecentInitialDump);
+    }
+    
+    if (activitiesToAnalyze.length === 0) {
+      logToUI("[processMultiActivityEvent] No activities to analyze for event");
+      eventGenerationInProgressRef.current = false;
+      return;
+    }
+    
+    setActiveAnalysesCount(prev => prev + 1);
+    const currentActiveCount = activeAnalysesCountRef.current + 1;
+    setMainStatus(`Analyzing Event (${currentActiveCount})...`);
+    logToUI("[processMultiActivityEvent] 🎯 Analyzing", activitiesToAnalyze.length, "activities for event generation");
+    
+    try {
+      // Prepare activities summary for analysis
+      const activitiesSummary = activitiesToAnalyze.map(item => {
+        if (item.type === 'initial_dump') {
+          return {
+            type: 'initial_dump',
+            timestamp: item.timestamp,
+            content_preview: item.raw_content.substring(0, 500) + "..." // Limit content for token efficiency
+          };
+        } else {
+          return {
+            type: 'ui_diff',
+            timestamp: item.timestamp,
+            change_detected: item.change_detected,
+            change_description: item.change_description,
+            change_types: item.identified_change_types,
+            new_content_preview: item.new_content_detected ? 
+              item.new_content_detected.substring(0, 200) + "..." : null
+          };
+        }
+      });
+      
+      const response = await fetch("/api/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analysisType: 'multi_activity_event',
+          activitiesSummary: activitiesSummary,
+          prompt: eventsPrompt,
+          model: EVENTS_MODEL_NAME,
+          previousEvents: events.slice(0, 50).map(e => ({
+            summary: e.summary,
+            timestamp: e.timestamp,
+            isNewWorkflow: e.thoughts?.includes('yes') || false
+          }))
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok && result.analysis) {
+        const { is_distinct_event, description } = result.analysis;
+        
+        // Only create an event if it's distinct
+        if (is_distinct_event === 'yes') {
+          const eventId = new Date().toISOString() + "-event";
+          const newEvent: Event = {
+            id: eventId,
+            summary: description,
+            thoughts: `Distinct event`, // Or use a more detailed thought if available
+            timestamp: new Date().toLocaleTimeString()
+          };
+          
+          setEvents(prevEvents => 
+            [newEvent, ...prevEvents]
+              .sort((a, b) => {
+                // Robust ID parsing for sorting
+                const timeA = new Date(a.id.split('-event')[0]).getTime();
+                const timeB = new Date(b.id.split('-event')[0]).getTime();
+                return timeB - timeA;
+              })
+              .slice(0, 100) // Keep last 100 events for history
+          );
+          
+          logToUI("[processMultiActivityEvent] ✅ Distinct event generated:", description);
+        } else {
+          logToUI("[processMultiActivityEvent] ⏭️ No distinct event identified - similar to recent activity. Description:", description);
+          // Create an event to show "No distinct event" in the UI
+          const eventId = new Date().toISOString() + "-event-non-distinct";
+          const newEvent: Event = {
+            id: eventId,
+            summary: description || "No distinct event identified", // Use backend description
+            thoughts: "Non-distinct activity based on backend analysis.",
+            timestamp: new Date().toLocaleTimeString()
+          };
+          setEvents(prevEvents =>
+            [newEvent, ...prevEvents]
+              .sort((a, b) => {
+                const timeA = new Date(a.id.split('-event')[0]).getTime();
+                const timeB = new Date(b.id.split('-event')[0]).getTime();
+                return timeB - timeA;
+              })
+              .slice(0, 100)
+          );
+        }
+      } else {
+        logError("[processMultiActivityEvent] Backend error:", result.error || 'Unknown error');
+      }
+    } catch (err) {
+      logError("[processMultiActivityEvent] Network error:", err);
+    } finally {
+      setActiveAnalysesCount(prev => Math.max(0, prev - 1));
+      eventGenerationInProgressRef.current = false;
+    }
+  }, [
+    activityItems, activeAnalysesCount, eventsPrompt, EVENTS_MODEL_NAME,
+    logToUI, logError, setActiveAnalysesCount, setMainStatus, setEvents
+  ]);
+
+  // useEffect to trigger event generation when activity items change
+  useEffect(() => {
+    // Check if already processing
+    if (eventGenerationInProgressRef.current) {
+      return;
+    }
+
+    // Only process if stream is active and not too many analyses running
+    if (stream && activeAnalysesCount < MAX_PARALLEL_ANALYSES) {
+      // Removed debounce and minimum activity items check
+      processMultiActivityEvent(); 
+    }
+
+    // No cleanup needed for debounce timeout anymore
+  }, [stream, activityItems, activeAnalysesCount, processMultiActivityEvent]); // activityItems is kept to trigger on new items
 
   return (
     <div className="container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl">

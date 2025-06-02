@@ -7,6 +7,17 @@ const MODEL_NAME = "gemini-2.5-flash-preview-05-20"; // User-provided model name
 
 const LOG_FILE_PATH = path.join(process.cwd(), 'logs', 'backend_app.log');
 
+// Type definition for activity summary
+interface ActivitySummary {
+  type: 'initial_dump' | 'ui_diff';
+  timestamp: string;
+  content_preview?: string;
+  change_detected?: 'yes' | 'no';
+  change_description?: string;
+  change_types?: string[];
+  new_content_preview?: string | null;
+}
+
 // Helper function to ensure log directory exists and append to log file
 async function writeToLog(message: string) {
   const timestamp = new Date().toISOString();
@@ -37,11 +48,9 @@ export async function POST(request: Request) {
     const image2_dataUrl = body.image2_dataUrl as string | undefined;
     const single_imageDataBase64WithPrefix = body.image as string | undefined; // For old single-image analysis path
 
-    const analysisText = body.analysisText as string; // Used for event summaries
     const clientTimestamp = body.timestamp as string; // Might need array of timestamps for diff
     const userPrompt = (body.prompt as string) || "Analyze this screenshot for business workflow information.";
     const history = (body.history as string[]) || [];
-    const isEventsSummary = body.isEventsSummary as boolean;
     const requestedModel = body.model as string;
     const analysisType = body.analysisType as string || 'workflow'; // New: 'workflow' or 'ui_diff'
 
@@ -50,61 +59,106 @@ export async function POST(request: Request) {
 
     await writeToLog(`Received POST. Analysis Type: ${analysisType}. Model: ${modelName}. Client Timestamp: ${clientTimestamp}. User Prompt: ${userPrompt.substring(0,100)}... History items: ${history.length}`);
 
-    // Handle events summary request (text-only)
-    if (isEventsSummary && analysisText) {
-      // baseUserPrompt is no longer needed here as structuredPrompt is self-contained for schema guidance.
-      // const baseUserPrompt = (body.prompt as string) || "Describe the user's action."; 
-
-      // New prompt for structured output, guiding content for schema fields
-      let structuredPrompt = `Based on the provided context, generate a thought process and a concise summary of the user's action. 
-Thought Process: Explain your reasoning step-by-step for determining the user's primary action. 
-Concise Summary: Provide the summary of the action in 10 words or less.`;
-
-      if (history.length > 0) {
-        structuredPrompt += `\n\nPrevious events context to consider for your thought process:\n`;
-        history.slice(0, 3).forEach((h, index) => {
-          structuredPrompt += `${index + 1}. ${h}\n`;
-        });
-        structuredPrompt += "\n";
-      }
-      structuredPrompt += `Main analysis context to use: ${analysisText}`;
-
-      await writeToLog(`Sending events request to Gemini (${modelName}) for structured output. Prompt (first 200 chars): ${structuredPrompt.substring(0,200)}...`);
+    // Handle multi-activity event analysis request (NEW)
+    if (analysisType === 'multi_activity_event') {
+      const activitiesSummary = body.activitiesSummary as ActivitySummary[];
+      const previousEvents = body.previousEvents as Array<{summary: string, timestamp: string, isNewWorkflow: boolean}> || [];
       
-      const eventSummarySchema: Schema = {
+      if (!activitiesSummary || activitiesSummary.length === 0) {
+        await writeToLog('WARN: No activities provided for multi-activity event analysis.');
+        return NextResponse.json({ error: 'No activities provided for analysis.' }, { status: 400 });
+      }
+
+      await writeToLog(`Processing Multi-Activity Event Analysis with ${activitiesSummary.length} activities and ${previousEvents.length} previous events`);
+
+      const multiActivityEventSchema: Schema = {
         type: SchemaType.OBJECT,
         properties: {
-          thoughts: { 
-            type: SchemaType.STRING,
-            description: "The model's detailed thought process for arriving at the summary." 
+          is_distinct_event: { 
+            type: SchemaType.STRING, 
+            description: "Is this a distinct new event compared to the recent events? Answer 'yes' if this represents a meaningful new action/transition, 'no' if it's a continuation of recent activity" 
           },
-          summary: { 
-            type: SchemaType.STRING,
-            description: "Concise summary of the user's action (10 words or less)."
+          description: { 
+            type: SchemaType.STRING, 
+            description: "Describe what is happening in this latest activity in 10 words or less" 
           }
         },
-        required: ['summary'] 
+        required: ['is_distinct_event', 'description']
       };
 
-      const generationConfig = {
-        temperature: 0.3, 
+      // Build a comprehensive prompt with all activities
+      let multiActivityPrompt = `Analyze the following sequence of recent activities to generate a description and determine if this represents a distinct new event.
+
+Recent Activities (newest first):
+`;
+      
+      activitiesSummary.forEach((activity, index) => {
+        multiActivityPrompt += `\n${index + 1}. [${activity.timestamp}] `;
+        if (activity.type === 'initial_dump') {
+          multiActivityPrompt += `Initial Screen Content: ${activity.content_preview}`;
+        } else {
+          multiActivityPrompt += `UI Change - Detected: ${activity.change_detected}`;
+          if (activity.change_detected === 'yes') {
+            if (activity.change_description) {
+              multiActivityPrompt += `, Description: ${activity.change_description}`;
+            }
+            if (activity.change_types && activity.change_types.length > 0) {
+              multiActivityPrompt += `, Types: ${activity.change_types.join(', ')}`;
+            }
+            if (activity.new_content_preview) {
+              multiActivityPrompt += `, New Content: ${activity.new_content_preview}`;
+            }
+          }
+        }
+      });
+
+      if (previousEvents.length > 0) {
+        multiActivityPrompt += `\n\nPrevious Events (last ${previousEvents.length}, newest first):`;
+        previousEvents.slice(0, 10).forEach((event, index) => {
+          multiActivityPrompt += `\n${index + 1}. [${event.timestamp}] ${event.summary}`;
+        });
+      }
+
+      multiActivityPrompt += `\n\nBased on these activities:
+1. Generate a concise description (10 words or less) of what the user is doing in the LATEST activity
+2. Determine if this represents a DISTINCT event compared to recent events
+3. Consider an event distinct if it represents:
+   - A new type of action (e.g., switching from browsing to typing)
+   - A significant workflow transition
+   - A meaningful change in user activity
+4. If the activity is just a continuation of recent events (e.g., continuing to chat, continuing to browse), mark it as NOT distinct
+
+User instruction: ${userPrompt}`;
+
+      const multiActivityGenerationConfig = {
+        temperature: 0.3,
         topK: 32,
         topP: 0.8,
-        maxOutputTokens: 4096, // Increased significantly for thoughts + summary in JSON
-        responseMimeType: "application/json", // Crucial for structured output
-        responseSchema: eventSummarySchema     // Provide the defined schema
+        maxOutputTokens: 65535, // Set to maximum as per user request, input prompt settings reverted to less aggressive shortening
+        responseMimeType: "application/json",
+        responseSchema: multiActivityEventSchema
       };
 
+      // Define safety settings (similar to other analysis types)
+      const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThreshold}> = [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+      ];
+
       const result = await activeModel.generateContent({ 
-        contents: [{ role: "user", parts: [{ text: structuredPrompt }] }], 
-        generationConfig 
+        contents: [{ role: "user", parts: [{ text: multiActivityPrompt }] }], 
+        generationConfig: multiActivityGenerationConfig,
+        safetySettings // Added safetySettings
       });
-      
-      await writeToLog(`Raw Gemini events response (expecting JSON): ${JSON.stringify(result, null, 2)}`);
       
       const response = result.response;
       if (response && response.candidates && response.candidates.length > 0) {
         const candidate = response.candidates[0];
+        // Enhanced logging for candidate details
+        await writeToLog(`Multi-activity event candidate details. Finish Reason: ${candidate.finishReason}. Safety Ratings: ${JSON.stringify(candidate.safetyRatings)}. Index: ${candidate.index}`);
+
         if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
           const jsonString = candidate.content.parts
             .map(part => part.text || '')
@@ -113,44 +167,43 @@ Concise Summary: Provide the summary of the action in 10 words or less.`;
           
           if (jsonString) {
             try {
-              const structuredData = JSON.parse(jsonString);
-              let thoughts = structuredData.thoughts || "Thoughts not provided by model."; // Fallback
-              let summary = structuredData.summary || "Summary not provided by model.";   // Fallback
+              const eventAnalysis = JSON.parse(jsonString);
 
-              // Check if the required summary is missing or truly empty despite schema requiring it.
-              if (!structuredData.summary || String(structuredData.summary).trim() === ""){
-                summary = "Summary was missing or empty in model output.";
-                await writeToLog(`WARN: Gemini returned JSON but the required 'summary' field was missing or empty.`);
-                // Thoughts might still be valuable
-                thoughts = structuredData.thoughts || "Thoughts also missing or model output incomplete.";
-              }
-              
-              if (summary === "Summary not provided by model." && thoughts === "Thoughts not provided by model.") {
-                await writeToLog('WARN: Gemini returned JSON but with no thoughts or summary fields filled meaningfully.');
+              // User-requested override: If there are no previous events, mark as distinct.
+              if (previousEvents.length === 0) {
+                if (eventAnalysis.is_distinct_event !== 'yes') {
+                  await writeToLog(`INFO: Overriding event to 'distinct: yes' because no previous events were found. Original model output was 'distinct: ${eventAnalysis.is_distinct_event}'.`);
+                  eventAnalysis.is_distinct_event = 'yes';
+                } else {
+                  await writeToLog(`INFO: Event already 'distinct: yes' and no previous events were found. No override needed. Model output was 'distinct: ${eventAnalysis.is_distinct_event}'.`);
+                }
               }
 
-              await writeToLog(`Gemini events response (structured JSON). Thoughts (first 50): ${thoughts.substring(0,50)}... Summary: ${summary}`);
+              await writeToLog(`Multi-activity event analysis successful. Distinct: ${eventAnalysis.is_distinct_event}, Description: ${eventAnalysis.description}`);
               return NextResponse.json({
-                message: 'Events summary and thoughts generated successfully (structured JSON).',
-                analysis: { summary, thoughts }, // Already structured
+                message: 'Multi-activity event analyzed successfully.',
+                analysis: eventAnalysis,
                 serverTimestamp: new Date().toISOString()
               });
             } catch (e) {
-              await writeToLog(`ERROR: Failed to parse JSON response from Gemini for event summary. JSON String: ${jsonString}. Error: ${e}`);
-              return NextResponse.json({ error: 'Failed to parse structured JSON from Gemini for event summary.', details: (e as Error).message }, { status: 500 });
+              await writeToLog(`ERROR: Failed to parse JSON for multi-activity event. JSON String: "${jsonString}". Raw Candidate Parts: ${JSON.stringify(candidate.content.parts)}. Full Candidate: ${JSON.stringify(candidate)}. Error: ${(e as Error).message}`);
+              // Fall through to generic error below
             }
+          } else {
+            await writeToLog(`WARN: Gemini multi-activity event returned empty jsonString. Raw Candidate Parts: ${JSON.stringify(candidate.content.parts)}. Full Candidate: ${JSON.stringify(candidate)}`);
+            // Fall through to generic error below
           }
+        } else {
+           await writeToLog(`WARN: Gemini multi-activity event returned no content parts in candidate. Full Candidate: ${JSON.stringify(candidate)}`);
+           // Fall through to generic error below
         }
+      } else {
+        await writeToLog(`WARN: Gemini multi-activity event request returned no candidates or response. Full API Result: ${JSON.stringify(result)}`);
+        // Fall through to generic error below
       }
-      await writeToLog('WARN: Gemini events request (structured JSON attempt) failed or returned empty/invalid content part.');
-      // Provide more context if possible for this warning case
-      // let detailMessage = "Model did not return expected content parts for structured JSON.";
-      // if (result && result.response && result.response.promptFeedback) {
-      //   detailMessage += ` Prompt Feedback: ${JSON.stringify(result.response.promptFeedback)}`;
-      // }
-      // Simplified for linter diagnosis
-      const simplifiedDetailMessage = "Model returned empty/invalid content.";
-      return NextResponse.json({ error: 'Failed to generate events summary from Gemini response (structured JSON attempt).', details: simplifiedDetailMessage }, { status: 500 });
+      // Generic error handler if not returned successfully above
+      await writeToLog('WARN: Gemini multi-activity event request failed (details logged above) or resulted in an unusable structure.');
+      return NextResponse.json({ error: 'Failed to generate multi-activity event analysis.' }, { status: 500 });
     }
 
     // Handle UI Diff analysis request (NEW)
