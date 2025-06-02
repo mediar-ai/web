@@ -468,44 +468,6 @@ Context: You have access to previous analysis results for reference. Focus on id
     console.error(...args);
   }, []);
 
-  // 2. Analysis parsing
-  const parseAnalysis = useCallback((analysisText: string): ParsedAnalysis | null => {
-    try {
-      const lines = analysisText.split('\n').filter(line => line.trim());
-      const parsed: Partial<ParsedAnalysis> = {};
-      for (const line of lines) {
-        const colonIndex = line.indexOf(':');
-        if (colonIndex === -1) continue;
-        const key = line.substring(0, colonIndex).trim().toLowerCase();
-        const value = line.substring(colonIndex + 1).trim();
-        if (key.includes('workflow_name') || key.includes('workflow')) parsed.workflow = value;
-        else if (key.includes('step_name') || key === 'step') parsed.step = value;
-        else if (key.includes('step_description') || key === 'description') parsed.description = value;
-        else if (key.includes('step_facts') || key === 'facts') parsed.facts = value;
-        else if (key.includes('step_logic') || key === 'logic') parsed.logic = value;
-        else if (key.includes('step_metadata') || key === 'metadata' || key === 'tech') parsed.tech = value;
-        else if (key.includes('opened_apps')) parsed.apps = value;
-        else if (key.includes('tab_name_url_filename_chatname_etc')) parsed.context = value;
-      }
-      if (Object.keys(parsed).length > 0) {
-        return {
-          workflow: parsed.workflow || 'Unknown',
-          step: parsed.step || 'Unknown',
-          description: parsed.description || 'No description',
-          facts: parsed.facts || 'No facts',
-          logic: parsed.logic || 'No logic',
-          tech: parsed.tech || 'No tech info',
-          apps: parsed.apps || 'No apps',
-          context: parsed.context || 'No context'
-        };
-      }
-      return null;
-    } catch (err) {
-      logError("[parseAnalysis] Error parsing analysis:", err);
-      return null;
-    }
-  }, [logError]);
-
   // 3. Core capture and analysis function
   const captureFrameToBuffer = useCallback(async (changePercent: number) => {
     if (!streamRef.current) { // Use streamRef.current for consistency
@@ -591,49 +553,6 @@ Context: You have access to previous analysis results for reference. Focus on id
        }
     }
   }, [isCapturingForBuffer, screenshotQuality, logToUI, logError, setFrameBuffer, setIsCapturingForBuffer, streamRef]); // Added streamRef
-
-  // Process single frame for workflow analysis (existing logic, now less frequently called by dispatcher)
-  const processWorkflowAnalysis = useCallback(async (frameToAnalyze: BufferedFrame) => {
-    setActiveAnalysesCount(prev => prev + 1);
-    // ... (rest of the existing processFrameAnalysis logic for analysisType: 'workflow')
-    // ... including fetch, setWorkflowSteps, setEvents, setActiveAnalysesCount decrement
-    // For brevity, not duplicating the entire function here, but it's the old processFrameAnalysis body.
-    // IMPORTANT: Ensure this function correctly uses 'single_imageDataBase64WithPrefix' (or 'image')
-    // and 'analysisType: "workflow"' when calling the backend.
-    // It should update setWorkflowSteps.
-
-    // Simplified placeholder for this example - REMOVE AND REPLACE WITH ACTUAL LOGIC
-    logToUI("[processWorkflowAnalysis] Called for frame:", frameToAnalyze.id);
-    const { imageDataUrl, timestamp: frameTimestamp, id: frameId } = frameToAnalyze;
-    const historyForPrompt = workflowSteps.map(step => JSON.stringify(step.parsed)).slice(-3).reverse(); // Send parsed history if available
-    logToUI("[processWorkflowAnalysis] Sending frame for AI analysis (workflow type). History items:", historyForPrompt.length);
-    try {
-      const response = await fetch("/api/capture", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: imageDataUrl,
-          timestamp: new Date(frameTimestamp).toISOString(),
-          prompt: customPrompt, // Main workflow prompt
-          history: historyForPrompt,
-          analysisType: 'workflow'
-        }),
-      });
-      const result = await response.json();
-      if (response.ok && typeof result.analysis === 'object') {
-        const parsedMainAnalysis = result.analysis as ParsedAnalysis;
-        const newAnalysisRawText = JSON.stringify(result.analysis, null, 2);
-        const newWorkflowStep = {
-          id: frameId, analysis: newAnalysisRawText, parsed: parsedMainAnalysis,
-          timestamp: new Date(frameTimestamp).toLocaleTimeString()
-        };
-        setWorkflowSteps(prev => [newWorkflowStep, ...prev].sort((a,b) => new Date(b.id.split('-change-')[0]).getTime() - new Date(a.id.split('-change-')[0]).getTime()).slice(0, 20));
-        // Optionally trigger event summary for this workflow step too
-      } else { logError("[processWorkflowAnalysis] Backend error:", result); setError(`Workflow analysis failed: ${result.error}`); }
-    } catch (err) { logError("[processWorkflowAnalysis] Network error:", err); setError("Network error in workflow analysis."); }
-    setActiveAnalysesCount(prev => Math.max(0, prev - 1));
-    // End of placeholder - REPLACE WITH FULL ORIGINAL FUNCTION
-
-  }, [customPrompt, workflowSteps, events, eventsPrompt, EVENTS_MODEL_NAME, logToUI, logError, parseAnalysis, setWorkflowSteps, setEvents, setActiveAnalysesCount, setMainStatus, setError]);
 
   // New function to process UI Diff for two frames
   const processUIDiffRequest = useCallback(async (frame1: BufferedFrame, frame2: BufferedFrame) => {
@@ -883,36 +802,6 @@ Context: You have access to previous analysis results for reference. Focus on id
       <p className="text-muted-foreground italic p-8 text-center">No events captured yet. Start recording to see workflow events.</p>
     );
   }, [events]);
-
-  const memoizedWorkflowStepsContent = useMemo(() => {
-    return workflowSteps.length > 0 ? (
-      <ul className="space-y-4">
-        {workflowSteps.slice(0, 20).map(step => (
-          <li key={step.id} className="p-4 border rounded-md bg-background">
-            <p className="font-medium text-muted-foreground text-[10px] mb-3">{step.timestamp}</p>
-            {step.parsed ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-1 gap-2">
-                  <div><span className="font-semibold text-blue-600">Workflow:</span> <span className="text-foreground">{step.parsed.workflow}</span></div>
-                  <div><span className="font-semibold text-green-600">Step:</span> <span className="text-foreground">{step.parsed.step}</span></div>
-                  <div><span className="font-semibold text-purple-600">Description:</span> <span className="text-foreground">{step.parsed.description}</span></div>
-                  <div><span className="font-semibold text-orange-600">Facts:</span> <span className="text-foreground">{step.parsed.facts}</span></div>
-                  <div><span className="font-semibold text-cyan-600">Logic:</span> <span className="text-foreground">{step.parsed.logic}</span></div>
-                  <div><span className="font-semibold text-red-600">Tech:</span> <span className="text-foreground">{step.parsed.tech}</span></div>
-                  <div><span className="font-semibold text-yellow-600">Apps:</span> <span className="text-foreground">{step.parsed.apps}</span></div>
-                  <div><span className="font-semibold text-gray-600">Context:</span> <span className="text-foreground">{step.parsed.context}</span></div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-muted-foreground italic">Raw: {step.analysis}</p>
-            )}
-          </li>
-        ))}
-      </ul>
-    ) : (
-      <p className="text-muted-foreground italic p-8 text-center">No workflow steps captured yet. Start recording to see activity.</p>
-    );
-  }, [workflowSteps]);
 
   // Memoized content for the "Recent Activity" tab - NOW DISPLAYS ActivityItems
   const memoizedActivityContent = useMemo(() => {
@@ -1306,8 +1195,6 @@ Context: You have access to previous analysis results for reference. Focus on id
   useEffect(() => {
     logToUI("[useEffect stream] Main effect RUNNING. Stream active:", !!stream);
     const currentVideoElement = videoRef.current;
-    const onMetadataLoadedHandler = () => { /* ... */ };
-    const onVideoErrorHandler = (event: globalThis.Event) => { /* ... type as globalThis.Event ... */ };
     
     const onPlayingHandler = () => { 
       logToUI("[useEffect stream] 'playing' event."); 
@@ -1324,13 +1211,18 @@ Context: You have access to previous analysis results for reference. Focus on id
       // ... (existing stream setup) ...
       initialFrameCapturedRef.current = false; // Reset for new stream session
       currentVideoElement.addEventListener('playing', onPlayingHandler);
-      // ... (add other listeners) ...
     } else if (!stream) {
         streamRef.current = null;
         setMainStatus("Idle");
         initialFrameCapturedRef.current = false; // Reset if stream stops
     }
-    return () => { /* ... existing cleanup ... */ };
+    return () => { 
+      if (currentVideoElement) {
+        currentVideoElement.removeEventListener('playing', onPlayingHandler);
+      }
+      // Ensure other cleanup from the other useEffect for video events is also considered if this takes over all responsibility
+      logToUI("[useEffect stream] Cleanup for playing handler. Stream active:", !!stream);
+     }; 
   }, [stream, handleStopScreenShare, logToUI, logError, autoDetectionEnabled, captureFrameToBuffer]); // Added autoDetectionEnabled & captureFrameToBuffer
 
   // New functions for saving and loading ActivityItems
