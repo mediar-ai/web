@@ -6,6 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area"; // For log display
 import { useRef, useState, useCallback, useEffect, useMemo, memo } from "react";
+import { createClient, SupabaseClient } from '@supabase/supabase-js'; // Import Supabase client
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"; // Import Dialog components
+import { Loader2 } from "lucide-react"; // Import a spinner icon
 
 // import Image from "next/image"; // No longer needed after removing default content
 
@@ -21,6 +24,22 @@ const MAX_SCREENSHOTS = 50; // Keep only last 50 screenshots
 
 // Stable style object for ScrollAreas, defined globally for the module
 const scrollAreaStyle = { overflow: 'scroll', scrollbarWidth: 'thin' } as const;
+
+// Initialize Supabase client (outside component for module-level scope)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+let supabase: SupabaseClient | null = null;
+if (supabaseUrl && supabaseAnonKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseAnonKey);
+    console.log("[Supabase] Client initialized successfully.");
+  } catch (e) {
+    console.error("[Supabase] Error initializing client:", e);
+  }
+} else {
+  console.warn("[Supabase] URL or Anon Key is missing in environment variables. Supabase client not initialized.");
+}
 
 interface BufferedFrame {
   id: string;
@@ -91,6 +110,13 @@ interface UIDiffAnalysis {
 }
 
 type ActivityItem = InitialFrameDumpAnalysis | UIDiffAnalysis;
+
+interface ScreenshotForExport {
+  id: string;
+  dataUrl: string;
+  timestamp: number;
+  size: number;
+}
 
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -415,6 +441,7 @@ Context: You have access to previous analysis results for reference. Focus on id
   const [initialDumpInProgress, setInitialDumpInProgress] = useState<boolean>(false); // New state
   const [pendingFrameForDiff, setPendingFrameForDiff] = useState<BufferedFrame | null>(null); // New state
   const [diffAnalysisInProgress, setDiffAnalysisInProgress] = useState<boolean>(false); // New state
+  const [exportInProgress, setExportInProgress] = useState<boolean>(false); // New state for export button
 
   // Auto-detection state & refs for stable callbacks
   const [isMonitoring, setIsMonitoring] = useState<boolean>(false);
@@ -562,7 +589,7 @@ Context: You have access to previous analysis results for reference. Focus on id
     const currentActiveCount = activeAnalysesCountRef.current +1; 
     setMainStatus(`Analyzing UI Diff (${currentActiveCount})...`);
     const newDiffId = frame2.id + "-diff"; 
-    const displayTimestamp = new Date(frame2.timestamp).toLocaleTimeString();
+    const displayTimestamp = new Date(frame2.timestamp).toISOString(); // MODIFIED
     logToUI("[processUIDiffRequest] 🚀 Starting UI Diff analysis between:", frame1.id, "and", frame2.id);
 
     try {
@@ -625,7 +652,7 @@ Context: You have access to previous analysis results for reference. Focus on id
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           image: frameToDump.imageDataUrl,
-          timestamp: new Date(frameToDump.timestamp).toISOString(),
+          timestamp: new Date(frameToDump.timestamp).toISOString(), // Use ISOString for backend consistency
           prompt: "List in maximum detail all visible text and UI elements from the screenshot. Describe layout and objects.",
           analysisType: 'initial_frame_dump'
         }),
@@ -634,7 +661,7 @@ Context: You have access to previous analysis results for reference. Focus on id
       if (response.ok && result.analysis && typeof result.analysis.raw_content === 'string') {
         logToUI("[processInitialFrameDump] ✅ Initial frame dump successful...");
         const newActivityItem: ActivityItem = {
-          type: 'initial_dump', id: frameToDump.id, timestamp: new Date(frameToDump.timestamp).toLocaleTimeString(),
+          type: 'initial_dump', id: frameToDump.id, timestamp: new Date(frameToDump.timestamp).toISOString(), // MODIFIED
           raw_content: result.analysis.raw_content, image_id: frameToDump.id
         };
         setActivityItems(prev => [newActivityItem, ...prev].sort(
@@ -919,6 +946,62 @@ Context: You have access to previous analysis results for reference. Focus on id
       logError("[clearAllData] Failed to clear data:", err);
     }
   }, [logToUI, logError]);
+
+  const handleExportAllData = useCallback(async () => {
+    logToUI("[handleExportAllData] Starting data export via Supabase...");
+    setExportInProgress(true);
+
+    if (!supabase) {
+      logError("[handleExportAllData] Supabase client is not initialized. Cannot send data. Check console for errors during initialization.");
+      setError("Supabase client not available. Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.");
+      setExportInProgress(false);
+      return;
+    }
+
+    try {
+      const allLocalData = await getAllPersistedDataForExport(); // Renamed for clarity
+      logToUI("[handleExportAllData] Successfully retrieved all local data for sending. Size (approx characters):", JSON.stringify(allLocalData).length);
+
+      // Generate or retrieve session_id
+      let sessionId = localStorage.getItem('app_session_id');
+      if (!sessionId) {
+        sessionId = crypto.randomUUID(); // Requires a secure context (HTTPS or localhost)
+        localStorage.setItem('app_session_id', sessionId);
+        logToUI("[handleExportAllData] Generated new session ID for export:", sessionId);
+      } else {
+        logToUI("[handleExportAllData] Using existing session ID for export:", sessionId);
+      }
+
+      const payload = {
+        sessionId: sessionId,
+        exportedData: allLocalData 
+      };
+
+      logToUI("[handleExportAllData] Attempting to invoke Supabase Edge Function 'ingest-data' with session ID...");
+      
+      const { data: functionInvokeData, error: functionError } = await supabase.functions.invoke('ingest-data', {
+        body: payload, // Pass the payload with sessionId and exportedData
+      });
+
+      if (functionError) {
+        logError("[handleExportAllData] Error invoking Supabase Edge Function 'ingest-data':", functionError.message, functionError);
+        setError(`Failed to send data via Edge Function: ${functionError.message}. Check logs.`);
+      } else {
+        logToUI("[handleExportAllData] Supabase Edge Function 'ingest-data' invoked successfully. Response:", functionInvokeData);
+        // Potentially clear local data after successful send if desired, or mark as sent.
+      }
+
+    } catch (err) { 
+      let errorMessage = 'Unknown error during export process';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      logError("[handleExportAllData] Error during data export process:", err);
+      setError(`Error during export: ${errorMessage}. Check console.`);
+    } finally {
+      setExportInProgress(false);
+    }
+  }, [logToUI, logError, setError]); // supabase client is stable due to module-level scope, no need to add as dependency
 
   const dismissError = useCallback(() => {
     setShowError(false);
@@ -1271,6 +1354,68 @@ Context: You have access to previous analysis results for reference. Focus on id
     }
   };
 
+  // New function to get all data for export
+  const getAllPersistedDataForExport = async (): Promise<object> => {
+    const db = await openDB();
+    const transaction = db.transaction([WORKFLOW_STORE, LOGS_STORE, EVENTS_STORE, SCREENSHOTS_STORE, ACTIVITY_ITEMS_STORE], 'readonly');
+
+    const workflowSteps = await new Promise<Array<{id: string, analysis: string, parsed: ParsedAnalysis | null, timestamp: string}>>((resolve, reject) => {
+      const request = transaction.objectStore(WORKFLOW_STORE).getAll();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result || []);
+    });
+
+    const frontendLogs = await new Promise<Array<{ message: string, timestamp: number, index: number }>>((resolve, reject) => {
+      const request = transaction.objectStore(LOGS_STORE).getAll();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result || []);
+    });
+
+    const events = await new Promise<Event[]>((resolve, reject) => {
+      const request = transaction.objectStore(EVENTS_STORE).getAll();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result || []);
+    });
+
+    const activityItems = await new Promise<ActivityItem[]>((resolve, reject) => {
+      const request = transaction.objectStore(ACTIVITY_ITEMS_STORE).getAll();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result || []);
+    });
+
+    const screenshotsFromDB = await new Promise<Array<{ id: string, blob: Blob, timestamp: number, size: number }>>((resolve, reject) => {
+      const request = transaction.objectStore(SCREENSHOTS_STORE).getAll();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result || []);
+    });
+
+    // Convert screenshot blobs to data URLs
+    const screenshotsForExport: ScreenshotForExport[] = await Promise.all(
+      screenshotsFromDB.map(async (ss) => {
+        const dataUrl = await new Promise<string>((resolveBlob) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolveBlob(reader.result as string);
+          reader.readAsDataURL(ss.blob);
+        });
+        return {
+          id: ss.id,
+          dataUrl,
+          timestamp: ss.timestamp,
+          size: ss.size,
+        };
+      })
+    );
+
+    return {
+      workflowSteps,
+      frontendLogs,
+      events,
+      activityItems,
+      screenshots: screenshotsForExport,
+      exportedAt: new Date().toISOString(),
+    };
+  };
+
   // Function to handle manual initial dump request
   const handleManualInitialDump = useCallback(async () => {
     logToUI("[[VERIFY_CLICK]] Attempting manual initial dump..."); // New verification log
@@ -1414,7 +1559,7 @@ Context: You have access to previous analysis results for reference. Focus on id
             id: eventId,
             summary: description,
             thoughts: `Distinct event`, // Or use a more detailed thought if available
-            timestamp: new Date().toLocaleTimeString()
+            timestamp: new Date().toISOString() // MODIFIED
           };
           
           setEvents(prevEvents => 
@@ -1437,7 +1582,7 @@ Context: You have access to previous analysis results for reference. Focus on id
             id: eventId,
             summary: description || "No distinct event identified", // Use backend description
             thoughts: "Non-distinct activity based on backend analysis.",
-            timestamp: new Date().toLocaleTimeString()
+            timestamp: new Date().toISOString() // MODIFIED
           };
           setEvents(prevEvents =>
             [newEvent, ...prevEvents]
@@ -1481,6 +1626,25 @@ Context: You have access to previous analysis results for reference. Focus on id
 
   return (
     <div className="container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl">
+      {/* Export in Progress Modal */}
+      <Dialog open={exportInProgress}>
+        <DialogContent 
+          className="sm:max-w-[425px]" 
+          onInteractOutside={(event: { readonly defaultPrevented: boolean; preventDefault: () => void; }) => event.preventDefault()} // Prevent closing on outside click, with specific event type
+          showCloseButton={false} // Corrected prop name to hide the close button
+        >
+          <DialogHeader className="text-center">
+            <DialogTitle className="text-xl mb-2">Export in Progress</DialogTitle>
+            <DialogDescription className="flex flex-col items-center justify-center">
+              <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+              Please wait while your data is being exported. 
+              <br />
+              This may take a few moments...
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
       {/* Header with Controls */}
       <div className="w-full max-w-7xl mb-6 flex items-center justify-between gap-4">
         {/* Left Group: Title, Subtitle, and Buttons */}
@@ -1670,6 +1834,15 @@ Context: You have access to previous analysis results for reference. Focus on id
                 <MemoizedDebugLogsScrollArea logs={frontendLogs} />
                 <Button onClick={clearAllData} size="sm" variant="destructive" className="absolute bottom-3 right-3 h-7 text-xs z-10">
                   Erase All Data
+                </Button>
+                <Button 
+                  onClick={handleExportAllData} 
+                  size="sm" 
+                  variant="outline" 
+                  className="absolute bottom-3 right-[140px] h-7 text-xs z-10" // Adjust positioning as needed
+                  disabled={exportInProgress}
+                >
+                  {exportInProgress ? "Exporting..." : "Export All Data"}
                 </Button>
               </Card>
             </TabsContent>
