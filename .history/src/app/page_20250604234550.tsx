@@ -594,7 +594,9 @@ Context: You have access to previous analysis results for reference. Focus on id
       typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
     ).join(' ');
     const logEntry = `${timestamp} ${message}`;
-    setFrontendLogs((prevLogs) => [logEntry, ...prevLogs].slice(0, 100));
+    setFrontendLogs((prevLogs: string[]) =>
+      [logEntry, ...prevLogs].slice(0, 100)
+    );
     console.log(...args);
   }, []);
 
@@ -604,7 +606,9 @@ Context: You have access to previous analysis results for reference. Focus on id
       typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
     ).join(' ');
     const logEntry = `${timestamp} [ERROR] ${message}`;
-    setFrontendLogs((prevLogs) => [logEntry, ...prevLogs].slice(0, 100));
+    setFrontendLogs((prevLogs: string[]) =>
+      [logEntry, ...prevLogs].slice(0, 100)
+    );
     console.error(...args);
   }, []);
 
