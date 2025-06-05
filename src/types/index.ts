@@ -89,8 +89,6 @@ export type PageHeaderControlsProps = {
   error: string | null;
   streamRef: React.RefObject<MediaStream | null>;
   MAX_PARALLEL_ANALYSES: number;
-  viewMode: 'tabs' | 'timeline';
-  setViewMode: (mode: 'tabs' | 'timeline') => void;
 };
 
 export type VideoPreviewAreaProps = {
@@ -114,6 +112,8 @@ export type EventsTabContentProps = {
 
 export type ActivityTabContentProps = {
   activityItems: ActivityItem[];
+  selectedActivity: ActivityItem | null;
+  onActivitySelect: (item: ActivityItem) => void;
 };
 
 export type SettingsTabContentProps = {

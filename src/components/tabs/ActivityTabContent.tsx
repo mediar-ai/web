@@ -2,36 +2,40 @@ import React, { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import MemoizedScrollAreaContent from '../common/MemoizedScrollAreaContent';
 import type { ActivityItem } from '../../types';
+import { cn } from '@/lib/utils';
 
 interface ActivityTabContentProps {
   activityItems: ActivityItem[];
+  selectedActivity: ActivityItem | null;
+  onActivitySelect: (item: ActivityItem) => void;
 }
 
-const ActivityTabContent: React.FC<ActivityTabContentProps> = ({ activityItems }) => {
+const ActivityTabContent: React.FC<ActivityTabContentProps> = ({ activityItems, selectedActivity, onActivitySelect }) => {
   const memoizedActivityContent = useMemo(() => {
     return activityItems.length > 0
       ? (
-        <ul className='space-y-3'>
-          {activityItems.slice(0, 20).map((item) => {
+        <ul className='space-y-2 p-1'>
+          {activityItems.slice(0, 50).map((item) => {
+            const isSelected = selectedActivity?.id === item.id;
             if (item.type === 'initial_dump') {
               return (
                 <li
                   key={item.id}
-                  className='p-3 border rounded-md bg-white text-xs text-black'
+                  onClick={() => onActivitySelect(item)}
+                  className={cn(
+                    'p-3 border rounded-md text-xs transition-colors cursor-pointer',
+                    isSelected ? 'bg-primary/10 border-primary' : 'bg-background hover:bg-muted/50'
+                  )}
                 >
-                  <p className='font-medium text-[10px] mb-1.5'>
-                    {item.timestamp}
-                    <span className='ml-2 text-black font-semibold'>
+                  <p className='font-medium text-[10px] mb-1.5 text-muted-foreground'>
+                    {new Date(item.timestamp).toLocaleString()}
+                    <span className='ml-2 text-foreground font-semibold'>
                       Initial Frame Content
-                    </span>{' '}
-                    <span className='ml-2 text-black text-[9px] dwindling_opacity'>
-                      (Frame:{' '}
-                      {item.image_id?.split('-change-')[0].substring(11, 19)})
-                    </span>{' '}
+                    </span>
                   </p>
                   <MemoizedScrollAreaContent 
-                    className='whitespace-pre-wrap p-2 bg-gray-100 rounded text-black max-h-40'
-                    content={<div className="text-black">{item.raw_content}</div>} 
+                    className='whitespace-pre-wrap p-2 bg-muted rounded text-foreground max-h-40'
+                    content={<div className="text-foreground">{item.raw_content}</div>} 
                   />
                 </li>
               );
@@ -39,153 +43,47 @@ const ActivityTabContent: React.FC<ActivityTabContentProps> = ({ activityItems }
               return (
                 <li
                   key={item.id}
-                  className='p-3 border rounded-md bg-white text-xs text-black'
+                  onClick={() => onActivitySelect(item)}
+                  className={cn(
+                    'p-3 border rounded-md text-xs transition-colors cursor-pointer',
+                    isSelected ? 'bg-primary/10 border-primary' : 'bg-background hover:bg-muted/50'
+                  )}
                 >
-                  <p className='font-medium text-[10px] mb-1.5'>
-                    {item.timestamp}
-                    <span className='ml-2 text-black text-[9px] dwindling_opacity'>
-                      (Diff:{' '}
-                      {item.image1_id?.split('-change-')[0].substring(11, 19)}
-                      {' '}
-                      vs{' '}
-                      {item.image2_id?.split('-change-')[0].substring(11, 19)})
-                    </span>
+                  <p className='font-medium text-[10px] mb-1.5 text-muted-foreground'>
+                    {new Date(item.timestamp).toLocaleString()}
                   </p>
                   <div className='space-y-1'>
                     <div>
-                      <strong className='text-black'>Change Detected:</strong>
+                      <strong className='text-foreground'>Change Detected:</strong>
                       {' '}
                       <span
                         className={item.change_detected === 'yes'
-                          ? 'text-black font-semibold'
-                          : 'text-black'}
+                          ? 'text-green-600 font-semibold'
+                          : 'text-orange-500'}
                       >
                         {item.change_detected}
                       </span>
-                    </div>{' '}
+                    </div>
                     {item.change_detected === 'yes' && (
                       <>
                         {item.change_description && (
                           <div>
-                            <strong className='text-black'>Description:</strong>
+                            <strong className='text-foreground'>Description:</strong>
                             {' '}
                             {item.change_description}
                           </div>
                         )} 
-                        {item.identified_change_types &&
-                          item.identified_change_types.length > 0 && (
-                            <div className='mt-1'>
-                              <strong className='text-black'>Types:</strong>
-                              {' '}
-                              {item.identified_change_types.join(', ')}
-                            </div> 
-                          )}
-                        <div className='mt-1.5 space-y-0.5 pl-2 border-l-2 border-slate-700'>
-                          {item.mouse_movement_details && (
-                            <div>
-                              <strong className='text-black'>Mouse:</strong>
-                              {' '}
-                              From:{' '}
-                              <span className='text-black'>
-                                {item.mouse_movement_details.from_object ||
-                                  'N/A'}{' '}
-                                ({item.mouse_movement_details.from_coordinate ||
-                                  'N/A'})
-                              </span>{' '}
-                              {' -> '}To:{' '}
-                              <span className='text-black'>
-                                {item.mouse_movement_details.to_object || 'N/A'}
-                                {' '}
-                                ({item.mouse_movement_details.to_coordinate ||
-                                  'N/A'})
-                              </span>{' '}
-                            </div>
-                          )}
-                          {item.typing_details && (
-                            <div>
-                              <strong className='text-black'>Typed:</strong>
-                              {' '}
-                              <span className='text-black'>
-                                {item.typing_details}
-                              </span>
-                            </div>
-                          )}{' '}
-                          {item.click_details && (
-                            <div>
-                              <strong className='text-black'>Clicked:</strong>
-                              {' '}
-                              <span className='text-black'>
-                                {item.click_details}
-                              </span>
-                            </div>
-                          )}{' '}
-                          {item.new_window_details && (
-                            <div>
-                              <strong className='text-black'>
-                                Window Change:
-                              </strong>{' '}
-                              Old:{' '}
-                              <span className='text-black'>
-                                {item.new_window_details.old_window_name ||
-                                  'N/A'}
-                              </span>, {' '}
-                              New:{' '}
-                              <span className='text-black'>
-                                {item.new_window_details.new_window_name ||
-                                  'N/A'}
-                              </span>{' '}
-                            </div>
-                          )}
-                          {item.new_app_details && (
-                            <div>
-                              <strong className='text-black'>New App:</strong>
-                              {' '}
-                              <span className='text-black'>
-                                {item.new_app_details}
-                              </span>
-                            </div>
-                          )}{' '}
-                          {item.scroll_details && (
-                            <div>
-                              <strong className='text-black'>
-                                Scrolled - New Content:
-                              </strong>{' '}
-                              <span className='text-black'>
-                                {item.scroll_details.new_content_summary}
-                              </span>
-                            </div>
-                          )}{' '}
-                          {item.other_change_details &&
-                            item.other_change_details.map((other, idx) => (
-                              <div key={idx}>
-                                <strong className='text-black'>
-                                  Other ({other.type_description || 'N/A'}):
-                                </strong>{' '}
-                                <span className='text-black'>
-                                  {other.details}
-                                </span>{' '}
-                              </div>
-                            ))}
-                        </div>
                         {item.new_content_detected && (
-                          <div className='mt-1.5 pt-1 border-t border-slate-700'>
-                            <strong className='text-black'>
+                          <div className='mt-1.5 pt-1 border-t'>
+                            <strong className='text-foreground'>
                               Newly Detected Content:
                             </strong>
                             <MemoizedScrollAreaContent 
-                              className='whitespace-pre-wrap p-2 mt-1 bg-gray-100 rounded text-black max-h-40'
-                              content={<div className="text-black">{item.new_content_detected}</div>}
+                              className='whitespace-pre-wrap p-2 mt-1 bg-muted rounded max-h-40'
+                              content={<div className="text-foreground">{item.new_content_detected}</div>}
                             />
                           </div>
                         )}
-                        {item.unidentified_changes_explanation && (
-                          <div className='mt-1.5 pt-1 border-t border-slate-700'>
-                            <strong className='text-black'>
-                              Model Explanation:
-                            </strong>{' '}
-                            {item.unidentified_changes_explanation}
-                          </div>
-                        )} 
                       </>
                     )}
                   </div>
@@ -201,13 +99,13 @@ const ActivityTabContent: React.FC<ActivityTabContentProps> = ({ activityItems }
           No activity captured yet. Start recording.
         </p>
       );
-  }, [activityItems, MemoizedScrollAreaContent]);
+  }, [activityItems, selectedActivity, onActivitySelect]);
   
   return (
     <Card className='shadow-sm border-0 p-0'>
       <MemoizedScrollAreaContent
         content={memoizedActivityContent}
-        className='h-[350px] pr-3 bg-white'
+        className='h-[350px] pr-3'
       />
     </Card>
   );

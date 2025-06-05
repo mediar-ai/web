@@ -1,14 +1,13 @@
 'use client';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type {
   BufferedFrame,
   Event,
   ParsedAnalysis,
   ActivityItem,
-  TimelineItem,
 } from '../types';
 import {
   loadWorkflowSteps,
@@ -34,7 +33,7 @@ import ExportStatusDialog from '../components/capture/ExportStatusDialog';
 import { useAutoDetection } from '../hooks/useAutoDetection';
 import { useFrameAnalysisDispatcher } from '../hooks/useFrameAnalysisDispatcher';
 import { useEventGenerator } from '../hooks/useEventGenerator';
-import TimelineView from '@/components/timeline/TimelineView';
+import ScreenshotPreviewPane from '@/components/capture/ScreenshotPreviewPane';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -49,7 +48,7 @@ if (supabaseUrl && supabaseAnonKey) {
   }
 } else {
   console.warn(
-    '[Supabase] URL or Anon Key is missing in environment variables. Supabase client not initialized.',
+    '[Supabase] URL or Anon Key is not set. Supabase client not initialized.',
   );
 }
 
@@ -80,6 +79,7 @@ export default function Home() {
   const [events, setEvents] = useState<Event[]>([]);
   const [frameBuffer, setFrameBuffer] = useState<BufferedFrame[]>([]);
   const [activeAnalysesCount, setActiveAnalysesCount] = useState<number>(0);
+  const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>(
     `You are an expert business workflow assistant that analyzes screen data to identify business processes. Provide your analysis in the following structured format:
 
@@ -100,7 +100,6 @@ Context: You have access to previous analysis results for reference. Focus on id
   const [mainStatus, setMainStatus] = useState<string>('Idle');
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
   const [exportInProgress, setExportInProgress] = useState<boolean>(false); 
-  const [viewMode, setViewMode] = useState<'tabs' | 'timeline'>('tabs');
 
   const initialFrameCapturedRef = useRef(false);
 
@@ -741,40 +740,6 @@ Context: You have access to previous analysis results for reference. Focus on id
     saveScreenshot,
   ]); 
 
-  useEffect(() => {
-    const savedViewMode = localStorage.getItem('viewMode') as 'tabs' | 'timeline';
-    if (savedViewMode) {
-      setViewMode(savedViewMode);
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('viewMode', viewMode);
-  }, [viewMode]);
-
-  const getTimestampFromItem = (item: Event | ActivityItem): number => {
-    const ts = item.timestamp;
-    if (typeof ts === 'string') {
-      return new Date(ts).getTime();
-    }
-    return ts;
-  };
-  
-  const unifiedTimeline = useMemo((): TimelineItem[] => {
-    const combined: TimelineItem[] = [
-      ...events.map((e) => ({ ...e, itemType: 'event' as const })),
-      ...activityItems.map((a) => ({ ...a, itemType: 'activity' as const })),
-    ];
-
-    combined.sort((a, b) => {
-      const timeA = getTimestampFromItem(a);
-      const timeB = getTimestampFromItem(b);
-      return timeB - timeA;
-    });
-
-    return combined;
-  }, [events, activityItems]);
-
   return (
     <div className='container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
       <ExportStatusDialog exportInProgress={exportInProgress} />
@@ -792,8 +757,6 @@ Context: You have access to previous analysis results for reference. Focus on id
         error={error}
         streamRef={streamRef}
         MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
       />
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
@@ -801,72 +764,74 @@ Context: You have access to previous analysis results for reference. Focus on id
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       <canvas ref={monitoringCanvasRef} style={{ display: 'none' }} />
 
-      <div className="w-full max-w-7xl flex-grow flex flex-col">
-        {viewMode === 'tabs' ? (
-          <div className='grid grid-cols-1 lg:grid-cols-3 gap-4'>
-            <VideoPreviewArea stream={stream} videoRef={videoRef} />
-            <div className='lg:col-span-2 flex flex-col gap-4'>
-              <Tabs defaultValue='events' className='w-full -mt-2'>
-                <TabsList className='grid w-full grid-cols-4 mb-1'>
-                  <TabsTrigger value='events'>Events</TabsTrigger>
-                  <TabsTrigger value='recent'>Recent Activity</TabsTrigger>
-                  <TabsTrigger value='settings'>Settings</TabsTrigger>
-                  <TabsTrigger value='debug'>Debug Logs</TabsTrigger>
-                </TabsList>
+      <div className='w-full max-w-7xl grid grid-cols-1 lg:grid-cols-3 gap-4'>
+        <VideoPreviewArea stream={stream} videoRef={videoRef} />
 
-                <TabsContent value='events' className='-mt-3'>
-                  <EventsTabContent events={events} />
-                </TabsContent>
+        <div className='lg:col-span-2 flex flex-col gap-4'>
+          <Tabs defaultValue='events' className='w-full -mt-2'>
+            <TabsList className='grid w-full grid-cols-4 mb-1'>
+              <TabsTrigger value='events'>Events</TabsTrigger>
+              <TabsTrigger value='recent'>Recent Activity</TabsTrigger>
+              <TabsTrigger value='settings'>Settings</TabsTrigger>
+              <TabsTrigger value='debug'>Debug Logs</TabsTrigger>
+            </TabsList>
 
-                <TabsContent value='recent' className='-mt-3'>
-                  <ActivityTabContent activityItems={activityItems} />
-                </TabsContent>
+            <TabsContent value='events' className='-mt-3'>
+              <EventsTabContent events={events} />
+            </TabsContent>
 
-                <TabsContent value='settings' className='-mt-3'>
-                  <SettingsTabContent
-                    customPrompt={customPrompt}
-                    handlePromptChange={handlePromptChange}
-                    promptSaveStatus={promptSaveStatus}
-                    eventsPrompt={eventsPrompt}
-                    EVENTS_MODEL_NAME={EVENTS_MODEL_NAME}
-                    autoDetectionEnabled={autoDetectionEnabled}
-                    setAutoDetectionEnabled={setAutoDetectionEnabled}
-                    monitoringFrequency={monitoringFrequency}
-                    setMonitoringFrequency={setMonitoringFrequency}
-                    changeThreshold={changeThreshold}
-                    setChangeThreshold={setChangeThreshold}
-                    stabilityDelay={stabilityDelay}
-                    setStabilityDelay={setStabilityDelay}
-                    screenshotQuality={screenshotQuality}
-                    setScreenshotQuality={setScreenshotQuality}
-                    maxScreenshots={maxScreenshots}
-                    setMaxScreenshots={setMaxScreenshots}
-                    pixelDifferenceThreshold={pixelDifferenceThreshold}
-                    setPixelDifferenceThreshold={setPixelDifferenceThreshold}
-                    stream={stream}
-                    activeAnalysesCount={activeAnalysesCount}
-                  />
-                </TabsContent>
+            <TabsContent value='recent' className='-mt-3'>
+              <ActivityTabContent
+                activityItems={activityItems}
+                selectedActivity={selectedActivity}
+                onActivitySelect={setSelectedActivity}
+              />
+            </TabsContent>
 
-                <TabsContent value='debug' className='-mt-3'>
-                  <DebugTabContent
-                    frontendLogs={frontendLogs}
-                    copyLogsToClipboard={copyLogsToClipboard}
-                    copyStatus={copyStatus}
-                    clearAllData={clearAllData}
-                    handleExportAllData={handleExportAllData}
-                    exportInProgress={exportInProgress}
-                  />
-                </TabsContent>
-              </Tabs>
-            </div>
-          </div>
-        ) : (
-          <div className="w-full h-[calc(100vh-200px)] -mt-2">
-            <TimelineView timelineItems={unifiedTimeline} />
-          </div>
-        )}
+            <TabsContent value='settings' className='-mt-3'>
+              <SettingsTabContent
+                customPrompt={customPrompt}
+                handlePromptChange={handlePromptChange}
+                promptSaveStatus={promptSaveStatus}
+                eventsPrompt={eventsPrompt}
+                EVENTS_MODEL_NAME={EVENTS_MODEL_NAME}
+                autoDetectionEnabled={autoDetectionEnabled}
+                setAutoDetectionEnabled={setAutoDetectionEnabled}
+                monitoringFrequency={monitoringFrequency}
+                setMonitoringFrequency={setMonitoringFrequency}
+                changeThreshold={changeThreshold}
+                setChangeThreshold={setChangeThreshold}
+                stabilityDelay={stabilityDelay}
+                setStabilityDelay={setStabilityDelay}
+                screenshotQuality={screenshotQuality}
+                setScreenshotQuality={setScreenshotQuality}
+                maxScreenshots={maxScreenshots}
+                setMaxScreenshots={setMaxScreenshots}
+                pixelDifferenceThreshold={pixelDifferenceThreshold}
+                setPixelDifferenceThreshold={setPixelDifferenceThreshold}
+                stream={stream}
+                activeAnalysesCount={activeAnalysesCount}
+              />
+            </TabsContent>
+
+            <TabsContent value='debug' className='-mt-3'>
+              <DebugTabContent
+                frontendLogs={frontendLogs}
+                copyLogsToClipboard={copyLogsToClipboard}
+                copyStatus={copyStatus}
+                clearAllData={clearAllData}
+                handleExportAllData={handleExportAllData}
+                exportInProgress={exportInProgress}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
+      {selectedActivity && (
+        <div className="w-full max-w-7xl mt-4">
+          <ScreenshotPreviewPane selectedActivity={selectedActivity} />
+        </div>
+      )}
     </div>
   );
 }
