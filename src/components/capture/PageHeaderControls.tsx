@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import type { PageHeaderControlsProps } from '../../types'; // Adjust path as necessary
+import type { PageHeaderControlsProps } from '../../types'; // Keep this import
+import { Play, StopCircle, Binary, AlertTriangle, RotateCcw, Zap } from 'lucide-react';
 
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
@@ -12,68 +13,49 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   isMonitoring,
   displayChangePercent,
   activeAnalysesCount,
-  initialDumpInProgress,
   error,
   streamRef,
   MAX_PARALLEL_ANALYSES,
 }) => {
+  const dumpButtonDisabled = !stream || activeAnalysesCount >= MAX_PARALLEL_ANALYSES;
+
   return (
-    <div className='w-full max-w-7xl mb-6 flex items-center justify-between gap-4'>
-      <div className='flex items-center gap-3'>
-        <h1 className='text-2xl font-bold tracking-tight'>
-          Workflow Capture
-        </h1>
-        <p className='text-sm text-muted-foreground'>
-          Insights from your screen
-        </p>
-        <div className='flex items-center gap-2 pl-4'>
-          <Button
-            onClick={stream ? handleStopScreenShare : handleStartScreenShare}
-            size='default'
-            className={`w-24 ${
-              stream
-                ? 'bg-red-600 hover:bg-red-700 animate-pulse text-white'
-                : ''
-            }`}
-          >
-            {stream ? 'Stop' : 'Start'}
+    <div className='w-full flex flex-col sm:flex-row justify-between items-center mb-1 py-2'>
+      <div className='flex items-center gap-2 mb-2 sm:mb-0'>
+        {!streamRef.current ? (
+          <Button onClick={handleStartScreenShare} className='bg-green-600 hover:bg-green-700 text-white'>
+            <Play className='mr-2 h-4 w-4' /> Start Capture
           </Button>
-          <Button
-            onClick={handleManualInitialDump}
-            size='default'
-            variant='outline'
-            className='w-32'
-            disabled={!streamRef.current || 
-              activeAnalysesCount >= MAX_PARALLEL_ANALYSES ||
-              initialDumpInProgress}
-          >
-            {initialDumpInProgress
-              ? 'Dumping...'
-              : activeAnalysesCount >= MAX_PARALLEL_ANALYSES
-              ? `Analyzing (${activeAnalysesCount})...`
-              : 'Capture Frame'}
+        ) : (
+          <Button onClick={handleStopScreenShare} variant='destructive'>
+            <StopCircle className='mr-2 h-4 w-4' /> Stop Capture
           </Button>
-        </div>
+        )}
+        <Button 
+          onClick={handleManualInitialDump} 
+          variant='outline' 
+          disabled={dumpButtonDisabled}
+          title={dumpButtonDisabled ? "Capture stopped or analyses ongoing" : "Manually trigger an initial content analysis"}
+        >
+          <Binary className='mr-2 h-4 w-4' /> Manual Dump
+        </Button>
       </div>
-      <div
-        className={`text-sm rounded-md px-3 py-1.5 min-w-[280px] text-center bg-background flex items-center justify-between ${
-          activeAnalysesCount > 0
-            ? 'text-blue-600 bg-blue-50 animate-pulse border border-blue-200'
-            : error
-            ? 'text-red-600 bg-red-50 border border-red-200'
-            : 'text-muted-foreground'
-        }`}
-      >
-        <span className='truncate'>Status: {mainStatus}</span>
-        {autoDetectionEnabled && (
-          <span
-            className='text-xs opacity-75 pl-2 ml-2 border-l whitespace-nowrap'
-            style={{ minWidth: '85px' }}
-          >
-            %Ch: [{isMonitoring
-              ? displayChangePercent.toFixed(1).padStart(3, ' ')
-              : ' --'}]
-          </span>
+
+      <div className='flex flex-col sm:flex-row items-center gap-2 text-xs'>
+        <div className={`transition-all duration-300 ease-in-out text-center min-w-[180px] py-1.5 px-2 ${error ? 'bg-red-600 text-white rounded' : (stream && mainStatus.startsWith('Recording') ? 'bg-blue-500 text-white rounded' : 'text-gray-600 dark:text-gray-300')}`}>
+          {error ? <><AlertTriangle className='inline mr-1 h-3 w-3' /> {mainStatus}</> : mainStatus}
+        </div>
+        {stream && autoDetectionEnabled && isMonitoring && (
+          <div className="tabular-nums px-2 py-1 min-w-[100px] text-center border rounded">
+            <RotateCcw className="animate-spin mr-1.5 h-3 w-3" style={{ animationDuration: '2s' }} />
+            {displayChangePercent.toFixed(1)}%
+          </div>
+        )}
+        {stream && (
+           <div className="px-2 py-1 min-w-[100px] text-center border rounded">
+            <Zap className='mr-1.5 h-3 w-3' /> 
+            Analyses: {activeAnalysesCount}/{MAX_PARALLEL_ANALYSES}
+          </div>
         )}
       </div>
     </div>

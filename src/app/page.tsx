@@ -10,7 +10,6 @@ import type {
   BufferedFrame,
   Event,
   ParsedAnalysis,
-  UIDiffAnalysis,
   ActivityItem,
 } from '../types';
 import {
@@ -36,6 +35,8 @@ import PageHeaderControls from '../components/capture/PageHeaderControls'; // Im
 import VideoPreviewArea from '../components/capture/VideoPreviewArea'; // Import the new component
 import ErrorNotification from '../components/capture/ErrorNotification'; // Import the new component
 import ExportStatusDialog from '../components/capture/ExportStatusDialog'; // Import the new component
+import { useAutoDetection } from '../hooks/useAutoDetection';
+import { useFrameAnalysisDispatcher } from '../hooks/useFrameAnalysisDispatcher';
 
 // Initialize Supabase client (outside component for module-level scope)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -60,18 +61,18 @@ export default function Home() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-pro-preview-05-06';
   const MAX_PARALLEL_ANALYSES = 5;
 
-  // Auto-detection configuration
-  const [autoDetectionEnabled, setAutoDetectionEnabled] = useState<boolean>(
-    true,
-  );
-  const [monitoringFrequency, setMonitoringFrequency] = useState<number>(200); // ms
-  const [changeThreshold, setChangeThreshold] = useState<number>(1.0); // percentage
-  const [stabilityDelay, setStabilityDelay] = useState<number>(500); // ms
+  // Auto-detection configuration is now managed by useAutoDetection hook
+  // const [autoDetectionEnabled, setAutoDetectionEnabled] = useState<boolean>(
+  //   true,
+  // );
+  // const [monitoringFrequency, setMonitoringFrequency] = useState<number>(200); // ms
+  // const [changeThreshold, setChangeThreshold] = useState<number>(1.0); // percentage
+  // const [stabilityDelay, setStabilityDelay] = useState<number>(500); // ms
   const [screenshotQuality, setScreenshotQuality] = useState<number>(0.6);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
-  const [pixelDifferenceThreshold, setPixelDifferenceThreshold] = useState<
-    number
-  >(20); // NEW: Threshold for pixel comparison (0-255)
+  // const [pixelDifferenceThreshold, setPixelDifferenceThreshold] = useState<
+  //   number
+  // >(20); // NEW: Threshold for pixel comparison (0-255)
 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const streamRef = useRef<MediaStream | null>(null); 
@@ -93,9 +94,7 @@ export default function Home() {
   const [events, setEvents] = useState<Event[]>([]);
   const [frameBuffer, setFrameBuffer] = useState<BufferedFrame[]>([]);
   const [activeAnalysesCount, setActiveAnalysesCount] = useState<number>(0);
-  const [baselineFrameForDiff, setBaselineFrameForDiff] = useState<
-    BufferedFrame | null
-  >(null);
+  // MOVED TO useFrameAnalysisDispatcher: const [baselineFrameForDiff, setBaselineFrameForDiff] = useState<BufferedFrame | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>(
     `You are an expert business workflow assistant that analyzes screen data to identify business processes. Provide your analysis in the following structured format:
 
@@ -115,61 +114,57 @@ Context: You have access to previous analysis results for reference. Focus on id
   );
   const [mainStatus, setMainStatus] = useState<string>('Idle');
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
-  const [initialDumpInProgress, setInitialDumpInProgress] = useState<boolean>(
-    false,
-  ); 
-  const [pendingFrameForDiff, setPendingFrameForDiff] = useState<
-    BufferedFrame | null
-  >(null); 
-  const [diffAnalysisInProgress, setDiffAnalysisInProgress] = useState<boolean>(
-    false,
-  ); 
+  // MOVED TO useFrameAnalysisDispatcher: const [initialDumpInProgress, setInitialDumpInProgress] = useState<boolean>(false); 
+  // MOVED TO useFrameAnalysisDispatcher: const [pendingFrameForDiff, setPendingFrameForDiff] = useState<BufferedFrame | null>(null); 
+  // MOVED TO useFrameAnalysisDispatcher: const [diffAnalysisInProgress, setDiffAnalysisInProgress] = useState<boolean>(false); 
   const [exportInProgress, setExportInProgress] = useState<boolean>(false); 
 
-  // Auto-detection state & refs for stable callbacks
-  const [isMonitoring, setIsMonitoring] = useState<boolean>(false);
-  const [lastFrameData, setLastFrameData] = useState<Uint8ClampedArray | null>(
-    null,
-  );
-  const [activityDetected, setActivityDetected] = useState<boolean>(false);
-  const [lastActivityTime, setLastActivityTime] = useState<number>(0);
-  const monitoringIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const currentChangePercentRef = useRef<number>(0);
-  const [displayChangePercent, setDisplayChangePercent] = useState<number>(0);
-  const lastDisplayChangeRef = useRef<number>(0);
+  const initialFrameCapturedRef = useRef(false); // MOVED EARLIER
 
-  const activityDetectedRef = useRef(activityDetected);
-  useEffect(() => {
-    activityDetectedRef.current = activityDetected;
-  }, [activityDetected]);
-  const lastActivityTimeRef = useRef(lastActivityTime);
-  useEffect(() => {
-    lastActivityTimeRef.current = lastActivityTime;
-  }, [lastActivityTime]);
-  const stabilityDelayRef = useRef(stabilityDelay);
-  useEffect(() => {
-    stabilityDelayRef.current = stabilityDelay;
-  }, [stabilityDelay]);
-  const autoDetectionEnabledRef = useRef(autoDetectionEnabled);
-  useEffect(() => {
-    autoDetectionEnabledRef.current = autoDetectionEnabled;
-  }, [autoDetectionEnabled]);
-  const changeThresholdRef = useRef(changeThreshold);
-  useEffect(() => {
-    changeThresholdRef.current = changeThreshold;
-  }, [changeThreshold]);
-  const monitoringFrequencyRef = useRef(monitoringFrequency);
-  useEffect(() => {
-    monitoringFrequencyRef.current = monitoringFrequency;
-  }, [monitoringFrequency]);
-  const isMonitoringRef = useRef<boolean>(isMonitoring);
-  useEffect(() => {
-    isMonitoringRef.current = isMonitoring;
-  }, [isMonitoring]);
-  const lastFrameDataRef = useRef<Uint8ClampedArray | null>(null);
-  useEffect(() => {
-    lastFrameDataRef.current = lastFrameData;
-  }, [lastFrameData]);
+  // Auto-detection state & refs for stable callbacks are now managed by useAutoDetection hook
+  // const [isMonitoring, setIsMonitoring] = useState<boolean>(false);
+  // const [lastFrameData, setLastFrameData] = useState<Uint8ClampedArray | null>(
+  //   null,
+  // );
+  // const [activityDetected, setActivityDetected] = useState<boolean>(false);
+  // const [lastActivityTime, setLastActivityTime] = useState<number>(0);
+  // const monitoringIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // const currentChangePercentRef = useRef<number>(0);
+  // const [displayChangePercent, setDisplayChangePercent] = useState<number>(0);
+  // const lastDisplayChangeRef = useRef<number>(0);
+
+  // const activityDetectedRef = useRef(activityDetected);
+  // useEffect(() => {
+  //   activityDetectedRef.current = activityDetected;
+  // }, [activityDetected]);
+  // const lastActivityTimeRef = useRef(lastActivityTime);
+  // useEffect(() => {
+  //   lastActivityTimeRef.current = lastActivityTime;
+  // }, [lastActivityTime]);
+  // const stabilityDelayRef = useRef(stabilityDelay);
+  // useEffect(() => {
+  //   stabilityDelayRef.current = stabilityDelay;
+  // }, [stabilityDelay]);
+  // const autoDetectionEnabledRef = useRef(autoDetectionEnabled);
+  // useEffect(() => {
+  //   autoDetectionEnabledRef.current = autoDetectionEnabled;
+  // }, [autoDetectionEnabled]);
+  // const changeThresholdRef = useRef(changeThreshold);
+  // useEffect(() => {
+  //   changeThresholdRef.current = changeThreshold;
+  // }, [changeThreshold]);
+  // const monitoringFrequencyRef = useRef(monitoringFrequency);
+  // useEffect(() => {
+  //   monitoringFrequencyRef.current = monitoringFrequency;
+  // }, [monitoringFrequency]);
+  // const isMonitoringRef = useRef<boolean>(isMonitoring);
+  // useEffect(() => {
+  //   isMonitoringRef.current = isMonitoring;
+  // }, [isMonitoring]);
+  // const lastFrameDataRef = useRef<Uint8ClampedArray | null>(null);
+  // useEffect(() => {
+  //   lastFrameDataRef.current = lastFrameData;
+  // }, [lastFrameData]);
 
   // Prompt autosave animation
   const [promptSaveStatus, setPromptSaveStatus] = useState<
@@ -315,331 +310,118 @@ Context: You have access to previous analysis results for reference. Focus on id
     streamRef,
   ]);
 
-  const processUIDiffRequest = useCallback(
-    async (frame1: BufferedFrame, frame2: BufferedFrame) => {
-      if (diffAnalysisInProgress) return; 
-      setDiffAnalysisInProgress(true);
-      setActiveAnalysesCount((prev) => prev + 1);
-      const currentActiveCount = activeAnalysesCountRef.current + 1;
-      setMainStatus(`Analyzing UI Diff (${currentActiveCount})...`);
-      const newDiffId = frame2.id + '-diff';
-      const displayTimestamp = new Date(frame2.timestamp).toISOString();
-      logToUI(
-        '[processUIDiffRequest] 🚀 Starting UI Diff analysis between:',
-        frame1.id,
-        'and',
-        frame2.id,
-      );
+  // Place useAutoDetection hook call here, after its dependencies are defined
+  const {
+    autoDetectionEnabled,
+    setAutoDetectionEnabled,
+    monitoringFrequency,
+    setMonitoringFrequency,
+    changeThreshold,
+    setChangeThreshold,
+    stabilityDelay,
+    setStabilityDelay,
+    pixelDifferenceThreshold,
+    setPixelDifferenceThreshold,
+    isMonitoring,
+    displayChangePercent,
+  } = useAutoDetection({
+    stream,
+    streamRef,
+    videoRef,
+    monitoringCanvasRef,
+    logToUI,
+    captureFrameToBuffer,
+  });
 
-      try {
-        const response = await fetch('/api/capture', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image1_dataUrl: frame1.imageDataUrl,
-            image2_dataUrl: frame2.imageDataUrl,
-            analysisType: 'ui_diff',
-            prompt: 'Perform UI difference analysis',
-          }),
-        });
-        const result = await response.json();
-        if (response.ok && typeof result.analysis === 'object') {
-          const diffData = result.analysis as Omit<
-            UIDiffAnalysis,
-            'type' | 'id' | 'timestamp' | 'image1_id' | 'image2_id'
-          >;
-
-          const newActivityItem: ActivityItem = {
-            type: 'ui_diff',
-            ...diffData,
-            id: newDiffId,
-            timestamp: displayTimestamp,
-            image1_id: frame1.id,
-            image2_id: frame2.id,
-          };
-
-          setActivityItems((prevItems) =>
-            [newActivityItem, ...prevItems]
-              .sort((a, b) => {
-                const idA = a.type === 'ui_diff' ? a.image2_id : a.image_id;
-                const idB = b.type === 'ui_diff' ? b.image2_id : b.image_id;
-                const timeA = new Date(
-                  idA!.split('-diff')[0].split('-change-')[0],
-                ).getTime();
-                const timeB = new Date(
-                  idB!.split('-diff')[0].split('-change-')[0],
-                ).getTime();
-                return timeB - timeA;
-              })
-              .slice(0, 100)
-          );
-          logToUI(
-            '[processUIDiffRequest] ✅ UI Diff analysis successful for:',
-            newDiffId,
-          );
-          setBaselineFrameForDiff(frame2);
-        } else {
-          logError(
-            '[processUIDiffRequest] Backend error for UI Diff:',
-            result.error || 'Unknown error',
-            result.details || '',
-          );
-        }
-      } catch (err) {
-        logError('[processUIDiffRequest] Network error during UI Diff:', err);
-      }
-      setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
-      setDiffAnalysisInProgress(false);
-    },
-    [
-      logToUI,
-      logError,
-      setActivityItems,
-      setActiveAnalysesCount,
-      setMainStatus,
-      setBaselineFrameForDiff,
-      diffAnalysisInProgress,
-    ],
-  ); 
-
-  const processInitialFrameDump = useCallback(
-    async (frameToDump: BufferedFrame) => {
-      if (initialDumpInProgress) return;
-      setInitialDumpInProgress(true);
-      setActiveAnalysesCount((prev) => prev + 1);
-      setMainStatus(`Analyzing Initial Frame (${activeAnalysesCountRef.current + 1})...`);
-      logToUI(
-        '[processInitialFrameDump] 🖼️ Starting raw content dump for initial frame:',
-        frameToDump.id,
-      );
-      try {
-        const response = await fetch('/api/capture', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image: frameToDump.imageDataUrl,
-            timestamp: new Date(frameToDump.timestamp).toISOString(),
-            prompt:
-              'List in maximum detail all visible text and UI elements from the screenshot. Describe layout and objects.',
-            analysisType: 'initial_frame_dump',
-          }),
-        });
-        const result = await response.json();
-        if (
-          response.ok && result.analysis &&
-          typeof result.analysis.raw_content === 'string'
-        ) {
-          logToUI(
-            '[processInitialFrameDump] ✅ Initial frame dump successful...',
-          );
-          const newActivityItem: ActivityItem = {
-            type: 'initial_dump',
-            id: frameToDump.id,
-            timestamp: new Date(frameToDump.timestamp).toISOString(), 
-            raw_content: result.analysis.raw_content,
-            image_id: frameToDump.id,
-          };
-          setActivityItems((prev) =>
-            [newActivityItem, ...prev].sort(
-              (a, b) => {
-                const idA = a.type === 'ui_diff' ? a.image2_id : a.image_id;
-                const idB = b.type === 'ui_diff' ? b.image2_id : b.image_id;
-                const timeA = new Date(
-                  idA!.split('-diff')[0].split('-change-')[0],
-                ).getTime();
-                const timeB = new Date(
-                  idB!.split('-diff')[0].split('-change-')[0],
-                ).getTime();
-                return timeB - timeA;
-              },
-            )
-          );
-          setBaselineFrameForDiff(frameToDump);
-        } else {
-          logError(
-            '[processInitialFrameDump] Backend error for initial dump:',
-            result.error || 'Unknown error',
-            result.details || '',
-          );
-        }
-      } catch (err) {
-        logError(
-          '[processInitialFrameDump] Network error during initial dump:',
-          err,
-        );
-      } finally {
-        setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
-        setInitialDumpInProgress(false);
-      }
-    },
-    [
-      logToUI,
-      logError,
-      setActiveAnalysesCount,
-      setMainStatus,
-      setActivityItems,
-      setBaselineFrameForDiff,
-      initialDumpInProgress,
-    ],
-  );
+  // MOVED TO useFrameAnalysisDispatcher: processUIDiffRequest
+  // MOVED TO useFrameAnalysisDispatcher: processInitialFrameDump
 
   const activeAnalysesCountRef = useRef(activeAnalysesCount);
   useEffect(() => {
     activeAnalysesCountRef.current = activeAnalysesCount;
   }, [activeAnalysesCount]);
 
-  useEffect(() => {
-    if (activeAnalysesCountRef.current >= MAX_PARALLEL_ANALYSES) {
-      return;
-    }
+  // MOVED TO useFrameAnalysisDispatcher: The main dispatcher useEffect for frame analysis
+  // useEffect(() => {
+  //   if (activeAnalysesCountRef.current >= MAX_PARALLEL_ANALYSES) {
+  //     return;
+  //   }
+  //   if (
+  //     !baselineFrameForDiff && !initialDumpInProgress && frameBuffer.length >= 1
+  //   ) {
+  //     const frameToDump = frameBuffer[0];
+  //     logToUI(
+  //       '[Dispatcher] Picking oldest frame for Initial Raw Content Dump:',
+  //       frameToDump.id,
+  //     );
+  //     setFrameBuffer((prevBuffer) => prevBuffer.slice(1));
+  //     processInitialFrameDump(frameToDump);
+  //     return; 
+  //   }
+  //   if (
+  //     baselineFrameForDiff && !pendingFrameForDiff && frameBuffer.length >= 1
+  //   ) {
+  //     const nextFrame = frameBuffer[0];
+  //     if (baselineFrameForDiff.id !== nextFrame.id) {
+  //       logToUI(
+  //         '[Dispatcher] Setting pending frame for diff:',
+  //         nextFrame.id,
+  //         'against baseline:',
+  //         baselineFrameForDiff.id,
+  //       );
+  //       setPendingFrameForDiff(nextFrame);
+  //       setFrameBuffer((prevBuffer) => prevBuffer.slice(1));
+  //     } else if (
+  //       frameBuffer.length === 1 && baselineFrameForDiff.id === nextFrame.id
+  //     ) {
+  //       logToUI(
+  //         '[Dispatcher] Buffer only contains baseline frame. Waiting for new frames.',
+  //       );
+  //     }
+  //     return; 
+  //   }
+  //   if (
+  //     baselineFrameForDiff && pendingFrameForDiff && !diffAnalysisInProgress
+  //   ) {
+  //     logToUI(
+  //       '[Dispatcher] Processing UI Diff. Baseline:',
+  //       baselineFrameForDiff.id,
+  //       'Pending:',
+  //       pendingFrameForDiff.id,
+  //     );
+  //     const frame1 = baselineFrameForDiff;
+  //     const frame2 = pendingFrameForDiff;
+  //     setPendingFrameForDiff(null); 
+  //     processUIDiffRequest(frame1, frame2);
+  //   }
+  // }, [
+  //   frameBuffer,
+  //   activeAnalysesCount,
+  //   baselineFrameForDiff,
+  //   pendingFrameForDiff,
+  //   initialDumpInProgress,
+  //   diffAnalysisInProgress,
+  //   processInitialFrameDump,
+  //   processUIDiffRequest,
+  //   logToUI,
+  //   setFrameBuffer,
+  //   setBaselineFrameForDiff,
+  //   setPendingFrameForDiff, 
+  //   activityItems, 
+  // ]);
 
-    if (
-      !baselineFrameForDiff && !initialDumpInProgress && frameBuffer.length >= 1
-    ) {
-      const frameToDump = frameBuffer[0];
-      logToUI(
-        '[Dispatcher] Picking oldest frame for Initial Raw Content Dump:',
-        frameToDump.id,
-      );
-      setFrameBuffer((prevBuffer) => prevBuffer.slice(1));
-      processInitialFrameDump(frameToDump);
-      return; 
-    }
-
-    if (
-      baselineFrameForDiff && !pendingFrameForDiff && frameBuffer.length >= 1
-    ) {
-      const nextFrame = frameBuffer[0];
-      if (baselineFrameForDiff.id !== nextFrame.id) {
-        logToUI(
-          '[Dispatcher] Setting pending frame for diff:',
-          nextFrame.id,
-          'against baseline:',
-          baselineFrameForDiff.id,
-        );
-        setPendingFrameForDiff(nextFrame);
-        setFrameBuffer((prevBuffer) => prevBuffer.slice(1));
-      } else if (
-        frameBuffer.length === 1 && baselineFrameForDiff.id === nextFrame.id
-      ) {
-        logToUI(
-          '[Dispatcher] Buffer only contains baseline frame. Waiting for new frames.',
-        );
-      }
-      return; 
-    }
-
-    if (
-      baselineFrameForDiff && pendingFrameForDiff && !diffAnalysisInProgress
-    ) {
-      logToUI(
-        '[Dispatcher] Processing UI Diff. Baseline:',
-        baselineFrameForDiff.id,
-        'Pending:',
-        pendingFrameForDiff.id,
-      );
-      const frame1 = baselineFrameForDiff;
-      const frame2 = pendingFrameForDiff;
-      setPendingFrameForDiff(null); 
-      processUIDiffRequest(frame1, frame2);
-    }
-  }, [
+  // Initialize the frame analysis dispatcher hook
+  useFrameAnalysisDispatcher({
     frameBuffer,
-    activeAnalysesCount,
-    baselineFrameForDiff,
-    pendingFrameForDiff,
-    initialDumpInProgress,
-    diffAnalysisInProgress,
-    processInitialFrameDump,
-    processUIDiffRequest,
-    logToUI,
     setFrameBuffer,
-    setBaselineFrameForDiff,
-    setPendingFrameForDiff, 
-    activityItems, 
-  ]);
-
-  const getFrameDataForComparison = useCallback(
-    (video: HTMLVideoElement): Uint8ClampedArray | null => {
-      if (!monitoringCanvasRef.current) return null;
-      const canvas = monitoringCanvasRef.current;
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      if (!context) return null;
-      const smallWidth = 160;
-      const smallHeight = 120;
-      canvas.width = smallWidth;
-      canvas.height = smallHeight;
-      context.drawImage(video, 0, 0, smallWidth, smallHeight);
-      return context.getImageData(0, 0, smallWidth, smallHeight).data;
-    },
-    [],
-  );
-
-  const calculateChangePercentage = useCallback(
-    (
-      current: Uint8ClampedArray | null,
-      previous: Uint8ClampedArray | null,
-      threshold: number,
-    ): number => {
-      if (!current || !previous) return 0; 
-      if (current === previous) return 0; 
-      if (current.length !== previous.length) {
-        console.warn(
-          '[calculateChangePercentage] Frame lengths differ, returning 100% change.',
-        );
-        return 100;
-      }
-
-      let changedPixels = 0;
-      const pixelCount = current.length / 4; 
-
-      for (let i = 0; i < current.length; i += 4) {
-        const diffR = Math.abs(current[i] - previous[i]);
-        const diffG = Math.abs(current[i + 1] - previous[i + 1]);
-        const diffB = Math.abs(current[i + 2] - previous[i + 2]);
-        const avgDifference = (diffR + diffG + diffB) / 3;
-
-        if (avgDifference > threshold) {
-          changedPixels++;
-        }
-      }
-      return (changedPixels / pixelCount) * 100;
-    },
-    [],
-  );
-
-  const handleActivityDetection = useCallback(() => {
-    const now = Date.now();
-    setLastActivityTime(now);
-    if (!activityDetectedRef.current) {
-      setActivityDetected(true);
-      logToUI(
-        '[Auto-Detection] 🟡 Activity period started - Current Change:',
-        currentChangePercentRef.current.toFixed(2) + '%',
-      );
-    }
-  }, [logToUI, setLastActivityTime, setActivityDetected]);
-
-  const checkForStability = useCallback(() => {
-    const now = Date.now();
-    if (
-      activityDetectedRef.current &&
-      (now - lastActivityTimeRef.current > stabilityDelayRef.current)
-    ) {
-      setActivityDetected(false);
-      logToUI(
-        '[Auto-Detection] 🟢 Screen relatively stable after activity burst. Last change:',
-        currentChangePercentRef.current.toFixed(2) + '%',
-      );
-    }
-  }, [
+    setActivityItems,
+    activeAnalysesCount,
+    setActiveAnalysesCount,
     logToUI,
-    stabilityDelayRef,
-    activityDetectedRef,
-    lastActivityTimeRef,
-    currentChangePercentRef,
-    setActivityDetected,
-  ]); 
+    logError,
+    setMainStatus,
+    MAX_PARALLEL_ANALYSES,
+  });
 
   const memoizedEventsContent = useMemo(() => {
     return events.length > 0
@@ -1013,9 +795,9 @@ Context: You have access to previous analysis results for reference. Focus on id
     setIsCapturingForBuffer(false);
     setMainStatus('Idle');
     setFrameBuffer([]);
-    setBaselineFrameForDiff(null);
-    setPendingFrameForDiff(null);
-    if (initialFrameCapturedRef) initialFrameCapturedRef.current = false; 
+    if (initialFrameCapturedRef) {
+        initialFrameCapturedRef.current = false;
+    }
     logToUI(
       '[handleStopScreenShare] Buffer and baselines cleared for fresh start.',
     );
@@ -1023,8 +805,7 @@ Context: You have access to previous analysis results for reference. Focus on id
     stream,
     logToUI,
     setFrameBuffer,
-    setBaselineFrameForDiff,
-    setPendingFrameForDiff,
+    initialFrameCapturedRef,
   ]); 
 
   const handleStartScreenShare = useCallback(async () => {
@@ -1041,9 +822,9 @@ Context: You have access to previous analysis results for reference. Focus on id
     streamRef.current = null;
     setIsCapturingForBuffer(false);
     setFrameBuffer([]); 
-    setBaselineFrameForDiff(null); 
-    setPendingFrameForDiff(null); 
-    if (initialFrameCapturedRef) initialFrameCapturedRef.current = false; 
+    if (initialFrameCapturedRef) {
+        initialFrameCapturedRef.current = false;
+    }
     logToUI(
       '[handleStartScreenShare] Cleared buffers and baselines for new session.',
     );
@@ -1240,130 +1021,6 @@ Context: You have access to previous analysis results for reference. Focus on id
     };
   }, [stream, handleStopScreenShare, logToUI, logError]);
 
-  const monitoringLoop = useCallback(() => {
-    if (
-      !streamRef.current || !videoRef.current ||
-      !autoDetectionEnabledRef.current
-    ) return;
-    const video = videoRef.current;
-    if (video.readyState < video.HAVE_METADATA) return; 
-
-    const currentFrameData = getFrameDataForComparison(video); 
-
-    if (lastFrameDataRef.current && currentFrameData) { 
-      const changePercent = calculateChangePercentage(
-        currentFrameData,
-        lastFrameDataRef.current,
-        pixelDifferenceThreshold,
-      );
-      currentChangePercentRef.current = changePercent;
-
-      if (Math.abs(changePercent - lastDisplayChangeRef.current) > 0.1) {
-        lastDisplayChangeRef.current = changePercent;
-        setDisplayChangePercent(changePercent);
-      }
-
-      if (changePercent > changeThresholdRef.current) {
-        handleActivityDetection(); 
-        captureFrameToBuffer(changePercent); 
-      }
-    }
-
-    setLastFrameData(currentFrameData); 
-    checkForStability(); 
-  }, [
-    getFrameDataForComparison,
-    calculateChangePercentage,
-    handleActivityDetection,
-    checkForStability,
-    captureFrameToBuffer, 
-    pixelDifferenceThreshold,
-    changeThresholdRef,
-    autoDetectionEnabledRef, 
-    setDisplayChangePercent,
-    setLastFrameData,
-    streamRef, 
-  ]);
-
-  const startMonitoring = useCallback(() => {
-    if (!autoDetectionEnabledRef.current || isMonitoringRef.current) return;
-    isMonitoringRef.current = true;
-    setIsMonitoring(true);
-    logToUI('[Auto-Detection] 🔄 Monitoring started ...');
-    monitoringIntervalRef.current = setInterval(
-      monitoringLoop,
-      monitoringFrequencyRef.current,
-    );
-  }, [logToUI, monitoringLoop, monitoringFrequencyRef]);
-
-  const stopMonitoring = useCallback(() => {
-    if (monitoringIntervalRef.current) {
-      clearInterval(monitoringIntervalRef.current);
-      monitoringIntervalRef.current = null;
-    }
-    if (isMonitoringRef.current) {
-      logToUI('[Auto-Detection] ⏹️ Monitoring stopped');
-      isMonitoringRef.current = false;
-    }
-    setIsMonitoring(false);
-    setLastFrameData(null);
-    lastFrameDataRef.current = null;
-    setActivityDetected(false);
-    currentChangePercentRef.current = 0;
-    lastDisplayChangeRef.current = 0;
-    setDisplayChangePercent(0);
-  }, [logToUI]);
-
-  useEffect(() => {
-    if (stream && autoDetectionEnabled) {
-      startMonitoring();
-    } else {
-      stopMonitoring();
-    }
-  }, [stream, autoDetectionEnabled, startMonitoring, stopMonitoring]);
-
-  const initialFrameCapturedRef = useRef(false); 
-  useEffect(() => {
-    logToUI('[useEffect stream] Main effect RUNNING. Stream active:', !!stream);
-    const currentVideoElement = videoRef.current;
-
-    const onPlayingHandler = () => {
-      logToUI("[useEffect stream] 'playing' event.");
-      setMainStatus('Recording (Preview Active)');
-      if (stream && autoDetectionEnabled && !initialFrameCapturedRef.current) {
-        logToUI(
-          '[useEffect stream] Triggering initial frame capture for baseline.',
-        );
-        captureFrameToBuffer(100); 
-        initialFrameCapturedRef.current = true;
-      }
-    };
-    if (stream && currentVideoElement) {
-      initialFrameCapturedRef.current = false; 
-      currentVideoElement.addEventListener('playing', onPlayingHandler);
-    } else if (!stream) {
-      streamRef.current = null;
-      setMainStatus('Idle');
-      initialFrameCapturedRef.current = false; 
-    }
-    return () => {
-      if (currentVideoElement) {
-        currentVideoElement.removeEventListener('playing', onPlayingHandler);
-      }
-      logToUI(
-        '[useEffect stream] Cleanup for playing handler. Stream active:',
-        !!stream,
-      );
-    };
-  }, [
-    stream,
-    handleStopScreenShare,
-    logToUI,
-    logError,
-    autoDetectionEnabled,
-    captureFrameToBuffer,
-  ]); 
-
   const handleManualInitialDump = useCallback(async () => {
     logToUI('[[VERIFY_CLICK]] Attempting manual initial dump...'); 
 
@@ -1380,15 +1037,9 @@ Context: You have access to previous analysis results for reference. Focus on id
       );
       return;
     }
-    if (initialDumpInProgress) {
-      logToUI(
-        '[Manual Initial Dump] Initial dump already in progress. Please wait.',
-      );
-      return;
-    }
 
     logToUI(
-      '[Manual Initial Dump] 🚀 Triggered. Capturing current view for initial dump.',
+      '[Manual Initial Dump] 🚀 Triggered. Capturing current view, will be processed by dispatcher.',
     );
 
     const video = videoRef.current;
@@ -1411,11 +1062,11 @@ Context: You have access to previous analysis results for reference. Focus on id
         id: newFrameId,
         imageDataUrl,
         timestamp,
-        percentChange: 100, 
+        percentChange: 100,
       };
 
       try {
-        await saveScreenshot(newFrame.id, canvas); // Uses imported saveScreenshot
+        await saveScreenshot(newFrame.id, canvas); 
         logToUI(
           '[Manual Initial Dump] Screenshot for manual dump saved:',
           newFrame.id,
@@ -1426,8 +1077,9 @@ Context: You have access to previous analysis results for reference. Focus on id
           screenshotErr,
         );
       }
+      setFrameBuffer((prevBuffer) => [...prevBuffer, newFrame].sort((a,b) => a.timestamp - b.timestamp));
+      logToUI('[Manual Initial Dump] Frame added to buffer for dispatcher processing.');
 
-      processInitialFrameDump(newFrame); 
     } else {
       logError(
         '[Manual Initial Dump] Error: Could not get 2D context for capture.',
@@ -1439,9 +1091,11 @@ Context: You have access to previous analysis results for reference. Focus on id
     logToUI,
     logError,
     setError,
-    processInitialFrameDump,
-    initialDumpInProgress,
     streamRef,
+    videoRef,
+    canvasRef,
+    setFrameBuffer,
+    saveScreenshot,
   ]); 
 
   const eventGenerationInProgressRef = useRef<boolean>(false);
@@ -1600,6 +1254,7 @@ Context: You have access to previous analysis results for reference. Focus on id
     setActiveAnalysesCount,
     setMainStatus,
     setEvents,
+    events,
   ]);
 
   useEffect(() => {
@@ -1627,7 +1282,6 @@ Context: You have access to previous analysis results for reference. Focus on id
         isMonitoring={isMonitoring}
         displayChangePercent={displayChangePercent}
         activeAnalysesCount={activeAnalysesCount}
-        initialDumpInProgress={initialDumpInProgress}
         error={error}
         streamRef={streamRef}
         MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
