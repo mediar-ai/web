@@ -1,34 +1,17 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
+// import { Button } from '@/components/ui/button'; // Removing unused import
+// import { Card } from '@/components/ui/card'; // Removing unused import
+// import { Textarea } from '@/components/ui/textarea'; // This was already removed
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Loader2 } from 'lucide-react';
 import type {
   BufferedFrame,
   Event,
   ParsedAnalysis,
   UIDiffAnalysis,
   ActivityItem,
-  PageHeaderControlsProps,
-  VideoPreviewAreaProps,
-  ErrorNotificationProps,
-  ExportStatusDialogProps,
-  EventsTabContentProps,
-  ActivityTabContentProps,
-  SettingsTabContentProps,
-  DebugTabContentProps
 } from '../types';
 import {
   loadWorkflowSteps,
@@ -43,11 +26,16 @@ import {
   getAllPersistedDataForExport,
   saveScreenshot // only saveScreenshot is directly called from page.tsx that uses canvas
 } from '../lib/db';
-
-// import Image from "next/image";
-
-// Stable style object for ScrollAreas, defined globally for the module
-const scrollAreaStyle = { overflow: 'scroll', scrollbarWidth: 'thin' } as const;
+import MemoizedScrollAreaContent from '../components/common/MemoizedScrollAreaContent'; // Import the new component
+// import MemoizedDebugLogsScrollArea from '../components/common/MemoizedDebugLogsScrollArea'; // Removing unused import
+import EventsTabContent from '../components/tabs/EventsTabContent'; // Import the new component
+import ActivityTabContent from '../components/tabs/ActivityTabContent'; // Import the new component
+import SettingsTabContent from '../components/tabs/SettingsTabContent'; // Import the new component
+import DebugTabContent from '../components/tabs/DebugTabContent'; // Import the new component
+import PageHeaderControls from '../components/capture/PageHeaderControls'; // Import the new component
+import VideoPreviewArea from '../components/capture/VideoPreviewArea'; // Import the new component
+import ErrorNotification from '../components/capture/ErrorNotification'; // Import the new component
+import ExportStatusDialog from '../components/capture/ExportStatusDialog'; // Import the new component
 
 // Initialize Supabase client (outside component for module-level scope)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -66,525 +54,6 @@ if (supabaseUrl && supabaseAnonKey) {
     '[Supabase] URL or Anon Key is missing in environment variables. Supabase client not initialized.',
   );
 }
-
-
-// Memoized Child Components for Scrollable Content
-interface MemoizedScrollAreaContentProps {
-  content: React.ReactNode;
-  className?: string;
-}
-
-const MemoizedScrollAreaContent = memo(
-  ({ content, className }: MemoizedScrollAreaContentProps) => {
-    return (
-      <ScrollArea
-        className={className || 'h-[350px] pr-3'}
-        style={scrollAreaStyle}
-      >
-        <CardContent className='text-xs p-3'>
-          {content}
-        </CardContent>
-      </ScrollArea>
-    );
-  },
-);
-MemoizedScrollAreaContent.displayName = 'MemoizedScrollAreaContent';
-
-interface MemoizedDebugLogsScrollAreaProps {
-  logs: string[];
-}
-
-const MemoizedDebugLogsScrollArea = memo(
-  ({ logs }: MemoizedDebugLogsScrollAreaProps) => {
-    const content = useMemo(() => {
-      return logs.length > 0
-        ? (
-          logs.map((log, index) => (
-            <div
-              key={index}
-              className={`whitespace-pre-wrap border-b border-slate-700 py-1 pr-16 ${
-                log.includes('[ERROR]') ? 'text-red-400' : 'text-slate-200'
-              }`}
-            >
-              {log}
-            </div>
-          ))
-        )
-        : <p className='p-4 text-center'>No UI logs yet.</p>;
-    }, [logs]);
-
-    return (
-      <ScrollArea
-        className='h-[350px] w-full p-3 bg-slate-900 text-slate-200 font-mono text-[10px] leading-relaxed rounded-md'
-        style={scrollAreaStyle}
-      >
-        {content} {/* Render the memoized log divs directly */}
-      </ScrollArea>
-    );
-  },
-);
-MemoizedDebugLogsScrollArea.displayName = 'MemoizedDebugLogsScrollArea';
-
-// Internal Component: PageHeaderControls
-const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
-  stream,
-  handleStartScreenShare,
-  handleStopScreenShare,
-  handleManualInitialDump,
-  mainStatus,
-  autoDetectionEnabled,
-  isMonitoring,
-  displayChangePercent,
-  activeAnalysesCount,
-  initialDumpInProgress,
-  error,
-  streamRef,
-  MAX_PARALLEL_ANALYSES,
-}) => {
-  return (
-    <div className='w-full max-w-7xl mb-6 flex items-center justify-between gap-4'>
-      <div className='flex items-center gap-3'>
-        <h1 className='text-2xl font-bold tracking-tight'>
-          Workflow Capture
-        </h1>
-        <p className='text-sm text-muted-foreground'>
-          Insights from your screen
-        </p>
-        <div className='flex items-center gap-2 pl-4'>
-          <Button
-            onClick={stream ? handleStopScreenShare : handleStartScreenShare}
-            size='default'
-            className={`w-24 ${
-              stream
-                ? 'bg-red-600 hover:bg-red-700 animate-pulse text-white'
-                : ''
-            }`}
-          >
-            {stream ? 'Stop' : 'Start'}
-          </Button>
-          <Button
-            onClick={handleManualInitialDump}
-            size='default'
-            variant='outline'
-            className='w-32'
-            disabled={!streamRef.current || 
-              activeAnalysesCount >= MAX_PARALLEL_ANALYSES ||
-              initialDumpInProgress}
-          >
-            {initialDumpInProgress
-              ? 'Dumping...'
-              : activeAnalysesCount >= MAX_PARALLEL_ANALYSES
-              ? `Analyzing (${activeAnalysesCount})...`
-              : 'Capture Frame'}
-          </Button>
-        </div>
-      </div>
-      <div
-        className={`text-sm rounded-md px-3 py-1.5 min-w-[280px] text-center bg-background flex items-center justify-between ${
-          activeAnalysesCount > 0
-            ? 'text-blue-600 bg-blue-50 animate-pulse border border-blue-200'
-            : error
-            ? 'text-red-600 bg-red-50 border border-red-200'
-            : 'text-muted-foreground'
-        }`}
-      >
-        <span className='truncate'>Status: {mainStatus}</span>
-        {autoDetectionEnabled && (
-          <span
-            className='text-xs opacity-75 pl-2 ml-2 border-l whitespace-nowrap'
-            style={{ minWidth: '85px' }}
-          >
-            %Ch: [{isMonitoring
-              ? displayChangePercent.toFixed(1).padStart(3, ' ')
-              : ' --'}]
-          </span>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Internal Component: VideoPreviewArea
-const VideoPreviewArea: React.FC<VideoPreviewAreaProps> = ({ stream, videoRef }) => {
-  return (
-    <div className='lg:col-span-1'>
-      {stream && (
-        <Card className='shadow-lg h-full'>
-          <CardHeader>
-            <CardTitle className='text-xl'>Live Screen Preview</CardTitle>
-          </CardHeader>
-          <CardContent className='aspect-video bg-slate-900 rounded-md overflow-hidden'>
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className='w-full h-full object-contain'
-            />
-          </CardContent>
-        </Card>
-      )}
-      {!stream && (
-        <Card className='shadow-lg h-full flex flex-col items-center justify-center min-h-[300px] bg-slate-50'>
-          <CardContent>
-            <p className='text-muted-foreground'>
-              Start recording to see live preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-};
-
-// Internal Component: ErrorNotification
-const ErrorNotification: React.FC<ErrorNotificationProps> = ({ error, showError, dismissError }) => {
-  if (!showError || !error) return null;
-  return (
-    <div
-      className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 transition-all duration-300 ${
-        showError
-          ? 'translate-y-0 opacity-100'
-          : '-translate-y-full opacity-0'
-      }`}
-    >
-      <Card className='bg-destructive/90 border-destructive text-white p-3 shadow-lg backdrop-blur-sm max-w-md'>
-        <div className='flex items-center gap-2'>
-          <div className='text-sm font-medium'>⚠ {error}</div>
-          <Button
-            onClick={dismissError}
-            size='sm'
-            variant='ghost'
-            className='h-6 w-6 p-0 text-white hover:bg-white/20 ml-auto'
-          >
-            ✕
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-};
-
-// Internal Component: ExportStatusDialog
-const ExportStatusDialog: React.FC<ExportStatusDialogProps> = ({ exportInProgress }) => {
-  return (
-    <Dialog open={exportInProgress}>
-      <DialogContent
-        className='sm:max-w-[425px]'
-        onInteractOutside={(
-          event: {
-            readonly defaultPrevented: boolean;
-            preventDefault: () => void;
-          },
-        ) => event.preventDefault()}
-        showCloseButton={false}
-      >
-        <DialogHeader className='text-center'>
-          <DialogTitle className='text-xl mb-2'>
-            Export in Progress
-          </DialogTitle>
-          <DialogDescription className='flex flex-col items-center justify-center'>
-            <Loader2 className='h-12 w-12 animate-spin text-primary mb-4' />
-            Please wait while your data is being exported.
-            <br />
-            This may take a few moments...
-          </DialogDescription>
-        </DialogHeader>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-
-// Internal Component: EventsTabContent
-const EventsTabContent: React.FC<EventsTabContentProps> = ({ memoizedEventsContent }) => {
-  return (
-    <Card className='shadow-sm border-0 p-0'>
-      <MemoizedScrollAreaContent content={memoizedEventsContent} />
-    </Card>
-  );
-};
-
-// Internal Component: ActivityTabContent
-const ActivityTabContent: React.FC<ActivityTabContentProps> = ({ memoizedActivityContent }) => {
-  return (
-    <Card className='shadow-sm border-0 p-0'>
-      <MemoizedScrollAreaContent
-        content={memoizedActivityContent}
-        className='h-[350px] pr-3 bg-white'
-      />
-    </Card>
-  );
-};
-
-// Internal Component: SettingsTabContent
-const SettingsTabContent: React.FC<SettingsTabContentProps> = ({
-  customPrompt,
-  handlePromptChange,
-  promptSaveStatus,
-  eventsPrompt,
-  EVENTS_MODEL_NAME,
-  autoDetectionEnabled,
-  setAutoDetectionEnabled,
-  monitoringFrequency,
-  setMonitoringFrequency,
-  changeThreshold,
-  setChangeThreshold,
-  stabilityDelay,
-  setStabilityDelay,
-  screenshotQuality,
-  setScreenshotQuality,
-  maxScreenshots,
-  setMaxScreenshots,
-  pixelDifferenceThreshold,
-  setPixelDifferenceThreshold,
-  stream,
-  activeAnalysesCount,
-}) => {
-  return (
-    <Card className='shadow-sm border-0 p-0 relative'>
-      <div className='p-3 space-y-4'>
-        <div>
-          <label className='text-xs font-medium text-muted-foreground mb-2 block'>
-            Workflow Analysis Prompt
-          </label>
-          <div className='relative'>
-            <Textarea
-              value={customPrompt}
-              onChange={(e) => handlePromptChange(e.target.value)}
-              placeholder='Enter analysis prompt...'
-              className='text-xs min-h-[120px] resize-none overflow-y-scroll'
-              style={{ scrollbarWidth: 'thin' }}
-              disabled={!!stream && activeAnalysesCount > 0}
-            />
-            {promptSaveStatus !== 'idle' && (
-              <div
-                className={`absolute top-2 right-2 px-3 py-1 rounded-md text-xs font-medium transition-all duration-300 ${
-                  promptSaveStatus === 'saving'
-                    ? 'bg-blue-100 text-blue-700 animate-pulse'
-                    : 'bg-green-100 text-green-700'
-                }`}
-              >
-                {promptSaveStatus === 'saving'
-                  ? 'Saving...'
-                  : 'Saved!'}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <label className='text-xs font-medium text-muted-foreground mb-2 block'>
-            Events Summary Prompt
-          </label>
-          <div className='p-2 bg-muted rounded-md'>
-            <code className='text-xs text-foreground'>
-              {eventsPrompt}
-            </code>
-          </div>
-          <p className='text-[10px] text-muted-foreground mt-1'>
-            Uses model: {EVENTS_MODEL_NAME}
-          </p>
-        </div>
-
-        <div className='border-t pt-3'>
-          <h3 className='text-xs font-medium text-foreground mb-3'>
-            Auto-Detection Settings
-          </h3>
-
-          <div className='space-y-3'>
-            <div className='flex items-center justify-between'>
-              <label className='text-xs text-muted-foreground'>
-                Enable Auto-Detection
-              </label>
-              <button
-                onClick={() =>
-                  setAutoDetectionEnabled(!autoDetectionEnabled)}
-                className={`w-10 h-6 rounded-full transition-colors ${
-                  autoDetectionEnabled ? 'bg-primary' : 'bg-muted'
-                }`}
-              >
-                <div
-                  className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                    autoDetectionEnabled
-                      ? 'translate-x-5'
-                      : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-
-            <div>
-              <label className='text-xs text-muted-foreground mb-1 block'>
-                Monitoring Frequency: {monitoringFrequency}ms
-              </label>
-              <input
-                type='range'
-                min='100'
-                max='1000'
-                step='100'
-                value={monitoringFrequency}
-                onChange={(e) =>
-                  setMonitoringFrequency(Number(e.target.value))}
-                className='w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer'
-              />
-              <div className='flex justify-between text-[10px] text-muted-foreground mt-1'>
-                <span>100ms</span>
-                <span>1000ms</span>
-              </div>
-            </div>
-
-            <div>
-              <label className='text-xs text-muted-foreground mb-1 block'>
-                Change Threshold: {changeThreshold}%
-              </label>
-              <input
-                type='range'
-                min='0.5'
-                max='5'
-                step='0.5'
-                value={changeThreshold}
-                onChange={(e) =>
-                  setChangeThreshold(Number(e.target.value))}
-                className='w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer'
-              />
-              <div className='flex justify-between text-[10px] text-muted-foreground mt-1'>
-                <span>0.5%</span>
-                <span>5%</span>
-              </div>
-            </div>
-
-            <div>
-              <label className='text-xs text-muted-foreground mb-1 block'>
-                Stability Delay: {stabilityDelay / 1000}s
-              </label>
-              <input
-                type='range'
-                min='1000'
-                max='10000'
-                step='1000'
-                value={stabilityDelay}
-                onChange={(e) =>
-                  setStabilityDelay(Number(e.target.value))}
-                className='w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer'
-              />
-              <div className='flex justify-between text-[10px] text-muted-foreground mt-1'>
-                <span>1s</span>
-                <span>10s</span>
-              </div>
-            </div>
-
-            <div>
-              <label className='text-xs text-muted-foreground mb-1 block'>
-                Screenshot Quality:{' '}
-                {Math.round(screenshotQuality * 100)}%
-              </label>
-              <input
-                type='range'
-                min='0.1'
-                max='1'
-                step='0.1'
-                value={screenshotQuality}
-                onChange={(e) =>
-                  setScreenshotQuality(Number(e.target.value))}
-                className='w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer'
-              />
-              <div className='flex justify-between text-[10px] text-muted-foreground mt-1'>
-                <span>10%</span>
-                <span>100%</span>
-              </div>
-            </div>
-
-            <div>
-              <label className='text-xs text-muted-foreground mb-1 block'>
-                Max Screenshots (DB): {maxScreenshots}
-              </label>{' '}
-              <input
-                type='range'
-                min='10'
-                max='200'
-                step='10'
-                value={maxScreenshots}
-                onChange={(e) =>
-                  setMaxScreenshots(Number(e.target.value))}
-                className='w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer'
-              />
-              <div className='flex justify-between text-[10px] text-muted-foreground mt-1'>
-                <span>10</span>
-                <span>200</span>
-              </div>
-            </div>
-
-            <div>
-              <label className='text-xs text-muted-foreground mb-1 block'>
-                Pixel Difference Threshold: {pixelDifferenceThreshold}
-              </label>
-              <input
-                type='range'
-                min='0'
-                max='255'
-                step='1'
-                value={pixelDifferenceThreshold}
-                onChange={(e) =>
-                  setPixelDifferenceThreshold(Number(e.target.value))}
-                className='w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer'
-              />
-              <div className='flex justify-between text-[10px] text-muted-foreground mt-1'>
-                <span>0</span>
-                <span>255</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
-};
-
-// Internal Component: DebugTabContent
-const DebugTabContent: React.FC<DebugTabContentProps> = ({
-  frontendLogs,
-  copyLogsToClipboard,
-  copyStatus,
-  clearAllData,
-  handleExportAllData,
-  exportInProgress,
-}) => {
-  return (
-    <Card className='shadow-sm border-0 p-0 relative'>
-      <Button
-        onClick={copyLogsToClipboard}
-        size='sm'
-        variant={copyStatus === 'copied' ? 'default' : 'outline'}
-        className={`absolute top-3 right-3 h-7 text-xs z-10 transition-all duration-200 ${
-          copyStatus === 'copied'
-            ? 'bg-green-600 hover:bg-green-700 text-white'
-            : ''
-        }`}
-      >
-        {copyStatus === 'copied' ? '✓ Copied' : 'Copy'}
-      </Button>
-      <MemoizedDebugLogsScrollArea logs={frontendLogs} />
-      <Button
-        onClick={clearAllData}
-        size='sm'
-        variant='destructive'
-        className='absolute bottom-3 right-3 h-7 text-xs z-10'
-      >
-        Erase All Data
-      </Button>
-      <Button
-        onClick={handleExportAllData}
-        size='sm'
-        variant='outline'
-        className='absolute bottom-3 right-[140px] h-7 text-xs z-10' 
-        disabled={exportInProgress}
-      >
-        {exportInProgress ? 'Exporting...' : 'Export All Data'}
-      </Button>
-    </Card>
-  );
-};
 
 export default function Home() {
   // Model configurations
@@ -1231,12 +700,10 @@ Context: You have access to previous analysis results for reference. Focus on id
                       {item.image_id?.split('-change-')[0].substring(11, 19)})
                     </span>{' '}
                   </p>
-                  <div
-                    className='whitespace-pre-wrap p-2 bg-gray-100 rounded text-black max-h-40 overflow-y-auto'
-                    style={scrollAreaStyle}
-                  >
-                    {item.raw_content}
-                  </div>
+                  <MemoizedScrollAreaContent 
+                    className='whitespace-pre-wrap p-2 bg-gray-100 rounded text-black max-h-40'
+                    content={<div className="text-black">{item.raw_content}</div>} 
+                  />
                 </li>
               );
             } else if (item.type === 'ui_diff') {
@@ -1376,12 +843,10 @@ Context: You have access to previous analysis results for reference. Focus on id
                             <strong className='text-black'>
                               Newly Detected Content:
                             </strong>
-                            <div
-                              className='whitespace-pre-wrap p-2 mt-1 bg-gray-100 rounded text-black max-h-40 overflow-y-auto'
-                              style={scrollAreaStyle}
-                            >
-                              {item.new_content_detected}
-                            </div>
+                            <MemoizedScrollAreaContent 
+                              className='whitespace-pre-wrap p-2 mt-1 bg-gray-100 rounded text-black max-h-40'
+                              content={<div className="text-black">{item.new_content_detected}</div>}
+                            />
                           </div>
                         )}
                         {item.unidentified_changes_explanation && (
@@ -1407,7 +872,7 @@ Context: You have access to previous analysis results for reference. Focus on id
           No activity captured yet. Start recording.
         </p>
       );
-  }, [activityItems]);
+  }, [activityItems, MemoizedScrollAreaContent]); // Added MemoizedScrollAreaContent to dependency array
 
   const handlePromptChange = useCallback((newPrompt: string) => {
     setCustomPrompt(newPrompt);

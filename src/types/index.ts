@@ -148,6 +148,16 @@ export type DebugTabContentProps = {
   exportInProgress: boolean;
 };
 
+// Adding missing prop types that were defined earlier in page.tsx
+export interface MemoizedScrollAreaContentProps {
+  content: React.ReactNode;
+  className?: string;
+}
+
+export interface MemoizedDebugLogsScrollAreaProps {
+  logs: string[];
+}
+
 // Ensure React is available for JSX if these types are used in .ts files that might become .tsx
 // For now, since these are just types, it's not strictly necessary but good practice if they evolve.
 // import React from 'react'; 
