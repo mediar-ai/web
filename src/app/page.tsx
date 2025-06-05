@@ -4,29 +4,47 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area'; // For log display
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createClient, SupabaseClient } from '@supabase/supabase-js'; // Import Supabase client
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'; // Import Dialog components
-import { Loader2 } from 'lucide-react'; // Import a spinner icon
+} from '@/components/ui/dialog';
+import { Loader2 } from 'lucide-react';
+import type {
+  BufferedFrame,
+  Event,
+  ParsedAnalysis,
+  UIDiffAnalysis,
+  ActivityItem,
+  PageHeaderControlsProps,
+  VideoPreviewAreaProps,
+  ErrorNotificationProps,
+  ExportStatusDialogProps,
+  EventsTabContentProps,
+  ActivityTabContentProps,
+  SettingsTabContentProps,
+  DebugTabContentProps
+} from '../types';
+import {
+  loadWorkflowSteps,
+  loadEvents,
+  loadFrontendLogs,
+  loadActivityItems,
+  saveWorkflowSteps,
+  saveEvents,
+  saveFrontendLogs,
+  saveActivityItems,
+  clearPersistedData,
+  getAllPersistedDataForExport,
+  saveScreenshot // only saveScreenshot is directly called from page.tsx that uses canvas
+} from '../lib/db';
 
-// import Image from "next/image"; // No longer needed after removing default content
-
-// IndexedDB utilities for persistence
-const DB_NAME = 'WorkflowCaptureDB';
-const DB_VERSION = 4; // Incremented to add screenshots store and activity items store
-const WORKFLOW_STORE = 'workflowSteps';
-const LOGS_STORE = 'frontendLogs';
-const EVENTS_STORE = 'events';
-const SCREENSHOTS_STORE = 'screenshots';
-const ACTIVITY_ITEMS_STORE = 'activityItems'; // New store for activity items
-const MAX_SCREENSHOTS = 50; // Keep only last 50 screenshots
+// import Image from "next/image";
 
 // Stable style object for ScrollAreas, defined globally for the module
 const scrollAreaStyle = { overflow: 'scroll', scrollbarWidth: 'thin' } as const;
@@ -49,362 +67,6 @@ if (supabaseUrl && supabaseAnonKey) {
   );
 }
 
-interface BufferedFrame {
-  id: string;
-  imageDataUrl: string;
-  timestamp: number;
-  percentChange: number;
-}
-
-// Updated Event interface
-interface Event {
-  id: string;
-  summary: string; // The concise summary
-  thoughts?: string; // Optional thought process from the model
-  timestamp: string;
-}
-
-interface ParsedAnalysis {
-  workflow: string;
-  step: string;
-  description: string;
-  facts: string;
-  logic: string;
-  tech: string;
-  apps: string;
-  context: string;
-}
-
-interface InitialFrameDumpAnalysis {
-  type: 'initial_dump';
-  id: string; // Frame ID, can be the same as image_id for simplicity here
-  timestamp: string;
-  raw_content: string;
-  image_id: string; // ID of the dumped frame from BufferedFrame
-}
-
-// UIDiffAnalysis now includes a type discriminator
-interface UIDiffAnalysis {
-  type: 'ui_diff';
-  id: string;
-  timestamp: string;
-  change_detected: 'yes' | 'no';
-  change_description?: string;
-  identified_change_types?: string[];
-  mouse_movement_details?: {
-    from_object?: string;
-    from_coordinate?: string;
-    to_object?: string;
-    to_coordinate?: string;
-  };
-  typing_details?: string;
-  click_details?: string;
-  new_window_details?: {
-    old_window_name?: string;
-    new_window_name?: string;
-  };
-  new_app_details?: string;
-  scroll_details?: {
-    new_content_summary?: string;
-  };
-  other_change_details?: Array<{
-    type_description?: string;
-    details?: string;
-  }>;
-  unidentified_changes_explanation?: string;
-  new_content_detected?: string; // Added new field
-  image1_id?: string;
-  image2_id?: string;
-}
-
-type ActivityItem = InitialFrameDumpAnalysis | UIDiffAnalysis;
-
-interface ScreenshotForExport {
-  id: string;
-  dataUrl: string;
-  timestamp: number;
-  size: number;
-}
-
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-
-      // Create workflow steps store
-      if (!db.objectStoreNames.contains(WORKFLOW_STORE)) {
-        const workflowStore = db.createObjectStore(WORKFLOW_STORE, {
-          keyPath: 'id',
-        });
-        workflowStore.createIndex('timestamp', 'timestamp', { unique: false });
-      }
-
-      // Create logs store
-      if (!db.objectStoreNames.contains(LOGS_STORE)) {
-        const logsStore = db.createObjectStore(LOGS_STORE, {
-          keyPath: 'id',
-          autoIncrement: true,
-        });
-        logsStore.createIndex('timestamp', 'timestamp', { unique: false });
-      }
-
-      // Create events store
-      if (!db.objectStoreNames.contains(EVENTS_STORE)) {
-        const eventsStore = db.createObjectStore(EVENTS_STORE, {
-          keyPath: 'id',
-        });
-        eventsStore.createIndex('timestamp', 'timestamp', { unique: false });
-      }
-
-      // Create screenshots store
-      if (!db.objectStoreNames.contains(SCREENSHOTS_STORE)) {
-        const screenshotsStore = db.createObjectStore(SCREENSHOTS_STORE, {
-          keyPath: 'id',
-        });
-        screenshotsStore.createIndex('timestamp', 'timestamp', {
-          unique: false,
-        });
-      }
-
-      // Create activity items store
-      if (!db.objectStoreNames.contains(ACTIVITY_ITEMS_STORE)) {
-        db.createObjectStore(ACTIVITY_ITEMS_STORE, { keyPath: 'id' }); // Corrected: removed unused variable
-        // We will sort by timestamp derived from ID in the load function, similar to events
-      }
-    };
-  });
-};
-
-const saveWorkflowSteps = async (
-  steps: Array<
-    {
-      id: string;
-      analysis: string;
-      parsed: ParsedAnalysis | null;
-      timestamp: string;
-    }
-  >,
-) => {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([WORKFLOW_STORE], 'readwrite');
-    const store = transaction.objectStore(WORKFLOW_STORE);
-
-    // Clear existing and add new
-    await store.clear();
-    for (const step of steps) {
-      await store.add(step);
-    }
-  } catch (err) {
-    console.error('[saveWorkflowSteps] Failed to save:', err);
-  }
-};
-
-const loadWorkflowSteps = async (): Promise<
-  Array<
-    {
-      id: string;
-      analysis: string;
-      parsed: ParsedAnalysis | null;
-      timestamp: string;
-    }
-  >
-> => {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([WORKFLOW_STORE], 'readonly');
-    const store = transaction.objectStore(WORKFLOW_STORE);
-    const request = store.getAll();
-
-    return new Promise((resolve, reject) => {
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const steps = request.result || [];
-        // Sort by timestamp descending (newest first)
-        steps.sort((a, b) =>
-          new Date(b.id).getTime() - new Date(a.id).getTime()
-        );
-        resolve(steps);
-      };
-    });
-  } catch (err) {
-    console.error('[loadWorkflowSteps] Failed to load:', err);
-    return [];
-  }
-};
-
-const saveFrontendLogs = async (logs: string[]) => {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([LOGS_STORE], 'readwrite');
-    const store = transaction.objectStore(LOGS_STORE);
-
-    // Clear existing and add new with timestamps
-    await store.clear();
-    for (let i = 0; i < logs.length; i++) {
-      await store.add({
-        message: logs[i],
-        timestamp: Date.now() - i, // Reverse timestamp to maintain order
-        index: i,
-      });
-    }
-  } catch (err) {
-    console.error('[saveFrontendLogs] Failed to save:', err);
-  }
-};
-
-const loadFrontendLogs = async (): Promise<string[]> => {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([LOGS_STORE], 'readonly');
-    const store = transaction.objectStore(LOGS_STORE);
-    const request = store.getAll();
-
-    return new Promise((resolve, reject) => {
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const logEntries = request.result || [];
-        // Sort by index to maintain original order
-        logEntries.sort((a, b) => a.index - b.index);
-        resolve(logEntries.map((entry) => entry.message));
-      };
-    });
-  } catch (err) {
-    console.error('[loadFrontendLogs] Failed to load:', err);
-    return [];
-  }
-};
-
-const clearPersistedData = async () => {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([
-      WORKFLOW_STORE,
-      LOGS_STORE,
-      EVENTS_STORE,
-      SCREENSHOTS_STORE,
-      ACTIVITY_ITEMS_STORE,
-    ], 'readwrite');
-    await transaction.objectStore(WORKFLOW_STORE).clear();
-    await transaction.objectStore(LOGS_STORE).clear();
-    await transaction.objectStore(EVENTS_STORE).clear();
-    await transaction.objectStore(SCREENSHOTS_STORE).clear();
-    await transaction.objectStore(ACTIVITY_ITEMS_STORE).clear(); // Clear new store
-  } catch (err) {
-    console.error('[clearPersistedData] Failed to clear:', err);
-  }
-};
-
-const saveEvents = async (events: Array<Event>) => {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([EVENTS_STORE], 'readwrite');
-    const store = transaction.objectStore(EVENTS_STORE);
-
-    // Clear existing and add new
-    await store.clear();
-    for (const event of events) {
-      await store.add(event);
-    }
-  } catch (err) {
-    console.error('[saveEvents] Failed to save:', err);
-  }
-};
-
-const loadEvents = async (): Promise<
-  Array<{ id: string; summary: string; timestamp: string }>
-> => {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([EVENTS_STORE], 'readonly');
-    const store = transaction.objectStore(EVENTS_STORE);
-    const request = store.getAll();
-
-    return new Promise((resolve, reject) => {
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const events = request.result || [];
-        // Sort by timestamp descending (newest first), using robust ID parsing
-        events.sort((a, b) => {
-          const timeA = new Date(a.id.split('-change-')[0].split('-event')[0])
-            .getTime();
-          const timeB = new Date(b.id.split('-change-')[0].split('-event')[0])
-            .getTime();
-          return timeB - timeA;
-        });
-        resolve(events);
-      };
-    });
-  } catch (err) {
-    console.error('[loadEvents] Failed to load:', err);
-    return [];
-  }
-};
-
-// Compress canvas to JPEG blob for efficient storage
-const compressCanvasToBlob = (
-  canvas: HTMLCanvasElement,
-  quality: number = 0.7,
-): Promise<Blob> => {
-  return new Promise((resolve) => {
-    canvas.toBlob(
-      (blob) => {
-        resolve(blob!);
-      },
-      'image/jpeg',
-      quality,
-    );
-  });
-};
-
-const saveScreenshot = async (id: string, canvas: HTMLCanvasElement) => {
-  try {
-    const db = await openDB();
-    const blob = await compressCanvasToBlob(canvas, 0.6); // 60% quality for compression
-
-    const screenshotData = {
-      id,
-      blob,
-      timestamp: Date.now(),
-      size: blob.size,
-    };
-
-    const transaction = db.transaction([SCREENSHOTS_STORE], 'readwrite');
-    const store = transaction.objectStore(SCREENSHOTS_STORE);
-
-    // Add new screenshot
-    await store.add(screenshotData);
-
-    // Get all screenshots to check count
-    const allRequest = store.getAll();
-    const allScreenshots = await new Promise<
-      { id: string; timestamp: number }[]
-    >((resolve, reject) => {
-      allRequest.onerror = () => reject(allRequest.error);
-      allRequest.onsuccess = () => resolve(allRequest.result || []);
-    });
-
-    // If we exceed the limit, remove oldest ones
-    if (allScreenshots.length > MAX_SCREENSHOTS) {
-      allScreenshots.sort((a, b) => a.timestamp - b.timestamp); // Sort oldest first
-      const toDelete = allScreenshots.slice(
-        0,
-        allScreenshots.length - MAX_SCREENSHOTS,
-      );
-
-      for (const screenshot of toDelete) {
-        await store.delete(screenshot.id);
-      }
-    }
-  } catch (err) {
-    console.error('[saveScreenshot] Failed to save:', err);
-  }
-};
 
 // Memoized Child Components for Scrollable Content
 interface MemoizedScrollAreaContentProps {
@@ -463,38 +125,6 @@ const MemoizedDebugLogsScrollArea = memo(
 );
 MemoizedDebugLogsScrollArea.displayName = 'MemoizedDebugLogsScrollArea';
 
-// Helper types for props of new internal components
-type PageHeaderControlsProps = {
-  stream: MediaStream | null;
-  handleStartScreenShare: () => void;
-  handleStopScreenShare: () => void;
-  handleManualInitialDump: () => void;
-  mainStatus: string;
-  autoDetectionEnabled: boolean;
-  isMonitoring: boolean;
-  displayChangePercent: number;
-  activeAnalysesCount: number;
-  initialDumpInProgress: boolean;
-  error: string | null;
-  streamRef: React.RefObject<MediaStream | null>;
-  MAX_PARALLEL_ANALYSES: number; // Added MAX_PARALLEL_ANALYSES
-};
-
-type VideoPreviewAreaProps = {
-  stream: MediaStream | null;
-  videoRef: React.RefObject<HTMLVideoElement | null>; // Adjusted to allow null
-};
-
-type ErrorNotificationProps = {
-  error: string | null;
-  showError: boolean;
-  dismissError: () => void;
-};
-
-type ExportStatusDialogProps = {
-  exportInProgress: boolean;
-};
-
 // Internal Component: PageHeaderControls
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
@@ -509,7 +139,7 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   initialDumpInProgress,
   error,
   streamRef,
-  MAX_PARALLEL_ANALYSES, // Added MAX_PARALLEL_ANALYSES
+  MAX_PARALLEL_ANALYSES,
 }) => {
   return (
     <div className='w-full max-w-7xl mb-6 flex items-center justify-between gap-4'>
@@ -537,7 +167,7 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
             size='default'
             variant='outline'
             className='w-32'
-            disabled={!streamRef.current || // Use streamRef.current for accurate check
+            disabled={!streamRef.current || 
               activeAnalysesCount >= MAX_PARALLEL_ANALYSES ||
               initialDumpInProgress}
           >
@@ -665,47 +295,6 @@ const ExportStatusDialog: React.FC<ExportStatusDialogProps> = ({ exportInProgres
   );
 };
 
-// Helper types for Tab Content Components
-type EventsTabContentProps = {
-  memoizedEventsContent: React.ReactNode;
-};
-
-type ActivityTabContentProps = {
-  memoizedActivityContent: React.ReactNode;
-};
-
-type SettingsTabContentProps = {
-  customPrompt: string;
-  handlePromptChange: (newPrompt: string) => void;
-  promptSaveStatus: 'idle' | 'saving' | 'saved';
-  eventsPrompt: string;
-  EVENTS_MODEL_NAME: string;
-  autoDetectionEnabled: boolean;
-  setAutoDetectionEnabled: (enabled: boolean) => void;
-  monitoringFrequency: number;
-  setMonitoringFrequency: (freq: number) => void;
-  changeThreshold: number;
-  setChangeThreshold: (thresh: number) => void;
-  stabilityDelay: number;
-  setStabilityDelay: (delay: number) => void;
-  screenshotQuality: number;
-  setScreenshotQuality: (quality: number) => void;
-  maxScreenshots: number;
-  setMaxScreenshots: (max: number) => void;
-  pixelDifferenceThreshold: number;
-  setPixelDifferenceThreshold: (thresh: number) => void;
-  stream: MediaStream | null;
-  activeAnalysesCount: number;
-};
-
-type DebugTabContentProps = {
-  frontendLogs: string[];
-  copyLogsToClipboard: () => void;
-  copyStatus: 'idle' | 'copied';
-  clearAllData: () => void;
-  handleExportAllData: () => void;
-  exportInProgress: boolean;
-};
 
 // Internal Component: EventsTabContent
 const EventsTabContent: React.FC<EventsTabContentProps> = ({ memoizedEventsContent }) => {
@@ -988,7 +577,7 @@ const DebugTabContent: React.FC<DebugTabContentProps> = ({
         onClick={handleExportAllData}
         size='sm'
         variant='outline'
-        className='absolute bottom-3 right-[140px] h-7 text-xs z-10' // Adjust positioning as needed
+        className='absolute bottom-3 right-[140px] h-7 text-xs z-10' 
         disabled={exportInProgress}
       >
         {exportInProgress ? 'Exporting...' : 'Export All Data'}
@@ -1000,7 +589,7 @@ const DebugTabContent: React.FC<DebugTabContentProps> = ({
 export default function Home() {
   // Model configurations
   const EVENTS_MODEL_NAME = 'gemini-2.5-pro-preview-05-06';
-  const MAX_PARALLEL_ANALYSES = 5; // Definition of MAX_PARALLEL_ANALYSES
+  const MAX_PARALLEL_ANALYSES = 5;
 
   // Auto-detection configuration
   const [autoDetectionEnabled, setAutoDetectionEnabled] = useState<boolean>(
@@ -1016,22 +605,20 @@ export default function Home() {
   >(20); // NEW: Threshold for pixel comparison (0-255)
 
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const streamRef = useRef<MediaStream | null>(null); // Add ref to track current stream
+  const streamRef = useRef<MediaStream | null>(null); 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null); // Ref for the canvas
-  const monitoringCanvasRef = useRef<HTMLCanvasElement>(null); // Ref for change detection
+  const canvasRef = useRef<HTMLCanvasElement>(null); 
+  const monitoringCanvasRef = useRef<HTMLCanvasElement>(null); 
   const [error, setError] = useState<string | null>(null);
   const [showError, setShowError] = useState<boolean>(false);
   const [isCapturingForBuffer, setIsCapturingForBuffer] = useState(false);
   const [workflowSteps, setWorkflowSteps] = useState<
-    Array<
-      {
-        id: string;
-        analysis: string;
-        parsed: ParsedAnalysis | null;
-        timestamp: string;
-      }
-    >
+    Array<{
+      id: string;
+      analysis: string;
+      parsed: ParsedAnalysis | null;
+      timestamp: string;
+    }>
   >([]);
   const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -1061,14 +648,14 @@ Context: You have access to previous analysis results for reference. Focus on id
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
   const [initialDumpInProgress, setInitialDumpInProgress] = useState<boolean>(
     false,
-  ); // New state
+  ); 
   const [pendingFrameForDiff, setPendingFrameForDiff] = useState<
     BufferedFrame | null
-  >(null); // New state
+  >(null); 
   const [diffAnalysisInProgress, setDiffAnalysisInProgress] = useState<boolean>(
     false,
-  ); // New state
-  const [exportInProgress, setExportInProgress] = useState<boolean>(false); // New state for export button
+  ); 
+  const [exportInProgress, setExportInProgress] = useState<boolean>(false); 
 
   // Auto-detection state & refs for stable callbacks
   const [isMonitoring, setIsMonitoring] = useState<boolean>(false);
@@ -1144,11 +731,11 @@ Context: You have access to previous analysis results for reference. Focus on id
 
   // 3. Core capture and analysis function
   const captureFrameToBuffer = useCallback(async (changePercent: number) => {
-    if (!streamRef.current) { // Use streamRef.current for consistency
-      logError('[captureFrameToBuffer] Stream not active.'); // Log instead of setError for background operation
+    if (!streamRef.current) { 
+      logError('[captureFrameToBuffer] Stream not active.'); 
       return;
     }
-    if (isCapturingForBuffer) return; // Prevent concurrent captures for buffer
+    if (isCapturingForBuffer) return; 
 
     if (
       videoRef.current && canvasRef.current &&
@@ -1164,7 +751,6 @@ Context: You have access to previous analysis results for reference. Focus on id
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      // Ensure canvas dimensions match video for capture
       if (
         canvas.width !== video.videoWidth || canvas.height !== video.videoHeight
       ) {
@@ -1175,7 +761,7 @@ Context: You have access to previous analysis results for reference. Focus on id
       const context = canvas.getContext('2d');
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageDataUrl = canvas.toDataURL('image/png', screenshotQuality); // Use state for quality
+        const imageDataUrl = canvas.toDataURL('image/png', screenshotQuality);
         const timestamp = Date.now();
         const newFrame: BufferedFrame = {
           id: new Date(timestamp).toISOString() +
@@ -1186,33 +772,28 @@ Context: You have access to previous analysis results for reference. Focus on id
         };
 
         setFrameBuffer((prevBuffer: BufferedFrame[]) => {
-          const newBufferFull = [...prevBuffer, newFrame]; // Use a different name to avoid conflict if prevBuffer is used later for size logging
+          const newBufferFull = [...prevBuffer, newFrame]; 
           let newBufferTrimmed = newBufferFull;
           if (newBufferFull.length > 10) { // MAX_BUFFER_SIZE = 10
-            // Sort by percentChange ascending, then by timestamp ascending for tie-breaking
             const sortedForEviction = [...newBufferFull].sort((a, b) => {
               if (a.percentChange !== b.percentChange) {
                 return a.percentChange - b.percentChange;
               }
               return a.timestamp - b.timestamp;
             });
-            sortedForEviction.shift(); // Remove the one with least change (or oldest if tie)
+            sortedForEviction.shift(); 
             newBufferTrimmed = sortedForEviction;
             logToUI(
               '[captureFrameToBuffer] Buffer full. Evicted frame with least change.',
             );
           }
-          // Ensure buffer is sorted by timestamp for chronological processing later
           return newBufferTrimmed.sort((a, b) => a.timestamp - b.timestamp);
         });
         logToUI(
           '[captureFrameToBuffer] Frame added to buffer. Current buffer size will be reflected in next render cycle.',
         );
 
-        // Optionally, save screenshot to DB immediately if desired,
-        // or do it when frame is picked for analysis. For now, let's do it here.
         try {
-          // Need a temporary canvas to draw the image data URL back for saving blob
           const tempCanvasForSave = document.createElement('canvas');
           const tempCtx = tempCanvasForSave.getContext('2d');
           const img = new Image();
@@ -1220,7 +801,7 @@ Context: You have access to previous analysis results for reference. Focus on id
             tempCanvasForSave.width = img.width;
             tempCanvasForSave.height = img.height;
             tempCtx?.drawImage(img, 0, 0);
-            await saveScreenshot(newFrame.id, tempCanvasForSave);
+            await saveScreenshot(newFrame.id, tempCanvasForSave); // Uses imported saveScreenshot
             logToUI(
               '[captureFrameToBuffer] Screenshot for buffered frame saved:',
               newFrame.id,
@@ -1263,18 +844,17 @@ Context: You have access to previous analysis results for reference. Focus on id
     setFrameBuffer,
     setIsCapturingForBuffer,
     streamRef,
-  ]); // Added streamRef
+  ]);
 
-  // New function to process UI Diff for two frames
   const processUIDiffRequest = useCallback(
     async (frame1: BufferedFrame, frame2: BufferedFrame) => {
-      if (diffAnalysisInProgress) return; // Should be guarded by dispatcher, but as an extra check
+      if (diffAnalysisInProgress) return; 
       setDiffAnalysisInProgress(true);
       setActiveAnalysesCount((prev) => prev + 1);
       const currentActiveCount = activeAnalysesCountRef.current + 1;
       setMainStatus(`Analyzing UI Diff (${currentActiveCount})...`);
       const newDiffId = frame2.id + '-diff';
-      const displayTimestamp = new Date(frame2.timestamp).toISOString(); // MODIFIED
+      const displayTimestamp = new Date(frame2.timestamp).toISOString();
       logToUI(
         '[processUIDiffRequest] 🚀 Starting UI Diff analysis between:',
         frame1.id,
@@ -1310,10 +890,8 @@ Context: You have access to previous analysis results for reference. Focus on id
           };
 
           setActivityItems((prevItems) =>
-            // Changed from setUiDiffSteps
             [newActivityItem, ...prevItems]
               .sort((a, b) => {
-                // Ensure IDs are valid before splitting for robust sorting
                 const idA = a.type === 'ui_diff' ? a.image2_id : a.image_id;
                 const idB = b.type === 'ui_diff' ? b.image2_id : b.image_id;
                 const timeA = new Date(
@@ -1353,16 +931,14 @@ Context: You have access to previous analysis results for reference. Focus on id
       setBaselineFrameForDiff,
       diffAnalysisInProgress,
     ],
-  ); // Changed setUiDiffSteps to setActivityItems
+  ); 
 
-  // New function for initial frame raw content dump
   const processInitialFrameDump = useCallback(
     async (frameToDump: BufferedFrame) => {
       if (initialDumpInProgress) return;
       setInitialDumpInProgress(true);
       setActiveAnalysesCount((prev) => prev + 1);
-      const currentActiveCount = activeAnalysesCountRef.current + 1;
-      setMainStatus(`Analyzing Initial Frame (${currentActiveCount})...`);
+      setMainStatus(`Analyzing Initial Frame (${activeAnalysesCountRef.current + 1})...`);
       logToUI(
         '[processInitialFrameDump] 🖼️ Starting raw content dump for initial frame:',
         frameToDump.id,
@@ -1373,7 +949,7 @@ Context: You have access to previous analysis results for reference. Focus on id
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             image: frameToDump.imageDataUrl,
-            timestamp: new Date(frameToDump.timestamp).toISOString(), // Use ISOString for backend consistency
+            timestamp: new Date(frameToDump.timestamp).toISOString(),
             prompt:
               'List in maximum detail all visible text and UI elements from the screenshot. Describe layout and objects.',
             analysisType: 'initial_frame_dump',
@@ -1390,7 +966,7 @@ Context: You have access to previous analysis results for reference. Focus on id
           const newActivityItem: ActivityItem = {
             type: 'initial_dump',
             id: frameToDump.id,
-            timestamp: new Date(frameToDump.timestamp).toISOString(), // MODIFIED
+            timestamp: new Date(frameToDump.timestamp).toISOString(), 
             raw_content: result.analysis.raw_content,
             image_id: frameToDump.id,
           };
@@ -1438,19 +1014,16 @@ Context: You have access to previous analysis results for reference. Focus on id
     ],
   );
 
-  // useEffect for dispatching frames from buffer for analysis (NEW LOGIC)
   const activeAnalysesCountRef = useRef(activeAnalysesCount);
   useEffect(() => {
     activeAnalysesCountRef.current = activeAnalysesCount;
   }, [activeAnalysesCount]);
 
   useEffect(() => {
-    // Condition to prevent starting new work if max analyses are running
     if (activeAnalysesCountRef.current >= MAX_PARALLEL_ANALYSES) {
       return;
     }
 
-    // 1. Handle Initial Frame Dump if no baseline exists yet
     if (
       !baselineFrameForDiff && !initialDumpInProgress && frameBuffer.length >= 1
     ) {
@@ -1461,15 +1034,13 @@ Context: You have access to previous analysis results for reference. Focus on id
       );
       setFrameBuffer((prevBuffer) => prevBuffer.slice(1));
       processInitialFrameDump(frameToDump);
-      return; // Prioritize initial dump completion
+      return; 
     }
 
-    // 2. If baseline exists, try to pick a pending frame for UI Diff
     if (
       baselineFrameForDiff && !pendingFrameForDiff && frameBuffer.length >= 1
     ) {
       const nextFrame = frameBuffer[0];
-      // Avoid picking the same frame as baseline if it somehow reappears or buffer is small
       if (baselineFrameForDiff.id !== nextFrame.id) {
         logToUI(
           '[Dispatcher] Setting pending frame for diff:',
@@ -1482,15 +1053,13 @@ Context: You have access to previous analysis results for reference. Focus on id
       } else if (
         frameBuffer.length === 1 && baselineFrameForDiff.id === nextFrame.id
       ) {
-        // Buffer only contains the baseline frame, do nothing, wait for more frames.
         logToUI(
           '[Dispatcher] Buffer only contains baseline frame. Waiting for new frames.',
         );
       }
-      return; // Allow state to update before trying to process the diff
+      return; 
     }
 
-    // 3. If baseline and a pending frame exist, and no diff is in progress, start UI Diff
     if (
       baselineFrameForDiff && pendingFrameForDiff && !diffAnalysisInProgress
     ) {
@@ -1502,9 +1071,8 @@ Context: You have access to previous analysis results for reference. Focus on id
       );
       const frame1 = baselineFrameForDiff;
       const frame2 = pendingFrameForDiff;
-      setPendingFrameForDiff(null); // Consume the pending frame for this operation
+      setPendingFrameForDiff(null); 
       processUIDiffRequest(frame1, frame2);
-      // Note: baselineFrameForDiff will be updated by processUIDiffRequest on its success
     }
   }, [
     frameBuffer,
@@ -1518,11 +1086,10 @@ Context: You have access to previous analysis results for reference. Focus on id
     logToUI,
     setFrameBuffer,
     setBaselineFrameForDiff,
-    setPendingFrameForDiff, /* setDiffAnalysisInProgress is not needed here */
-    activityItems, // Keep for the existingDiff check if that's re-added later
+    setPendingFrameForDiff, 
+    activityItems, 
   ]);
 
-  // 4. Auto-detection helper functions
   const getFrameDataForComparison = useCallback(
     (video: HTMLVideoElement): Uint8ClampedArray | null => {
       if (!monitoringCanvasRef.current) return null;
@@ -1545,11 +1112,9 @@ Context: You have access to previous analysis results for reference. Focus on id
       previous: Uint8ClampedArray | null,
       threshold: number,
     ): number => {
-      if (!current || !previous) return 0; // If either frame is null, no change
-      if (current === previous) return 0; // Should not happen with pixel data but good check
+      if (!current || !previous) return 0; 
+      if (current === previous) return 0; 
       if (current.length !== previous.length) {
-        // This case should ideally not happen if frames are always from the same size canvas
-        // but if it does, it implies a 100% change or an error state.
         console.warn(
           '[calculateChangePercentage] Frame lengths differ, returning 100% change.',
         );
@@ -1557,16 +1122,12 @@ Context: You have access to previous analysis results for reference. Focus on id
       }
 
       let changedPixels = 0;
-      const pixelCount = current.length / 4; // Each pixel is 4 values (R,G,B,A)
+      const pixelCount = current.length / 4; 
 
       for (let i = 0; i < current.length; i += 4) {
-        // Calculate the absolute difference for R, G, B channels
         const diffR = Math.abs(current[i] - previous[i]);
         const diffG = Math.abs(current[i + 1] - previous[i + 1]);
         const diffB = Math.abs(current[i + 2] - previous[i + 2]);
-        // Alpha channel (current[i+3]) is ignored for now, but could be included
-
-        // Average difference for the pixel
         const avgDifference = (diffR + diffG + diffB) / 3;
 
         if (avgDifference > threshold) {
@@ -1579,9 +1140,6 @@ Context: You have access to previous analysis results for reference. Focus on id
   );
 
   const handleActivityDetection = useCallback(() => {
-    // This function no longer directly triggers full analysis.
-    // It's main role is to signal that a change occurred which might be captured.
-    // The actual capture-to-buffer is now triggered by the monitoringLoop when change > threshold.
     const now = Date.now();
     setLastActivityTime(now);
     if (!activityDetectedRef.current) {
@@ -1594,8 +1152,6 @@ Context: You have access to previous analysis results for reference. Focus on id
   }, [logToUI, setLastActivityTime, setActivityDetected]);
 
   const checkForStability = useCallback(() => {
-    // This function's role changes. It no longer triggers analysis directly.
-    // It still helps in identifying end of an activity burst for logging or other UI cues.
     const now = Date.now();
     if (
       activityDetectedRef.current &&
@@ -1606,7 +1162,6 @@ Context: You have access to previous analysis results for reference. Focus on id
         '[Auto-Detection] 🟢 Screen relatively stable after activity burst. Last change:',
         currentChangePercentRef.current.toFixed(2) + '%',
       );
-      // No longer calls captureFrameAndSend() here.
     }
   }, [
     logToUI,
@@ -1615,9 +1170,8 @@ Context: You have access to previous analysis results for reference. Focus on id
     lastActivityTimeRef,
     currentChangePercentRef,
     setActivityDetected,
-  ]); // Removed captureFrameAndSend
+  ]); 
 
-  // 5. Memoized UI content
   const memoizedEventsContent = useMemo(() => {
     return events.length > 0
       ? (
@@ -1656,7 +1210,6 @@ Context: You have access to previous analysis results for reference. Focus on id
       );
   }, [events]);
 
-  // Memoized content for the "Recent Activity" tab - NOW DISPLAYS ActivityItems
   const memoizedActivityContent = useMemo(() => {
     return activityItems.length > 0
       ? (
@@ -1668,25 +1221,20 @@ Context: You have access to previous analysis results for reference. Focus on id
                   key={item.id}
                   className='p-3 border rounded-md bg-white text-xs text-black'
                 >
-                  {/* Added text-black */}
                   <p className='font-medium text-[10px] mb-1.5'>
-                    {/* Removed text-muted-foreground */}
                     {item.timestamp}
                     <span className='ml-2 text-black font-semibold'>
                       Initial Frame Content
                     </span>{' '}
-                    {/* Changed text-green-400 to text-black */}
                     <span className='ml-2 text-black text-[9px] dwindling_opacity'>
                       (Frame:{' '}
                       {item.image_id?.split('-change-')[0].substring(11, 19)})
                     </span>{' '}
-                    {/* Changed text-slate-500 to text-black */}
                   </p>
                   <div
                     className='whitespace-pre-wrap p-2 bg-gray-100 rounded text-black max-h-40 overflow-y-auto'
                     style={scrollAreaStyle}
                   >
-                    {/* Changed text-gray-800 to text-black */}
                     {item.raw_content}
                   </div>
                 </li>
@@ -1697,12 +1245,9 @@ Context: You have access to previous analysis results for reference. Focus on id
                   key={item.id}
                   className='p-3 border rounded-md bg-white text-xs text-black'
                 >
-                  {/* Added text-black */}
                   <p className='font-medium text-[10px] mb-1.5'>
-                    {/* Removed text-muted-foreground */}
                     {item.timestamp}
                     <span className='ml-2 text-black text-[9px] dwindling_opacity'>
-                      {/* Changed text-slate-500 to text-black */}
                       (Diff:{' '}
                       {item.image1_id?.split('-change-')[0].substring(11, 19)}
                       {' '}
@@ -1722,7 +1267,6 @@ Context: You have access to previous analysis results for reference. Focus on id
                         {item.change_detected}
                       </span>
                     </div>{' '}
-                    {/* Changed text-sky-600 and status colors to text-black */}
                     {item.change_detected === 'yes' && (
                       <>
                         {item.change_description && (
@@ -1731,21 +1275,20 @@ Context: You have access to previous analysis results for reference. Focus on id
                             {' '}
                             {item.change_description}
                           </div>
-                        )} {/* Changed text-sky-600 to text-black */}
+                        )} 
                         {item.identified_change_types &&
                           item.identified_change_types.length > 0 && (
                             <div className='mt-1'>
                               <strong className='text-black'>Types:</strong>
                               {' '}
                               {item.identified_change_types.join(', ')}
-                            </div> /* Changed text-sky-600 to text-black */
+                            </div> 
                           )}
                         <div className='mt-1.5 space-y-0.5 pl-2 border-l-2 border-slate-700'>
                           {item.mouse_movement_details && (
                             <div>
                               <strong className='text-black'>Mouse:</strong>
                               {' '}
-                              {/* Changed text-purple-500 to text-black */}
                               From:{' '}
                               <span className='text-black'>
                                 {item.mouse_movement_details.from_object ||
@@ -1753,7 +1296,6 @@ Context: You have access to previous analysis results for reference. Focus on id
                                 ({item.mouse_movement_details.from_coordinate ||
                                   'N/A'})
                               </span>{' '}
-                              {/* Changed text-gray-700 to text-black */}
                               {' -> '}To:{' '}
                               <span className='text-black'>
                                 {item.mouse_movement_details.to_object || 'N/A'}
@@ -1761,7 +1303,6 @@ Context: You have access to previous analysis results for reference. Focus on id
                                 ({item.mouse_movement_details.to_coordinate ||
                                   'N/A'})
                               </span>{' '}
-                              {/* Changed text-gray-700 to text-black */}
                             </div>
                           )}
                           {item.typing_details && (
@@ -1773,7 +1314,6 @@ Context: You have access to previous analysis results for reference. Focus on id
                               </span>
                             </div>
                           )}{' '}
-                          {/* Changed text-purple-500 and text-gray-700 to text-black */}
                           {item.click_details && (
                             <div>
                               <strong className='text-black'>Clicked:</strong>
@@ -1783,25 +1323,21 @@ Context: You have access to previous analysis results for reference. Focus on id
                               </span>
                             </div>
                           )}{' '}
-                          {/* Changed text-purple-500 and text-gray-700 to text-black */}
                           {item.new_window_details && (
                             <div>
                               <strong className='text-black'>
                                 Window Change:
                               </strong>{' '}
-                              {/* Changed text-purple-500 to text-black */}
                               Old:{' '}
                               <span className='text-black'>
                                 {item.new_window_details.old_window_name ||
                                   'N/A'}
-                              </span>,{' '}
-                              {/* Changed text-gray-700 to text-black */}
+                              </span>, {' '}
                               New:{' '}
                               <span className='text-black'>
                                 {item.new_window_details.new_window_name ||
                                   'N/A'}
                               </span>{' '}
-                              {/* Changed text-gray-700 to text-black */}
                             </div>
                           )}
                           {item.new_app_details && (
@@ -1813,7 +1349,6 @@ Context: You have access to previous analysis results for reference. Focus on id
                               </span>
                             </div>
                           )}{' '}
-                          {/* Changed text-purple-500 and text-gray-700 to text-black */}
                           {item.scroll_details && (
                             <div>
                               <strong className='text-black'>
@@ -1824,7 +1359,6 @@ Context: You have access to previous analysis results for reference. Focus on id
                               </span>
                             </div>
                           )}{' '}
-                          {/* Changed text-purple-500 and text-gray-700 to text-black */}
                           {item.other_change_details &&
                             item.other_change_details.map((other, idx) => (
                               <div key={idx}>
@@ -1834,7 +1368,6 @@ Context: You have access to previous analysis results for reference. Focus on id
                                 <span className='text-black'>
                                   {other.details}
                                 </span>{' '}
-                                {/* Changed text-purple-500 and text-gray-700 to text-black */}
                               </div>
                             ))}
                         </div>
@@ -1858,7 +1391,7 @@ Context: You have access to previous analysis results for reference. Focus on id
                             </strong>{' '}
                             {item.unidentified_changes_explanation}
                           </div>
-                        )} {/* Changed text-orange-500 to text-black */}
+                        )} 
                       </>
                     )}
                   </div>
@@ -1876,7 +1409,6 @@ Context: You have access to previous analysis results for reference. Focus on id
       );
   }, [activityItems]);
 
-  // 6. Other UI-related Callbacks
   const handlePromptChange = useCallback((newPrompt: string) => {
     setCustomPrompt(newPrompt);
     setPromptSaveStatus('saving');
@@ -1900,15 +1432,16 @@ Context: You have access to previous analysis results for reference. Focus on id
 
   const clearAllData = useCallback(async () => {
     try {
-      await clearPersistedData();
+      await clearPersistedData(); // Uses imported function
       setWorkflowSteps([]);
       setEvents([]);
       setFrontendLogs([]);
+      setActivityItems([]); 
       logToUI('[clearAllData] All persisted data cleared');
     } catch (err) {
       logError('[clearAllData] Failed to clear data:', err);
     }
-  }, [logToUI, logError]);
+  }, [logToUI, logError, setActivityItems]);
 
   const handleExportAllData = useCallback(async () => {
     logToUI('[handleExportAllData] Starting data export via Supabase...');
@@ -1926,16 +1459,15 @@ Context: You have access to previous analysis results for reference. Focus on id
     }
 
     try {
-      const allLocalData = await getAllPersistedDataForExport(); // Renamed for clarity
+      const allLocalData = await getAllPersistedDataForExport(); // Uses imported function
       logToUI(
         '[handleExportAllData] Successfully retrieved all local data for sending. Size (approx characters):',
         JSON.stringify(allLocalData).length,
       );
 
-      // Generate or retrieve session_id
       let sessionId = localStorage.getItem('app_session_id');
       if (!sessionId) {
-        sessionId = crypto.randomUUID(); // Requires a secure context (HTTPS or localhost)
+        sessionId = crypto.randomUUID(); 
         localStorage.setItem('app_session_id', sessionId);
         logToUI(
           '[handleExportAllData] Generated new session ID for export:',
@@ -1959,7 +1491,7 @@ Context: You have access to previous analysis results for reference. Focus on id
 
       const { data: functionInvokeData, error: functionError } = await supabase
         .functions.invoke('ingest-data', {
-          body: payload, // Pass the payload with sessionId and exportedData
+          body: payload, 
         });
 
       if (functionError) {
@@ -1976,7 +1508,6 @@ Context: You have access to previous analysis results for reference. Focus on id
           "[handleExportAllData] Supabase Edge Function 'ingest-data' invoked successfully. Response:",
           functionInvokeData,
         );
-        // Potentially clear local data after successful send if desired, or mark as sent.
       }
     } catch (err) {
       let errorMessage = 'Unknown error during export process';
@@ -1988,7 +1519,7 @@ Context: You have access to previous analysis results for reference. Focus on id
     } finally {
       setExportInProgress(false);
     }
-  }, [logToUI, logError, setError]); // supabase client is stable due to module-level scope, no need to add as dependency
+  }, [logToUI, logError, setError]); 
 
   const dismissError = useCallback(() => {
     setShowError(false);
@@ -2016,11 +1547,10 @@ Context: You have access to previous analysis results for reference. Focus on id
     streamRef.current = null;
     setIsCapturingForBuffer(false);
     setMainStatus('Idle');
-    // Clear buffer and reset baselines for a fresh start on next recording
     setFrameBuffer([]);
     setBaselineFrameForDiff(null);
     setPendingFrameForDiff(null);
-    if (initialFrameCapturedRef) initialFrameCapturedRef.current = false; // Ensure it's reset
+    if (initialFrameCapturedRef) initialFrameCapturedRef.current = false; 
     logToUI(
       '[handleStopScreenShare] Buffer and baselines cleared for fresh start.',
     );
@@ -2030,13 +1560,12 @@ Context: You have access to previous analysis results for reference. Focus on id
     setFrameBuffer,
     setBaselineFrameForDiff,
     setPendingFrameForDiff,
-  ]); // Added setters
+  ]); 
 
   const handleStartScreenShare = useCallback(async () => {
     logToUI('[handleStartScreenShare] Attempting start...');
     setError(null);
 
-    // Ensure a clean state before starting a new stream
     if (streamRef.current || stream) {
       const currentStream = streamRef.current || stream;
       if (currentStream) {
@@ -2046,10 +1575,10 @@ Context: You have access to previous analysis results for reference. Focus on id
     setStream(null);
     streamRef.current = null;
     setIsCapturingForBuffer(false);
-    setFrameBuffer([]); // Clear buffer
-    setBaselineFrameForDiff(null); // Reset baseline
-    setPendingFrameForDiff(null); // Reset pending diff
-    if (initialFrameCapturedRef) initialFrameCapturedRef.current = false; // Reset initial capture flag
+    setFrameBuffer([]); 
+    setBaselineFrameForDiff(null); 
+    setPendingFrameForDiff(null); 
+    if (initialFrameCapturedRef) initialFrameCapturedRef.current = false; 
     logToUI(
       '[handleStartScreenShare] Cleared buffers and baselines for new session.',
     );
@@ -2083,17 +1612,15 @@ Context: You have access to previous analysis results for reference. Focus on id
     }
   }, [stream, logToUI, logError]);
 
-  // 7. useEffects for lifecycle and side effects
-  // Load persisted data on mount
   useEffect(() => {
-    const loadPersistedData = async () => {
+    const loadData = async () => {
       try {
-        const [savedSteps, savedEvents, savedLogs, savedActivityItems] =
-          await Promise.all([ // Added savedActivityItems
+        const [savedSteps, savedEvents, savedLogs, savedActivityItemsFromDB] =
+          await Promise.all([
             loadWorkflowSteps(),
             loadEvents(),
             loadFrontendLogs(),
-            loadActivityItems(), // Load activity items
+            loadActivityItems(), 
           ]);
         if (savedSteps.length > 0) {
           setWorkflowSteps(savedSteps);
@@ -2113,20 +1640,19 @@ Context: You have access to previous analysis results for reference. Focus on id
             `[loadPersistedData] Loaded ${savedLogs.length} frontend logs`,
           );
         }
-        if (savedActivityItems.length > 0) { // Set activity items state
-          setActivityItems(savedActivityItems);
+        if (savedActivityItemsFromDB.length > 0) {
+          setActivityItems(savedActivityItemsFromDB);
           console.log(
-            `[loadPersistedData] Loaded ${savedActivityItems.length} activity items`,
+            `[loadPersistedData] Loaded ${savedActivityItemsFromDB.length} activity items`,
           );
         }
       } catch (err) {
         logError('[loadPersistedData] Failed to load persisted data:', err);
       }
     };
-    loadPersistedData();
-  }, [logError]); // logError is stable, so this runs once on mount
+    loadData();
+  }, [logError]); 
 
-  // Save data when it changes
   useEffect(() => {
     if (workflowSteps.length > 0) saveWorkflowSteps(workflowSteps);
   }, [workflowSteps]);
@@ -2138,21 +1664,19 @@ Context: You have access to previous analysis results for reference. Focus on id
   }, [frontendLogs]);
   useEffect(() => {
     if (activityItems.length > 0) saveActivityItems(activityItems);
-  }, [activityItems]); // Save activity items when they change
+  }, [activityItems]);
 
-  // Auto-dismiss error
   useEffect(() => {
     if (error) {
       setShowError(true);
       const timer = setTimeout(() => {
         setShowError(false);
-        setTimeout(() => setError(null), 300); // Clear error after fade animation
+        setTimeout(() => setError(null), 300); 
       }, 5000);
       return () => clearTimeout(timer);
     }
   }, [error]);
 
-  // Update main status text
   const updateMainStatus = useCallback(() => {
     if (activeAnalysesCount > 0) {
       setMainStatus(`Analyzing (${activeAnalysesCount})...`);
@@ -2165,13 +1689,12 @@ Context: You have access to previous analysis results for reference. Focus on id
     } else {
       setMainStatus('Idle');
     }
-  }, [stream, error, activeAnalysesCount, setMainStatus, videoRef, streamRef]); // Added activeAnalysesCount, streamRef, videoRef
+  }, [stream, error, activeAnalysesCount, setMainStatus, videoRef, streamRef]); 
 
   useEffect(() => {
     updateMainStatus();
   }, [stream, error, activeAnalysesCount, setMainStatus]);
 
-  // Screen sharing and video element effects
   useEffect(() => {
     logToUI('[useEffect stream] Main effect RUNNING. Stream active:', !!stream);
     const currentVideoElement = videoRef.current;
@@ -2252,18 +1775,17 @@ Context: You have access to previous analysis results for reference. Focus on id
     };
   }, [stream, handleStopScreenShare, logToUI, logError]);
 
-  // Monitoring loop and controls
   const monitoringLoop = useCallback(() => {
     if (
       !streamRef.current || !videoRef.current ||
       !autoDetectionEnabledRef.current
     ) return;
     const video = videoRef.current;
-    if (video.readyState < video.HAVE_METADATA) return; // Ensure video is ready
+    if (video.readyState < video.HAVE_METADATA) return; 
 
-    const currentFrameData = getFrameDataForComparison(video); // Renamed for clarity
+    const currentFrameData = getFrameDataForComparison(video); 
 
-    if (lastFrameDataRef.current && currentFrameData) { // Ensure currentFrameData is not null
+    if (lastFrameDataRef.current && currentFrameData) { 
       const changePercent = calculateChangePercentage(
         currentFrameData,
         lastFrameDataRef.current,
@@ -2277,25 +1799,25 @@ Context: You have access to previous analysis results for reference. Focus on id
       }
 
       if (changePercent > changeThresholdRef.current) {
-        handleActivityDetection(); // Signals activity has started or continues
-        captureFrameToBuffer(changePercent); // Directly capture to buffer if change is significant
+        handleActivityDetection(); 
+        captureFrameToBuffer(changePercent); 
       }
     }
 
-    setLastFrameData(currentFrameData); // Store the original Uint8ClampedArray
-    checkForStability(); // Still useful for logging/UI cues about stability periods
+    setLastFrameData(currentFrameData); 
+    checkForStability(); 
   }, [
     getFrameDataForComparison,
     calculateChangePercentage,
     handleActivityDetection,
     checkForStability,
-    captureFrameToBuffer, // Added captureFrameToBuffer
+    captureFrameToBuffer, 
     pixelDifferenceThreshold,
     changeThresholdRef,
-    autoDetectionEnabledRef, // Added changeThresholdRef and autoDetectionEnabledRef
+    autoDetectionEnabledRef, 
     setDisplayChangePercent,
     setLastFrameData,
-    streamRef, // Added streamRef
+    streamRef, 
   ]);
 
   const startMonitoring = useCallback(() => {
@@ -2327,24 +1849,15 @@ Context: You have access to previous analysis results for reference. Focus on id
     setDisplayChangePercent(0);
   }, [logToUI]);
 
-  // Main monitoring useEffect - Restoring this block
   useEffect(() => {
     if (stream && autoDetectionEnabled) {
-      // startMonitoring is designed to be somewhat idempotent via isMonitoringRef check internally
       startMonitoring();
     } else {
-      // stopMonitoring is also designed to be idempotent
       stopMonitoring();
     }
-    // No explicit cleanup needed here as the conditions above handle transitions.
-    // The main purpose of a cleanup would be for component unmount,
-    // but stopMonitoring would be called if stream becomes null before unmount.
-    // If direct unmount while active, a general cleanup in a higher-level return could be considered,
-    // but this effect covers lifecycle based on its dependencies.
   }, [stream, autoDetectionEnabled, startMonitoring, stopMonitoring]);
 
-  // Screen sharing and video element effects - Add initial capture trigger
-  const initialFrameCapturedRef = useRef(false); // Ref to ensure initial capture happens only once per stream session
+  const initialFrameCapturedRef = useRef(false); 
   useEffect(() => {
     logToUI('[useEffect stream] Main effect RUNNING. Stream active:', !!stream);
     const currentVideoElement = videoRef.current;
@@ -2352,30 +1865,26 @@ Context: You have access to previous analysis results for reference. Focus on id
     const onPlayingHandler = () => {
       logToUI("[useEffect stream] 'playing' event.");
       setMainStatus('Recording (Preview Active)');
-      // Trigger initial frame capture if not already done for this stream session
       if (stream && autoDetectionEnabled && !initialFrameCapturedRef.current) {
         logToUI(
           '[useEffect stream] Triggering initial frame capture for baseline.',
         );
-        captureFrameToBuffer(100); // High change % to ensure it gets processed by dispatcher if buffer logic changes
+        captureFrameToBuffer(100); 
         initialFrameCapturedRef.current = true;
       }
     };
-    // ... (rest of video event handlers and logic) ...
     if (stream && currentVideoElement) {
-      // ... (existing stream setup) ...
-      initialFrameCapturedRef.current = false; // Reset for new stream session
+      initialFrameCapturedRef.current = false; 
       currentVideoElement.addEventListener('playing', onPlayingHandler);
     } else if (!stream) {
       streamRef.current = null;
       setMainStatus('Idle');
-      initialFrameCapturedRef.current = false; // Reset if stream stops
+      initialFrameCapturedRef.current = false; 
     }
     return () => {
       if (currentVideoElement) {
         currentVideoElement.removeEventListener('playing', onPlayingHandler);
       }
-      // Ensure other cleanup from the other useEffect for video events is also considered if this takes over all responsibility
       logToUI(
         '[useEffect stream] Cleanup for playing handler. Stream active:',
         !!stream,
@@ -2388,148 +1897,10 @@ Context: You have access to previous analysis results for reference. Focus on id
     logError,
     autoDetectionEnabled,
     captureFrameToBuffer,
-  ]); // Added autoDetectionEnabled & captureFrameToBuffer
+  ]); 
 
-  // New functions for saving and loading ActivityItems
-  const saveActivityItems = async (items: ActivityItem[]) => {
-    try {
-      const db = await openDB();
-      const transaction = db.transaction([ACTIVITY_ITEMS_STORE], 'readwrite');
-      const store = transaction.objectStore(ACTIVITY_ITEMS_STORE);
-
-      await store.clear(); // Clear existing items
-      for (const item of items) {
-        await store.add(item); // Add new items
-      }
-      // console.log(`[saveActivityItems] Saved ${items.length} activity items.`);
-    } catch (err) {
-      console.error('[saveActivityItems] Failed to save:', err);
-    }
-  };
-
-  const loadActivityItems = async (): Promise<ActivityItem[]> => {
-    try {
-      const db = await openDB();
-      const transaction = db.transaction([ACTIVITY_ITEMS_STORE], 'readonly');
-      const store = transaction.objectStore(ACTIVITY_ITEMS_STORE);
-      const request = store.getAll();
-
-      return new Promise((resolve, reject) => {
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-          const items = (request.result as ActivityItem[]) || [];
-          // Sort by timestamp descending (newest first), using robust ID parsing
-          items.sort((a, b) => {
-            const idA = a.type === 'ui_diff' ? a.image2_id : a.image_id;
-            const idB = b.type === 'ui_diff' ? b.image2_id : b.image_id;
-            const timeA = idA
-              ? new Date(
-                idA.split('-diff')[0].split('-change-')[0].split('-event')[0],
-              ).getTime()
-              : 0;
-            const timeB = idB
-              ? new Date(
-                idB.split('-diff')[0].split('-change-')[0].split('-event')[0],
-              ).getTime()
-              : 0;
-            return timeB - timeA;
-          });
-          // console.log(`[loadActivityItems] Loaded ${items.length} activity items.`);
-          resolve(items);
-        };
-      });
-    } catch (err) {
-      console.error('[loadActivityItems] Failed to load:', err);
-      return [];
-    }
-  };
-
-  // New function to get all data for export
-  const getAllPersistedDataForExport = async (): Promise<object> => {
-    const db = await openDB();
-    const transaction = db.transaction([
-      WORKFLOW_STORE,
-      LOGS_STORE,
-      EVENTS_STORE,
-      SCREENSHOTS_STORE,
-      ACTIVITY_ITEMS_STORE,
-    ], 'readonly');
-
-    const workflowSteps = await new Promise<
-      Array<
-        {
-          id: string;
-          analysis: string;
-          parsed: ParsedAnalysis | null;
-          timestamp: string;
-        }
-      >
-    >((resolve, reject) => {
-      const request = transaction.objectStore(WORKFLOW_STORE).getAll();
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result || []);
-    });
-
-    const frontendLogs = await new Promise<
-      Array<{ message: string; timestamp: number; index: number }>
-    >((resolve, reject) => {
-      const request = transaction.objectStore(LOGS_STORE).getAll();
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result || []);
-    });
-
-    const events = await new Promise<Event[]>((resolve, reject) => {
-      const request = transaction.objectStore(EVENTS_STORE).getAll();
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result || []);
-    });
-
-    const activityItems = await new Promise<ActivityItem[]>(
-      (resolve, reject) => {
-        const request = transaction.objectStore(ACTIVITY_ITEMS_STORE).getAll();
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result || []);
-      },
-    );
-
-    const screenshotsFromDB = await new Promise<
-      Array<{ id: string; blob: Blob; timestamp: number; size: number }>
-    >((resolve, reject) => {
-      const request = transaction.objectStore(SCREENSHOTS_STORE).getAll();
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result || []);
-    });
-
-    // Convert screenshot blobs to data URLs
-    const screenshotsForExport: ScreenshotForExport[] = await Promise.all(
-      screenshotsFromDB.map(async (ss) => {
-        const dataUrl = await new Promise<string>((resolveBlob) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolveBlob(reader.result as string);
-          reader.readAsDataURL(ss.blob);
-        });
-        return {
-          id: ss.id,
-          dataUrl,
-          timestamp: ss.timestamp,
-          size: ss.size,
-        };
-      }),
-    );
-
-    return {
-      workflowSteps,
-      frontendLogs,
-      events,
-      activityItems,
-      screenshots: screenshotsForExport,
-      exportedAt: new Date().toISOString(),
-    };
-  };
-
-  // Function to handle manual initial dump request
   const handleManualInitialDump = useCallback(async () => {
-    logToUI('[[VERIFY_CLICK]] Attempting manual initial dump...'); // New verification log
+    logToUI('[[VERIFY_CLICK]] Attempting manual initial dump...'); 
 
     if (
       !streamRef.current || !videoRef.current || !canvasRef.current ||
@@ -2568,18 +1939,18 @@ Context: You have access to previous analysis results for reference. Focus on id
     const context = canvas.getContext('2d');
     if (context) {
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageDataUrl = canvas.toDataURL('image/png', screenshotQuality); // Use state for quality
+      const imageDataUrl = canvas.toDataURL('image/png', screenshotQuality); 
       const timestamp = Date.now();
       const newFrameId = `manual-dump-${new Date(timestamp).toISOString()}`;
       const newFrame: BufferedFrame = {
         id: newFrameId,
         imageDataUrl,
         timestamp,
-        percentChange: 100, // Signify high importance, though not used by processInitialFrameDump directly for selection
+        percentChange: 100, 
       };
 
       try {
-        await saveScreenshot(newFrame.id, canvas); // Save screenshot to DB
+        await saveScreenshot(newFrame.id, canvas); // Uses imported saveScreenshot
         logToUI(
           '[Manual Initial Dump] Screenshot for manual dump saved:',
           newFrame.id,
@@ -2589,10 +1960,9 @@ Context: You have access to previous analysis results for reference. Focus on id
           '[Manual Initial Dump] Screenshot save failed:',
           screenshotErr,
         );
-        // Continue with dump attempt even if screenshot save fails for some reason
       }
 
-      processInitialFrameDump(newFrame); // Directly call processInitialFrameDump
+      processInitialFrameDump(newFrame); 
     } else {
       logError(
         '[Manual Initial Dump] Error: Could not get 2D context for capture.',
@@ -2607,15 +1977,11 @@ Context: You have access to previous analysis results for reference. Focus on id
     processInitialFrameDump,
     initialDumpInProgress,
     streamRef,
-  ]); // Added dependencies
+  ]); 
 
-  // Add ref to track event generation in progress
   const eventGenerationInProgressRef = useRef<boolean>(false);
-  // const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for debounce timeout - REMOVED
 
-  // New function to process multiple activities for event generation
   const processMultiActivityEvent = useCallback(async () => {
-    // Check if already processing
     if (
       eventGenerationInProgressRef.current ||
       activeAnalysesCount >= MAX_PARALLEL_ANALYSES
@@ -2626,20 +1992,16 @@ Context: You have access to previous analysis results for reference. Focus on id
       return;
     }
 
-    // Set flag to prevent duplicate requests
     eventGenerationInProgressRef.current = true;
 
     const activityItemsCopy = [...activityItems];
 
-    // Get last 10 activities
     const last10Activities = activityItemsCopy.slice(0, 10);
 
-    // Find the most recent initial dump
     const mostRecentInitialDump = activityItemsCopy.find((item) =>
       item.type === 'initial_dump'
     );
 
-    // If the most recent initial dump is not in the last 10, include it
     const activitiesToAnalyze: ActivityItem[] = [...last10Activities];
     if (
       mostRecentInitialDump &&
@@ -2664,13 +2026,12 @@ Context: You have access to previous analysis results for reference. Focus on id
     );
 
     try {
-      // Prepare activities summary for analysis
       const activitiesSummary = activitiesToAnalyze.map((item) => {
         if (item.type === 'initial_dump') {
           return {
             type: 'initial_dump',
             timestamp: item.timestamp,
-            content_preview: item.raw_content.substring(0, 500) + '...', // Limit content for token efficiency
+            content_preview: item.raw_content.substring(0, 500) + '...',
           };
         } else {
           return {
@@ -2707,25 +2068,23 @@ Context: You have access to previous analysis results for reference. Focus on id
       if (response.ok && result.analysis) {
         const { is_distinct_event, description } = result.analysis;
 
-        // Only create an event if it's distinct
         if (is_distinct_event === 'yes') {
           const eventId = new Date().toISOString() + '-event';
           const newEvent: Event = {
             id: eventId,
             summary: description,
-            thoughts: `Distinct event`, // Or use a more detailed thought if available
-            timestamp: new Date().toISOString(), // MODIFIED
+            thoughts: `Distinct event`, 
+            timestamp: new Date().toISOString(), 
           };
 
           setEvents((prevEvents) =>
             [newEvent, ...prevEvents]
               .sort((a, b) => {
-                // Robust ID parsing for sorting
                 const timeA = new Date(a.id.split('-event')[0]).getTime();
                 const timeB = new Date(b.id.split('-event')[0]).getTime();
                 return timeB - timeA;
               })
-              .slice(0, 100) // Keep last 100 events for history
+              .slice(0, 100) 
           );
 
           logToUI(
@@ -2737,13 +2096,12 @@ Context: You have access to previous analysis results for reference. Focus on id
             '[processMultiActivityEvent] ⏭️ No distinct event identified - similar to recent activity. Description:',
             description,
           );
-          // Create an event to show "No distinct event" in the UI
           const eventId = new Date().toISOString() + '-event-non-distinct';
           const newEvent: Event = {
             id: eventId,
-            summary: description || 'No distinct event identified', // Use backend description
+            summary: description || 'No distinct event identified',
             thoughts: 'Non-distinct activity based on backend analysis.',
-            timestamp: new Date().toISOString(), // MODIFIED
+            timestamp: new Date().toISOString(), 
           };
           setEvents((prevEvents) =>
             [newEvent, ...prevEvents]
@@ -2779,28 +2137,21 @@ Context: You have access to previous analysis results for reference. Focus on id
     setEvents,
   ]);
 
-  // useEffect to trigger event generation when activity items change
   useEffect(() => {
-    // Check if already processing
     if (eventGenerationInProgressRef.current) {
       return;
     }
 
-    // Only process if stream is active and not too many analyses running
     if (stream && activeAnalysesCount < MAX_PARALLEL_ANALYSES) {
-      // Removed debounce and minimum activity items check
       processMultiActivityEvent();
     }
 
-    // No cleanup needed for debounce timeout anymore
-  }, [stream, activityItems, activeAnalysesCount, processMultiActivityEvent]); // activityItems is kept to trigger on new items
+  }, [stream, activityItems, activeAnalysesCount, processMultiActivityEvent]); 
 
   return (
     <div className='container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
-      {/* Export in Progress Modal */}
       <ExportStatusDialog exportInProgress={exportInProgress} />
 
-      {/* Header with Controls */}
       <PageHeaderControls
         stream={stream}
         handleStartScreenShare={handleStartScreenShare}
@@ -2814,24 +2165,17 @@ Context: You have access to previous analysis results for reference. Focus on id
         initialDumpInProgress={initialDumpInProgress}
         error={error}
         streamRef={streamRef}
-        MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES} // Pass MAX_PARALLEL_ANALYSES here
+        MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
       />
 
-      {/* Error Overlay - Auto-dismissing */}
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
 
-      {/* Hidden Canvas for capturing frames */}
       <canvas ref={canvasRef} style={{ display: 'none' }} />
-
-      {/* Hidden Canvas for change detection monitoring */}
       <canvas ref={monitoringCanvasRef} style={{ display: 'none' }} />
 
-      {/* Main Content Area: Preview and Logs/Analysis */}
       <div className='w-full max-w-7xl grid grid-cols-1 lg:grid-cols-3 gap-4'>
-        {/* Left Column: Video Preview */}
         <VideoPreviewArea stream={stream} videoRef={videoRef} />
 
-        {/* Right Column: Analysis, Workflow Log, Settings/Prompt, Debug Logs */}
         <div className='lg:col-span-2 flex flex-col gap-4'>
           <Tabs defaultValue='events' className='w-full -mt-2'>
             <TabsList className='grid w-full grid-cols-4 mb-1'>
