@@ -286,6 +286,35 @@ export const saveScreenshot = async (id: string, canvas: HTMLCanvasElement) => {
   }
 };
 
+export const getScreenshotById = async (
+  id: string,
+): Promise<Blob | null> => {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([SCREENSHOTS_STORE], 'readonly');
+    const store = transaction.objectStore(SCREENSHOTS_STORE);
+    const request = store.get(id);
+
+    return new Promise((resolve, reject) => {
+      request.onerror = () => {
+        console.error(`[getScreenshotById] Error getting screenshot ${id}:`, request.error);
+        reject(request.error);
+      };
+      request.onsuccess = () => {
+        if (request.result) {
+          resolve(request.result.blob);
+        } else {
+          console.warn(`[getScreenshotById] Screenshot with id ${id} not found.`);
+          resolve(null);
+        }
+      };
+    });
+  } catch (err) {
+    console.error(`[getScreenshotById] Failed to get screenshot ${id}:`, err);
+    return null;
+  }
+};
+
 export const saveActivityItems = async (items: ActivityItem[]) => {
   try {
     const db = await openDB();

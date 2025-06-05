@@ -1,7 +1,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import type { PageHeaderControlsProps } from '../../types'; // Keep this import
-import { Play, StopCircle, Binary, AlertTriangle, RotateCcw, Zap } from 'lucide-react';
+import { Play, StopCircle, Binary, AlertTriangle, RotateCcw, Zap, LayoutList, Columns } from 'lucide-react';
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
@@ -16,6 +17,8 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   error,
   streamRef,
   MAX_PARALLEL_ANALYSES,
+  viewMode,
+  setViewMode,
 }) => {
   const dumpButtonDisabled = !stream || activeAnalysesCount >= MAX_PARALLEL_ANALYSES;
 
@@ -39,6 +42,23 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
         >
           <Binary className='mr-2 h-4 w-4' /> Manual Dump
         </Button>
+
+        <ToggleGroup 
+          type="single" 
+          variant="outline"
+          value={viewMode} 
+          onValueChange={(value) => {
+            if (value) setViewMode(value as 'tabs' | 'timeline');
+          }}
+          className="ml-4"
+        >
+          <ToggleGroupItem value="tabs" aria-label="Tabs view">
+            <LayoutList className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="timeline" aria-label="Timeline view">
+            <Columns className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       <div className='flex flex-col sm:flex-row items-center gap-2 text-xs'>

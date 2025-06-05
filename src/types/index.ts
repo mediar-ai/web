@@ -89,6 +89,8 @@ export type PageHeaderControlsProps = {
   error: string | null;
   streamRef: React.RefObject<MediaStream | null>;
   MAX_PARALLEL_ANALYSES: number;
+  viewMode: 'tabs' | 'timeline';
+  setViewMode: (mode: 'tabs' | 'timeline') => void;
 };
 
 export type VideoPreviewAreaProps = {
@@ -155,4 +157,31 @@ export interface MemoizedScrollAreaContentProps {
 
 export interface MemoizedDebugLogsScrollAreaProps {
   logs: string[];
+}
+
+// =================================================================
+// Types for the new Timeline View
+// =================================================================
+
+export type TimelineItem =
+  | (Event & { itemType: 'event' })
+  | (ActivityItem & { itemType: 'activity' });
+
+export interface TimelineListProps {
+  timelineItems: TimelineItem[];
+  selectedItem: TimelineItem | null;
+  onSelectItem: (item: TimelineItem) => void;
+}
+
+export interface ScreenshotPreviewProps {
+  selectedItem: TimelineItem | null;
+  timelineItems: TimelineItem[];
+}
+
+export interface DetailsPaneProps {
+  selectedItem: TimelineItem | null;
+}
+
+export interface TimelineViewProps {
+  timelineItems: TimelineItem[];
 } 
