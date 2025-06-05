@@ -114,9 +114,14 @@ export function useEventGenerator({
         }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
       const result = await response.json();
 
-      if (response.ok && result.analysis) {
+      if (result.analysis) {
         const { is_distinct_event, description } = result.analysis;
 
         if (is_distinct_event === 'yes') {

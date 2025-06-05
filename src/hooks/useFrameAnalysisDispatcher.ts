@@ -52,9 +52,15 @@ export function useFrameAnalysisDispatcher({
             analysisType: 'initial_frame_dump',
           }),
         });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
         const result = await response.json();
         if (
-          response.ok && result.analysis &&
+          result.analysis &&
           typeof result.analysis.raw_content === 'string'
         ) {
           logToUI(
@@ -139,6 +145,12 @@ export function useFrameAnalysisDispatcher({
             prompt: 'Perform UI difference analysis',
           }),
         });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
         const result = await response.json();
         if (response.ok && typeof result.analysis === 'object') {
           const diffData = result.analysis as Omit<
