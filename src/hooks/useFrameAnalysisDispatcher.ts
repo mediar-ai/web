@@ -53,49 +53,51 @@ export function useFrameAnalysisDispatcher({
           }),
         });
 
-        if (!response.ok) {
+        if (!response.ok || !response.body) {
           const errorText = await response.text();
           throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
-        const result = await response.json();
-        if (
-          result.analysis &&
-          typeof result.analysis.raw_content === 'string'
-        ) {
-          logToUI(
-            '[processInitialFrameDump] ✅ Initial frame dump successful...',
-          );
-          const newActivityItem: ActivityItem = {
-            type: 'initial_dump',
-            id: frameToDump.id,
-            timestamp: new Date(frameToDump.timestamp).toISOString(),
-            raw_content: result.analysis.raw_content,
-            image_id: frameToDump.id,
-          };
-          setActivityItems((prev) =>
-            [newActivityItem, ...prev].sort(
-              (a, b) => {
-                const idA = a.type === 'ui_diff' ? a.image2_id : a.image_id;
-                const idB = b.type === 'ui_diff' ? b.image2_id : b.image_id;
-                const timeA = new Date(
-                  idA!.split('-diff')[0].split('-change-')[0],
-                ).getTime();
-                const timeB = new Date(
-                  idB!.split('-diff')[0].split('-change-')[0],
-                ).getTime();
-                return timeB - timeA;
-              },
-            )
-          );
-          setBaselineFrameForDiff(frameToDump);
-        } else {
-          logError(
-            '[processInitialFrameDump] Backend error for initial dump:',
-            result.error || 'Unknown error',
-            result.details || '',
-          );
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let rawContent = '';
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          rawContent += decoder.decode(value, { stream: true });
         }
+        
+        // The stream is complete, now process the final text
+        logToUI(
+          `[processInitialFrameDump] ✅ Stream finished. Total content length: ${rawContent.length}`,
+        );
+
+        const newActivityItem: ActivityItem = {
+          type: 'initial_dump',
+          id: frameToDump.id,
+          timestamp: new Date(frameToDump.timestamp).toISOString(),
+          raw_content: rawContent,
+          image_id: frameToDump.id,
+        };
+        setActivityItems((prev) =>
+          [newActivityItem, ...prev].sort(
+            (a, b) => {
+              const idA = a.type === 'ui_diff' ? a.image2_id : a.image_id;
+              const idB = b.type === 'ui_diff' ? b.image2_id : b.image_id;
+              const timeA = new Date(
+                idA!.split('-diff')[0].split('-change-')[0],
+              ).getTime();
+              const timeB = new Date(
+                idB!.split('-diff')[0].split('-change-')[0],
+              ).getTime();
+              return timeB - timeA;
+            },
+          )
+        );
+        setBaselineFrameForDiff(frameToDump);
       } catch (err) {
         logError(
           '[processInitialFrameDump] Network error during initial dump:',
@@ -146,14 +148,29 @@ export function useFrameAnalysisDispatcher({
           }),
         });
 
-        if (!response.ok) {
+        if (!response.ok || !response.body) {
           const errorText = await response.text();
           throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
-        const result = await response.json();
-        if (response.ok && typeof result.analysis === 'object') {
-          const diffData = result.analysis as Omit<
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let jsonString = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          jsonString += decoder.decode(value, { stream: true });
+        }
+        
+        logToUI(`[processUIDiffRequest] ✅ Stream finished. Total content length: ${jsonString.length}`);
+        
+        const result = JSON.parse(jsonString); // Parse the complete JSON string
+
+        if (typeof result === 'object') {
+          const diffData = result as Omit<
             UIDiffAnalysis,
             'type' | 'id' | 'timestamp' | 'image1_id' | 'image2_id'
           >;

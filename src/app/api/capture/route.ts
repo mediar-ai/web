@@ -55,7 +55,8 @@ export async function POST(request: Request) {
     const analysisType = body.analysisType as string || 'workflow'; // New: 'workflow' or 'ui_diff'
 
     const modelName = requestedModel || MODEL_NAME; // Default model
-    const activeModel = genAI.getGenerativeModel({ model: modelName });
+    const requestOptions = { timeout: 1200000 }; // 20 minute timeout
+    const activeModel = genAI.getGenerativeModel({ model: modelName, ...requestOptions });
 
     await writeToLog(`Received POST. Analysis Type: ${analysisType}. Model: ${modelName}. Client Timestamp: ${clientTimestamp}. User Prompt: ${userPrompt.substring(0,100)}... History items: ${history.length}`);
 
@@ -261,36 +262,40 @@ The userPrompt contains general instructions: ${userPrompt}`;
       ];
 
       const diffContents = [{ role: "user", parts: [...imageParts, {text: diffPrompt}] }];
-      const diffResult = await activeModel.generateContent({ contents: diffContents, generationConfig: diffGenerationConfig, safetySettings });
+      const streamResult = await activeModel.generateContentStream({ contents: diffContents, generationConfig: diffGenerationConfig, safetySettings });
       
-      const diffResponse = diffResult.response;
-      if (diffResponse && diffResponse.candidates && diffResponse.candidates.length > 0) {
-          const candidate = diffResponse.candidates[0];
-          await writeToLog(`Gemini UI Diff candidate details. Finish Reason: ${candidate.finishReason}. Safety Ratings: ${JSON.stringify(candidate.safetyRatings)}.`);
-
-          if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-              const jsonString = candidate.content.parts.map(part => part.text || '').join('').trim();
-              if (jsonString) {
-                  try {
-                      const structuredDiffAnalysis = JSON.parse(jsonString);
-                      await writeToLog(`Gemini UI Diff analysis successful. Change detected: ${structuredDiffAnalysis.change_detected}`);
-                      return NextResponse.json({ message: 'UI Diff analyzed.', analysis: structuredDiffAnalysis, serverTimestamp: new Date().toISOString() });
-                  } catch (e) {
-                      await writeToLog(`ERROR: Failed to parse JSON for UI Diff. JSON String: "${jsonString}". Error: ${(e as Error).message}`);
-                      return NextResponse.json({ error: 'Failed to parse UI Diff JSON.', details: (e as Error).message }, { status: 500 });
-                  }
-              } else {
-                  await writeToLog(`WARN: Gemini UI Diff returned empty jsonString. Full Candidate: ${JSON.stringify(candidate)}`);
+      // Create a streamed response for the JSON output
+      const readableStream = new ReadableStream({
+        async start(controller) {
+          try {
+            // Although we expect a single JSON object, we process it as a stream
+            // to prevent timeouts. The model might send it in chunks.
+            let accumulatedJson = '';
+            for await (const chunk of streamResult.stream) {
+              const chunkText = chunk.text();
+              if (chunkText) {
+                accumulatedJson += chunkText;
+                // We don't enqueue partial JSON, we build the full string first
               }
-          } else {
-              await writeToLog(`WARN: Gemini UI Diff returned no content parts. Full Candidate: ${JSON.stringify(candidate)}`);
+            }
+            // Once the stream is finished, enqueue the complete JSON string
+            controller.enqueue(new TextEncoder().encode(accumulatedJson));
+            await writeToLog('Gemini UI Diff stream finished successfully.');
+            controller.close();
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown streaming error';
+            await writeToLog(`ERROR: Streaming UI Diff from Gemini failed: ${errorMessage}`);
+            controller.error(error);
           }
-      } else {
-          await writeToLog(`WARN: Gemini UI Diff request returned no candidates. Full API Result: ${JSON.stringify(diffResult)}`);
-      }
-      // This line is reached if any of the checks above fail and don't return a response
-      await writeToLog('WARN: Gemini UI Diff request failed or returned empty (details logged above).');
-      return NextResponse.json({ error: 'Failed to generate UI Diff analysis.' }, { status: 500 });
+        }
+      });
+
+      return new NextResponse(readableStream, {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8', // Ensure correct MIME type for JSON
+          'X-Content-Type-Options': 'nosniff',
+        }
+      });
     }
 
     // Handle regular single-image workflow analysis request (MODIFIED - this is the original main analysis path)
@@ -382,6 +387,9 @@ The userPrompt contains general instructions: ${userPrompt}`;
 
       const dumpPrompt = userPrompt; // User prompt is "list in maximum detail raw content of the screenshot"
       
+      const dumpModelName = "gemini-2.5-pro-preview-06-05"; // Use a more powerful model for this task
+      const dumpActiveModel = genAI.getGenerativeModel({ model: dumpModelName, ...requestOptions });
+
       // For a raw text dump, we might not need a complex schema, or a very simple one.
       // Let's try without a specific responseSchema first, expecting text.
       // Or, define a simple schema if we want to ensure it's under a specific key.
@@ -389,7 +397,7 @@ The userPrompt contains general instructions: ${userPrompt}`;
         temperature: 0.1, // Low temperature for factual listing
         topK: 32,
         topP: 0.8,
-        maxOutputTokens: 8192, // Increased from 4096
+        maxOutputTokens: 64192, // Increased from 4096
         // No responseMimeType or responseSchema specified to get default text output
       };
       const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThreshold}> = [
@@ -403,26 +411,36 @@ The userPrompt contains general instructions: ${userPrompt}`;
       const textInputPart: Part = { text: dumpPrompt };
       const dumpContents = [{ role: "user", parts: [imageInputPart, textInputPart] }];
 
-      await writeToLog(`Sending request to Gemini (${modelName}) for initial frame dump. Prompt: ${dumpPrompt}`);
-      const dumpResult = await activeModel.generateContent({ contents: dumpContents, generationConfig: dumpGenerationConfig, safetySettings });
+      await writeToLog(`Sending request to Gemini (${dumpModelName}) for initial frame dump. Prompt: ${dumpPrompt}`);
       
-      const dumpResponse = dumpResult.response;
-      if (dumpResponse && dumpResponse.candidates && dumpResponse.candidates.length > 0) {
-        const candidate = dumpResponse.candidates[0];
-        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-          const rawContentText = candidate.content.parts.map(part => part.text || '').join('').trim();
-          if (rawContentText) {
-            await writeToLog(`Gemini initial frame dump successful (length: ${rawContentText.length}): ${rawContentText.substring(0, 100)}...`);
-            return NextResponse.json({ 
-              message: 'Initial frame content dumped successfully.', 
-              analysis: { raw_content: rawContentText }, // Send as an object with a key
-              serverTimestamp: new Date().toISOString() 
-            });
+      const streamResult = await dumpActiveModel.generateContentStream({ contents: dumpContents, generationConfig: dumpGenerationConfig, safetySettings });
+      
+      // Create a streamed response
+      const readableStream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of streamResult.stream) {
+              const chunkText = chunk.text();
+              if (chunkText) {
+                controller.enqueue(new TextEncoder().encode(chunkText));
+              }
+            }
+            await writeToLog('Gemini initial frame dump stream finished successfully.');
+            controller.close();
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown streaming error';
+            await writeToLog(`ERROR: Streaming from Gemini failed: ${errorMessage}`);
+            controller.error(error);
           }
         }
-      }
-      await writeToLog('WARN: Gemini initial frame dump request failed or returned empty.');
-      return NextResponse.json({ error: 'Failed to generate initial frame content dump.' }, { status: 500 });
+      });
+      
+      return new NextResponse(readableStream, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Content-Type-Options': 'nosniff',
+        }
+      });
     }
     
     // Fallback if no appropriate handler was found
