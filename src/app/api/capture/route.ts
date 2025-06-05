@@ -134,7 +134,7 @@ User instruction: ${userPrompt}`;
         temperature: 0.3,
         topK: 32,
         topP: 0.8,
-        maxOutputTokens: 65535, // Set to maximum as per user request, input prompt settings reverted to less aggressive shortening
+        maxOutputTokens: 64192, // Increased to standard max, 65535 may be invalid for this model.
         responseMimeType: "application/json",
         responseSchema: multiActivityEventSchema
       };
@@ -249,31 +249,47 @@ For 'new_content_detected', list in maximum detail all NEW raw text, UI elements
 The userPrompt contains general instructions: ${userPrompt}`;
 
       const diffGenerationConfig = {
-        temperature: 0.2, topK: 32, topP: 0.8, maxOutputTokens: 4096,
+        temperature: 0.2, topK: 32, topP: 0.8, maxOutputTokens: 64192, // Increased from 4096
         responseMimeType: "application/json", responseSchema: uiDiffAnalysisSchema
       };
 
+      const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThreshold}> = [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+      ];
+
       const diffContents = [{ role: "user", parts: [...imageParts, {text: diffPrompt}] }];
-      const diffResult = await activeModel.generateContent({ contents: diffContents, generationConfig: diffGenerationConfig });
+      const diffResult = await activeModel.generateContent({ contents: diffContents, generationConfig: diffGenerationConfig, safetySettings });
       
       const diffResponse = diffResult.response;
       if (diffResponse && diffResponse.candidates && diffResponse.candidates.length > 0) {
           const candidate = diffResponse.candidates[0];
+          await writeToLog(`Gemini UI Diff candidate details. Finish Reason: ${candidate.finishReason}. Safety Ratings: ${JSON.stringify(candidate.safetyRatings)}.`);
+
           if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
               const jsonString = candidate.content.parts.map(part => part.text || '').join('').trim();
               if (jsonString) {
                   try {
                       const structuredDiffAnalysis = JSON.parse(jsonString);
-                      await writeToLog(`Gemini UI Diff analysis response (structured JSON processed). Change detected: ${structuredDiffAnalysis.change_detected}`);
+                      await writeToLog(`Gemini UI Diff analysis successful. Change detected: ${structuredDiffAnalysis.change_detected}`);
                       return NextResponse.json({ message: 'UI Diff analyzed.', analysis: structuredDiffAnalysis, serverTimestamp: new Date().toISOString() });
                   } catch (e) {
-                      await writeToLog(`ERROR: Failed to parse JSON for UI Diff. JSON String: ${jsonString}. Error: ${e}`);
+                      await writeToLog(`ERROR: Failed to parse JSON for UI Diff. JSON String: "${jsonString}". Error: ${(e as Error).message}`);
                       return NextResponse.json({ error: 'Failed to parse UI Diff JSON.', details: (e as Error).message }, { status: 500 });
                   }
+              } else {
+                  await writeToLog(`WARN: Gemini UI Diff returned empty jsonString. Full Candidate: ${JSON.stringify(candidate)}`);
               }
+          } else {
+              await writeToLog(`WARN: Gemini UI Diff returned no content parts. Full Candidate: ${JSON.stringify(candidate)}`);
           }
+      } else {
+          await writeToLog(`WARN: Gemini UI Diff request returned no candidates. Full API Result: ${JSON.stringify(diffResult)}`);
       }
-      await writeToLog('WARN: Gemini UI Diff request failed or returned empty.');
+      // This line is reached if any of the checks above fail and don't return a response
+      await writeToLog('WARN: Gemini UI Diff request failed or returned empty (details logged above).');
       return NextResponse.json({ error: 'Failed to generate UI Diff analysis.' }, { status: 500 });
     }
 
@@ -309,7 +325,7 @@ The userPrompt contains general instructions: ${userPrompt}`;
         temperature: 0.3, 
         topK: 32,
         topP: 0.8,
-        maxOutputTokens: 4096, 
+        maxOutputTokens: 64192, // Increased from 4096
         responseMimeType: "application/json",
         responseSchema: mainAnalysisSchema
       };
@@ -373,7 +389,7 @@ The userPrompt contains general instructions: ${userPrompt}`;
         temperature: 0.1, // Low temperature for factual listing
         topK: 32,
         topP: 0.8,
-        maxOutputTokens: 4096, // Generous for detailed raw content
+        maxOutputTokens: 8192, // Increased from 4096
         // No responseMimeType or responseSchema specified to get default text output
       };
       const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThreshold}> = [
