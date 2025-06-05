@@ -589,7 +589,7 @@ Context: You have access to previous analysis results for reference. Focus on id
 
   // 1. Logging utilities
   const logToUI = useCallback((...args: unknown[]) => {
-    const timestamp = new Date().toLocaleTimeString();
+    const timestamp = new Date().toISOString();
     const message = args.map((arg) =>
       typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
     ).join(' ');
@@ -599,7 +599,7 @@ Context: You have access to previous analysis results for reference. Focus on id
   }, []);
 
   const logError = useCallback((...args: unknown[]) => {
-    const timestamp = new Date().toLocaleTimeString();
+    const timestamp = new Date().toISOString();
     const message = args.map((arg) =>
       typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
     ).join(' ');
