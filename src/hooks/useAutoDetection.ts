@@ -226,7 +226,6 @@ export function useAutoDetection({
     }
     setIsMonitoring(false); // Then set state
     setLastFrameData(null);
-    // lastFrameDataRef.current = null; // This is handled by useEffect on lastFrameData
     setActivityDetected(false);
     currentChangePercentRef.current = 0;
     lastDisplayChangeRef.current = 0;

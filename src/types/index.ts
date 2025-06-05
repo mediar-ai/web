@@ -86,7 +86,6 @@ export type PageHeaderControlsProps = {
   isMonitoring: boolean;
   displayChangePercent: number;
   activeAnalysesCount: number;
-  initialDumpInProgress: boolean;
   error: string | null;
   streamRef: React.RefObject<MediaStream | null>;
   MAX_PARALLEL_ANALYSES: number;
@@ -108,11 +107,11 @@ export type ExportStatusDialogProps = {
 };
 
 export type EventsTabContentProps = {
-  memoizedEventsContent: React.ReactNode;
+  events: Event[];
 };
 
 export type ActivityTabContentProps = {
-  memoizedActivityContent: React.ReactNode;
+  activityItems: ActivityItem[];
 };
 
 export type SettingsTabContentProps = {
@@ -156,8 +155,4 @@ export interface MemoizedScrollAreaContentProps {
 
 export interface MemoizedDebugLogsScrollAreaProps {
   logs: string[];
-}
-
-// Ensure React is available for JSX if these types are used in .ts files that might become .tsx
-// For now, since these are just types, it's not strictly necessary but good practice if they evolve.
-// import React from 'react'; 
+} 

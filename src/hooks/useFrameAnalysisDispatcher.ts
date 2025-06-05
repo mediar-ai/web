@@ -29,15 +29,6 @@ export function useFrameAnalysisDispatcher({
   const [initialDumpInProgress, setInitialDumpInProgress] = useState<boolean>(false);
   const [diffAnalysisInProgress, setDiffAnalysisInProgress] = useState<boolean>(false);
 
-  // Need a ref for activeAnalysesCount if it's used in callbacks that should not re-run when it changes,
-  // but for logging/status updates, direct prop usage is fine if callbacks are memoized correctly.
-  // For now, assuming direct prop usage is acceptable for setMainStatus.
-  // const activeAnalysesCountRef = useRef(activeAnalysesCount);
-  // useEffect(() => {
-  //   activeAnalysesCountRef.current = activeAnalysesCount;
-  // }, [activeAnalysesCount]);
-
-
   const processInitialFrameDump = useCallback(
     async (frameToDump: BufferedFrame) => {
       if (initialDumpInProgress) return;
