@@ -11,6 +11,7 @@ export interface Event {
   summary: string; // The concise summary
   thoughts?: string; // Optional thought process from the model
   timestamp: string;
+  activity_ids?: string[]; // The IDs of the activities that generated this event
 }
 
 export interface ParsedAnalysis {
@@ -108,6 +109,8 @@ export type ExportStatusDialogProps = {
 
 export type EventsTabContentProps = {
   events: Event[];
+  selectedEvent: Event | null;
+  onEventSelect: (event: Event) => void;
 };
 
 export type ActivityTabContentProps = {

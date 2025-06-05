@@ -68,6 +68,7 @@ export function useEventGenerator({
       return;
     }
 
+    const activityIdsToAnalyze = activitiesToAnalyze.map(item => item.id);
     setActiveAnalysesCount((prev) => prev + 1);
     setMainStatus(`Analyzing Event (${activeAnalysesCountRef.current + 1})...`);
     logToUI(
@@ -124,15 +125,16 @@ export function useEventGenerator({
       if (result.analysis) {
         const { is_distinct_event, description } = result.analysis;
 
-        if (is_distinct_event === 'yes') {
-          const eventId = new Date().toISOString() + '-event';
-          const newEvent: Event = {
-            id: eventId,
-            summary: description,
-            thoughts: `Distinct event`, 
-            timestamp: new Date().toISOString(), 
-          };
+        const eventId = new Date().toISOString() + (is_distinct_event === 'yes' ? '-event' : '-event-non-distinct');
+        const newEvent: Event = {
+          id: eventId,
+          summary: description || (is_distinct_event === 'yes' ? 'New Event' : 'Non-distinct activity'),
+          thoughts: is_distinct_event === 'yes' ? 'Distinct event' : 'Non-distinct activity based on backend analysis.',
+          timestamp: new Date().toISOString(),
+          activity_ids: activityIdsToAnalyze,
+        };
 
+        if (is_distinct_event === 'yes') {
           setEvents((prevEvents) =>
             [newEvent, ...prevEvents]
               .sort((a, b) => {
@@ -148,17 +150,6 @@ export function useEventGenerator({
             description,
           );
         } else {
-          logToUI(
-            '[processMultiActivityEvent] ⏭️ No distinct event identified - similar to recent activity. Description:',
-            description,
-          );
-          const eventId = new Date().toISOString() + '-event-non-distinct';
-          const newEvent: Event = {
-            id: eventId,
-            summary: description || 'No distinct event identified',
-            thoughts: 'Non-distinct activity based on backend analysis.',
-            timestamp: new Date().toISOString(), 
-          };
           setEvents((prevEvents) =>
             [newEvent, ...prevEvents]
               .sort((a, b) => {
@@ -167,6 +158,10 @@ export function useEventGenerator({
                 return timeB - timeA;
               })
               .slice(0, 100)
+          );
+          logToUI(
+            '[processMultiActivityEvent] ⏭️ No distinct event identified - similar to recent activity. Description:',
+            description,
           );
         }
       } else {

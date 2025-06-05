@@ -80,6 +80,7 @@ export default function Home() {
   const [frameBuffer, setFrameBuffer] = useState<BufferedFrame[]>([]);
   const [activeAnalysesCount, setActiveAnalysesCount] = useState<number>(0);
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>(
     `You are an expert business workflow assistant that analyzes screen data to identify business processes. Provide your analysis in the following structured format:
 
@@ -297,6 +298,25 @@ Context: You have access to previous analysis results for reference. Focus on id
     EVENTS_MODEL_NAME,
     eventsPrompt,
   });
+
+  const handleEventSelect = (event: Event) => {
+    setSelectedEvent(event);
+
+    if (event.activity_ids && event.activity_ids.length > 0) {
+      // The activities are sorted newest first, so the first ID is the most relevant
+      const mostRecentActivityId = event.activity_ids[0];
+      const relatedActivity = activityItems.find(a => a.id === mostRecentActivityId);
+
+      if (relatedActivity) {
+        setSelectedActivity(relatedActivity);
+      } else {
+        // If the specific activity isn't found, clear the selection
+        setSelectedActivity(null);
+      }
+    } else {
+      setSelectedActivity(null);
+    }
+  };
 
   const handlePromptChange = useCallback((newPrompt: string) => {
     setCustomPrompt(newPrompt);
@@ -777,7 +797,11 @@ Context: You have access to previous analysis results for reference. Focus on id
             </TabsList>
 
             <TabsContent value='events' className='-mt-3'>
-              <EventsTabContent events={events} />
+              <EventsTabContent
+                events={events}
+                selectedEvent={selectedEvent}
+                onEventSelect={handleEventSelect}
+              />
             </TabsContent>
 
             <TabsContent value='recent' className='-mt-3'>
