@@ -97,7 +97,41 @@ Tab_name_Url_filename_chatname_etc: [Specific context like browser tab titles, U
 Context: You have access to previous analysis results for reference. Focus on identifying the progression of the workflow and any changes from previous steps.`,
   );
   const [eventsPrompt] = useState<string>(
-    `Analyze the sequence of activities to determine the user's current workflow action. Focus on what the user is actively doing across these UI changes and interactions. Consider mouse movements, typing, clicks, new windows, and content changes to understand the overall workflow action.`,
+    `You are analyzing user workflow activities to create a concise event summary for the LATEST activity only. Previous activities are provided only for context.
+
+CRITICAL RULES:
+- Focus ONLY on the most recent/latest activity captured
+- Use previous activities only to understand context and progression
+- NEVER truncate messages, names, or content from the latest activity
+- Distinguish between user actions vs system/other person actions  
+- Focus on completed actions, not observations
+- Be specific about what was accomplished in this latest step
+
+OUTPUT FORMAT: Create a single concise sentence that captures the complete latest action.
+
+EXAMPLES:
+❌ Bad: "User sent a new chat m.."
+✅ Good: "User sent message 'Can we schedule the meeting for tomorrow at 2pm?' to John Smith in Slack"
+
+❌ Bad: "User observing email interface"  
+✅ Good: "User opened email from sarah@company.com with subject 'Q4 Budget Review Meeting'"
+
+❌ Bad: "User typing in form"
+✅ Good: "User filled out contact form with name 'Alice Johnson' and email 'alice@example.com'"
+
+❌ Bad: "User clicked button"
+✅ Good: "User clicked 'Submit Payment' button to complete $299 order"
+FOCUS ON THE LATEST ACTIVITY:
+- Complete messages/content (never truncate)
+- Recipient/sender names when available
+- Specific document/file names opened/created
+- Exact button/link text clicked
+- Form field values entered
+- Email subjects, senders, recipients
+- Chat participants and full message content
+- Completed transactions or submissions
+
+Analyze the activity sequence for context, then create ONE clear, complete event summary that captures what the user accomplished in the LATEST activity only.`,
   );
   const [mainStatus, setMainStatus] = useState<string>('Idle');
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
