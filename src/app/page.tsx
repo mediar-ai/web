@@ -37,6 +37,7 @@ import { useFrameAnalysisDispatcher } from '../hooks/useFrameAnalysisDispatcher'
 import { useEventGenerator } from '../hooks/useEventGenerator';
 import ScreenshotPreviewPane from '@/components/capture/ScreenshotPreviewPane';
 import TimelineSlider from '@/components/capture/TimelineSlider';
+import ScrollHint from '@/components/onboarding/ScrollHint';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -149,6 +150,9 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [selectedMoreOption, setSelectedMoreOption] = useState<string | null>(null);
   const [selectedMainTab, setSelectedMainTab] = useState<string>('recent');
+  const [showScrollHint, setShowScrollHint] = useState<boolean>(false);
+  const [hasTriggeredScrollHint, setHasTriggeredScrollHint] = useState<boolean>(false);
+  const [isHoveringScrollableArea, setIsHoveringScrollableArea] = useState<boolean>(false);
 
   const initialFrameCapturedRef = useRef(false);
   const streamActiveBeforeSleep = useRef(false);
@@ -676,6 +680,24 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     }
   }, [stream, workflow, logToUI]);
 
+  // Check if scroll hint should be triggered (one-time on first hover)
+  useEffect(() => {
+    const hasSeenScrollHint = localStorage.getItem('hasSeenScrollHint');
+    
+    // Only trigger if: not seen before, on recent tab, has activities, currently hovering, and hasn't been triggered yet
+    if (!hasSeenScrollHint && selectedMainTab === 'recent' && activityItems.length > 0 && isHoveringScrollableArea && !hasTriggeredScrollHint) {
+      console.log('[ScrollHint] Triggering hint for first time');
+      setShowScrollHint(true);
+      setHasTriggeredScrollHint(true);
+    }
+  }, [selectedMainTab, activityItems.length, isHoveringScrollableArea, hasTriggeredScrollHint]);
+
+  const handleDismissScrollHint = () => {
+    setShowScrollHint(false);
+    localStorage.setItem('hasSeenScrollHint', 'true');
+    console.log('[ScrollHint] User dismissed scroll hint - will not show again');
+  };
+
   useEffect(() => {
     if (error) {
       setShowError(true);
@@ -956,18 +978,24 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       </div>
       {selectedActivity && selectedMainTab === 'recent' && !selectedMoreOption && (
         <div className="w-full max-w-7xl mt-4">
-          <TimelineSlider
-            activityItems={activityItems}
-            selectedActivity={selectedActivity}
-            onActivitySelect={setSelectedActivity}
-          />
-          <ScreenshotPreviewPane 
-            selectedActivity={selectedActivity} 
-            activityItems={activityItems}
-            onActivitySelect={setSelectedActivity}
-          />
+          <div 
+            onMouseEnter={() => setIsHoveringScrollableArea(true)}
+            onMouseLeave={() => setIsHoveringScrollableArea(false)}
+          >
+            <TimelineSlider
+              activityItems={activityItems}
+              selectedActivity={selectedActivity}
+              onActivitySelect={setSelectedActivity}
+            />
+            <ScreenshotPreviewPane 
+              selectedActivity={selectedActivity} 
+              activityItems={activityItems}
+              onActivitySelect={setSelectedActivity}
+            />
+          </div>
         </div>
       )}
+      <ScrollHint show={showScrollHint} onDismiss={handleDismissScrollHint} />
     </div>
   );
 }
