@@ -6,7 +6,6 @@ interface ScrollHintProps {
 }
 
 const ScrollHint: React.FC<ScrollHintProps> = ({ show, onDismiss }) => {
-  console.log('[ScrollHint Component] Render with show:', show);
   
   if (!show) return null;
 
