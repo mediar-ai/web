@@ -103,6 +103,7 @@ Context: You have access to previous analysis results for reference. Focus on id
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
   const [exportInProgress, setExportInProgress] = useState<boolean>(false); 
   const [reconnectRequired, setReconnectRequired] = useState(false);
+  const [previewCollapsed, setPreviewCollapsed] = useState(false);
 
   const initialFrameCapturedRef = useRef(false);
   const streamActiveBeforeSleep = useRef(false);
@@ -837,10 +838,16 @@ Context: You have access to previous analysis results for reference. Focus on id
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       <canvas ref={monitoringCanvasRef} style={{ display: 'none' }} />
 
-      <div className='w-full max-w-7xl grid grid-cols-1 lg:grid-cols-3 gap-4'>
-        <VideoPreviewArea stream={stream} videoRef={videoRef} />
+      <div className={`w-full max-w-7xl grid grid-cols-1 gap-4 ${
+        previewCollapsed ? 'lg:grid-cols-[auto_1fr]' : 'lg:grid-cols-3'
+      }`}>
+        <VideoPreviewArea 
+          stream={stream} 
+          videoRef={videoRef} 
+          onCollapseChange={setPreviewCollapsed}
+        />
 
-        <div className='lg:col-span-2 flex flex-col gap-4'>
+        <div className={previewCollapsed ? 'flex flex-col gap-4' : 'lg:col-span-2 flex flex-col gap-4'}>
           <Tabs defaultValue='events' className='w-full -mt-2'>
             <TabsList className='grid w-full grid-cols-4 mb-1'>
               <TabsTrigger value='events'>Events</TabsTrigger>

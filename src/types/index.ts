@@ -96,6 +96,7 @@ export type PageHeaderControlsProps = {
 export type VideoPreviewAreaProps = {
   stream: MediaStream | null;
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  onCollapseChange?: (isCollapsed: boolean) => void;
 };
 
 export type ErrorNotificationProps = {
