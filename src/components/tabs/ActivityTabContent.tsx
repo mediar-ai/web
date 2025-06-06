@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import MemoizedScrollAreaContent from '../common/MemoizedScrollAreaContent';
 import type { ActivityItem } from '../../types';
