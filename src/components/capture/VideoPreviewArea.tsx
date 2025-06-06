@@ -54,7 +54,7 @@ const VideoPreviewArea: React.FC<VideoPreviewAreaProps> = ({ stream, videoRef, o
                 transform: 'rotate(180deg)'
               }}
             >
-              Live Capture Preview
+              Live Preview
             </div>
             <Button
               variant='ghost'
@@ -66,6 +66,14 @@ const VideoPreviewArea: React.FC<VideoPreviewAreaProps> = ({ stream, videoRef, o
             </Button>
           </div>
         </Card>
+        {/* Hidden video element - needed for capture to work */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className='hidden'
+        />
       </div>
     );
   }
