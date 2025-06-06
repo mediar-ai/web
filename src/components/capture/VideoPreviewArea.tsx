@@ -1,11 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { VideoPreviewAreaProps } from '../../types'; // Adjust path as necessary
 
 const VideoPreviewArea: React.FC<VideoPreviewAreaProps> = ({ stream, videoRef, onCollapseChange }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    // Load initial state from localStorage
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('livePreviewCollapsed');
+      return saved ? JSON.parse(saved) : false;
+    }
+    return false;
+  });
+
+  const isInitialMount = useRef(true);
+
+  // Save to localStorage whenever state changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('livePreviewCollapsed', JSON.stringify(isCollapsed));
+    }
+  }, [isCollapsed]);
+
+  // Notify parent of initial state on mount, then for subsequent changes
+  useEffect(() => {
+    if (isInitialMount.current) {
+      // First run - notify parent of loaded state
+      onCollapseChange?.(isCollapsed);
+      isInitialMount.current = false;
+    }
+  }, [onCollapseChange, isCollapsed]);
 
   const toggleCollapsed = () => {
     const newCollapsedState = !isCollapsed;
