@@ -8,6 +8,7 @@ import type {
   Event,
   ParsedAnalysis,
   ActivityItem,
+  Workflow,
 } from '../types';
 import {
   loadWorkflowSteps,
@@ -26,6 +27,7 @@ import EventsTabContent from '../components/tabs/EventsTabContent';
 import ActivityTabContent from '../components/tabs/ActivityTabContent';
 import SettingsTabContent from '../components/tabs/SettingsTabContent';
 import DebugTabContent from '../components/tabs/DebugTabContent';
+import WorkflowTabContent from '../components/tabs/WorkflowTabContent';
 import PageHeaderControls from '../components/capture/PageHeaderControls';
 import VideoPreviewArea from '../components/capture/VideoPreviewArea';
 import ErrorNotification from '../components/capture/ErrorNotification';
@@ -90,6 +92,7 @@ export default function Home() {
   const [activeAnalysesCount, setActiveAnalysesCount] = useState<number>(0);
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>(
     `You are an expert business workflow assistant that analyzes screen data to identify business processes. Provide your analysis in the following structured format:
 
@@ -147,6 +150,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const [reconnectRequired, setReconnectRequired] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [selectedMoreOption, setSelectedMoreOption] = useState<string | null>(null);
+  const [selectedMainTab, setSelectedMainTab] = useState<string>('recent');
 
   const initialFrameCapturedRef = useRef(false);
   const streamActiveBeforeSleep = useRef(false);
@@ -364,6 +368,12 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     } else {
       setSelectedActivity(null);
     }
+  };
+
+  const handleWorkflowUpdate = (updatedWorkflow: Workflow) => {
+    setWorkflow(updatedWorkflow);
+    // TODO: Add persistence for workflow data
+    console.log('[handleWorkflowUpdate] Workflow updated:', updatedWorkflow);
   };
 
   const handlePromptChange = useCallback((newPrompt: string) => {
@@ -646,6 +656,28 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     }
   }, [events, selectedEvent]);
 
+  // Auto-create workflow when capture starts
+  useEffect(() => {
+    if (stream && !workflow) {
+      const sessionId = localStorage.getItem('app_session_id') || crypto.randomUUID();
+      if (!localStorage.getItem('app_session_id')) {
+        localStorage.setItem('app_session_id', sessionId);
+      }
+      
+      const newWorkflow: Workflow = {
+        id: crypto.randomUUID(),
+        name: `Workflow ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
+        description: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sessionId: sessionId,
+      };
+      
+      setWorkflow(newWorkflow);
+      logToUI('[Auto-Workflow] Created new workflow for session:', newWorkflow.name);
+    }
+  }, [stream, workflow, logToUI]);
+
   useEffect(() => {
     if (error) {
       setShowError(true);
@@ -813,17 +845,28 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         />
 
         <div className={previewCollapsed ? 'flex flex-col gap-4' : 'lg:col-span-2 flex flex-col gap-4'}>
-          <Tabs defaultValue='events' className='w-full -mt-2' value={selectedMoreOption || 'events'} onValueChange={(value) => {
+          <Tabs defaultValue='recent' className='w-full -mt-2' value={selectedMoreOption || selectedMainTab} onValueChange={(value) => {
             if (value === 'settings' || value === 'debug') {
               setSelectedMoreOption(value);
             } else {
               setSelectedMoreOption(null);
+              setSelectedMainTab(value);
             }
           }}>
             <div className='flex items-center justify-between mb-1'>
-              <TabsList className='grid grid-cols-2 flex-1 mr-2'>
-                <TabsTrigger value='events' onClick={() => setSelectedMoreOption(null)}>Events</TabsTrigger>
-                <TabsTrigger value='recent' onClick={() => setSelectedMoreOption(null)}>Recent Activity</TabsTrigger>
+              <TabsList className='grid grid-cols-3 flex-1 mr-2'>
+                <TabsTrigger value='recent' onClick={() => {
+                  setSelectedMoreOption(null);
+                  setSelectedMainTab('recent');
+                }}>Recent Activity</TabsTrigger>
+                <TabsTrigger value='events' onClick={() => {
+                  setSelectedMoreOption(null);
+                  setSelectedMainTab('events');
+                }}>Events</TabsTrigger>
+                <TabsTrigger value='workflow' onClick={() => {
+                  setSelectedMoreOption(null);
+                  setSelectedMainTab('workflow');
+                }}>Workflow</TabsTrigger>
               </TabsList>
               
               <DropdownMenu>
@@ -833,17 +876,31 @@ Analyze the activity sequence for context, then create ONE clear, complete event
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align='end'>
-                  <DropdownMenuItem onClick={() => setSelectedMoreOption('settings')}>
+                  <DropdownMenuItem onClick={() => {
+                    setSelectedMoreOption('settings');
+                    setSelectedMainTab('settings');
+                  }}>
                     <Settings className='mr-2 h-4 w-4' />
                     Settings
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSelectedMoreOption('debug')}>
+                  <DropdownMenuItem onClick={() => {
+                    setSelectedMoreOption('debug');
+                    setSelectedMainTab('debug');
+                  }}>
                     <Bug className='mr-2 h-4 w-4' />
                     Debug Logs
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+
+            <TabsContent value='recent' className='-mt-3'>
+              <ActivityTabContent
+                activityItems={activityItems}
+                selectedActivity={selectedActivity}
+                onActivitySelect={setSelectedActivity}
+              />
+            </TabsContent>
 
             <TabsContent value='events' className='-mt-3'>
               <EventsTabContent
@@ -853,11 +910,10 @@ Analyze the activity sequence for context, then create ONE clear, complete event
               />
             </TabsContent>
 
-            <TabsContent value='recent' className='-mt-3'>
-              <ActivityTabContent
-                activityItems={activityItems}
-                selectedActivity={selectedActivity}
-                onActivitySelect={setSelectedActivity}
+            <TabsContent value='workflow' className='-mt-3'>
+              <WorkflowTabContent
+                workflow={workflow}
+                onWorkflowUpdate={handleWorkflowUpdate}
               />
             </TabsContent>
 
@@ -900,7 +956,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
           </Tabs>
         </div>
       </div>
-      {selectedActivity && (
+      {selectedActivity && selectedMainTab === 'recent' && !selectedMoreOption && (
         <div className="w-full max-w-7xl mt-4">
           <TimelineSlider
             activityItems={activityItems}

@@ -14,6 +14,15 @@ export interface Event {
   activity_ids?: string[]; // The IDs of the activities that generated this event
 }
 
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  sessionId: string;
+}
+
 export interface ParsedAnalysis {
   workflow: string;
   step: string;
