@@ -90,6 +90,7 @@ export type PageHeaderControlsProps = {
   error: string | null;
   streamRef: React.RefObject<MediaStream | null>;
   MAX_PARALLEL_ANALYSES: number;
+  reconnectRequired: boolean;
 };
 
 export type VideoPreviewAreaProps = {

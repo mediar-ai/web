@@ -34,6 +34,7 @@ import { useAutoDetection } from '../hooks/useAutoDetection';
 import { useFrameAnalysisDispatcher } from '../hooks/useFrameAnalysisDispatcher';
 import { useEventGenerator } from '../hooks/useEventGenerator';
 import ScreenshotPreviewPane from '@/components/capture/ScreenshotPreviewPane';
+import TimelineSlider from '@/components/capture/TimelineSlider';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -101,8 +102,11 @@ Context: You have access to previous analysis results for reference. Focus on id
   const [mainStatus, setMainStatus] = useState<string>('Idle');
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
   const [exportInProgress, setExportInProgress] = useState<boolean>(false); 
+  const [reconnectRequired, setReconnectRequired] = useState(false);
 
   const initialFrameCapturedRef = useRef(false);
+  const streamActiveBeforeSleep = useRef(false);
+  const lastHeartbeat = useRef(Date.now());
 
   const [promptSaveStatus, setPromptSaveStatus] = useState<
     'idle' | 'saving' | 'saved'
@@ -473,6 +477,7 @@ Context: You have access to previous analysis results for reference. Focus on id
   const handleStartScreenShare = useCallback(async () => {
     logToUI('[handleStartScreenShare] Attempting start...');
     setError(null);
+    setReconnectRequired(false);
 
     if (streamRef.current || stream) {
       const currentStream = streamRef.current || stream;
@@ -573,6 +578,29 @@ Context: You have access to previous analysis results for reference. Focus on id
   useEffect(() => {
     if (activityItems.length > 0) saveActivityItems(activityItems);
   }, [activityItems]);
+
+  useEffect(() => {
+    if (selectedActivity) {
+      const parentEvent = events.find(e => e.activity_ids?.includes(selectedActivity.id));
+      if (parentEvent && parentEvent.id !== selectedEvent?.id) {
+        setSelectedEvent(parentEvent);
+      }
+    }
+  }, [selectedActivity, events, selectedEvent]);
+
+  // Auto-select the most recent activity when items are available but nothing is selected
+  useEffect(() => {
+    if (!selectedActivity && activityItems.length > 0) {
+      setSelectedActivity(activityItems[0]); // Most recent is first in the array
+    }
+  }, [activityItems, selectedActivity]);
+
+  // Auto-select the most recent event when items are available but nothing is selected
+  useEffect(() => {
+    if (!selectedEvent && events.length > 0) {
+      setSelectedEvent(events[0]); // Most recent is first in the array
+    }
+  }, [events, selectedEvent]);
 
   useEffect(() => {
     if (error) {
@@ -760,6 +788,30 @@ Context: You have access to previous analysis results for reference. Focus on id
     saveScreenshot,
   ]); 
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const delta = now - lastHeartbeat.current;
+      lastHeartbeat.current = now;
+
+      // If a long time has passed since the last check, we assume the computer was asleep.
+      if (delta > 10000) { // 10 second threshold
+        logToUI('[SleepDetector] Detected potential wake from sleep.');
+        if (streamActiveBeforeSleep.current && !(streamRef.current && streamRef.current.active)) {
+          logToUI('[SleepDetector] Stream was active before sleep, but is now disconnected. Prompting to reconnect.');
+          setReconnectRequired(true);
+          // The 'ended' event on the track should have already triggered cleanup.
+          // This state just ensures the user sees a clear way to restart.
+        }
+      }
+
+      // Continuously track if the stream is active.
+      streamActiveBeforeSleep.current = !!(streamRef.current && streamRef.current.active);
+    }, 2000); // Check every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [logToUI]);
+
   return (
     <div className='container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
       <ExportStatusDialog exportInProgress={exportInProgress} />
@@ -777,6 +829,7 @@ Context: You have access to previous analysis results for reference. Focus on id
         error={error}
         streamRef={streamRef}
         MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
+        reconnectRequired={reconnectRequired}
       />
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
@@ -853,7 +906,16 @@ Context: You have access to previous analysis results for reference. Focus on id
       </div>
       {selectedActivity && (
         <div className="w-full max-w-7xl mt-4">
-          <ScreenshotPreviewPane selectedActivity={selectedActivity} />
+          <TimelineSlider
+            activityItems={activityItems}
+            selectedActivity={selectedActivity}
+            onActivitySelect={setSelectedActivity}
+          />
+          <ScreenshotPreviewPane 
+            selectedActivity={selectedActivity} 
+            activityItems={activityItems}
+            onActivitySelect={setSelectedActivity}
+          />
         </div>
       )}
     </div>

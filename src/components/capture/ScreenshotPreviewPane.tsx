@@ -16,13 +16,17 @@ const blobToDataURL = (blob: Blob): Promise<string> => {
 
 interface ScreenshotPreviewPaneProps {
   selectedActivity: ActivityItem | null;
+  activityItems: ActivityItem[];
+  onActivitySelect: (item: ActivityItem) => void;
 }
 
-const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedActivity }) => {
+const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedActivity, activityItems, onActivitySelect }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('Select an activity to see its screenshot.');
+  const paneRef = React.useRef<HTMLDivElement>(null);
+  const lastScrollTimeRef = React.useRef<number>(0);
 
   useEffect(() => {
     const fetchScreenshot = async (id: string) => {
@@ -64,6 +68,47 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedA
     }
   }, [selectedActivity]);
 
+  useEffect(() => {
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+
+      const now = Date.now();
+      if (now - lastScrollTimeRef.current < 300) { // 300ms delay
+        return;
+      }
+
+      if (!selectedActivity || activityItems.length === 0) return;
+
+      const currentIndex = activityItems.findIndex(item => item.id === selectedActivity.id);
+      if (currentIndex === -1) return;
+
+      let nextIndex = currentIndex;
+      if (event.deltaY < 0) {
+        // Scroll up
+        nextIndex = Math.max(0, currentIndex - 1);
+      } else {
+        // Scroll down
+        nextIndex = Math.min(activityItems.length - 1, currentIndex + 1);
+      }
+
+      if (nextIndex !== currentIndex) {
+        lastScrollTimeRef.current = now;
+        onActivitySelect(activityItems[nextIndex]);
+      }
+    };
+
+    const paneElement = paneRef.current;
+    if (paneElement) {
+      paneElement.addEventListener('wheel', handleWheel, { passive: false });
+    }
+
+    return () => {
+      if (paneElement) {
+        paneElement.removeEventListener('wheel', handleWheel);
+      }
+    };
+  }, [selectedActivity, activityItems, onActivitySelect]);
+
   const renderContent = () => {
     if (loading) {
       return <Skeleton className="h-[50vh] w-full" />;
@@ -94,7 +139,7 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedA
   };
 
   return (
-    <Card className="w-full mt-4 overflow-hidden">
+    <Card className="w-full mt-4 overflow-hidden" ref={paneRef}>
       <CardContent className="p-1">
         {renderContent()}
       </CardContent>

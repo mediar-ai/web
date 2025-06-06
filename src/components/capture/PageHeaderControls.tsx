@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import type { PageHeaderControlsProps } from '../../types';
-import { Play, StopCircle, Binary, AlertTriangle, RotateCcw, Zap } from 'lucide-react';
+import { Play, StopCircle, Binary, AlertTriangle, RotateCcw, Zap, RefreshCw } from 'lucide-react';
 
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
@@ -16,13 +16,18 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   error,
   streamRef,
   MAX_PARALLEL_ANALYSES,
+  reconnectRequired,
 }) => {
   const dumpButtonDisabled = !stream || activeAnalysesCount >= MAX_PARALLEL_ANALYSES;
 
   return (
     <div className='w-full flex flex-col sm:flex-row justify-between items-center mb-1 py-2'>
       <div className='flex items-center gap-2 mb-2 sm:mb-0'>
-        {!streamRef.current ? (
+        {reconnectRequired ? (
+            <Button onClick={handleStartScreenShare} className='bg-yellow-500 hover:bg-yellow-600 text-white'>
+                <RefreshCw className='mr-2 h-4 w-4' /> Reconnect
+            </Button>
+        ) : !streamRef.current ? (
           <Button onClick={handleStartScreenShare} className='bg-green-600 hover:bg-green-700 text-white'>
             <Play className='mr-2 h-4 w-4' /> Start Capture
           </Button>

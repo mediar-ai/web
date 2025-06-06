@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import MemoizedScrollAreaContent from '../common/MemoizedScrollAreaContent';
 import type { ActivityItem } from '../../types';
@@ -11,16 +11,35 @@ interface ActivityTabContentProps {
 }
 
 const ActivityTabContent: React.FC<ActivityTabContentProps> = ({ activityItems, selectedActivity, onActivitySelect }) => {
+  const itemRefs = React.useRef<React.RefObject<HTMLLIElement>[]>([]);
+  
+  if (itemRefs.current.length !== activityItems.length) {
+    itemRefs.current = Array(activityItems.length).fill(null).map((_, i) => itemRefs.current[i] || React.createRef());
+  }
+
+  useEffect(() => {
+    if (selectedActivity) {
+      const index = activityItems.findIndex(item => item.id === selectedActivity.id);
+      if (index !== -1 && itemRefs.current[index]?.current) {
+        itemRefs.current[index].current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      }
+    }
+  }, [selectedActivity, activityItems]);
+
   const memoizedActivityContent = useMemo(() => {
     return activityItems.length > 0
       ? (
         <ul className='space-y-2 p-1'>
-          {activityItems.slice(0, 50).map((item) => {
+          {activityItems.slice(0, 50).map((item, index) => {
             const isSelected = selectedActivity?.id === item.id;
             if (item.type === 'initial_dump') {
               return (
                 <li
                   key={item.id}
+                  ref={itemRefs.current[index]}
                   onClick={() => onActivitySelect(item)}
                   className={cn(
                     'p-3 border rounded-md text-xs transition-colors cursor-pointer',
@@ -43,6 +62,7 @@ const ActivityTabContent: React.FC<ActivityTabContentProps> = ({ activityItems, 
               return (
                 <li
                   key={item.id}
+                  ref={itemRefs.current[index]}
                   onClick={() => onActivitySelect(item)}
                   className={cn(
                     'p-3 border rounded-md text-xs transition-colors cursor-pointer',

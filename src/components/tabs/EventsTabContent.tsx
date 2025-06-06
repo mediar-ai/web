@@ -11,16 +11,35 @@ interface EventsTabContentProps {
 }
 
 const EventsTabContent: React.FC<EventsTabContentProps> = ({ events, selectedEvent, onEventSelect }) => {
+  const itemRefs = React.useRef<React.RefObject<HTMLDivElement>[]>([]);
+  
+  if (itemRefs.current.length !== events.length) {
+    itemRefs.current = Array(events.length).fill(null).map((_, i) => itemRefs.current[i] || React.createRef());
+  }
+
+  React.useEffect(() => {
+    if (selectedEvent) {
+      const index = events.findIndex(event => event.id === selectedEvent.id);
+      if (index !== -1 && itemRefs.current[index]?.current) {
+        itemRefs.current[index].current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      }
+    }
+  }, [selectedEvent, events]);
+
   const memoizedEventsContent = useMemo(() => {
     return events.length > 0
       ? (
         <div className='relative p-1'>
           <div className='absolute left-3 top-2 bottom-2 w-0.5 bg-border -z-10'></div>
-          {events.map((event) => {
+          {events.map((event, index) => {
             const isSelected = selectedEvent?.id === event.id;
             return (
               <div
                 key={event.id}
+                ref={itemRefs.current[index]}
                 onClick={() => onEventSelect(event)}
                 className={cn(
                   'relative flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors',
