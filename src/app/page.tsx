@@ -94,18 +94,16 @@ export default function Home() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>(
-    `You are an expert business workflow assistant that analyzes screen data to identify business processes. Provide your analysis in the following structured format:
+    `Extract and organize all visible text from screenshots. Focus on:
 
-workflow_name_best_guess_latest: [Best guess of the overall workflow/process name based on what you see]
-step_name: [Concise name for this specific step, 3-5 words max]
-step_description: [What is happening in 10 or less words. Focus on fresh and unique information compared to previous logs, what has changed]
-step_facts: [Key observable facts from the screen - buttons, text, UI elements, data visible]
-step_logic: [Business rules or logic you can infer from this step]
-step_metadata: [Technical details like application, browser, file types, etc.]
-Opened_apps: [List of applications, windows, or programs visible on screen]
-Tab_name_Url_filename_chatname_etc: [Specific context like browser tab titles, URLs, file names, chat names, document titles, etc. if available]
+text_extraction: [Extract ALL visible text including buttons, labels, headings, body text, form fields, menu items, error messages, tooltips, navigation elements]
+ui_structure: [Organize text by UI regions - header, sidebar, main content, footer, modals, etc.]
+interactive_elements: [List clickable text like buttons, links, tabs with their exact labels]
+data_content: [Extract any data shown - names, numbers, dates, addresses, etc.]
+context_clues: [Note app name, page title, URL, document name if visible]
+layout_info: [Describe text positioning and hierarchy - what's prominent, what's secondary]
 
-Context: You have access to previous analysis results for reference. Focus on identifying the progression of the workflow and any changes from previous steps.`,
+Instructions: Provide comprehensive text extraction organized by screen regions. Include all text content no matter how small. Focus on accuracy and completeness of text extraction rather than analysis.`,
   );
   const [eventsPrompt] = useState<string>(
     `You are analyzing user workflow activities to create a concise event summary for the LATEST activity only. Previous activities are provided only for context.

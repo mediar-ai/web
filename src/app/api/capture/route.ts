@@ -385,9 +385,9 @@ The userPrompt contains general instructions: ${userPrompt}`;
       const imageDataBase64 = parts[1];
       await writeToLog(`Processing ${mimeType} image (size: ${imageDataBase64.length} chars) for initial dump`);
 
-      const dumpPrompt = userPrompt; // User prompt is "list in maximum detail raw content of the screenshot"
+      const dumpPrompt = "Extract all visible text from this image. List every piece of text you can see including: UI labels, buttons, menu items, headings, body text, form fields, error messages, tooltips, navigation items, and any other text content. Organize the text by screen regions or UI components where possible.";
       
-      const dumpModelName = "gemini-2.5-pro-preview-06-05"; // Use a more powerful model for this task
+      const dumpModelName = "gemini-2.5-flash-preview-05-20"; // Use flash model for OCR
       const dumpActiveModel = genAI.getGenerativeModel({ model: dumpModelName, ...requestOptions });
 
       // For a raw text dump, we might not need a complex schema, or a very simple one.

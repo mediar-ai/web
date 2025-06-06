@@ -54,7 +54,7 @@ const VideoPreviewArea: React.FC<VideoPreviewAreaProps> = ({ stream, videoRef, o
                 transform: 'rotate(180deg)'
               }}
             >
-              Live Preview
+              Live Capture Preview
             </div>
             <Button
               variant='ghost'
