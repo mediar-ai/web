@@ -81,7 +81,6 @@ export type PageHeaderControlsProps = {
   stream: MediaStream | null;
   handleStartScreenShare: () => void;
   handleStopScreenShare: () => void;
-  handleManualInitialDump: () => void;
   mainStatus: string;
   autoDetectionEnabled: boolean;
   isMonitoring: boolean;

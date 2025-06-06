@@ -1,13 +1,12 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import type { PageHeaderControlsProps } from '../../types';
-import { Play, StopCircle, Binary, AlertTriangle, RotateCcw, Zap, RefreshCw } from 'lucide-react';
+import { Play, StopCircle, AlertTriangle, RotateCcw, Zap, RefreshCw } from 'lucide-react';
 
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
   handleStartScreenShare,
   handleStopScreenShare,
-  handleManualInitialDump,
   mainStatus,
   autoDetectionEnabled,
   isMonitoring,
@@ -18,8 +17,6 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   MAX_PARALLEL_ANALYSES,
   reconnectRequired,
 }) => {
-  const dumpButtonDisabled = !stream || activeAnalysesCount >= MAX_PARALLEL_ANALYSES;
-
   return (
     <div className='w-full flex flex-col sm:flex-row justify-between items-center mb-1 py-2'>
       <div className='flex items-center gap-2 mb-2 sm:mb-0'>
@@ -36,14 +33,6 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
             <StopCircle className='mr-2 h-4 w-4' /> Stop Capture
           </Button>
         )}
-        <Button 
-          onClick={handleManualInitialDump} 
-          variant='outline' 
-          disabled={dumpButtonDisabled}
-          title={dumpButtonDisabled ? "Capture stopped or analyses ongoing" : "Manually trigger an initial content analysis"}
-        >
-          <Binary className='mr-2 h-4 w-4' /> Manual Dump
-        </Button>
       </div>
 
       <div className='flex flex-col sm:flex-row items-center gap-2 text-xs'>

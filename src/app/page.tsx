@@ -746,83 +746,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     };
   }, [stream, handleStopScreenShare, logToUI, logError]);
 
-  const handleManualInitialDump = useCallback(async () => {
-    logToUI('[[VERIFY_CLICK]] Attempting manual initial dump...'); 
-
-    if (
-      !streamRef.current || !videoRef.current || !canvasRef.current ||
-      videoRef.current.readyState < videoRef.current.HAVE_METADATA ||
-      videoRef.current.videoWidth <= 0
-    ) {
-      logError(
-        '[Manual Initial Dump] Cannot capture, stream/video not ready or canvas not available.',
-      );
-      setError(
-        'Cannot manually capture for initial dump: Preview not active or ready.',
-      );
-      return;
-    }
-
-    logToUI(
-      '[Manual Initial Dump] 🚀 Triggered. Capturing current view, will be processed by dispatcher.',
-    );
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    if (
-      canvas.width !== video.videoWidth || canvas.height !== video.videoHeight
-    ) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-    }
-
-    const context = canvas.getContext('2d');
-    if (context) {
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageDataUrl = canvas.toDataURL('image/png', screenshotQuality); 
-      const timestamp = Date.now();
-      const newFrameId = `manual-dump-${new Date(timestamp).toISOString()}`;
-      const newFrame: BufferedFrame = {
-        id: newFrameId,
-        imageDataUrl,
-        timestamp,
-        percentChange: 100,
-      };
-
-      try {
-        await saveScreenshot(newFrame.id, canvas); 
-        logToUI(
-          '[Manual Initial Dump] Screenshot for manual dump saved:',
-          newFrame.id,
-        );
-      } catch (screenshotErr) {
-        logError(
-          '[Manual Initial Dump] Screenshot save failed:',
-          screenshotErr,
-        );
-      }
-      setFrameBuffer((prevBuffer) => [...prevBuffer, newFrame].sort((a,b) => a.timestamp - b.timestamp));
-      logToUI('[Manual Initial Dump] Frame added to buffer for dispatcher processing.');
-
-    } else {
-      logError(
-        '[Manual Initial Dump] Error: Could not get 2D context for capture.',
-      );
-      setError('Failed to get canvas context for manual capture.');
-    }
-  }, [
-    screenshotQuality,
-    logToUI,
-    logError,
-    setError,
-    streamRef,
-    videoRef,
-    canvasRef,
-    setFrameBuffer,
-    saveScreenshot,
-  ]); 
-
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -855,7 +778,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         stream={stream}
         handleStartScreenShare={handleStartScreenShare}
         handleStopScreenShare={handleStopScreenShare}
-        handleManualInitialDump={handleManualInitialDump}
         mainStatus={mainStatus}
         autoDetectionEnabled={autoDetectionEnabled}
         isMonitoring={isMonitoring}
