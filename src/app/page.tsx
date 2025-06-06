@@ -35,6 +35,14 @@ import { useFrameAnalysisDispatcher } from '../hooks/useFrameAnalysisDispatcher'
 import { useEventGenerator } from '../hooks/useEventGenerator';
 import ScreenshotPreviewPane from '@/components/capture/ScreenshotPreviewPane';
 import TimelineSlider from '@/components/capture/TimelineSlider';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { MoreHorizontal, Settings, Bug } from 'lucide-react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -138,6 +146,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const [exportInProgress, setExportInProgress] = useState<boolean>(false); 
   const [reconnectRequired, setReconnectRequired] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const [selectedMoreOption, setSelectedMoreOption] = useState<string | null>(null);
 
   const initialFrameCapturedRef = useRef(false);
   const streamActiveBeforeSleep = useRef(false);
@@ -804,13 +813,37 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         />
 
         <div className={previewCollapsed ? 'flex flex-col gap-4' : 'lg:col-span-2 flex flex-col gap-4'}>
-          <Tabs defaultValue='events' className='w-full -mt-2'>
-            <TabsList className='grid w-full grid-cols-4 mb-1'>
-              <TabsTrigger value='events'>Events</TabsTrigger>
-              <TabsTrigger value='recent'>Recent Activity</TabsTrigger>
-              <TabsTrigger value='settings'>Settings</TabsTrigger>
-              <TabsTrigger value='debug'>Debug Logs</TabsTrigger>
-            </TabsList>
+          <Tabs defaultValue='events' className='w-full -mt-2' value={selectedMoreOption || 'events'} onValueChange={(value) => {
+            if (value === 'settings' || value === 'debug') {
+              setSelectedMoreOption(value);
+            } else {
+              setSelectedMoreOption(null);
+            }
+          }}>
+            <div className='flex items-center justify-between mb-1'>
+              <TabsList className='grid grid-cols-2 flex-1 mr-2'>
+                <TabsTrigger value='events' onClick={() => setSelectedMoreOption(null)}>Events</TabsTrigger>
+                <TabsTrigger value='recent' onClick={() => setSelectedMoreOption(null)}>Recent Activity</TabsTrigger>
+              </TabsList>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant='outline' size='sm' className='h-9 px-2 flex-shrink-0'>
+                    <MoreHorizontal className='h-4 w-4' />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  <DropdownMenuItem onClick={() => setSelectedMoreOption('settings')}>
+                    <Settings className='mr-2 h-4 w-4' />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSelectedMoreOption('debug')}>
+                    <Bug className='mr-2 h-4 w-4' />
+                    Debug Logs
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
             <TabsContent value='events' className='-mt-3'>
               <EventsTabContent
