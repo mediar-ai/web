@@ -1,7 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import type { PageHeaderControlsProps } from '../../types';
-import { Play, StopCircle, AlertTriangle, RotateCcw, Zap, RefreshCw } from 'lucide-react';
+import { Play, StopCircle, AlertTriangle, RotateCcw, Zap, RefreshCw, ChevronDown } from 'lucide-react';
+
+// Dummy user data
+const dummyUsers = [
+  { id: 'supervisor', name: 'Supervisor Access', role: 'Supervisor', avatar: '👤' },
+  { id: 'alice', name: 'Alice Johnson', role: 'Senior Analyst', avatar: '👩‍💼' },
+  { id: 'bob', name: 'Bob Smith', role: 'Operations Manager', avatar: '👨‍💼' },
+  { id: 'carol', name: 'Carol Wilson', role: 'Data Specialist', avatar: '👩‍💻' },
+  { id: 'david', name: 'David Chen', role: 'Quality Assurance', avatar: '👨‍🔬' },
+  { id: 'emma', name: 'Emma Davis', role: 'Process Analyst', avatar: '👩‍🎓' },
+];
 
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
@@ -17,6 +34,8 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   MAX_PARALLEL_ANALYSES,
   reconnectRequired,
 }) => {
+  const [selectedUser, setSelectedUser] = useState(dummyUsers[0]);
+
   return (
     <div className='w-full flex flex-col sm:flex-row justify-between items-center mb-1 py-2'>
       <div className='flex items-center gap-2 mb-2 sm:mb-0'>
@@ -33,6 +52,39 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
             <StopCircle className='mr-2 h-4 w-4' /> Stop Capture
           </Button>
         )}
+        
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant='outline' className='flex items-center gap-2'>
+              <span className='text-sm'>{selectedUser.avatar}</span>
+              <div className='flex flex-col items-start text-xs'>
+                <span className='font-medium'>{selectedUser.name}</span>
+                <span className='text-muted-foreground text-[10px]'>{selectedUser.role}</span>
+              </div>
+              <ChevronDown className='h-3 w-3' />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='start' className='w-56'>
+            {dummyUsers.map((user, index) => (
+              <React.Fragment key={user.id}>
+                {index === 1 && <DropdownMenuSeparator />}
+                <DropdownMenuItem 
+                  onClick={() => setSelectedUser(user)}
+                  className='flex items-center gap-3 p-3'
+                >
+                  <span className='text-base'>{user.avatar}</span>
+                  <div className='flex flex-col'>
+                    <span className='font-medium text-sm'>{user.name}</span>
+                    <span className='text-muted-foreground text-xs'>{user.role}</span>
+                  </div>
+                  {selectedUser.id === user.id && (
+                    <div className='ml-auto w-2 h-2 bg-primary rounded-full' />
+                  )}
+                </DropdownMenuItem>
+              </React.Fragment>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className='flex flex-col sm:flex-row items-center gap-2 text-xs'>
