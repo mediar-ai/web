@@ -11,53 +11,25 @@ const ScrollHint: React.FC<ScrollHintProps> = ({ show, onDismiss }) => {
 
   return (
     <div 
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        zIndex: 99999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
+      className="fixed inset-0 bg-black/70 z-[99999] flex items-center justify-center"
       onClick={onDismiss}
     >
       <div 
-        style={{ 
-          backgroundColor: 'white', 
-          padding: '30px', 
-          border: '2px solid #000',
-          fontSize: '16px',
-          textAlign: 'center',
-          borderRadius: '10px',
-          maxWidth: '400px',
-          boxShadow: '0 10px 25px rgba(0,0,0,0.2)'
-        }}
+        className="bg-background dark:bg-card p-8 border-2 border-border dark:border-border text-center rounded-lg max-w-md shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{fontSize: '24px', marginBottom: '15px', fontFamily: 'monospace'}}>
+        <div className="text-2xl mb-4 font-mono">
           🖱️ ↕️
         </div>
-        <h3 style={{margin: '0 0 15px 0', fontSize: '18px', fontWeight: 'bold', color: '#000'}}>
+        <h3 className="text-lg font-bold mb-4 text-foreground">
           Navigation Tip
         </h3>
-        <p style={{margin: '0 0 20px 0', color: '#666'}}>
-          Use your <strong>mouse wheel</strong> to scroll through screenshots and navigate the timeline quickly!
+        <p className="mb-5 text-muted-foreground">
+          Use your <strong className="text-foreground">mouse wheel</strong> to scroll through screenshots and navigate the timeline quickly!
         </p>
         <button 
           onClick={onDismiss} 
-          style={{
-            fontSize: '14px', 
-            padding: '8px 16px', 
-            backgroundColor: '#000',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer'
-          }}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-md cursor-pointer hover:bg-primary/90 transition-colors"
         >
           Got it!
         </button>
