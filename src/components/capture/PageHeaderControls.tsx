@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { PageHeaderControlsProps } from '../../types';
 import { Play, StopCircle, AlertTriangle, RotateCcw, Zap, RefreshCw, ChevronDown } from 'lucide-react';
+import { ThemeToggle } from '../ui/theme-toggle';
 
 // Dummy user data
 const currentUser = { id: 'you', name: 'You', role: 'Supervisor' };
@@ -35,8 +36,8 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   MAX_PARALLEL_ANALYSES,
   reconnectRequired,
 }) => {
-  const [selectedUser, setSelectedUser] = useState(currentUser); // Default to "You" (supervisor)
-
+  const [selectedUser, setSelectedUser] = useState(currentUser);
+  
   return (
     <div className='w-full flex flex-col sm:flex-row justify-between items-center mb-1 py-2'>
       <div className='flex items-center gap-2 mb-2 sm:mb-0'>
@@ -95,6 +96,8 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <ThemeToggle />
       </div>
 
       <div className='flex flex-col sm:flex-row items-center gap-2 text-xs'>

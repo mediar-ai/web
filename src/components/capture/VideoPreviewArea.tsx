@@ -94,7 +94,7 @@ const VideoPreviewArea: React.FC<VideoPreviewAreaProps> = ({ stream, videoRef, o
           <CardHeader>
             <CardTitle className='text-base font-medium'>Live Screen Preview</CardTitle>
           </CardHeader>
-          <CardContent className='aspect-video bg-slate-900 rounded-md overflow-hidden'>
+          <CardContent className='aspect-video bg-black/90 dark:bg-black rounded-md overflow-hidden'>
             <video
               ref={videoRef}
               autoPlay
@@ -106,7 +106,7 @@ const VideoPreviewArea: React.FC<VideoPreviewAreaProps> = ({ stream, videoRef, o
         </Card>
       )}
       {!stream && (
-        <Card className='shadow-lg h-full flex flex-col items-center justify-center min-h-[300px] bg-slate-50'>
+        <Card className='shadow-lg h-full flex flex-col items-center justify-center min-h-[300px] bg-muted/50'>
           <CardContent>
             <p className='text-muted-foreground'>
               Start recording to see live preview.

@@ -900,7 +900,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   };
 
   return (
-    <div className='container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
+    <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
       <ExportStatusDialog exportInProgress={exportInProgress} />
 
       <PageHeaderControls
