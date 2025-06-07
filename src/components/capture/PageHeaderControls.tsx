@@ -35,9 +35,9 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   streamRef,
   MAX_PARALLEL_ANALYSES,
   reconnectRequired,
-  selectedUser,
-  setSelectedUser,
 }) => {
+  const [selectedUser, setSelectedUser] = useState(currentUser);
+  
   return (
     <div className='flex items-center justify-between gap-4'>
       <div className='flex items-center gap-2'>
