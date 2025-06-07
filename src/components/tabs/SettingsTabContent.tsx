@@ -91,7 +91,7 @@ const SettingsTabContent: React.FC<SettingsTabContentProps> = ({
                 }`}
               >
                 <div
-                  className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                  className={`w-4 h-4 rounded-full bg-white dark:bg-gray-900 transition-transform ${
                     autoDetectionEnabled
                       ? 'translate-x-5'
                       : 'translate-x-1'
