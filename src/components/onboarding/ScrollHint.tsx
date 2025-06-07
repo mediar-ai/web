@@ -15,7 +15,7 @@ const ScrollHint: React.FC<ScrollHintProps> = ({ show, onDismiss }) => {
       onClick={onDismiss}
     >
       <div 
-        className="bg-background dark:bg-card p-8 border-2 border-border dark:border-border text-center rounded-lg max-w-md shadow-2xl"
+        className="bg-card p-8 border-2 border-border text-center rounded-lg max-w-md shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-2xl mb-4 font-mono">
