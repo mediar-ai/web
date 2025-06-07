@@ -6,6 +6,7 @@ interface UseFrameAnalysisDispatcherProps {
   setFrameBuffer: React.Dispatch<React.SetStateAction<BufferedFrame[]>>;
   setActivityItems: React.Dispatch<React.SetStateAction<ActivityItem[]>>;
   setRunningAnalyses: React.Dispatch<React.SetStateAction<RunningAnalysis[]>>;
+  setCompletedAnalyses: React.Dispatch<React.SetStateAction<RunningAnalysis[]>>;
   activeAnalysesCount: number;
   setActiveAnalysesCount: React.Dispatch<React.SetStateAction<number>>;
   logToUI: (...args: unknown[]) => void;
@@ -19,6 +20,7 @@ export function useFrameAnalysisDispatcher({
   setFrameBuffer,
   setActivityItems,
   setRunningAnalyses,
+  setCompletedAnalyses,
   activeAnalysesCount,
   setActiveAnalysesCount,
   logToUI,
@@ -38,7 +40,23 @@ export function useFrameAnalysisDispatcher({
       setActiveAnalysesCount((prev) => prev + 1);
 
       const analysisId = `dump-${frameToDump.id}`;
-      setRunningAnalyses(prev => [...prev, { id: analysisId, type: 'Initial Frame Dump', startTime: Date.now() }]);
+      const analysisPayload = {
+        image: frameToDump.imageDataUrl,
+        timestamp: new Date(frameToDump.timestamp).toISOString(),
+        prompt:
+          'List in maximum detail all visible text and UI elements from the screenshot. Describe layout and objects.',
+        analysisType: 'initial_frame_dump',
+      };
+      const newRunningAnalysis: RunningAnalysis = { 
+        id: analysisId, 
+        type: 'Initial Frame Dump', 
+        startTime: Date.now(),
+        model: 'gemini-2.5-flash-preview-05-20',
+        status: 'running',
+        payloadType: 'image',
+        payloadSize: analysisPayload.image.length
+      };
+      setRunningAnalyses(prev => [...prev, newRunningAnalysis]);
       
       setMainStatus(`Analyzing Initial Frame (${activeAnalysesCount + 1})...`);
       logToUI(
@@ -49,13 +67,7 @@ export function useFrameAnalysisDispatcher({
         const response = await fetch('/api/capture', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image: frameToDump.imageDataUrl,
-            timestamp: new Date(frameToDump.timestamp).toISOString(),
-            prompt:
-              'List in maximum detail all visible text and UI elements from the screenshot. Describe layout and objects.',
-            analysisType: 'initial_frame_dump',
-          }),
+          body: JSON.stringify(analysisPayload),
         });
 
         if (!response.ok || !response.body) {
@@ -103,11 +115,16 @@ export function useFrameAnalysisDispatcher({
           )
         );
         setBaselineFrameForDiff(frameToDump);
+        const completed: RunningAnalysis = { ...newRunningAnalysis, status: 'completed', endTime: Date.now() };
+        setCompletedAnalyses(prev => [completed, ...prev].slice(0, 30));
       } catch (err) {
         logError(
           '[processInitialFrameDump] Network error during initial dump:',
           err,
         );
+        const failed: RunningAnalysis = { ...newRunningAnalysis, status: 'failed', endTime: Date.now() };
+        setRunningAnalyses(prev => prev.map(a => a.id === analysisId ? failed : a));
+        setCompletedAnalyses(prev => [failed, ...prev].slice(0, 30));
       } finally {
         setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
         setRunningAnalyses(prev => prev.filter(a => a.id !== analysisId));
@@ -124,6 +141,7 @@ export function useFrameAnalysisDispatcher({
       setActivityItems,
       setBaselineFrameForDiff,
       setRunningAnalyses,
+      setCompletedAnalyses,
     ],
   );
 
@@ -134,7 +152,22 @@ export function useFrameAnalysisDispatcher({
       setActiveAnalysesCount((prev) => prev + 1);
 
       const analysisId = `diff-${frame1.id}-to-${frame2.id}`;
-      setRunningAnalyses(prev => [...prev, { id: analysisId, type: 'UI Difference Analysis', startTime: Date.now() }]);
+      const analysisPayload = {
+        image1_dataUrl: frame1.imageDataUrl,
+        image2_dataUrl: frame2.imageDataUrl,
+        analysisType: 'ui_diff',
+        prompt: 'Perform UI difference analysis',
+      };
+      const newRunningAnalysis: RunningAnalysis = { 
+        id: analysisId, 
+        type: 'UI Difference Analysis', 
+        startTime: Date.now(),
+        model: 'gemini-2.5-flash-preview-05-20',
+        status: 'running',
+        payloadType: 'image',
+        payloadSize: analysisPayload.image1_dataUrl.length + analysisPayload.image2_dataUrl.length,
+      };
+      setRunningAnalyses(prev => [...prev, newRunningAnalysis]);
       
       setMainStatus(`Analyzing UI Diff (${activeAnalysesCount + 1})...`);
       const newDiffId = frame2.id + '-diff';
@@ -150,12 +183,7 @@ export function useFrameAnalysisDispatcher({
         const response = await fetch('/api/capture', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image1_dataUrl: frame1.imageDataUrl,
-            image2_dataUrl: frame2.imageDataUrl,
-            analysisType: 'ui_diff',
-            prompt: 'Perform UI difference analysis',
-          }),
+          body: JSON.stringify(analysisPayload),
         });
 
         if (!response.ok || !response.body) {
@@ -166,6 +194,7 @@ export function useFrameAnalysisDispatcher({
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let jsonString = '';
+        let result;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -175,10 +204,15 @@ export function useFrameAnalysisDispatcher({
           jsonString += decoder.decode(value, { stream: true });
         }
         
+        try {
+          result = JSON.parse(jsonString);
+        } catch (e) {
+          logError('[processUIDiffRequest] Failed to parse final JSON string:', e, 'Raw string:', jsonString);
+          throw new Error('Failed to parse JSON response from server.');
+        }
+
         logToUI(`[processUIDiffRequest] ✅ Stream finished. Total content length: ${jsonString.length}`);
         
-        const result = JSON.parse(jsonString); // Parse the complete JSON string
-
         if (typeof result === 'object') {
           const diffData = result as Omit<
             UIDiffAnalysis,
@@ -214,19 +248,27 @@ export function useFrameAnalysisDispatcher({
             newDiffId,
           );
           setBaselineFrameForDiff(frame2);
+          const completed: RunningAnalysis = { ...newRunningAnalysis, status: 'completed', endTime: Date.now() };
+          setCompletedAnalyses(prev => [completed, ...prev].slice(0, 30));
         } else {
           logError(
             '[processUIDiffRequest] Backend error for UI Diff:',
             result.error || 'Unknown error',
             result.details || '',
           );
+          const completed: RunningAnalysis = { ...newRunningAnalysis, status: 'completed', endTime: Date.now() };
+          setCompletedAnalyses(prev => [completed, ...prev].slice(0, 30));
         }
       } catch (err) {
         logError('[processUIDiffRequest] Network error during UI Diff:', err);
+        const failed: RunningAnalysis = { ...newRunningAnalysis, status: 'failed', endTime: Date.now() };
+        setRunningAnalyses(prev => prev.map(a => a.id === analysisId ? failed : a));
+        setCompletedAnalyses(prev => [failed, ...prev].slice(0, 30));
+      } finally {
+        setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
+        setRunningAnalyses(prev => prev.filter(a => a.id !== analysisId));
+        setDiffAnalysisInProgress(false);
       }
-      setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
-      setRunningAnalyses(prev => prev.filter(a => a.id !== analysisId));
-      setDiffAnalysisInProgress(false);
     },
     [
       diffAnalysisInProgress,
@@ -238,6 +280,7 @@ export function useFrameAnalysisDispatcher({
       setMainStatus,
       setBaselineFrameForDiff,
       setRunningAnalyses,
+      setCompletedAnalyses,
     ],
   );
 

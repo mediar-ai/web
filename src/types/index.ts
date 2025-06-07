@@ -40,6 +40,7 @@ export interface InitialFrameDumpAnalysis {
   timestamp: string;
   raw_content: string;
   image_id: string; // ID of the dumped frame from BufferedFrame
+  processedForEvent?: boolean;
 }
 
 // UIDiffAnalysis now includes a type discriminator
@@ -74,6 +75,7 @@ export interface UIDiffAnalysis {
   new_content_detected?: string; // Added new field
   image1_id?: string;
   image2_id?: string;
+  processedForEvent?: boolean;
 }
 
 export type ActivityItem = InitialFrameDumpAnalysis | UIDiffAnalysis;
@@ -143,6 +145,8 @@ export type SettingsTabContentProps = {
   setChangeThreshold: (thresh: number) => void;
   stabilityDelay: number;
   setStabilityDelay: (delay: number) => void;
+  screenshotQuality: number;
+  setScreenshotQuality: (quality: number) => void;
   maxScreenshots: number;
   setMaxScreenshots: (max: number) => void;
   pixelDifferenceThreshold: number;
@@ -200,7 +204,12 @@ export interface TimelineViewProps {
 export interface RunningAnalysis {
   id: string;
   type: string;
-  startTime: number;
+  startTime?: number;
+  endTime?: number;
+  model?: string;
+  status: 'queued' | 'running' | 'failed' | 'completed';
+  payloadType: 'image' | 'text';
+  payloadSize?: number;
 }
 
 export interface LiveAnalysesPanelProps {

@@ -51,10 +51,9 @@ export async function POST(request: Request) {
     const clientTimestamp = body.timestamp as string; // Might need array of timestamps for diff
     const userPrompt = (body.prompt as string) || "Analyze this screenshot for business workflow information.";
     const history = (body.history as string[]) || [];
-    const requestedModel = body.model as string;
     const analysisType = body.analysisType as string || 'workflow'; // New: 'workflow' or 'ui_diff'
 
-    const modelName = requestedModel || MODEL_NAME; // Default model
+    const modelName = MODEL_NAME; // Always use the flash model
     const requestOptions = { timeout: 1200000 }; // 20 minute timeout
     const activeModel = genAI.getGenerativeModel({ model: modelName, ...requestOptions });
 

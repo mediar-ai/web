@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { ActivityItem, Event, RunningAnalysis } from '../types';
+import { useDebouncedEffect } from './useDebouncedEffect';
 
 interface UseEventGeneratorProps {
   stream: MediaStream | null;
   activityItems: ActivityItem[];
+  setActivityItems: React.Dispatch<React.SetStateAction<ActivityItem[]>>;
   events: Event[];
   setEvents: React.Dispatch<React.SetStateAction<Event[]>>;
   setRunningAnalyses: React.Dispatch<React.SetStateAction<RunningAnalysis[]>>;
+  setCompletedAnalyses: React.Dispatch<React.SetStateAction<RunningAnalysis[]>>;
   activeAnalysesCount: number;
   setActiveAnalysesCount: React.Dispatch<React.SetStateAction<number>>;
   logToUI: (...args: unknown[]) => void;
@@ -20,9 +23,11 @@ interface UseEventGeneratorProps {
 export function useEventGenerator({
   stream,
   activityItems,
+  setActivityItems,
   events,
   setEvents,
   setRunningAnalyses,
+  setCompletedAnalyses,
   activeAnalysesCount,
   setActiveAnalysesCount,
   logToUI,
@@ -39,22 +44,20 @@ export function useEventGenerator({
   }, [activeAnalysesCount]);
 
   const processMultiActivityEvent = useCallback(async () => {
+    const unprocessedActivities = activityItems.filter(item => !item.processedForEvent);
+
     if (
       eventGenerationInProgressRef.current ||
-      activeAnalysesCountRef.current >= MAX_PARALLEL_ANALYSES
+      activeAnalysesCountRef.current >= MAX_PARALLEL_ANALYSES ||
+      unprocessedActivities.length === 0
     ) {
-      logToUI(
-        '[processMultiActivityEvent] Already processing or max analyses running, skipping',
-      );
       return;
     }
 
     eventGenerationInProgressRef.current = true;
 
-    // Use a direct copy from props to ensure freshness inside the callback
-    const activityItemsCopy = [...activityItems];
-    const last10Activities = activityItemsCopy.slice(0, 10);
-    const mostRecentInitialDump = activityItemsCopy.find((item) => item.type === 'initial_dump');
+    const last10Activities = activityItems.slice(0, 10);
+    const mostRecentInitialDump = activityItems.find((item) => item.type === 'initial_dump');
 
     const activitiesToAnalyze: ActivityItem[] = [...last10Activities];
     if (
@@ -65,25 +68,16 @@ export function useEventGenerator({
     }
 
     if (activitiesToAnalyze.length === 0) {
-      logToUI('[processMultiActivityEvent] No activities to analyze for event');
+      logToUI('[processMultiActivityEvent] No new activities to analyze for event');
       eventGenerationInProgressRef.current = false;
       return;
     }
 
     const activityIdsToAnalyze = activitiesToAnalyze.map(item => item.id);
-    const analysisId = `event-${activityIdsToAnalyze[0]}`;
-    setRunningAnalyses(prev => [...prev, { id: analysisId, type: 'Event Generation', startTime: Date.now() }]);
-    
-    setActiveAnalysesCount((prev) => prev + 1);
-    setMainStatus(`Analyzing Event (${activeAnalysesCountRef.current + 1})...`);
-    logToUI(
-      '[processMultiActivityEvent] 🎯 Analyzing',
-      activitiesToAnalyze.length,
-      'activities for event generation',
-    );
-
-    try {
-      const activitiesSummary = activitiesToAnalyze.map((item) => {
+    const analysisId = `event-${activityIdsToAnalyze[0]}-${Date.now()}`;
+    const analysisPayload = {
+      analysisType: 'multi_activity_event',
+      activitiesSummary: activitiesToAnalyze.map((item) => {
         if (item.type === 'initial_dump') {
           return {
             type: 'initial_dump',
@@ -102,22 +96,39 @@ export function useEventGenerator({
               : null,
           };
         }
-      });
+      }),
+      prompt: eventsPrompt,
+      model: EVENTS_MODEL_NAME,
+      previousEvents: events.slice(0, 50).map((e) => ({
+        summary: e.summary,
+        timestamp: e.timestamp,
+        isNewWorkflow: e.thoughts?.includes('yes') || false,
+      })),
+    };
+    const newRunningAnalysis: RunningAnalysis = { 
+      id: analysisId, 
+      type: 'Event Generation', 
+      startTime: Date.now(),
+      model: EVENTS_MODEL_NAME,
+      status: 'running',
+      payloadType: 'text',
+      payloadSize: JSON.stringify(analysisPayload.activitiesSummary).length,
+    };
+    setRunningAnalyses(prev => [...prev, newRunningAnalysis]);
+    
+    setActiveAnalysesCount((prev) => prev + 1);
+    setMainStatus(`Analyzing Event (${activeAnalysesCountRef.current + 1})...`);
+    logToUI(
+      '[processMultiActivityEvent] 🎯 Analyzing',
+      activitiesToAnalyze.length,
+      'activities for event generation',
+    );
 
+    try {
       const response = await fetch('/api/capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          analysisType: 'multi_activity_event',
-          activitiesSummary: activitiesSummary,
-          prompt: eventsPrompt,
-          model: EVENTS_MODEL_NAME,
-          previousEvents: events.slice(0, 50).map((e) => ({
-            summary: e.summary,
-            timestamp: e.timestamp,
-            isNewWorkflow: e.thoughts?.includes('yes') || false,
-          })),
-        }),
+        body: JSON.stringify(analysisPayload),
       });
 
       if (!response.ok) {
@@ -139,6 +150,12 @@ export function useEventGenerator({
           activity_ids: activityIdsToAnalyze,
         };
 
+        setActivityItems(prev => prev.map(item =>
+          unprocessedActivities.some(ua => ua.id === item.id)
+            ? { ...item, processedForEvent: true }
+            : item
+        ));
+        
         if (is_distinct_event === 'yes') {
           setEvents((prevEvents) =>
             [newEvent, ...prevEvents]
@@ -175,8 +192,13 @@ export function useEventGenerator({
           result.error || 'Unknown error',
         );
       }
+      const completed: RunningAnalysis = { ...newRunningAnalysis, status: 'completed', endTime: Date.now() };
+      setCompletedAnalyses(prev => [completed, ...prev].slice(0, 30));
     } catch (err) {
       logError('[processMultiActivityEvent] Network error:', err);
+      const failed: RunningAnalysis = { ...newRunningAnalysis, status: 'failed', endTime: Date.now() };
+      setRunningAnalyses(prev => prev.map(a => a.id === analysisId ? failed : a));
+      setCompletedAnalyses(prev => [failed, ...prev].slice(0, 30));
     } finally {
       setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
       setRunningAnalyses(prev => prev.filter(a => a.id !== analysisId));
@@ -194,15 +216,17 @@ export function useEventGenerator({
     setMainStatus,
     setEvents,
     setRunningAnalyses,
+    setCompletedAnalyses,
+    setActivityItems,
   ]);
 
-  useEffect(() => {
-    if (eventGenerationInProgressRef.current) {
-      return;
-    }
-
-    if (stream && activeAnalysesCount < MAX_PARALLEL_ANALYSES) {
-      processMultiActivityEvent();
-    }
-  }, [stream, activityItems, activeAnalysesCount, processMultiActivityEvent, MAX_PARALLEL_ANALYSES]);
+  useDebouncedEffect(
+    () => {
+      if (stream) {
+        processMultiActivityEvent();
+      }
+    },
+    [stream, activityItems, processMultiActivityEvent],
+    2000 
+  );
 } 

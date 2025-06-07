@@ -5,16 +5,18 @@ import type {
   ActivityItem,
   InitialFrameDumpAnalysis,
   UIDiffAnalysis,
+  RunningAnalysis,
 } from '../types';
 
 // IndexedDB utilities for persistence
 export const DB_NAME = 'WorkflowCaptureDB';
-export const DB_VERSION = 4; // Incremented to add screenshots store and activity items store
+export const DB_VERSION = 5; // Incremented for completed analyses store
 export const WORKFLOW_STORE = 'workflowSteps';
 export const LOGS_STORE = 'frontendLogs';
 export const EVENTS_STORE = 'events';
 export const SCREENSHOTS_STORE = 'screenshots';
 export const ACTIVITY_ITEMS_STORE = 'activityItems'; // New store for activity items
+export const COMPLETED_ANALYSES_STORE = 'completedAnalyses';
 export const MAX_SCREENSHOTS = 50; // Keep only last 50 screenshots
 
 export const openDB = (): Promise<IDBDatabase> => {
@@ -65,6 +67,10 @@ export const openDB = (): Promise<IDBDatabase> => {
       // Create activity items store
       if (!db.objectStoreNames.contains(ACTIVITY_ITEMS_STORE)) {
         db.createObjectStore(ACTIVITY_ITEMS_STORE, { keyPath: 'id' });
+      }
+
+      if (!db.objectStoreNames.contains(COMPLETED_ANALYSES_STORE)) {
+        db.createObjectStore(COMPLETED_ANALYSES_STORE, { keyPath: 'id' });
       }
     };
   });
@@ -232,13 +238,15 @@ export const loadEvents = async (): Promise<
 
 export const compressCanvasToBlob = (
   canvas: HTMLCanvasElement,
+  quality: number = 0.95,
 ): Promise<Blob> => {
   return new Promise((resolve) => {
     canvas.toBlob(
       (blob) => {
         resolve(blob!);
       },
-      'image/png',
+      'image/jpeg',
+      quality,
     );
   });
 };
@@ -359,6 +367,42 @@ export const loadActivityItems = async (): Promise<ActivityItem[]> => {
     });
   } catch (err) {
     console.error('[loadActivityItems] Failed to load:', err);
+    return [];
+  }
+};
+
+export const saveCompletedAnalyses = async (items: RunningAnalysis[]) => {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([COMPLETED_ANALYSES_STORE], 'readwrite');
+    const store = transaction.objectStore(COMPLETED_ANALYSES_STORE);
+
+    await store.clear();
+    for (const item of items) {
+      await store.add(item);
+    }
+  } catch (err) {
+    console.error('[saveCompletedAnalyses] Failed to save:', err);
+  }
+};
+
+export const loadCompletedAnalyses = async (): Promise<RunningAnalysis[]> => {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([COMPLETED_ANALYSES_STORE], 'readonly');
+    const store = transaction.objectStore(COMPLETED_ANALYSES_STORE);
+    const request = store.getAll();
+
+    return new Promise((resolve, reject) => {
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const items = (request.result as RunningAnalysis[]) || [];
+        items.sort((a, b) => (b.endTime || 0) - (a.endTime || 0));
+        resolve(items);
+      };
+    });
+  } catch (err) {
+    console.error('[loadCompletedAnalyses] Failed to load:', err);
     return [];
   }
 };

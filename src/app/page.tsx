@@ -16,10 +16,12 @@ import {
   loadEvents,
   loadFrontendLogs,
   loadActivityItems,
+  loadCompletedAnalyses,
   saveWorkflowSteps,
   saveEvents,
   saveFrontendLogs,
   saveActivityItems,
+  saveCompletedAnalyses,
   clearPersistedData,
   getAllPersistedDataForExport,
   saveScreenshot
@@ -67,9 +69,10 @@ if (supabaseUrl && supabaseAnonKey) {
 }
 
 export default function Home() {
-  const EVENTS_MODEL_NAME = 'gemini-2.5-pro-preview-05-06';
+  const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
   const MAX_PARALLEL_ANALYSES = 5;
 
+  const [screenshotQuality, setScreenshotQuality] = useState<number>(0.95);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -93,6 +96,7 @@ export default function Home() {
   const [frameBuffer, setFrameBuffer] = useState<BufferedFrame[]>([]);
   const [activeAnalysesCount, setActiveAnalysesCount] = useState<number>(0);
   const [runningAnalyses, setRunningAnalyses] = useState<RunningAnalysis[]>([]);
+  const [completedAnalyses, setCompletedAnalyses] = useState<RunningAnalysis[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
@@ -150,8 +154,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const [exportInProgress, setExportInProgress] = useState<boolean>(false); 
   const [reconnectRequired, setReconnectRequired] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
-  const [timelineCollapsed, setTimelineCollapsed] = useState(false);
-  const [screenshotCollapsed, setScreenshotCollapsed] = useState(false);
+  const [detailsCollapsed, setDetailsCollapsed] = useState(false);
   const [analysesPanelCollapsed, setAnalysesPanelCollapsed] = useState(false);
   const [selectedMoreOption, setSelectedMoreOption] = useState<string | null>(null);
   const [selectedMainTab, setSelectedMainTab] = useState<string>('recent');
@@ -219,7 +222,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       const context = canvas.getContext('2d');
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageDataUrl = canvas.toDataURL('image/png');
+        const imageDataUrl = canvas.toDataURL('image/jpeg', screenshotQuality);
         const timestamp = Date.now();
         const newFrame: BufferedFrame = {
           id: new Date(timestamp).toISOString() +
@@ -296,6 +299,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     }
   }, [
     isCapturingForBuffer,
+    screenshotQuality,
     logToUI,
     logError,
     setFrameBuffer,
@@ -335,6 +339,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     setFrameBuffer,
     setActivityItems,
     setRunningAnalyses,
+    setCompletedAnalyses,
     activeAnalysesCount,
     setActiveAnalysesCount,
     logToUI,
@@ -346,9 +351,11 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   useEventGenerator({
     stream,
     activityItems,
+    setActivityItems,
     events,
     setEvents,
     setRunningAnalyses,
+    setCompletedAnalyses,
     activeAnalysesCount,
     setActiveAnalysesCount,
     logToUI,
@@ -590,12 +597,13 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [savedSteps, savedEvents, savedLogs, savedActivityItemsFromDB] =
+        const [savedSteps, savedEvents, savedLogs, savedActivityItemsFromDB, savedCompletedAnalyses] =
           await Promise.all([
             loadWorkflowSteps(),
             loadEvents(),
             loadFrontendLogs(),
-            loadActivityItems(), 
+            loadActivityItems(),
+            loadCompletedAnalyses(),
           ]);
         if (savedSteps.length > 0) {
           setWorkflowSteps(savedSteps);
@@ -621,6 +629,12 @@ Analyze the activity sequence for context, then create ONE clear, complete event
             `[loadPersistedData] Loaded ${savedActivityItemsFromDB.length} activity items`,
           );
         }
+        if (savedCompletedAnalyses.length > 0) {
+          setCompletedAnalyses(savedCompletedAnalyses);
+          console.log(
+            `[loadPersistedData] Loaded ${savedCompletedAnalyses.length} completed analyses`,
+          );
+        }
       } catch (err) {
         logError('[loadPersistedData] Failed to load persisted data:', err);
       }
@@ -640,6 +654,9 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   useEffect(() => {
     if (activityItems.length > 0) saveActivityItems(activityItems);
   }, [activityItems]);
+  useEffect(() => {
+    if (completedAnalyses.length > 0) saveCompletedAnalyses(completedAnalyses);
+  }, [completedAnalyses]);
 
   useEffect(() => {
     if (selectedActivity) {
@@ -857,13 +874,9 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       setPreviewCollapsed(parsedState);
     }
     
-    const storedTimelineCollapsed = localStorage.getItem('timelineCollapsed');
-    if (storedTimelineCollapsed) {
-      setTimelineCollapsed(storedTimelineCollapsed === 'true');
-    }
-    const storedScreenshotCollapsed = localStorage.getItem('screenshotCollapsed');
-    if (storedScreenshotCollapsed) {
-      setScreenshotCollapsed(storedScreenshotCollapsed === 'true');
+    const storedDetailsCollapsed = localStorage.getItem('detailsCollapsed');
+    if (storedDetailsCollapsed) {
+      setDetailsCollapsed(storedDetailsCollapsed === 'true');
     }
     const storedAnalysesPanelCollapsed = localStorage.getItem('analysesPanelCollapsed');
     if (storedAnalysesPanelCollapsed) {
@@ -875,18 +888,10 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     setPreviewCollapsed(isCollapsed);
   };
 
-  const toggleTimeline = () => {
-    setTimelineCollapsed(prevState => {
+  const toggleDetailsPanel = () => {
+    setDetailsCollapsed(prevState => {
       const newState = !prevState;
-      localStorage.setItem('timelineCollapsed', String(newState));
-      return newState;
-    });
-  };
-
-  const toggleScreenshot = () => {
-    setScreenshotCollapsed(prevState => {
-      const newState = !prevState;
-      localStorage.setItem('screenshotCollapsed', String(newState));
+      localStorage.setItem('detailsCollapsed', String(newState));
       return newState;
     });
   };
@@ -898,6 +903,16 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       return newState;
     });
   };
+
+  const queuedAnalyses: RunningAnalysis[] = frameBuffer.map(frame => ({
+    id: frame.id,
+    type: 'Frame for Analysis',
+    status: 'queued',
+    payloadType: 'image',
+    payloadSize: frame.imageDataUrl.length,
+  }));
+
+  const allAnalyses = [...runningAnalyses, ...queuedAnalyses, ...completedAnalyses];
 
   return (
     <div className='container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
@@ -1020,6 +1035,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
                 setChangeThreshold={setChangeThreshold}
                 stabilityDelay={stabilityDelay}
                 setStabilityDelay={setStabilityDelay}
+                screenshotQuality={screenshotQuality}
+                setScreenshotQuality={setScreenshotQuality}
                 maxScreenshots={maxScreenshots}
                 setMaxScreenshots={setMaxScreenshots}
                 pixelDifferenceThreshold={pixelDifferenceThreshold}
@@ -1049,50 +1066,40 @@ Analyze the activity sequence for context, then create ONE clear, complete event
           onMouseEnter={() => setIsHoveringScrollableArea(true)}
           onMouseLeave={() => setIsHoveringScrollableArea(false)}
         >
-          {/* Timeline Section */}
+          {/* Details Section (Timeline + Screenshot) */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Timeline</h2>
-              <Button variant="ghost" size="sm" onClick={toggleTimeline}>
-                {timelineCollapsed ? 'Show' : 'Hide'}
+              <h2 className="text-lg font-semibold">Timeline & Screenshot Preview</h2>
+              <Button variant="ghost" size="sm" onClick={toggleDetailsPanel}>
+                {detailsCollapsed ? 'Show' : 'Hide'}
               </Button>
             </div>
-            {!timelineCollapsed && (
-              <TimelineSlider
-                activityItems={activityItems}
-                selectedActivity={selectedActivity}
-                onActivitySelect={setSelectedActivity}
-              />
-            )}
-          </div>
-
-          {/* Screenshot Preview Section */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Screenshot Preview</h2>
-              <Button variant="ghost" size="sm" onClick={toggleScreenshot}>
-                {screenshotCollapsed ? 'Show' : 'Hide'}
-              </Button>
-            </div>
-            {!screenshotCollapsed && (
-              <ScreenshotPreviewPane 
-                selectedActivity={selectedActivity} 
-                activityItems={activityItems}
-                onActivitySelect={setSelectedActivity}
-              />
+            {!detailsCollapsed && (
+              <div className="space-y-4">
+                <TimelineSlider
+                  activityItems={activityItems}
+                  selectedActivity={selectedActivity}
+                  onActivitySelect={setSelectedActivity}
+                />
+                <ScreenshotPreviewPane 
+                  selectedActivity={selectedActivity} 
+                  activityItems={activityItems}
+                  onActivitySelect={setSelectedActivity}
+                />
+              </div>
             )}
           </div>
 
           {/* Live Analyses Section */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Live Analyses</h2>
+              <h2 className="text-lg font-semibold">LLM traces {allAnalyses.length > 0 && `(${allAnalyses.length})`}</h2>
               <Button variant="ghost" size="sm" onClick={toggleAnalysesPanel}>
                 {analysesPanelCollapsed ? 'Show' : 'Hide'}
               </Button>
             </div>
             {!analysesPanelCollapsed && (
-              <LiveAnalysesPanel runningAnalyses={runningAnalyses} />
+              <LiveAnalysesPanel runningAnalyses={allAnalyses} />
             )}
           </div>
         </div>

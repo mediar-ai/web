@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ interface LiveAnalysesPanelProps {
   runningAnalyses: RunningAnalysis[];
 }
 
-type SortKey = keyof RunningAnalysis;
+type SortKey = keyof RunningAnalysis | 'timestamp';
 
 const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }) => {
   const [sortKey, setSortKey] = useState<SortKey>('startTime');
@@ -19,8 +19,8 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
   useEffect(() => {
     const interval = setInterval(() => {
       const newTimers: Record<string, string> = {};
-      runningAnalyses.forEach(analysis => {
-        const duration = (Date.now() - analysis.startTime) / 1000;
+      runningAnalyses.filter(a => a.status === 'running' && a.startTime).forEach(analysis => {
+        const duration = (Date.now() - analysis.startTime!) / 1000;
         newTimers[analysis.id] = duration.toFixed(1) + 's';
       });
       setTimers(newTimers);
@@ -31,8 +31,8 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
 
   const sortedAnalyses = useMemo(() => {
     return [...runningAnalyses].sort((a, b) => {
-      const aValue = a[sortKey];
-      const bValue = b[sortKey];
+      const aValue = a[sortKey as keyof RunningAnalysis] ?? 0;
+      const bValue = b[sortKey as keyof RunningAnalysis] ?? 0;
 
       let comparison = 0;
       if (aValue > bValue) {
@@ -59,31 +59,57 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
     return sortDirection === 'asc' ? '↑' : '↓';
   };
 
+  const formatBytes = (bytes: number, decimals = 2) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  const getDuration = (analysis: RunningAnalysis): string => {
+    if (analysis.status === 'queued') {
+      return 'Queued';
+    }
+    if (analysis.status === 'running' && analysis.startTime) {
+      return timers[analysis.id] || '0.0s';
+    }
+    if ((analysis.status === 'completed' || analysis.status === 'failed') && analysis.startTime && analysis.endTime) {
+      const duration = (analysis.endTime - analysis.startTime) / 1000;
+      return duration.toFixed(1) + 's';
+    }
+    return 'N/A';
+  };
+
   if (runningAnalyses.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-medium">Live Analyses</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm">No analyses in progress.</p>
-        </CardContent>
-      </Card>
-    );
+    return null;
   }
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base font-medium">Live Analyses ({runningAnalyses.length})</CardTitle>
-      </CardHeader>
-      <CardContent>
+      <CardContent className='pt-4'>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>
-                <Button variant="ghost" size="sm" onClick={() => handleSort('type')} className="-ml-4">
+                <Button variant="ghost" size="sm" onClick={() => handleSort('startTime')} className="-ml-4">
+                  Timestamp {renderSortArrow('startTime')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button variant="ghost" size="sm" onClick={() => handleSort('type')}>
                   Type {renderSortArrow('type')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button variant="ghost" size="sm" onClick={() => handleSort('model')}>
+                  Model {renderSortArrow('model')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button variant="ghost" size="sm" onClick={() => handleSort('payloadSize')}>
+                  Size {renderSortArrow('payloadSize')}
                 </Button>
               </TableHead>
               <TableHead>
@@ -91,13 +117,37 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
                   Duration {renderSortArrow('startTime')}
                 </Button>
               </TableHead>
+              <TableHead>
+                <Button variant="ghost" size="sm" onClick={() => handleSort('status')}>
+                  Status {renderSortArrow('status')}
+                </Button>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {sortedAnalyses.map((analysis) => (
               <TableRow key={analysis.id}>
-                <TableCell className="font-medium">{analysis.type}</TableCell>
-                <TableCell>{timers[analysis.id] || '0.0s'}</TableCell>
+                <TableCell>{analysis.startTime ? new Date(analysis.startTime).toLocaleTimeString() : 'N/A'}</TableCell>
+                <TableCell className="font-medium">{analysis.type} ({analysis.payloadType})</TableCell>
+                <TableCell>{analysis.model ? analysis.model.replace('gemini-2.5-flash-preview-05-20', 'Flash') : 'N/A'}</TableCell>
+                <TableCell>
+                  {analysis.payloadSize 
+                    ? (analysis.payloadType === 'text' 
+                        ? `${analysis.payloadSize.toLocaleString()} chars` 
+                        : formatBytes(analysis.payloadSize)) 
+                    : 'N/A'}
+                </TableCell>
+                <TableCell>{getDuration(analysis)}</TableCell>
+                <TableCell>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    analysis.status === 'running' ? 'bg-blue-100 text-blue-800' :
+                    analysis.status === 'failed' ? 'bg-red-100 text-red-800' :
+                    analysis.status === 'queued' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-green-100 text-green-800'
+                  }`}>
+                    {analysis.status}
+                  </span>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
