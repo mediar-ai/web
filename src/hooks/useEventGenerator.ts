@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { ActivityItem, Event } from '../types';
+import type { ActivityItem, Event, RunningAnalysis } from '../types';
 
 interface UseEventGeneratorProps {
   stream: MediaStream | null;
   activityItems: ActivityItem[];
   events: Event[];
   setEvents: React.Dispatch<React.SetStateAction<Event[]>>;
+  setRunningAnalyses: React.Dispatch<React.SetStateAction<RunningAnalysis[]>>;
   activeAnalysesCount: number;
   setActiveAnalysesCount: React.Dispatch<React.SetStateAction<number>>;
   logToUI: (...args: unknown[]) => void;
@@ -21,6 +22,7 @@ export function useEventGenerator({
   activityItems,
   events,
   setEvents,
+  setRunningAnalyses,
   activeAnalysesCount,
   setActiveAnalysesCount,
   logToUI,
@@ -69,6 +71,9 @@ export function useEventGenerator({
     }
 
     const activityIdsToAnalyze = activitiesToAnalyze.map(item => item.id);
+    const analysisId = `event-${activityIdsToAnalyze[0]}`;
+    setRunningAnalyses(prev => [...prev, { id: analysisId, type: 'Event Generation', startTime: Date.now() }]);
+    
     setActiveAnalysesCount((prev) => prev + 1);
     setMainStatus(`Analyzing Event (${activeAnalysesCountRef.current + 1})...`);
     logToUI(
@@ -174,6 +179,7 @@ export function useEventGenerator({
       logError('[processMultiActivityEvent] Network error:', err);
     } finally {
       setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
+      setRunningAnalyses(prev => prev.filter(a => a.id !== analysisId));
       eventGenerationInProgressRef.current = false;
     }
   }, [
@@ -187,6 +193,7 @@ export function useEventGenerator({
     setActiveAnalysesCount,
     setMainStatus,
     setEvents,
+    setRunningAnalyses,
   ]);
 
   useEffect(() => {

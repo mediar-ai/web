@@ -232,15 +232,13 @@ export const loadEvents = async (): Promise<
 
 export const compressCanvasToBlob = (
   canvas: HTMLCanvasElement,
-  quality: number = 0.7,
 ): Promise<Blob> => {
   return new Promise((resolve) => {
     canvas.toBlob(
       (blob) => {
         resolve(blob!);
       },
-      'image/jpeg',
-      quality,
+      'image/png',
     );
   });
 };
@@ -248,7 +246,7 @@ export const compressCanvasToBlob = (
 export const saveScreenshot = async (id: string, canvas: HTMLCanvasElement) => {
   try {
     const db = await openDB();
-    const blob = await compressCanvasToBlob(canvas, 0.6);
+    const blob = await compressCanvasToBlob(canvas);
 
     const screenshotData = {
       id,

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { BufferedFrame, ActivityItem, UIDiffAnalysis } from '../types'; // Assuming types are exported
+import type { BufferedFrame, ActivityItem, UIDiffAnalysis, RunningAnalysis } from '../types'; // Assuming types are exported
 
 interface UseFrameAnalysisDispatcherProps {
   frameBuffer: BufferedFrame[];
   setFrameBuffer: React.Dispatch<React.SetStateAction<BufferedFrame[]>>;
   setActivityItems: React.Dispatch<React.SetStateAction<ActivityItem[]>>;
+  setRunningAnalyses: React.Dispatch<React.SetStateAction<RunningAnalysis[]>>;
   activeAnalysesCount: number;
   setActiveAnalysesCount: React.Dispatch<React.SetStateAction<number>>;
   logToUI: (...args: unknown[]) => void;
@@ -17,6 +18,7 @@ export function useFrameAnalysisDispatcher({
   frameBuffer,
   setFrameBuffer,
   setActivityItems,
+  setRunningAnalyses,
   activeAnalysesCount,
   setActiveAnalysesCount,
   logToUI,
@@ -34,7 +36,10 @@ export function useFrameAnalysisDispatcher({
       if (initialDumpInProgress) return;
       setInitialDumpInProgress(true);
       setActiveAnalysesCount((prev) => prev + 1);
-      // Use current prop value for status. If activeAnalysesCount itself triggers re-render of parent, this will be up-to-date.
+
+      const analysisId = `dump-${frameToDump.id}`;
+      setRunningAnalyses(prev => [...prev, { id: analysisId, type: 'Initial Frame Dump', startTime: Date.now() }]);
+      
       setMainStatus(`Analyzing Initial Frame (${activeAnalysesCount + 1})...`);
       logToUI(
         '[processInitialFrameDump] 🖼️ Starting raw content dump for initial frame:',
@@ -105,19 +110,20 @@ export function useFrameAnalysisDispatcher({
         );
       } finally {
         setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
+        setRunningAnalyses(prev => prev.filter(a => a.id !== analysisId));
         setInitialDumpInProgress(false);
       }
     },
     [
-      initialDumpInProgress, // Internal state
-      setActiveAnalysesCount, // Prop setter
-      activeAnalysesCount,    // Prop value (for status string)
-      setMainStatus,          // Prop setter
-      logToUI,                // Prop
-      logError,               // Prop
-      setActivityItems,       // Prop setter
-      setBaselineFrameForDiff,// Internal setter
-      // No need for initialDumpInProgress in deps for setInitialDumpInProgress(true/false)
+      initialDumpInProgress,
+      setActiveAnalysesCount,
+      activeAnalysesCount,
+      setMainStatus,
+      logToUI,
+      logError,
+      setActivityItems,
+      setBaselineFrameForDiff,
+      setRunningAnalyses,
     ],
   );
 
@@ -126,6 +132,10 @@ export function useFrameAnalysisDispatcher({
       if (diffAnalysisInProgress) return;
       setDiffAnalysisInProgress(true);
       setActiveAnalysesCount((prev) => prev + 1);
+
+      const analysisId = `diff-${frame1.id}-to-${frame2.id}`;
+      setRunningAnalyses(prev => [...prev, { id: analysisId, type: 'UI Difference Analysis', startTime: Date.now() }]);
+      
       setMainStatus(`Analyzing UI Diff (${activeAnalysesCount + 1})...`);
       const newDiffId = frame2.id + '-diff';
       const displayTimestamp = new Date(frame2.timestamp).toISOString();
@@ -215,18 +225,19 @@ export function useFrameAnalysisDispatcher({
         logError('[processUIDiffRequest] Network error during UI Diff:', err);
       }
       setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
+      setRunningAnalyses(prev => prev.filter(a => a.id !== analysisId));
       setDiffAnalysisInProgress(false);
     },
     [
-      diffAnalysisInProgress, // Internal state
-      logToUI,                // Prop
-      logError,               // Prop
-      setActivityItems,       // Prop setter
-      setActiveAnalysesCount, // Prop setter
-      activeAnalysesCount,    // Prop value (for status string)
-      setMainStatus,          // Prop setter
-      setBaselineFrameForDiff,// Internal setter
-      // No need for diffAnalysisInProgress in deps for setDiffAnalysisInProgress(true/false)
+      diffAnalysisInProgress,
+      logToUI,
+      logError,
+      setActivityItems,
+      setActiveAnalysesCount,
+      activeAnalysesCount,
+      setMainStatus,
+      setBaselineFrameForDiff,
+      setRunningAnalyses,
     ],
   );
 

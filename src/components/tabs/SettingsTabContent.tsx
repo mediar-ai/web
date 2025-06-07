@@ -17,8 +17,6 @@ const SettingsTabContent: React.FC<SettingsTabContentProps> = ({
   setChangeThreshold,
   stabilityDelay,
   setStabilityDelay,
-  screenshotQuality,
-  setScreenshotQuality,
   maxScreenshots,
   setMaxScreenshots,
   pixelDifferenceThreshold,
@@ -157,27 +155,6 @@ const SettingsTabContent: React.FC<SettingsTabContentProps> = ({
               <div className='flex justify-between text-[10px] text-muted-foreground mt-1'>
                 <span>1s</span>
                 <span>10s</span>
-              </div>
-            </div>
-
-            <div>
-              <label className='text-xs text-muted-foreground mb-1 block'>
-                Screenshot Quality:{' '}
-                {Math.round(screenshotQuality * 100)}%
-              </label>
-              <input
-                type='range'
-                min='0.1'
-                max='1'
-                step='0.1'
-                value={screenshotQuality}
-                onChange={(e) =>
-                  setScreenshotQuality(Number(e.target.value))}
-                className='w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer'
-              />
-              <div className='flex justify-between text-[10px] text-muted-foreground mt-1'>
-                <span>10%</span>
-                <span>100%</span>
               </div>
             </div>
 

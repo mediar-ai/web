@@ -143,8 +143,6 @@ export type SettingsTabContentProps = {
   setChangeThreshold: (thresh: number) => void;
   stabilityDelay: number;
   setStabilityDelay: (delay: number) => void;
-  screenshotQuality: number;
-  setScreenshotQuality: (quality: number) => void;
   maxScreenshots: number;
   setMaxScreenshots: (max: number) => void;
   pixelDifferenceThreshold: number;
@@ -197,4 +195,14 @@ export interface DetailsPaneProps {
 
 export interface TimelineViewProps {
   timelineItems: TimelineItem[];
+}
+
+export interface RunningAnalysis {
+  id: string;
+  type: string;
+  startTime: number;
+}
+
+export interface LiveAnalysesPanelProps {
+  runningAnalyses: RunningAnalysis[];
 } 
