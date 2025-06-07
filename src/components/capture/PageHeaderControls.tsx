@@ -39,8 +39,8 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   const [selectedUser, setSelectedUser] = useState(currentUser);
   
   return (
-    <div className='flex items-center justify-between gap-4'>
-      <div className='flex items-center gap-2'>
+    <div className='w-full flex flex-col sm:flex-row justify-between items-center mb-1 py-2'>
+      <div className='flex items-center gap-2 mb-2 sm:mb-0'>
         {reconnectRequired ? (
             <Button onClick={handleStartScreenShare} className='bg-yellow-500 hover:bg-yellow-600 text-white'>
                 <RefreshCw className='mr-2 h-4 w-4' /> Reconnect
