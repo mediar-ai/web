@@ -148,6 +148,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const [exportInProgress, setExportInProgress] = useState<boolean>(false); 
   const [reconnectRequired, setReconnectRequired] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const [timelineCollapsed, setTimelineCollapsed] = useState(false);
+  const [screenshotCollapsed, setScreenshotCollapsed] = useState(false);
   const [selectedMoreOption, setSelectedMoreOption] = useState<string | null>(null);
   const [selectedMainTab, setSelectedMainTab] = useState<string>('recent');
   const [showScrollHint, setShowScrollHint] = useState<boolean>(false);
@@ -658,6 +660,19 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     }
   }, [events, selectedEvent]);
 
+  // Auto-scroll to most recent item when switching to Recent Activity or Events tabs
+  useEffect(() => {
+    if (selectedMainTab === 'recent' && activityItems.length > 0) {
+      // Select the most recent activity (first in the original array)
+      setSelectedActivity(activityItems[0]);
+      console.log('[Tab Switch] Auto-selected most recent activity for Recent tab');
+    } else if (selectedMainTab === 'events' && events.length > 0) {
+      // Select the most recent event (first in the original array)
+      setSelectedEvent(events[0]);
+      console.log('[Tab Switch] Auto-selected most recent event for Events tab');
+    }
+  }, [selectedMainTab, activityItems, events]);
+
   // Auto-create workflow when capture starts
   useEffect(() => {
     if (stream && !workflow) {
@@ -831,6 +846,43 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     return () => clearInterval(interval);
   }, [logToUI]);
 
+  useEffect(() => {
+    const storedPreviewCollapsed = localStorage.getItem('previewCollapsed');
+    if (storedPreviewCollapsed) {
+      const parsedState = storedPreviewCollapsed === 'true';
+      setPreviewCollapsed(parsedState);
+    }
+    
+    const storedTimelineCollapsed = localStorage.getItem('timelineCollapsed');
+    if (storedTimelineCollapsed) {
+      setTimelineCollapsed(storedTimelineCollapsed === 'true');
+    }
+    const storedScreenshotCollapsed = localStorage.getItem('screenshotCollapsed');
+    if (storedScreenshotCollapsed) {
+      setScreenshotCollapsed(storedScreenshotCollapsed === 'true');
+    }
+  }, []);
+
+  const handlePreviewCollapseChange = (isCollapsed: boolean) => {
+    setPreviewCollapsed(isCollapsed);
+  };
+
+  const toggleTimeline = () => {
+    setTimelineCollapsed(prevState => {
+      const newState = !prevState;
+      localStorage.setItem('timelineCollapsed', String(newState));
+      return newState;
+    });
+  };
+
+  const toggleScreenshot = () => {
+    setScreenshotCollapsed(prevState => {
+      const newState = !prevState;
+      localStorage.setItem('screenshotCollapsed', String(newState));
+      return newState;
+    });
+  };
+
   return (
     <div className='container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
       <ExportStatusDialog exportInProgress={exportInProgress} />
@@ -861,7 +913,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         <VideoPreviewArea 
           stream={stream} 
           videoRef={videoRef} 
-          onCollapseChange={setPreviewCollapsed}
+          onCollapseChange={handlePreviewCollapseChange}
         />
 
         <div className={previewCollapsed ? 'flex flex-col gap-4' : 'lg:col-span-2 flex flex-col gap-4'}>
@@ -974,24 +1026,86 @@ Analyze the activity sequence for context, then create ONE clear, complete event
               />
             </TabsContent>
           </Tabs>
+          <div className="flex items-center justify-between mt-4">
+            <h2 className="text-lg font-semibold">Screenshot Preview</h2>
+          </div>
+          {!previewCollapsed && (
+            <div className="w-full max-w-7xl mt-4 space-y-4">
+              {/* Timeline Section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-lg font-semibold">Timeline</h2>
+                  <Button variant="ghost" size="sm" onClick={toggleTimeline}>
+                    {timelineCollapsed ? 'Show' : 'Hide'}
+                  </Button>
+                </div>
+                {!timelineCollapsed && (
+                  <TimelineSlider
+                    activityItems={activityItems}
+                    selectedActivity={selectedActivity}
+                    onActivitySelect={setSelectedActivity}
+                  />
+                )}
+              </div>
+
+              {/* Screenshot Preview Section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-lg font-semibold">Screenshot Preview</h2>
+                  <Button variant="ghost" size="sm" onClick={toggleScreenshot}>
+                    {screenshotCollapsed ? 'Show' : 'Hide'}
+                  </Button>
+                </div>
+                {!screenshotCollapsed && (
+                  <ScreenshotPreviewPane 
+                    selectedActivity={selectedActivity} 
+                    activityItems={activityItems}
+                    onActivitySelect={setSelectedActivity}
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {selectedActivity && selectedMainTab === 'recent' && !selectedMoreOption && (
-        <div className="w-full max-w-7xl mt-4">
-          <div 
-            onMouseEnter={() => setIsHoveringScrollableArea(true)}
-            onMouseLeave={() => setIsHoveringScrollableArea(false)}
-          >
-            <TimelineSlider
-              activityItems={activityItems}
-              selectedActivity={selectedActivity}
-              onActivitySelect={setSelectedActivity}
-            />
-            <ScreenshotPreviewPane 
-              selectedActivity={selectedActivity} 
-              activityItems={activityItems}
-              onActivitySelect={setSelectedActivity}
-            />
+        <div 
+          className="w-full max-w-7xl mt-4 space-y-4"
+          onMouseEnter={() => setIsHoveringScrollableArea(true)}
+          onMouseLeave={() => setIsHoveringScrollableArea(false)}
+        >
+          {/* Timeline Section */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">Timeline</h2>
+              <Button variant="ghost" size="sm" onClick={toggleTimeline}>
+                {timelineCollapsed ? 'Show' : 'Hide'}
+              </Button>
+            </div>
+            {!timelineCollapsed && (
+              <TimelineSlider
+                activityItems={activityItems}
+                selectedActivity={selectedActivity}
+                onActivitySelect={setSelectedActivity}
+              />
+            )}
+          </div>
+
+          {/* Screenshot Preview Section */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">Screenshot Preview</h2>
+              <Button variant="ghost" size="sm" onClick={toggleScreenshot}>
+                {screenshotCollapsed ? 'Show' : 'Hide'}
+              </Button>
+            </div>
+            {!screenshotCollapsed && (
+              <ScreenshotPreviewPane 
+                selectedActivity={selectedActivity} 
+                activityItems={activityItems}
+                onActivitySelect={setSelectedActivity}
+              />
+            )}
           </div>
         </div>
       )}

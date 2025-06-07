@@ -24,17 +24,12 @@ const ActivityTabContent: React.FC<ActivityTabContentProps> = ({ activityItems, 
   useEffect(() => {
     if (selectedActivity) {
       const index = reversedActivityItems.findIndex(item => item.id === selectedActivity.id);
-      console.log('[ActivityTabContent] Auto-scroll - Selected activity:', selectedActivity.id);
-      console.log('[ActivityTabContent] Auto-scroll - Found at index:', index, 'out of', reversedActivityItems.length);
       
       if (index !== -1 && itemRefs.current[index]?.current) {
-        console.log('[ActivityTabContent] Auto-scroll - Scrolling to item at index:', index);
         itemRefs.current[index].current?.scrollIntoView({
           behavior: 'smooth',
           block: 'nearest',
         });
-      } else {
-        console.log('[ActivityTabContent] Auto-scroll - Could not find ref for index:', index);
       }
     }
   }, [selectedActivity, reversedActivityItems]);
