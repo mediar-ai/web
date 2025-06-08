@@ -76,10 +76,10 @@ export default function Home() {
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const streamRef = useRef<MediaStream | null>(null); 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null); 
-  const monitoringCanvasRef = useRef<HTMLCanvasElement>(null); 
+  const streamRef = useRef<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const monitoringCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showError, setShowError] = useState<boolean>(false);
   const [isCapturingForBuffer, setIsCapturingForBuffer] = useState(false);
@@ -162,9 +162,10 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const [hasTriggeredScrollHint, setHasTriggeredScrollHint] = useState<boolean>(false);
   const [isHoveringScrollableArea, setIsHoveringScrollableArea] = useState<boolean>(false);
 
-  const initialFrameCapturedRef = useRef(false);
-  const streamActiveBeforeSleep = useRef(false);
-  const lastHeartbeat = useRef(Date.now());
+  const initialFrameCapturedRef = useRef<boolean>(false);
+  const streamActiveBeforeSleep = useRef<boolean>(false);
+  const lastHeartbeat = useRef<number>(Date.now());
+  const currentCaptureSessionIdRef = useRef<number>(0);
 
   const [promptSaveStatus, setPromptSaveStatus] = useState<
     'idle' | 'saving' | 'saved'
@@ -172,23 +173,15 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
 
   // Screenshot sequence tracking
-  const [captureSessionId, setCaptureSessionId] = useState(0);
+  const [captureSessionId, setCaptureSessionId] = useState(() => {
+    // Load from localStorage or start at 1
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('capture_session_id');
+      return stored ? parseInt(stored, 10) : 1;
+    }
+    return 1;
+  });
   const [screenshotCounter, setScreenshotCounter] = useState(0);
-
-  // Initialize captureSessionId from localStorage on client side
-  useEffect(() => {
-    const saved = localStorage.getItem('captureSessionId');
-    if (saved) {
-      setCaptureSessionId(parseInt(saved, 10));
-    }
-  }, []); // Only run once on mount
-
-  // Persist captureSessionId whenever it changes
-  useEffect(() => {
-    if (captureSessionId > 0) { // Only save if it's been initialized
-      localStorage.setItem('captureSessionId', captureSessionId.toString());
-    }
-  }, [captureSessionId]);
 
   const logToUI = useCallback((...args: unknown[]) => {
     const timestamp = new Date().toISOString();
@@ -247,7 +240,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         // Increment screenshot counter
         const newScreenshotNumber = screenshotCounter + 1;
         setScreenshotCounter(newScreenshotNumber);
-        const sequenceId = `${captureSessionId}-${newScreenshotNumber}`;
+        const sequenceId = `${currentCaptureSessionIdRef.current}-${newScreenshotNumber}`;
         
         const newFrame: BufferedFrame = {
           id: new Date(timestamp).toISOString() +
@@ -335,7 +328,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     setFrameBuffer,
     setIsCapturingForBuffer,
     streamRef,
-    captureSessionId,
+    currentCaptureSessionIdRef,
     screenshotCounter,
   ]);
 
@@ -450,11 +443,12 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       setWorkflowSteps([]);
       setEvents([]);
       setFrontendLogs([]);
-      setActivityItems([]);
-      setCaptureSessionId(0); // Reset capture session ID
-      setScreenshotCounter(0); // Reset screenshot counter
-      localStorage.removeItem('captureSessionId'); // Clear from localStorage
-      logToUI('[clearAllData] All persisted data cleared');
+      setActivityItems([]); 
+      setCompletedAnalyses([]);
+      // Reset capture session ID to 1
+      setCaptureSessionId(1);
+      localStorage.setItem('capture_session_id', '1');
+      logToUI('[clearAllData] All persisted data cleared and capture session ID reset to 1');
     } catch (err) {
       logError('[clearAllData] Failed to clear data:', err);
     }
@@ -597,12 +591,16 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         initialFrameCapturedRef.current = false;
     }
     
-    // Increment capture session ID and reset screenshot counter
-    setCaptureSessionId(prev => prev + 1);
+    // Use current session ID for this capture and increment for next time
+    const currentSessionId = captureSessionId;
+    currentCaptureSessionIdRef.current = currentSessionId;
+    const nextSessionId = captureSessionId + 1;
+    setCaptureSessionId(nextSessionId);
+    localStorage.setItem('capture_session_id', String(nextSessionId));
     setScreenshotCounter(0);
     
     logToUI(
-      '[handleStartScreenShare] Cleared buffers and baselines for new session. Session ID:', captureSessionId + 1,
+      '[handleStartScreenShare] Cleared buffers and baselines for new session. Session ID:', currentSessionId,
     );
 
     setMainStatus('Initializing...');
@@ -954,6 +952,11 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   }));
 
   const allAnalyses = [...runningAnalyses, ...queuedAnalyses, ...completedAnalyses];
+
+  // Log initial capture session ID on app load
+  useEffect(() => {
+    logToUI(`[App] Starting with capture session ID: ${captureSessionId} (next capture will use this ID)`);
+  }, []); // Run only once on mount
 
   return (
     <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
