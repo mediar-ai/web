@@ -175,6 +175,21 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const [captureSessionId, setCaptureSessionId] = useState(0);
   const [screenshotCounter, setScreenshotCounter] = useState(0);
 
+  // Initialize captureSessionId from localStorage on client side
+  useEffect(() => {
+    const saved = localStorage.getItem('captureSessionId');
+    if (saved) {
+      setCaptureSessionId(parseInt(saved, 10));
+    }
+  }, []); // Only run once on mount
+
+  // Persist captureSessionId whenever it changes
+  useEffect(() => {
+    if (captureSessionId > 0) { // Only save if it's been initialized
+      localStorage.setItem('captureSessionId', captureSessionId.toString());
+    }
+  }, [captureSessionId]);
+
   const logToUI = useCallback((...args: unknown[]) => {
     const timestamp = new Date().toISOString();
     const message = args.map((arg) =>
@@ -435,7 +450,10 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       setWorkflowSteps([]);
       setEvents([]);
       setFrontendLogs([]);
-      setActivityItems([]); 
+      setActivityItems([]);
+      setCaptureSessionId(0); // Reset capture session ID
+      setScreenshotCounter(0); // Reset screenshot counter
+      localStorage.removeItem('captureSessionId'); // Clear from localStorage
       logToUI('[clearAllData] All persisted data cleared');
     } catch (err) {
       logError('[clearAllData] Failed to clear data:', err);
