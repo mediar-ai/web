@@ -42,6 +42,7 @@ export interface InitialFrameDumpAnalysis {
   raw_content: string;
   image_id: string; // ID of the dumped frame from BufferedFrame
   processedForEvent?: boolean;
+  sequenceId?: string; // Format: "sessionId_screenshotNumber" e.g. "1_3"
 }
 
 // UIDiffAnalysis now includes a type discriminator
@@ -77,6 +78,7 @@ export interface UIDiffAnalysis {
   image1_id?: string;
   image2_id?: string;
   processedForEvent?: boolean;
+  sequenceId?: string; // Format: "sessionId_screenshotNumber" e.g. "1_3" - from the second/newer frame
 }
 
 export type ActivityItem = InitialFrameDumpAnalysis | UIDiffAnalysis;
