@@ -85,15 +85,15 @@ export function useEventGenerator({
     let eventSequenceId = '';
     if (sequenceIds.length > 0) {
       // Check if they're consecutive and from the same session
-      const sessionIds = sequenceIds.map(id => id.split('_')[0]);
+      const sessionIds = sequenceIds.map(id => id.split('-')[0]);
       const allSameSession = sessionIds.every(id => id === sessionIds[0]);
       
       if (allSameSession && sequenceIds.length > 1) {
-        // Show as range if same session: "1_3-7"
-        const shotNumbers = sequenceIds.map(id => parseInt(id.split('_')[1]));
+        // Show as range if same session: "1-3-7"
+        const shotNumbers = sequenceIds.map(id => parseInt(id.split('-')[1]));
         const minShot = Math.min(...shotNumbers);
         const maxShot = Math.max(...shotNumbers);
-        eventSequenceId = `${sessionIds[0]}_${minShot}-${maxShot}`;
+        eventSequenceId = `${sessionIds[0]}-${minShot}-${maxShot}`;
       } else if (sequenceIds.length === 1) {
         // Single sequence ID
         eventSequenceId = sequenceIds[0];

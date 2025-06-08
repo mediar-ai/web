@@ -232,7 +232,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         // Increment screenshot counter
         const newScreenshotNumber = screenshotCounter + 1;
         setScreenshotCounter(newScreenshotNumber);
-        const sequenceId = `${captureSessionId}_${newScreenshotNumber}`;
+        const sequenceId = `${captureSessionId}-${newScreenshotNumber}`;
         
         const newFrame: BufferedFrame = {
           id: new Date(timestamp).toISOString() +
