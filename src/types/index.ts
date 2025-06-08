@@ -95,6 +95,8 @@ export type PageHeaderControlsProps = {
   stream: MediaStream | null;
   handleStartScreenShare: () => void;
   handleStopScreenShare: () => void;
+  onTogglePip: () => void;
+  isPipOpen: boolean;
   mainStatus: string;
   autoDetectionEnabled: boolean;
   isMonitoring: boolean;
