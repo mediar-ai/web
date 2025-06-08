@@ -31,6 +31,15 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
 
   const sortedAnalyses = useMemo(() => {
     return [...runningAnalyses].sort((a, b) => {
+      // Always put queued items at the top
+      if (a.status === 'queued' && b.status !== 'queued') return -1;
+      if (a.status !== 'queued' && b.status === 'queued') return 1;
+      
+      // Among queued items, preserve their original order (FIFO)
+      if (a.status === 'queued' && b.status === 'queued') {
+        return 0; // Keep original order
+      }
+      
       // Special handling for sequenceId sorting
       if (sortKey === 'sequenceId') {
         const aSeq = (a.sequenceId || '').replace(/_/g, '-');
