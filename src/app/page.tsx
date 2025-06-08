@@ -975,7 +975,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       pipWindow.document.body.appendChild(root);
       const style = document.createElement('style');
       style.textContent = `
-        body { background-color: #f0f0f0; color: #333; }
+        body { margin: 0; background-color: #2E2E2E; color: #FFFFFF; }
         ol { padding-left: 20px; }
         li { margin-bottom: 5px; }
       `;
