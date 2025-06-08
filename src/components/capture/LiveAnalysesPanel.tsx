@@ -31,6 +31,26 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
 
   const sortedAnalyses = useMemo(() => {
     return [...runningAnalyses].sort((a, b) => {
+      // Special handling for sequenceId sorting
+      if (sortKey === 'sequenceId') {
+        const aSeq = a.sequenceId || '';
+        const bSeq = b.sequenceId || '';
+        
+        // Parse sequence IDs like "1_3" into comparable values
+        const [aSession = 0, aShot = 0] = aSeq.split('_').map(Number);
+        const [bSession = 0, bShot = 0] = bSeq.split('_').map(Number);
+        
+        let comparison = 0;
+        if (aSession !== bSession) {
+          comparison = aSession - bSession;
+        } else {
+          comparison = aShot - bShot;
+        }
+        
+        return sortDirection === 'asc' ? comparison : -comparison;
+      }
+      
+      // Default sorting for other fields
       const aValue = a[sortKey as keyof RunningAnalysis] ?? 0;
       const bValue = b[sortKey as keyof RunningAnalysis] ?? 0;
 
@@ -92,6 +112,11 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[80px]">
+                <Button variant="ghost" size="sm" onClick={() => handleSort('sequenceId' as SortKey)} className="-ml-4">
+                  ID {renderSortArrow('sequenceId' as SortKey)}
+                </Button>
+              </TableHead>
               <TableHead>
                 <Button variant="ghost" size="sm" onClick={() => handleSort('startTime')} className="-ml-4">
                   Timestamp {renderSortArrow('startTime')}
@@ -127,8 +152,9 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
           <TableBody>
             {sortedAnalyses.map((analysis) => (
               <TableRow key={analysis.id}>
+                <TableCell className="font-mono text-xs">{analysis.sequenceId || '-'}</TableCell>
                 <TableCell>{analysis.startTime ? new Date(analysis.startTime).toLocaleTimeString() : 'N/A'}</TableCell>
-                <TableCell className="font-medium">{analysis.type} ({analysis.payloadType})</TableCell>
+                <TableCell className="font-medium">{analysis.type} [{analysis.payloadType}]</TableCell>
                 <TableCell>{analysis.model ? analysis.model.replace('gemini-2.5-flash-preview-05-20', 'Flash') : 'N/A'}</TableCell>
                 <TableCell>
                   {analysis.payloadSize 

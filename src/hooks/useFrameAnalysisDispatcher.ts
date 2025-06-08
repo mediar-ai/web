@@ -54,7 +54,8 @@ export function useFrameAnalysisDispatcher({
         model: 'gemini-2.5-flash-preview-05-20',
         status: 'running',
         payloadType: 'image',
-        payloadSize: analysisPayload.image.length
+        payloadSize: analysisPayload.image.length,
+        sequenceId: frameToDump.sequenceId,
       };
       setRunningAnalyses(prev => [...prev, newRunningAnalysis]);
       
@@ -166,6 +167,7 @@ export function useFrameAnalysisDispatcher({
         status: 'running',
         payloadType: 'image',
         payloadSize: analysisPayload.image1_dataUrl.length + analysisPayload.image2_dataUrl.length,
+        sequenceId: frame2.sequenceId,
       };
       setRunningAnalyses(prev => [...prev, newRunningAnalysis]);
       

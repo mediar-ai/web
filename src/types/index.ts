@@ -3,6 +3,7 @@ export interface BufferedFrame {
   imageDataUrl: string;
   timestamp: number;
   percentChange: number;
+  sequenceId?: string; // Format: "sessionId_screenshotNumber" e.g. "1_3"
 }
 
 // Updated Event interface
@@ -101,6 +102,7 @@ export type PageHeaderControlsProps = {
   streamRef: React.RefObject<MediaStream | null>;
   MAX_PARALLEL_ANALYSES: number;
   reconnectRequired: boolean;
+  exportInProgress: boolean;
 };
 
 export type VideoPreviewAreaProps = {
@@ -168,6 +170,7 @@ export type DebugTabContentProps = {
 export interface MemoizedScrollAreaContentProps {
   content: React.ReactNode;
   className?: string;
+  viewportRef?: React.RefObject<HTMLDivElement>;
 }
 
 export interface MemoizedDebugLogsScrollAreaProps {
@@ -210,6 +213,7 @@ export interface RunningAnalysis {
   status: 'queued' | 'running' | 'failed' | 'completed';
   payloadType: 'image' | 'text';
   payloadSize?: number;
+  sequenceId?: string; // Format: "sessionId_screenshotNumber" e.g. "1_3"
 }
 
 export interface LiveAnalysesPanelProps {
