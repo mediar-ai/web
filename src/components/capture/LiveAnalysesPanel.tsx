@@ -36,9 +36,9 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
         const aSeq = a.sequenceId || '';
         const bSeq = b.sequenceId || '';
         
-        // Parse sequence IDs like "1_3" into comparable values
-        const [aSession = 0, aShot = 0] = aSeq.split('_').map(Number);
-        const [bSession = 0, bShot = 0] = bSeq.split('_').map(Number);
+        // Parse sequence IDs like "1-3" into comparable values
+        const [aSession = 0, aShot = 0] = aSeq.split('-').map(Number);
+        const [bSession = 0, bShot = 0] = bSeq.split('-').map(Number);
         
         let comparison = 0;
         if (aSession !== bSession) {
