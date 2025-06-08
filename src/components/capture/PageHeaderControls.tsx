@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import type { PageHeaderControlsProps } from '../../types';
-import { Play, StopCircle, AlertTriangle, RotateCcw, Zap, RefreshCw, ChevronDown } from 'lucide-react';
+import { Play, StopCircle, AlertTriangle, RotateCcw, Zap, RefreshCw, ChevronDown, PictureInPicture } from 'lucide-react';
 import { ThemeToggle } from '../ui/theme-toggle';
 
 // Dummy user data
@@ -26,6 +26,8 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
   handleStartScreenShare,
   handleStopScreenShare,
+  onTogglePip,
+  isPipOpen,
   mainStatus,
   autoDetectionEnabled,
   isMonitoring,
@@ -96,6 +98,10 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Button variant="outline" size="icon" onClick={onTogglePip}>
+          <PictureInPicture className={`h-4 w-4 ${isPipOpen ? 'text-blue-500' : ''}`} />
+        </Button>
 
         <ThemeToggle />
       </div>

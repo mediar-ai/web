@@ -42,6 +42,7 @@ import ScreenshotPreviewPane from '@/components/capture/ScreenshotPreviewPane';
 import TimelineSlider from '@/components/capture/TimelineSlider';
 import LiveAnalysesPanel from '@/components/capture/LiveAnalysesPanel';
 import ScrollHint from '@/components/onboarding/ScrollHint';
+import PipView from '@/components/capture/PipView';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -50,6 +51,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MoreHorizontal, Settings, Bug } from 'lucide-react';
+import ReactDOM from 'react-dom/client';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -182,6 +184,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     return 1;
   });
   const [screenshotCounter, setScreenshotCounter] = useState(0);
+
+  const [pipWindow, setPipWindow] = useState<Window | null>(null);
 
   const logToUI = useCallback((...args: unknown[]) => {
     const timestamp = new Date().toISOString();
@@ -964,6 +968,50 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     logToUI(`[App] Starting with capture session ID: ${captureSessionId} (next capture will use this ID)`);
   }, []); // Run only once on mount
 
+  useEffect(() => {
+    if (pipWindow) {
+      const root = document.createElement('div');
+      pipWindow.document.body.innerHTML = '';
+      pipWindow.document.body.appendChild(root);
+      const style = document.createElement('style');
+      style.textContent = `
+        body { background-color: #f0f0f0; color: #333; }
+        ol { padding-left: 20px; }
+        li { margin-bottom: 5px; }
+      `;
+      pipWindow.document.head.appendChild(style);
+      // Use ReactDOM.createRoot for React 18
+      const reactRoot = ReactDOM.createRoot(root);
+      reactRoot.render(<PipView events={events} />);
+    }
+  }, [events, pipWindow]);
+
+  const handleTogglePip = async () => {
+    if (pipWindow) {
+      pipWindow.close();
+      setPipWindow(null);
+      return;
+    }
+
+    if (window.documentPictureInPicture) {
+      try {
+        const newPipWindow = await window.documentPictureInPicture.requestWindow({
+          width: 600,
+          height: 100,
+          disallowReturnToOpener: true,
+        });
+        setPipWindow(newPipWindow);
+        newPipWindow.addEventListener('pagehide', () => {
+          setPipWindow(null);
+        });
+      } catch (err) {
+        logError('Failed to open PiP window:', err);
+      }
+    } else {
+      logError('Document Picture-in-Picture API is not supported.');
+    }
+  };
+
   return (
     <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
       <ExportStatusDialog exportInProgress={exportInProgress} />
@@ -972,6 +1020,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         stream={stream}
         handleStartScreenShare={handleStartScreenShare}
         handleStopScreenShare={handleStopScreenShare}
+        onTogglePip={handleTogglePip}
+        isPipOpen={!!pipWindow}
         mainStatus={mainStatus}
         autoDetectionEnabled={autoDetectionEnabled}
         isMonitoring={isMonitoring}
