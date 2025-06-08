@@ -171,6 +171,10 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   >('idle');
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
 
+  // Screenshot sequence tracking
+  const [captureSessionId, setCaptureSessionId] = useState(0);
+  const [screenshotCounter, setScreenshotCounter] = useState(0);
+
   const logToUI = useCallback((...args: unknown[]) => {
     const timestamp = new Date().toISOString();
     const message = args.map((arg) =>
@@ -224,13 +228,24 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageDataUrl = canvas.toDataURL('image/jpeg', screenshotQuality);
         const timestamp = Date.now();
+        
+        // Increment screenshot counter
+        const newScreenshotNumber = screenshotCounter + 1;
+        setScreenshotCounter(newScreenshotNumber);
+        const sequenceId = `${captureSessionId}_${newScreenshotNumber}`;
+        
         const newFrame: BufferedFrame = {
           id: new Date(timestamp).toISOString() +
             `-change-${changePercent.toFixed(2)}`,
           imageDataUrl,
           timestamp,
           percentChange: changePercent,
+          sequenceId,
         };
+
+        logToUI(
+          '[captureFrameToBuffer] Creating frame with sequence ID:', sequenceId,
+        );
 
         setFrameBuffer((prevBuffer: BufferedFrame[]) => {
           const newBufferFull = [...prevBuffer, newFrame]; 
@@ -305,6 +320,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     setFrameBuffer,
     setIsCapturingForBuffer,
     streamRef,
+    captureSessionId,
+    screenshotCounter,
   ]);
 
   const {
@@ -561,8 +578,13 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     if (initialFrameCapturedRef) {
         initialFrameCapturedRef.current = false;
     }
+    
+    // Increment capture session ID and reset screenshot counter
+    setCaptureSessionId(prev => prev + 1);
+    setScreenshotCounter(0);
+    
     logToUI(
-      '[handleStartScreenShare] Cleared buffers and baselines for new session.',
+      '[handleStartScreenShare] Cleared buffers and baselines for new session. Session ID:', captureSessionId + 1,
     );
 
     setMainStatus('Initializing...');
@@ -592,7 +614,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       streamRef.current = null;
       setMainStatus('Error starting share');
     }
-  }, [stream, logToUI, logError]);
+  }, [stream, logToUI, logError, captureSessionId]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -910,6 +932,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     status: 'queued',
     payloadType: 'image',
     payloadSize: frame.imageDataUrl.length,
+    sequenceId: frame.sequenceId,
   }));
 
   const allAnalyses = [...runningAnalyses, ...queuedAnalyses, ...completedAnalyses];
@@ -931,6 +954,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         streamRef={streamRef}
         MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
         reconnectRequired={reconnectRequired}
+        exportInProgress={exportInProgress}
       />
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
@@ -1060,7 +1084,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         </div>
       </div>
       
-      {selectedActivity && selectedMainTab === 'recent' && !selectedMoreOption && (
+      {selectedMainTab === 'recent' && selectedActivity && !selectedMoreOption && (
         <div 
           className="w-full max-w-7xl mt-4 space-y-4"
           onMouseEnter={() => setIsHoveringScrollableArea(true)}
@@ -1090,6 +1114,23 @@ Analyze the activity sequence for context, then create ONE clear, complete event
             )}
           </div>
 
+          {/* Live Analyses Section */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">LLM traces {allAnalyses.length > 0 && `(${allAnalyses.length})`}</h2>
+              <Button variant="ghost" size="sm" onClick={toggleAnalysesPanel}>
+                {analysesPanelCollapsed ? 'Show' : 'Hide'}
+              </Button>
+            </div>
+            {!analysesPanelCollapsed && (
+              <LiveAnalysesPanel runningAnalyses={allAnalyses} />
+            )}
+          </div>
+        </div>
+      )}
+
+      {(selectedMainTab === 'events' || (selectedMainTab === 'recent' && selectedActivity)) && !selectedMoreOption && (
+        <div className="w-full max-w-7xl mt-4">
           {/* Live Analyses Section */}
           <div>
             <div className="flex items-center justify-between mb-2">

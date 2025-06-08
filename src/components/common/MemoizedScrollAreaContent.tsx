@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, forwardRef } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CardContent } from '@/components/ui/card';
 import type { MemoizedScrollAreaContentProps } from '../../types';
@@ -7,18 +7,21 @@ import type { MemoizedScrollAreaContentProps } from '../../types';
 const scrollAreaStyle = { overflow: 'scroll', scrollbarWidth: 'thin' } as const;
 
 const MemoizedScrollAreaContent = memo(
-  ({ content, className }: MemoizedScrollAreaContentProps) => {
-    return (
-      <ScrollArea
-        className={className || 'h-[350px] pr-3'}
-        style={scrollAreaStyle}
-      >
-        <CardContent className='text-xs p-3'>
-          {content}
-        </CardContent>
-      </ScrollArea>
-    );
-  },
+  forwardRef<HTMLDivElement, MemoizedScrollAreaContentProps>(
+    ({ content, className }, ref) => {
+      return (
+        <ScrollArea
+          className={className || 'h-[350px] pr-3'}
+          style={scrollAreaStyle}
+          ref={ref}
+        >
+          <CardContent className='text-xs p-3'>
+            {content}
+          </CardContent>
+        </ScrollArea>
+      );
+    }
+  )
 );
 MemoizedScrollAreaContent.displayName = 'MemoizedScrollAreaContent';
 
