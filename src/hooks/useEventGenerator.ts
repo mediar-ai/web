@@ -245,12 +245,12 @@ export function useEventGenerator({
         );
       }
       const completed: RunningAnalysis = { ...newRunningAnalysis, status: 'completed', endTime: Date.now() };
-      setCompletedAnalyses(prev => [completed, ...prev].slice(0, 30));
+      setCompletedAnalyses(prev => [completed, ...prev].slice(0, 100));
     } catch (err) {
       logError('[processMultiActivityEvent] Network error:', err);
       const failed: RunningAnalysis = { ...newRunningAnalysis, status: 'failed', endTime: Date.now() };
       setRunningAnalyses(prev => prev.map(a => a.id === analysisId ? failed : a));
-      setCompletedAnalyses(prev => [failed, ...prev].slice(0, 30));
+      setCompletedAnalyses(prev => [failed, ...prev].slice(0, 100));
     } finally {
       setActiveAnalysesCount((prev) => Math.max(0, prev - 1));
       setRunningAnalyses(prev => prev.filter(a => a.id !== analysisId));
