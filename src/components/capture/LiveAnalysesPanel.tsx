@@ -33,8 +33,8 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
     return [...runningAnalyses].sort((a, b) => {
       // Special handling for sequenceId sorting
       if (sortKey === 'sequenceId') {
-        const aSeq = a.sequenceId || '';
-        const bSeq = b.sequenceId || '';
+        const aSeq = (a.sequenceId || '').replace(/_/g, '-');
+        const bSeq = (b.sequenceId || '').replace(/_/g, '-');
         
         // Parse sequence IDs like "1-3" into comparable values
         const [aSession = 0, aShot = 0] = aSeq.split('-').map(Number);
@@ -152,7 +152,9 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
           <TableBody>
             {sortedAnalyses.map((analysis) => (
               <TableRow key={analysis.id}>
-                <TableCell className="font-mono text-xs">{analysis.sequenceId || '-'}</TableCell>
+                <TableCell className="font-mono text-xs">
+                  {analysis.sequenceId ? analysis.sequenceId.replace(/_/g, '-') : '-'}
+                </TableCell>
                 <TableCell>{analysis.startTime ? new Date(analysis.startTime).toLocaleTimeString() : 'N/A'}</TableCell>
                 <TableCell className="font-medium">{analysis.type} [{analysis.payloadType}]</TableCell>
                 <TableCell>{analysis.model ? analysis.model.replace('gemini-2.5-flash-preview-05-20', 'Flash') : 'N/A'}</TableCell>

@@ -76,10 +76,29 @@ export function useEventGenerator({
     const activityIdsToAnalyze = activitiesToAnalyze.map(item => item.id);
     
     // Collect sequenceIds from activities being analyzed
-    const sequenceIds = activitiesToAnalyze
+    const rawSequenceIds = activitiesToAnalyze
       .map(item => item.sequenceId)
-      .filter((id): id is string => id !== undefined)
-      .sort(); // Sort to ensure consistent ordering
+      .filter((id): id is string => id !== undefined);
+    
+    logToUI('[Event Gen] Raw sequence IDs:', rawSequenceIds);
+    
+    const sequenceIds = rawSequenceIds
+      .map(id => {
+        // Normalize old underscore format to new dash format
+        return id.replace(/_/g, '-');
+      })
+      .sort((a, b) => {
+        // Sort by session first, then by screenshot number
+        const [aSession, aShot] = a.split('-').map(Number);
+        const [bSession, bShot] = b.split('-').map(Number);
+        
+        if (aSession !== bSession) {
+          return aSession - bSession;
+        }
+        return aShot - bShot;
+      });
+    
+    logToUI('[Event Gen] Normalized and sorted sequence IDs:', sequenceIds);
     
     // Create a display string for the sequence IDs
     let eventSequenceId = '';
@@ -94,12 +113,15 @@ export function useEventGenerator({
         const minShot = Math.min(...shotNumbers);
         const maxShot = Math.max(...shotNumbers);
         eventSequenceId = `${sessionIds[0]}-${minShot}-${maxShot}`;
+        logToUI('[Event Gen] Range format:', eventSequenceId);
       } else if (sequenceIds.length === 1) {
         // Single sequence ID
         eventSequenceId = sequenceIds[0];
+        logToUI('[Event Gen] Single format:', eventSequenceId);
       } else {
         // Multiple sessions or non-consecutive, show first and last
         eventSequenceId = `${sequenceIds[0]}...${sequenceIds[sequenceIds.length - 1]}`;
+        logToUI('[Event Gen] Multiple format:', eventSequenceId);
       }
     }
     
