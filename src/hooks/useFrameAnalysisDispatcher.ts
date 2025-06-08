@@ -211,7 +211,7 @@ export function useFrameAnalysisDispatcher({
           result = JSON.parse(jsonString);
         } catch (e) {
           logError('[processUIDiffRequest] Failed to parse final JSON string:', e, 'Raw string:', jsonString);
-          throw new Error('Failed to parse JSON response from server.');
+          result = { error: 'Failed to parse JSON response from server.' };
         }
 
         logToUI(`[processUIDiffRequest] ✅ Stream finished. Total content length: ${jsonString.length}`);

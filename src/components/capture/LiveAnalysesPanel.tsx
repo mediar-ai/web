@@ -35,9 +35,13 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
       if (a.status === 'queued' && b.status !== 'queued') return -1;
       if (a.status !== 'queued' && b.status === 'queued') return 1;
       
-      // Among queued items, preserve their original order (FIFO)
+      // Among queued items, show latest first (LIFO)
       if (a.status === 'queued' && b.status === 'queued') {
-        return 0; // Keep original order
+        // Since queued items don't have startTime, use their position in the array
+        // Items added later will have higher indices in the original array
+        const aIndex = runningAnalyses.indexOf(a);
+        const bIndex = runningAnalyses.indexOf(b);
+        return bIndex - aIndex; // Higher index (newer) comes first
       }
       
       // Special handling for sequenceId sorting

@@ -557,18 +557,16 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     setStream(null);
     streamRef.current = null;
     setIsCapturingForBuffer(false);
-    setMainStatus('Idle');
-    setFrameBuffer([]);
+    // Don't clear frameBuffer - let queued analyses complete
+    logToUI(
+      '[handleStopScreenShare] Screen share stopped. Queued analyses will continue processing.',
+    );
     if (initialFrameCapturedRef) {
         initialFrameCapturedRef.current = false;
     }
-    logToUI(
-      '[handleStopScreenShare] Buffer and baselines cleared for fresh start.',
-    );
   }, [
     stream,
     logToUI,
-    setFrameBuffer,
     initialFrameCapturedRef,
   ]); 
 
@@ -944,14 +942,22 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
   const queuedAnalyses: RunningAnalysis[] = frameBuffer.map(frame => ({
     id: frame.id,
-    type: 'Frame for Analysis',
+    type: 'UI Difference Analysis',
     status: 'queued',
     payloadType: 'image',
     payloadSize: frame.imageDataUrl.length,
     sequenceId: frame.sequenceId,
   }));
 
-  const allAnalyses = [...queuedAnalyses, ...runningAnalyses, ...completedAnalyses];
+  const pendingEventAnalyses: RunningAnalysis[] = frameBuffer.map(frame => ({
+    id: `event-gen-pending-${frame.id}`,
+    type: 'Event Generation',
+    status: 'queued',
+    payloadType: 'text',
+    sequenceId: frame.sequenceId
+  }));
+
+  const allAnalyses = [...queuedAnalyses, ...pendingEventAnalyses, ...runningAnalyses, ...completedAnalyses];
 
   // Log initial capture session ID on app load
   useEffect(() => {
