@@ -99,6 +99,7 @@ export function useFrameAnalysisDispatcher({
           timestamp: new Date(frameToDump.timestamp).toISOString(),
           raw_content: rawContent,
           image_id: frameToDump.id,
+          sequenceId: frameToDump.sequenceId,
         };
         setActivityItems((prev) =>
           [newActivityItem, ...prev].sort(
@@ -228,6 +229,7 @@ export function useFrameAnalysisDispatcher({
             timestamp: displayTimestamp,
             image1_id: frame1.id,
             image2_id: frame2.id,
+            sequenceId: frame2.sequenceId,
           };
 
           setActivityItems((prevItems) =>

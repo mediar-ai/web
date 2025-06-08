@@ -1113,19 +1113,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
               </div>
             )}
           </div>
-
-          {/* Live Analyses Section */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">LLM traces {allAnalyses.length > 0 && `(${allAnalyses.length})`}</h2>
-              <Button variant="ghost" size="sm" onClick={toggleAnalysesPanel}>
-                {analysesPanelCollapsed ? 'Show' : 'Hide'}
-              </Button>
-            </div>
-            {!analysesPanelCollapsed && (
-              <LiveAnalysesPanel runningAnalyses={allAnalyses} />
-            )}
-          </div>
         </div>
       )}
 

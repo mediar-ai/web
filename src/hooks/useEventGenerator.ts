@@ -74,6 +74,35 @@ export function useEventGenerator({
     }
 
     const activityIdsToAnalyze = activitiesToAnalyze.map(item => item.id);
+    
+    // Collect sequenceIds from activities being analyzed
+    const sequenceIds = activitiesToAnalyze
+      .map(item => item.sequenceId)
+      .filter((id): id is string => id !== undefined)
+      .sort(); // Sort to ensure consistent ordering
+    
+    // Create a display string for the sequence IDs
+    let eventSequenceId = '';
+    if (sequenceIds.length > 0) {
+      // Check if they're consecutive and from the same session
+      const sessionIds = sequenceIds.map(id => id.split('_')[0]);
+      const allSameSession = sessionIds.every(id => id === sessionIds[0]);
+      
+      if (allSameSession && sequenceIds.length > 1) {
+        // Show as range if same session: "1_3-7"
+        const shotNumbers = sequenceIds.map(id => parseInt(id.split('_')[1]));
+        const minShot = Math.min(...shotNumbers);
+        const maxShot = Math.max(...shotNumbers);
+        eventSequenceId = `${sessionIds[0]}_${minShot}-${maxShot}`;
+      } else if (sequenceIds.length === 1) {
+        // Single sequence ID
+        eventSequenceId = sequenceIds[0];
+      } else {
+        // Multiple sessions or non-consecutive, show first and last
+        eventSequenceId = `${sequenceIds[0]}...${sequenceIds[sequenceIds.length - 1]}`;
+      }
+    }
+    
     const analysisId = `event-${activityIdsToAnalyze[0]}-${Date.now()}`;
     const analysisPayload = {
       analysisType: 'multi_activity_event',
@@ -113,6 +142,7 @@ export function useEventGenerator({
       status: 'running',
       payloadType: 'text',
       payloadSize: JSON.stringify(analysisPayload.activitiesSummary).length,
+      sequenceId: eventSequenceId,
     };
     setRunningAnalyses(prev => [...prev, newRunningAnalysis]);
     
