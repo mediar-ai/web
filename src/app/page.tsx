@@ -951,7 +951,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     sequenceId: frame.sequenceId,
   }));
 
-  const allAnalyses = [...runningAnalyses, ...queuedAnalyses, ...completedAnalyses];
+  const allAnalyses = [...queuedAnalyses, ...runningAnalyses, ...completedAnalyses];
 
   // Log initial capture session ID on app load
   useEffect(() => {
