@@ -7,7 +7,16 @@ interface PipViewProps {
 
 const PipView: React.FC<PipViewProps> = ({ events }) => {
   return (
-    <div style={{ padding: '10px', fontFamily: 'sans-serif', fontSize: '14px', lineHeight: '1.4' }}>
+    <div style={{
+      backgroundColor: '#2E2E2E',
+      color: '#FFFFFF',
+      padding: '15px',
+      fontFamily: 'sans-serif',
+      fontSize: '14px',
+      lineHeight: '1.5',
+      height: '100%',
+      boxSizing: 'border-box',
+    }}>
       {events.slice(0, 3).map(event => (
         <div key={event.id}>
           {event.summary}
