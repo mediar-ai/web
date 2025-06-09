@@ -1018,7 +1018,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       try {
         const newPipWindow = await window.documentPictureInPicture.requestWindow({
           width: 600,
-          height: 100,
+          height: 50,
           disallowReturnToOpener: false,
         });
         setPipWindow(newPipWindow);
@@ -1041,7 +1041,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       try {
         const newPipWindow = await window.documentPictureInPicture.requestWindow({
           width: 600,
-          height: 100,
+          height: 50,
           disallowReturnToOpener: false,
         });
         setPipWindow(newPipWindow);
