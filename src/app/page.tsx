@@ -543,6 +543,10 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
   const handleStopScreenShare = useCallback(() => {
     logToUI('[handleStopScreenShare] Stopping screen share.');
+    if (pipWindow) {
+      pipWindow.close();
+      setPipWindow(null);
+    }
     const currentStream = streamRef.current || stream;
     if (currentStream) {
       currentStream.getTracks().forEach((track) => {
@@ -572,6 +576,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     stream,
     logToUI,
     initialFrameCapturedRef,
+    pipWindow,
   ]); 
 
   const handleStartScreenShare = useCallback(async () => {
@@ -605,6 +610,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       '[handleStartScreenShare] Cleared buffers and baselines for new session. Session ID:', currentSessionId,
     );
 
+    handleTogglePip(true); // Automatically open PiP window
+
     setMainStatus('Initializing...');
     try {
       const mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -632,7 +639,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       streamRef.current = null;
       setMainStatus('Error starting share');
     }
-  }, [stream, logToUI, logError, captureSessionId]);
+  }, [stream, logToUI, logError, captureSessionId, pipWindow]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -908,6 +915,20 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   }, [logToUI]);
 
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleTogglePip(true);
+      } else {
+        handleTogglePip(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     const storedPreviewCollapsed = localStorage.getItem('previewCollapsed');
     if (storedPreviewCollapsed) {
       const parsedState = storedPreviewCollapsed === 'true';
@@ -976,17 +997,40 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       const style = document.createElement('style');
       style.textContent = `
         body { margin: 0; background-color: #2E2E2E; color: #FFFFFF; }
-        ol { padding-left: 20px; }
-        li { margin-bottom: 5px; }
+        button { background-color: #444; color: white; border: 1px solid #555; border-radius: 5px; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
       `;
       pipWindow.document.head.appendChild(style);
       // Use ReactDOM.createRoot for React 18
       const reactRoot = ReactDOM.createRoot(root);
-      reactRoot.render(<PipView events={events} />);
+      reactRoot.render(<PipView events={events} onStart={handleStartScreenShare} onStop={handleStopScreenShare} isCapturing={!!stream} mainStatus={mainStatus} error={error} />);
     }
-  }, [events, pipWindow]);
+  }, [events, pipWindow, stream, mainStatus, error]);
 
-  const handleTogglePip = async () => {
+  const handleTogglePip = async (open?: boolean) => {
+    if (open === false && pipWindow) {
+      pipWindow.close();
+      setPipWindow(null);
+      return;
+    }
+
+    if (open === true && !pipWindow && window.documentPictureInPicture) {
+      try {
+        const newPipWindow = await window.documentPictureInPicture.requestWindow({
+          width: 600,
+          height: 100,
+          disallowReturnToOpener: false,
+        });
+        setPipWindow(newPipWindow);
+        newPipWindow.addEventListener('pagehide', () => {
+          setPipWindow(null);
+        });
+      } catch (err) {
+        logError('Failed to open PiP window:', err);
+      }
+      return;
+    }
+
     if (pipWindow) {
       pipWindow.close();
       setPipWindow(null);
@@ -998,7 +1042,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         const newPipWindow = await window.documentPictureInPicture.requestWindow({
           width: 600,
           height: 100,
-          disallowReturnToOpener: true,
+          disallowReturnToOpener: false,
         });
         setPipWindow(newPipWindow);
         newPipWindow.addEventListener('pagehide', () => {
@@ -1020,7 +1064,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         stream={stream}
         handleStartScreenShare={handleStartScreenShare}
         handleStopScreenShare={handleStopScreenShare}
-        onTogglePip={handleTogglePip}
+        onTogglePip={() => handleTogglePip()}
         isPipOpen={!!pipWindow}
         mainStatus={mainStatus}
         autoDetectionEnabled={autoDetectionEnabled}
