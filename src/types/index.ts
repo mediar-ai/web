@@ -231,7 +231,7 @@ export interface LowLevelEvent {
   payload: {
     type: string;
     timestamp: string;
-    event: any; // The event data can be complex, so we'll leave it as any for now
+    event: Record<string, unknown>; // More specific than any
   };
   created_at: string;
 } 

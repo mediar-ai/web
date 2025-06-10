@@ -26,7 +26,6 @@ import {
   getAllPersistedDataForExport,
   saveScreenshot,
 } from '../lib/db';
-import { supabase } from '../lib/supabase';
 import EventsTabContent from '../components/tabs/EventsTabContent';
 import ActivityTabContent from '../components/tabs/ActivityTabContent';
 import SettingsTabContent from '../components/tabs/SettingsTabContent';
@@ -187,8 +186,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const [screenshotCounter, setScreenshotCounter] = useState(0);
 
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
-
-  const [lowLevelEvents, setLowLevelEvents] = useState<any[]>([]);
 
   const logToUI = useCallback((...args: unknown[]) => {
     const timestamp = new Date().toISOString();
@@ -919,9 +916,9 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
+      if (document.visibilityState === 'hidden' && stream) {
         handleTogglePip(true);
-      } else {
+      } else if (document.visibilityState === 'visible') {
         handleTogglePip(false);
       }
     };
@@ -929,7 +926,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [stream]);
 
   useEffect(() => {
     const storedPreviewCollapsed = localStorage.getItem('previewCollapsed');
@@ -1058,20 +1055,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       logError('Document Picture-in-Picture API is not supported.');
     }
   };
-
-  useEffect(() => {
-    const channel = supabase
-      .channel('low_level_events')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'low_level_events' }, payload => {
-        console.log('New low level event received:', payload.new);
-        setLowLevelEvents(prev => [...prev, payload.new]);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
 
   return (
     <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
