@@ -34,8 +34,8 @@ The request body must be a JSON object with the following structure:
 
 ### Key Fields
 
-- **`session_id` (uuid, required):** A unique identifier for the session.
-- **`user_id` (uuid, optional):** A unique identifier for the user.
+- **`session_id` (string, required):** A unique identifier for the session.
+- **`user_id` (string, optional):** A unique identifier for the user.
 - **`lead_id` (text, optional):** A unique identifier for the lead.
 - **`items` (array, required):** An array of transcription items.
 
