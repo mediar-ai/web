@@ -222,4 +222,16 @@ export interface RunningAnalysis {
 
 export interface LiveAnalysesPanelProps {
   runningAnalyses: RunningAnalysis[];
+}
+
+export interface LowLevelEvent {
+  id: number;
+  session_id: string;
+  user_id?: string;
+  payload: {
+    type: string;
+    timestamp: string;
+    event: any; // The event data can be complex, so we'll leave it as any for now
+  };
+  created_at: string;
 } 
