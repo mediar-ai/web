@@ -3,7 +3,10 @@ import { getScreenshotById } from '@/lib/db';
 import type { ActivityItem, UIDiffAnalysis, InitialFrameDumpAnalysis } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, Info } from 'lucide-react';
+import { AlertTriangle, Info, Expand, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import TimelineSlider from './TimelineSlider';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 const blobToDataURL = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -25,6 +28,7 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedA
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('Select an activity to see its screenshot.');
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const paneRef = React.useRef<HTMLDivElement>(null);
   const lastScrollTimeRef = React.useRef<number>(0);
 
@@ -131,7 +135,7 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedA
       );
     }
     return (
-      <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground">
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
         <Info className="w-8 h-8 mb-2" />
         <p>{statusMessage}</p>
       </div>
@@ -139,11 +143,50 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedA
   };
 
   return (
-    <Card className="w-full mt-4 overflow-hidden h-[400px]" ref={paneRef}>
-      <CardContent className="p-1 h-full">
-        {renderContent()}
-      </CardContent>
-    </Card>
+    <>
+      <Card className="w-full mt-4 overflow-hidden h-[400px] relative" ref={paneRef}>
+        <CardContent className="p-1 h-full">
+          {renderContent()}
+        </CardContent>
+        {imageUrl && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 right-2"
+            onClick={() => setIsFullscreen(true)}
+          >
+            <Expand className="w-5 h-5" />
+          </Button>
+        )}
+      </Card>
+
+      {isFullscreen && imageUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex flex-col items-center justify-center p-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-4 right-4 text-white"
+            onClick={() => setIsFullscreen(false)}
+          >
+            <X className="w-8 h-8" />
+          </Button>
+          <ScrollArea className="relative w-full h-[80vh] flex items-center justify-center">
+            <img
+              src={imageUrl}
+              alt="Activity screenshot"
+              className="object-contain max-w-none"
+            />
+          </ScrollArea>
+          <div className="w-full max-w-5xl mt-4">
+            <TimelineSlider 
+              activityItems={activityItems} 
+              selectedActivity={selectedActivity} 
+              onActivitySelect={onActivitySelect} 
+            />
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
