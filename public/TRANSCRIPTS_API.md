@@ -7,6 +7,7 @@ This document outlines how to send transcript data to the application for proces
 - **URL:** `https://app.mediar.ai/api/transcripts`
 - **Method:** `POST`
 - **Content-Type:** `application/json`
+- **Authentication:** `Bearer <YOUR_API_KEY>`
 
 ## Request Body Structure
 
@@ -45,6 +46,7 @@ Here is an example of how to send a transcript using `curl`:
 ```bash
 curl -X POST https://app.mediar.ai/api/transcripts \\
 -H "Content-Type: application/json" \\
+-H "Authorization: Bearer <YOUR_API_KEY>" \\
 -d '{
   "session_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "user_id": "b47ac10b-58cc-4372-a567-0e02b2c3d479",

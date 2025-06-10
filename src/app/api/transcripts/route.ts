@@ -3,9 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase URL or anon key');
+}
+
+if (!INTERNAL_API_KEY) {
+  throw new Error('INTERNAL_API_KEY is not set');
 }
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -20,6 +25,11 @@ interface TranscriptionItem {
 
 export async function POST(request: Request) {
   try {
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader !== `Bearer ${INTERNAL_API_KEY}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { session_id, user_id, items, lead_id } = body;
 
