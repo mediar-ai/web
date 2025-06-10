@@ -2,7 +2,6 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type {
   BufferedFrame,
   Event,
@@ -51,23 +50,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MoreHorizontal, Settings, Bug } from 'lucide-react';
 import ReactDOM from 'react-dom/client';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-let supabase: SupabaseClient | null = null;
-if (supabaseUrl && supabaseAnonKey) {
-  try {
-    supabase = createClient(supabaseUrl, supabaseAnonKey);
-    console.log('[Supabase] Client initialized successfully.');
-  } catch (e) {
-    console.error('[Supabase] Error initializing client:', e);
-  }
-} else {
-  console.warn(
-    '[Supabase] URL or Anon Key is not set. Supabase client not initialized.',
-  );
-}
 
 export default function Home() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
@@ -172,6 +154,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   >('idle');
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
 
+  const [userId, setUserId] = useState<string | null>(null);
+
   // Screenshot sequence tracking
   const [captureSessionId, setCaptureSessionId] = useState(() => {
     // Load from localStorage or start at 1
@@ -204,6 +188,19 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     setFrontendLogs((prevLogs) => [logEntry, ...prevLogs].slice(0, 100));
     console.error(...args);
   }, []);
+
+  useEffect(() => {
+    // On initial load, check for a user ID in local storage or create a new one.
+    let storedUserId = localStorage.getItem('user_id');
+    if (!storedUserId) {
+      storedUserId = crypto.randomUUID();
+      localStorage.setItem('user_id', storedUserId);
+      logToUI(`[Auth] New anonymous user ID generated: ${storedUserId}`);
+    } else {
+      logToUI(`[Auth] Found existing user ID: ${storedUserId}`);
+    }
+    setUserId(storedUserId);
+  }, [logToUI]);
 
   const captureFrameToBuffer = useCallback(async (changePercent: number) => {
     if (!streamRef.current) { 
@@ -457,16 +454,12 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   }, [logToUI, logError, setActivityItems]);
 
   const handleExportAllData = useCallback(async () => {
-    logToUI('[handleExportAllData] Starting data export via Supabase...');
+    logToUI('[handleExportAllData] Starting data export via API route...');
     setExportInProgress(true);
 
-    if (!supabase) {
-      logError(
-        '[handleExportAllData] Supabase client is not initialized. Cannot send data. Check console for errors during initialization.',
-      );
-      setError(
-        'Supabase client not available. Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.',
-      );
+    if (!userId) {
+      logError('[handleExportAllData] User ID is not set. Cannot export.');
+      setError('User ID not available. Please reload the application.');
       setExportInProgress(false);
       return;
     }
@@ -495,31 +488,36 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
       const payload = {
         sessionId: sessionId,
+        userId: userId,
         exportedData: allLocalData,
       };
 
       logToUI(
-        "[handleExportAllData] Attempting to invoke Supabase Edge Function 'ingest-data' with session ID...",
+        "[handleExportAllData] Attempting to invoke API route 'ingest-user-activity' with session ID and user ID...",
       );
 
-      const { data: functionInvokeData, error: functionError } = await supabase
-        .functions.invoke('ingest-data', {
-          body: payload, 
-        });
+      const response = await fetch('/api/ingest-user-activity', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-      if (functionError) {
+      if (!response.ok) {
+        const errorData = await response.json();
         logError(
-          "[handleExportAllData] Error invoking Supabase Edge Function 'ingest-data':",
-          functionError.message,
-          functionError,
+          "[handleExportAllData] Error invoking API route 'ingest-user-activity':",
+          errorData.details || response.statusText,
         );
         setError(
-          `Failed to send data via Edge Function: ${functionError.message}. Check logs.`,
+          `Failed to send data via API route: ${errorData.details || response.statusText}. Check logs.`,
         );
       } else {
+        const result = await response.json();
         logToUI(
-          "[handleExportAllData] Supabase Edge Function 'ingest-data' invoked successfully. Response:",
-          functionInvokeData,
+          "[handleExportAllData] API route 'ingest-user-activity' invoked successfully. Response:",
+          result,
         );
       }
     } catch (err) {
@@ -532,7 +530,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     } finally {
       setExportInProgress(false);
     }
-  }, [logToUI, logError, setError]); 
+  }, [logToUI, logError, setError, userId]);
 
   const dismissError = useCallback(() => {
     setShowError(false);

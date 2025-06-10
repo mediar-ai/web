@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const finalPayload = { ...payload };
 
     if (screenshots && Array.isArray(screenshots) && screenshots.length > 0) {
-      console.log(`Processing ${screenshots.length} screenshots for session ${session_id}...`);
+      console.log(`[INGEST] Processing ${screenshots.length} screenshots for session ${session_id}...`);
       const screenshotPaths: string[] = [];
 
       for (const ss of screenshots as ScreenshotPayload[]) {
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
         
         const filePath = `${session_id}/${ss.id}.${fileExt}`;
 
-        console.log(`Uploading low-level event screenshot: ${filePath} (Size: ${imageBuffer.length} bytes)`);
+        console.log(`[INGEST] Uploading low-level event screenshot: ${filePath} (Size: ${imageBuffer.length} bytes)`);
         
         const { error: uploadError } = await supabaseAdmin.storage
           .from('low-level-event-screenshots')
@@ -59,17 +59,24 @@ export async function POST(request: Request) {
           });
 
         if (uploadError) {
-          console.error(`Error uploading screenshot ${ss.id} for session ${session_id}:`, uploadError.message);
+          console.error(`[INGEST] Error uploading screenshot ${ss.id} for session ${session_id}:`, uploadError.message);
         } else {
-          console.log(`Successfully uploaded screenshot ${filePath}`);
+          console.log(`[INGEST] Successfully uploaded screenshot ${filePath}`);
           screenshotPaths.push(filePath);
         }
       }
       
       if (screenshotPaths.length > 0) {
         finalPayload.screenshot_paths = screenshotPaths;
+        console.log(`[INGEST] Added screenshot paths to payload:`, screenshotPaths);
+      } else {
+        console.log('[INGEST] No screenshot paths were added to the payload as no uploads were successful.');
       }
+    } else {
+      console.log('[INGEST] No screenshots found in the request payload.');
     }
+
+    console.log('[INGEST] Final payload before database insert:', JSON.stringify(finalPayload, null, 2));
 
     const { data, error } = await supabaseAdmin
       .from('low_level_events')
