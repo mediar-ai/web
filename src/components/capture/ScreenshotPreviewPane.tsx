@@ -6,7 +6,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, Info, Expand, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import TimelineSlider from './TimelineSlider';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 const blobToDataURL = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -161,7 +160,9 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedA
       </Card>
 
       {isFullscreen && imageUrl && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex flex-col items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-80 z-50 flex flex-col items-center justify-center p-4"
+        >
           <Button
             variant="ghost"
             size="icon"
@@ -170,13 +171,15 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedA
           >
             <X className="w-8 h-8" />
           </Button>
-          <ScrollArea className="relative w-full h-[80vh] flex items-center justify-center">
-            <img
-              src={imageUrl}
-              alt="Activity screenshot"
-              className="object-contain max-w-none"
-            />
-          </ScrollArea>
+          <div className="w-full h-[80vh] overflow-auto">
+            <div className="grid place-items-center min-h-full">
+              <img
+                src={imageUrl}
+                alt="Activity screenshot"
+                className="max-w-none"
+              />
+            </div>
+          </div>
           <div className="w-full max-w-5xl mt-4">
             <TimelineSlider 
               activityItems={activityItems} 
