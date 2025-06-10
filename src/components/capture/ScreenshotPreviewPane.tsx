@@ -126,7 +126,7 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedA
         <img
           src={imageUrl}
           alt="Activity screenshot"
-          className="object-contain w-full"
+          className="object-contain w-full h-full"
         />
       );
     }
@@ -139,8 +139,8 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedA
   };
 
   return (
-    <Card className="w-full mt-4 overflow-hidden" ref={paneRef}>
-      <CardContent className="p-1">
+    <Card className="w-full mt-4 overflow-hidden h-[400px]" ref={paneRef}>
+      <CardContent className="p-1 h-full">
         {renderContent()}
       </CardContent>
     </Card>
