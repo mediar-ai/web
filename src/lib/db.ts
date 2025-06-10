@@ -7,7 +7,6 @@ import type {
   UIDiffAnalysis,
   RunningAnalysis,
 } from '../types';
-import { supabase } from '../lib/supabase';
 
 // IndexedDB utilities for persistence
 export const DB_NAME = 'WorkflowCaptureDB';
@@ -489,26 +488,14 @@ export const getAllPersistedDataForExport = async (): Promise<object> => {
 
 export const getSessions = async (): Promise<{ lowLevel: string[]; web: string[] }> => {
   try {
-    const { data: lowLevelEvents, error: lowLevelError } = await supabase
-      .from('low_level_events')
-      .select('session_id');
-
-    if (lowLevelError) {
-      console.error('[getSessions] Error fetching low level event sessions:', lowLevelError);
+    const response = await fetch('/api/sessions');
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('[getSessions] Error fetching sessions:', errorData);
+      return { lowLevel: [], web: [] };
     }
-
-    const { data: webRecorderEvents, error: webRecorderError } = await supabase
-      .from('user_activity_data')
-      .select('session_id');
-
-    if (webRecorderError) {
-      console.error('[getSessions] Error fetching web recorder sessions:', webRecorderError);
-    }
-
-    const lowLevelSessions = [...new Set(lowLevelEvents?.map(item => item.session_id) || [])];
-    const webSessions = [...new Set(webRecorderEvents?.map(item => item.session_id) || [])];
-    
-    return { lowLevel: lowLevelSessions, web: webSessions };
+    const data = await response.json();
+    return data;
   } catch (err) {
     console.error('[getSessions] Failed to get sessions:', err);
     return { lowLevel: [], web: [] };
