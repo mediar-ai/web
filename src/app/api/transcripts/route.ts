@@ -21,7 +21,7 @@ interface TranscriptionItem {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { session_id, user_id, items } = body;
+    const { session_id, user_id, items, lead_id } = body;
 
     if (!session_id || !items || !Array.isArray(items)) {
       return NextResponse.json({ error: 'session_id and items array are required' }, { status: 400 });
@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     const recordsToInsert = items.map((item: TranscriptionItem) => ({
       session_id,
       user_id,
+      lead_id,
       item_id: item.id,
       type: item.type,
       role: item.role,
