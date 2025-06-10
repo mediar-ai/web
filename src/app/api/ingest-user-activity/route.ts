@@ -103,7 +103,7 @@ interface UserActivityDataRow {
   user_id: string;
   item_type: string;
   client_item_id: string;
-  item_data: Record<string, any>;
+  item_data: Record<string, unknown>;
   client_timestamp: string;
 }
 
