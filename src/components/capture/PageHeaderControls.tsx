@@ -1,26 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
 import type { PageHeaderControlsProps } from '../../types';
-import { Play, StopCircle, AlertTriangle, RotateCcw, Zap, RefreshCw, ChevronDown, PictureInPicture } from 'lucide-react';
+import { Play, StopCircle, AlertTriangle, RotateCcw, Zap, RefreshCw, PictureInPicture } from 'lucide-react';
 import { ThemeToggle } from '../ui/theme-toggle';
-
-// Dummy user data
-const currentUser = { id: 'you', name: 'You', role: 'Supervisor' };
-
-const teamMembers = [
-  { id: 'alice', name: 'Alice Johnson', role: 'Senior Analyst' },
-  { id: 'bob', name: 'Bob Smith', role: 'Operations Manager' },
-  { id: 'carol', name: 'Carol Wilson', role: 'Data Specialist' },
-  { id: 'david', name: 'David Chen', role: 'Quality Assurance' },
-  { id: 'emma', name: 'Emma Davis', role: 'Process Analyst' },
-];
 
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
@@ -38,8 +20,6 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   MAX_PARALLEL_ANALYSES,
   reconnectRequired,
 }) => {
-  const [selectedUser, setSelectedUser] = useState(currentUser);
-  
   return (
     <div className='w-full flex flex-col sm:flex-row justify-between items-center mb-1 py-2'>
       <div className='flex items-center gap-2 mb-2 sm:mb-0'>
@@ -57,48 +37,6 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
           </Button>
         )}
         
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant='outline' className='flex items-center gap-2'>
-              <div className='flex flex-col items-start text-xs'>
-                <span className='font-medium'>{selectedUser.name}</span>
-                <span className='text-muted-foreground text-[10px]'>{selectedUser.role}</span>
-              </div>
-              <ChevronDown className='h-3 w-3' />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='start' className='w-56'>
-            <DropdownMenuItem 
-              onClick={() => setSelectedUser(currentUser)}
-              className='flex items-center gap-3 p-3'
-            >
-              <div className='flex flex-col'>
-                <span className='font-medium text-sm'>{currentUser.name}</span>
-                <span className='text-muted-foreground text-xs'>{currentUser.role}</span>
-              </div>
-              {selectedUser.id === currentUser.id && (
-                <div className='ml-auto w-2 h-2 bg-primary rounded-full' />
-              )}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {teamMembers.map((user) => (
-              <DropdownMenuItem 
-                key={user.id}
-                onClick={() => setSelectedUser(user)}
-                className='flex items-center gap-3 p-3'
-              >
-                <div className='flex flex-col'>
-                  <span className='font-medium text-sm'>{user.name}</span>
-                  <span className='text-muted-foreground text-xs'>{user.role}</span>
-                </div>
-                {selectedUser.id === user.id && (
-                  <div className='ml-auto w-2 h-2 bg-primary rounded-full' />
-                )}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         <Button variant="outline" size="icon" onClick={onTogglePip}>
           <PictureInPicture className={`h-4 w-4 ${isPipOpen ? 'text-blue-500' : ''}`} />
         </Button>
