@@ -25,6 +25,27 @@ export default function WebSessionPage({ params }: { params: { sessionId: string
     };
     
     fetchSessionData();
+
+    const channel = supabase
+      .channel(`web-session-${params.sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'user_activity_data',
+          filter: `session_id=eq.${params.sessionId}`,
+        },
+        (payload) => {
+          console.log('New web activity event received:', payload.new);
+          setActivity(prev => [payload.new.item_data as ActivityItem, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [params.sessionId]);
 
   if (loading) {
