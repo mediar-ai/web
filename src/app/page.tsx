@@ -32,7 +32,6 @@ import SettingsTabContent from '../components/tabs/SettingsTabContent';
 import DebugTabContent from '../components/tabs/DebugTabContent';
 import WorkflowTabContent from '../components/tabs/WorkflowTabContent';
 import PageHeaderControls from '../components/capture/PageHeaderControls';
-import VideoPreviewArea from '../components/capture/VideoPreviewArea';
 import ErrorNotification from '../components/capture/ErrorNotification';
 import ExportStatusDialog from '../components/capture/ExportStatusDialog';
 import { useAutoDetection } from '../hooks/useAutoDetection';
@@ -153,9 +152,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   );
   const [mainStatus, setMainStatus] = useState<string>('Idle');
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
-  const [exportInProgress, setExportInProgress] = useState<boolean>(false); 
+  const [exportInProgress, setExportInProgress] = useState<boolean>(false);
   const [reconnectRequired, setReconnectRequired] = useState(false);
-  const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
   const [analysesPanelCollapsed, setAnalysesPanelCollapsed] = useState(false);
   const [selectedMoreOption, setSelectedMoreOption] = useState<string | null>(null);
@@ -929,12 +927,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   }, [stream]);
 
   useEffect(() => {
-    const storedPreviewCollapsed = localStorage.getItem('previewCollapsed');
-    if (storedPreviewCollapsed) {
-      const parsedState = storedPreviewCollapsed === 'true';
-      setPreviewCollapsed(parsedState);
-    }
-    
     const storedDetailsCollapsed = localStorage.getItem('detailsCollapsed');
     if (storedDetailsCollapsed) {
       setDetailsCollapsed(storedDetailsCollapsed === 'true');
@@ -944,10 +936,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       setAnalysesPanelCollapsed(storedAnalysesPanelCollapsed === 'true');
     }
   }, []);
-
-  const handlePreviewCollapseChange = (isCollapsed: boolean) => {
-    setPreviewCollapsed(isCollapsed);
-  };
 
   const toggleDetailsPanel = () => {
     setDetailsCollapsed(prevState => {
@@ -1083,16 +1071,40 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       <canvas ref={monitoringCanvasRef} style={{ display: 'none' }} />
 
-      <div className={`w-full max-w-7xl grid grid-cols-1 gap-4 ${
-        previewCollapsed ? 'lg:grid-cols-[auto_1fr]' : 'lg:grid-cols-3'
-      }`}>
-        <VideoPreviewArea 
-          stream={stream} 
-          videoRef={videoRef} 
-          onCollapseChange={handlePreviewCollapseChange}
-        />
+      {/* Details Section (Timeline + Screenshot) */}
+      <div 
+        className="w-full max-w-7xl mt-4 space-y-4"
+        onMouseEnter={() => setIsHoveringScrollableArea(true)}
+        onMouseLeave={() => setIsHoveringScrollableArea(false)}
+      >
+        {activityItems.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">Timeline & Screenshot Preview</h2>
+              <Button variant="ghost" size="sm" onClick={toggleDetailsPanel}>
+                {detailsCollapsed ? 'Show' : 'Hide'}
+              </Button>
+            </div>
+            {!detailsCollapsed && (
+              <div className="space-y-4">
+                <ScreenshotPreviewPane 
+                  selectedActivity={selectedActivity} 
+                  activityItems={activityItems}
+                  onActivitySelect={setSelectedActivity}
+                />
+                <TimelineSlider
+                  activityItems={activityItems}
+                  selectedActivity={selectedActivity}
+                  onActivitySelect={setSelectedActivity}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-        <div className={previewCollapsed ? 'flex flex-col gap-4' : 'lg:col-span-2 flex flex-col gap-4'}>
+      <div className="w-full max-w-7xl grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="lg:col-span-2 flex flex-col gap-4">
           <Tabs defaultValue='recent' className='w-full -mt-2' value={selectedMoreOption || selectedMainTab} onValueChange={(value) => {
             if (value === 'settings' || value === 'debug') {
               setSelectedMoreOption(value);
@@ -1205,38 +1217,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         </div>
       </div>
       
-      {selectedMainTab === 'recent' && selectedActivity && !selectedMoreOption && (
-        <div 
-          className="w-full max-w-7xl mt-4 space-y-4"
-          onMouseEnter={() => setIsHoveringScrollableArea(true)}
-          onMouseLeave={() => setIsHoveringScrollableArea(false)}
-        >
-          {/* Details Section (Timeline + Screenshot) */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Timeline & Screenshot Preview</h2>
-              <Button variant="ghost" size="sm" onClick={toggleDetailsPanel}>
-                {detailsCollapsed ? 'Show' : 'Hide'}
-              </Button>
-            </div>
-            {!detailsCollapsed && (
-              <div className="space-y-4">
-                <TimelineSlider
-                  activityItems={activityItems}
-                  selectedActivity={selectedActivity}
-                  onActivitySelect={setSelectedActivity}
-                />
-                <ScreenshotPreviewPane 
-                  selectedActivity={selectedActivity} 
-                  activityItems={activityItems}
-                  onActivitySelect={setSelectedActivity}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {(selectedMainTab === 'events' || (selectedMainTab === 'recent' && selectedActivity)) && !selectedMoreOption && (
         <div className="w-full max-w-7xl mt-4">
           {/* Live Analyses Section */}
