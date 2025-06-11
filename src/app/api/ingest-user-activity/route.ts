@@ -128,6 +128,16 @@ export async function POST(request: Request) {
     if (!sessionId || !userId || !exportedData) {
       return NextResponse.json({ error: 'Missing sessionId, userId, or exportedData' }, { status: 400 });
     }
+
+    // Ensure user exists before logging activity
+    const { error: userError } = await supabaseAdmin
+      .from('users')
+      .upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
+
+    if (userError) {
+      console.error(`Error ensuring user exists:`, userError);
+      // We can choose to fail here or continue. For now, let's continue.
+    }
     
     console.log(`Processing data for session ID: ${sessionId} and user ID: ${userId}.`);
 

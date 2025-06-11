@@ -182,11 +182,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   }, []);
 
   const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
-    if (node) {
-      console.log('[video ref callback] Ref has been set.');
-    } else {
-      console.log('[video ref callback] Ref has been unset (unmounted).');
-    }
     videoRef.current = node;
   }, []);
 
@@ -1059,7 +1054,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
 
-      <Card className="w-full max-w-7xl mt-4">
+      <Card className="w-full max-w-7xl mt-4 hidden">
         <CardHeader>
           <CardTitle>Live Preview</CardTitle>
         </CardHeader>
