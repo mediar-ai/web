@@ -237,23 +237,20 @@ export interface LowLevelEvent {
 // Types for Multi-User Viewing
 // =================================================================
 
-export type ViewingMode = {
-  type: 'local' | 'remote';
-  userId?: string;
-  sessionId?: string;
-  userName?: string;
-};
+export type ViewingMode =
+  | { type: 'local'; userName?: never; }
+  | { type: 'remote'; userId: string; sessionId?: string; userName?: string };
 
 export interface DataProvider {
-  loadActivityItems(): Promise<ActivityItem[]>;
-  loadEvents(): Promise<Event[]>;
-  loadScreenshot(id: string): Promise<Blob | string | null>;
-  loadWorkflowSteps(): Promise<Array<{
+  loadActivityItems(sessionId?: string): Promise<ActivityItem[]>;
+  loadEvents(sessionId?: string): Promise<Event[]>;
+  loadScreenshot(id: string): Promise<Blob | string | null>; // Blob for local, string (URL) for remote
+  loadWorkflowSteps(sessionId?: string): Promise<Array<{
     id: string;
     analysis: string;
     parsed: ParsedAnalysis | null;
     timestamp: string;
   }>>;
-  loadCompletedAnalyses(): Promise<RunningAnalysis[]>;
+  loadCompletedAnalyses(sessionId?: string): Promise<RunningAnalysis[]>;
   // Add more methods as needed
 } 
