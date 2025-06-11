@@ -26,9 +26,9 @@ function isRunningAnalysis(item: unknown): item is RunningAnalysis {
 
 export async function GET(
   request: Request,
-  { params }: { params: { userId: string } }
+  context: { params: { userId: string } }
 ) {
-  const { userId } = params;
+  const { userId } = context.params;
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
 
