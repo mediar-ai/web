@@ -14,6 +14,7 @@ export interface Session {
   type: 'lowLevel' | 'web';
   timestamp: string;
   eventCount: number;
+  processed_event_count: number;
   status: 'live' | 'offline';
 }
 
