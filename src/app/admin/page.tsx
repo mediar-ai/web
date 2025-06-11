@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { useDebouncedCallback } from 'use-debounce';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
@@ -140,9 +140,6 @@ export default function AdminPage() {
               Processed Events
             </th>
             <th scope="col" className="px-2 py-2">
-              Live Sessions
-            </th>
-            <th scope="col" className="px-2 py-2">
               Last Active
             </th>
             <th scope="col" className="px-2 py-2 text-right">
@@ -199,15 +196,25 @@ export default function AdminPage() {
                             <Button variant="outline" onClick={() => setEditingUser(null)} className="h-8">Cancel</Button>
                           </div>
                         ) : (
-                          <>
-                            <span className="mr-2">{userData.name || `User ${truncateId(userId)}`}</span>
-                            <Button variant="outline" size="sm" onClick={() => {
+                          <div 
+                            className="flex items-center gap-2 cursor-pointer group"
+                            onClick={() => {
                               setEditingUser(userId);
                               setUserNameInput(userData.name || '');
-                            }}>
-                              Edit
-                            </Button>
-                          </>
+                            }}
+                          >
+                            <span className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">{userData.name || `User ${truncateId(userId)}`}</span>
+                            <Pencil className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                        )}
+                        {liveSessions > 0 && (
+                          <span className="flex items-center gap-1.5 ml-2">
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                            </span>
+                            <span className="text-xs text-green-600 font-semibold">LIVE</span>
+                          </span>
                         )}
                       </div>
                     </td>
@@ -230,15 +237,6 @@ export default function AdminPage() {
                     </td>
                     <td className="px-2 py-1">
                       {totalProcessedEvents}
-                    </td>
-                    <td className="px-2 py-1">
-                      {liveSessions > 0 ? (
-                        <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800">
-                          {liveSessions} live
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">0</span>
-                      )}
                     </td>
                     <td className="px-2 py-1">
                       {mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}
