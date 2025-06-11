@@ -50,6 +50,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MoreHorizontal, Settings, Bug } from 'lucide-react';
 import ReactDOM from 'react-dom/client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import VideoPreviewArea from '@/components/capture/VideoPreviewArea';
 
 export default function Home() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
@@ -179,6 +181,15 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     console.log(...args);
   }, []);
 
+  const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
+    if (node) {
+      console.log('[video ref callback] Ref has been set.');
+    } else {
+      console.log('[video ref callback] Ref has been unset (unmounted).');
+    }
+    videoRef.current = node;
+  }, []);
+
   const logError = useCallback((...args: unknown[]) => {
     const timestamp = new Date().toISOString();
     const message = args.map((arg) =>
@@ -267,13 +278,13 @@ Analyze the activity sequence for context, then create ONE clear, complete event
             sortedForEviction.shift(); 
             newBufferTrimmed = sortedForEviction;
             logToUI(
-              '[captureFrameToBuffer] Buffer full. Evicted frame with least change.',
+              '[captureFrameToBuffer] Buffer full. Evicted with least change.',
             );
           }
           return newBufferTrimmed.sort((a, b) => a.timestamp - b.timestamp);
         });
         logToUI(
-          '[captureFrameToBuffer] Frame added to buffer. Current buffer size will be reflected in next render cycle.',
+          '[captureFrameToBuffer] Frame added to buffer. Size reflects next render.',
         );
 
         try {
@@ -292,7 +303,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
           };
           img.onerror = () => {
             logError(
-              '[captureFrameToBuffer] Failed to load image from data URL for saving screenshot.',
+              '[captureFrameToBuffer] Failed to load image from data URL for saving.',
             );
           };
           img.src = imageDataUrl;
@@ -311,7 +322,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     } else {
       if (streamRef.current && videoRef.current) {
         logToUI(
-          '[captureFrameToBuffer] Video not ready for capture to buffer. State:',
+          '[captureFrameToBuffer] Video not ready. State:',
           {
             readyState: videoRef.current.readyState,
             videoWidth: videoRef.current.videoWidth,
@@ -394,14 +405,12 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     setSelectedEvent(event);
 
     if (event.activity_ids && event.activity_ids.length > 0) {
-      // The activities are sorted newest first, so the first ID is the most relevant
       const mostRecentActivityId = event.activity_ids[0];
       const relatedActivity = activityItems.find(a => a.id === mostRecentActivityId);
 
       if (relatedActivity) {
         setSelectedActivity(relatedActivity);
       } else {
-        // If the specific activity isn't found, clear the selection
         setSelectedActivity(null);
       }
     } else {
@@ -411,7 +420,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
   const handleWorkflowUpdate = (updatedWorkflow: Workflow) => {
     setWorkflow(updatedWorkflow);
-    // TODO: Add persistence for workflow data
     console.log('[handleWorkflowUpdate] Workflow updated:', updatedWorkflow);
   };
 
@@ -444,22 +452,21 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       setFrontendLogs([]);
       setActivityItems([]); 
       setCompletedAnalyses([]);
-      // Reset capture session ID to 1
       setCaptureSessionId(1);
       localStorage.setItem('capture_session_id', '1');
-      logToUI('[clearAllData] All persisted data cleared and capture session ID reset to 1');
+      logToUI('[clearAllData] All data cleared, session ID reset to 1');
     } catch (err) {
       logError('[clearAllData] Failed to clear data:', err);
     }
   }, [logToUI, logError, setActivityItems]);
 
   const handleExportAllData = useCallback(async () => {
-    logToUI('[handleExportAllData] Starting data export via API route...');
+    logToUI('[handleExportAllData] Starting data export...');
     setExportInProgress(true);
 
     if (!userId) {
-      logError('[handleExportAllData] User ID is not set. Cannot export.');
-      setError('User ID not available. Please reload the application.');
+      logError('[handleExportAllData] User ID not set. Cannot export.');
+      setError('User ID not available. Please reload.');
       setExportInProgress(false);
       return;
     }
@@ -467,7 +474,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     try {
       const allLocalData = await getAllPersistedDataForExport();
       logToUI(
-        '[handleExportAllData] Successfully retrieved all local data for sending. Size (approx characters):',
+        '[handleExportAllData] Retrieved local data. Size (chars):',
         JSON.stringify(allLocalData).length,
       );
 
@@ -493,7 +500,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       };
 
       logToUI(
-        "[handleExportAllData] Attempting to invoke API route 'ingest-user-activity' with session ID and user ID...",
+        "[handleExportAllData] Invoking 'ingest-user-activity' API...",
       );
 
       const response = await fetch('/api/ingest-user-activity', {
@@ -507,26 +514,26 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       if (!response.ok) {
         const errorData = await response.json();
         logError(
-          "[handleExportAllData] Error invoking API route 'ingest-user-activity':",
+          "[handleExportAllData] API error:",
           errorData.details || response.statusText,
         );
         setError(
-          `Failed to send data via API route: ${errorData.details || response.statusText}. Check logs.`,
+          `API export failed: ${errorData.details || response.statusText}.`,
         );
       } else {
         const result = await response.json();
         logToUI(
-          "[handleExportAllData] API route 'ingest-user-activity' invoked successfully. Response:",
+          "[handleExportAllData] API success:",
           result,
         );
       }
     } catch (err) {
-      let errorMessage = 'Unknown error during export process';
+      let errorMessage = 'Unknown export error';
       if (err instanceof Error) {
         errorMessage = err.message;
       }
-      logError('[handleExportAllData] Error during data export process:', err);
-      setError(`Error during export: ${errorMessage}. Check console.`);
+      logError('[handleExportAllData] Export process error:', err);
+      setError(`Export error: ${errorMessage}.`);
     } finally {
       setExportInProgress(false);
     }
@@ -561,9 +568,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     setStream(null);
     streamRef.current = null;
     setIsCapturingForBuffer(false);
-    // Don't clear frameBuffer - let queued analyses complete
     logToUI(
-      '[handleStopScreenShare] Screen share stopped. Queued analyses will continue processing.',
+      '[handleStopScreenShare] Screen share stopped. Queued analyses will continue.',
     );
     if (initialFrameCapturedRef) {
         initialFrameCapturedRef.current = false;
@@ -594,7 +600,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         initialFrameCapturedRef.current = false;
     }
     
-    // Use current session ID for this capture and increment for next time
     const currentSessionId = captureSessionId;
     currentCaptureSessionIdRef.current = currentSessionId;
     const nextSessionId = captureSessionId + 1;
@@ -603,10 +608,10 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     setScreenshotCounter(0);
     
     logToUI(
-      '[handleStartScreenShare] Cleared buffers and baselines for new session. Session ID:', currentSessionId,
+      '[handleStartScreenShare] Cleared buffers for new session. ID:', currentSessionId,
     );
 
-    handleTogglePip(true); // Automatically open PiP window
+    handleTogglePip(true);
 
     setMainStatus('Initializing...');
     try {
@@ -619,15 +624,17 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         },
         audio: false,
       });
-      logToUI('[handleStartScreenShare] Media stream obtained.');
+      logToUI('[handleStartScreenShare] Media stream obtained successfully.');
       setStream(mediaStream);
       streamRef.current = mediaStream;
     } catch (err: unknown) {
+      logError('[handleStartScreenShare] Error obtaining media stream:', err);
       let message = 'Unknown start error.';
       if (err instanceof Error) {
         message = err.name === 'NotAllowedError'
           ? 'Permission denied by user.'
           : `Start error: ${err.message}`;
+        logError(`[handleStartScreenShare] Error details: Name: ${err.name}, Message: ${err.message}, Stack: ${err.stack}`);
       }
       logError('[handleStartScreenShare] Error:', message, err);
       setError(message);
@@ -650,31 +657,31 @@ Analyze the activity sequence for context, then create ONE clear, complete event
           ]);
         if (savedSteps.length > 0) {
           setWorkflowSteps(savedSteps);
-          console.log(
+          logToUI(
             `[loadPersistedData] Loaded ${savedSteps.length} workflow steps`,
           );
         }
         if (savedEvents.length > 0) {
           setEvents(savedEvents);
-          console.log(
+          logToUI(
             `[loadPersistedData] Loaded ${savedEvents.length} events`,
           );
         }
         if (savedLogs.length > 0) {
           setFrontendLogs(savedLogs);
-          console.log(
+          logToUI(
             `[loadPersistedData] Loaded ${savedLogs.length} frontend logs`,
           );
         }
         if (savedActivityItemsFromDB.length > 0) {
           setActivityItems(savedActivityItemsFromDB);
-          console.log(
+          logToUI(
             `[loadPersistedData] Loaded ${savedActivityItemsFromDB.length} activity items`,
           );
         }
         if (savedCompletedAnalyses.length > 0) {
           setCompletedAnalyses(savedCompletedAnalyses);
-          console.log(
+          logToUI(
             `[loadPersistedData] Loaded ${savedCompletedAnalyses.length} completed analyses`,
           );
         }
@@ -710,34 +717,28 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     }
   }, [selectedActivity, events, selectedEvent]);
 
-  // Auto-select the most recent activity when items are available but nothing is selected
   useEffect(() => {
     if (!selectedActivity && activityItems.length > 0) {
-      setSelectedActivity(activityItems[0]); // Most recent is first in the array
+      setSelectedActivity(activityItems[0]); 
     }
   }, [activityItems, selectedActivity]);
 
-  // Auto-select the most recent event when items are available but nothing is selected
   useEffect(() => {
     if (!selectedEvent && events.length > 0) {
-      setSelectedEvent(events[0]); // Most recent is first in the array
+      setSelectedEvent(events[0]); 
     }
   }, [events, selectedEvent]);
 
-  // Auto-scroll to most recent item when switching to Recent Activity or Events tabs
   useEffect(() => {
     if (selectedMainTab === 'recent' && activityItems.length > 0) {
-      // Select the most recent activity (first in the original array)
       setSelectedActivity(activityItems[0]);
-      console.log('[Tab Switch] Auto-selected most recent activity for Recent tab');
+      logToUI('[Tab Switch] Auto-selected most recent activity for Recent tab');
     } else if (selectedMainTab === 'events' && events.length > 0) {
-      // Select the most recent event (first in the original array)
       setSelectedEvent(events[0]);
-      console.log('[Tab Switch] Auto-selected most recent event for Events tab');
+      logToUI('[Tab Switch] Auto-selected most recent event for Events tab');
     }
   }, [selectedMainTab, activityItems, events]);
 
-  // Auto-create workflow when capture starts
   useEffect(() => {
     if (stream && !workflow) {
       const sessionId = localStorage.getItem('app_session_id') || crypto.randomUUID();
@@ -759,13 +760,11 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     }
   }, [stream, workflow, logToUI]);
 
-  // Check if scroll hint should be triggered (one-time on first hover)
   useEffect(() => {
     const hasSeenScrollHint = localStorage.getItem('hasSeenScrollHint');
     
-    // Only trigger if: not seen before, on recent tab, has activities, currently hovering, and hasn't been triggered yet
     if (!hasSeenScrollHint && selectedMainTab === 'recent' && activityItems.length > 0 && isHoveringScrollableArea && !hasTriggeredScrollHint) {
-      console.log('[ScrollHint] Triggering hint for first time');
+      logToUI('[ScrollHint] Triggering hint for first time');
       setShowScrollHint(true);
       setHasTriggeredScrollHint(true);
     }
@@ -774,7 +773,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const handleDismissScrollHint = () => {
     setShowScrollHint(false);
     localStorage.setItem('hasSeenScrollHint', 'true');
-    console.log('[ScrollHint] User dismissed scroll hint - will not show again');
+    logToUI('[ScrollHint] User dismissed scroll hint');
   };
 
   useEffect(() => {
@@ -807,7 +806,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   }, [stream, error, activeAnalysesCount, setMainStatus]);
 
   useEffect(() => {
-    logToUI('[useEffect stream] Main effect RUNNING. Stream active:', !!stream);
+    logToUI(`[useEffect stream] Main effect RUNNING. Stream active: ${!!stream}`);
     const currentVideoElement = videoRef.current;
     const onMetadataLoadedHandler = () => {
       if (!currentVideoElement) return;
@@ -892,20 +891,16 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       const delta = now - lastHeartbeat.current;
       lastHeartbeat.current = now;
 
-      // If a long time has passed since the last check, we assume the computer was asleep.
-      if (delta > 10000) { // 10 second threshold
-        logToUI('[SleepDetector] Detected potential wake from sleep.');
+      if (delta > 10000) { 
+        logToUI('[SleepDetector] Potential wake from sleep.');
         if (streamActiveBeforeSleep.current && !(streamRef.current && streamRef.current.active)) {
-          logToUI('[SleepDetector] Stream was active before sleep, but is now disconnected. Prompting to reconnect.');
+          logToUI('[SleepDetector] Stream disconnected. Prompting to reconnect.');
           setReconnectRequired(true);
-          // The 'ended' event on the track should have already triggered cleanup.
-          // This state just ensures the user sees a clear way to restart.
         }
       }
 
-      // Continuously track if the stream is active.
       streamActiveBeforeSleep.current = !!(streamRef.current && streamRef.current.active);
-    }, 2000); // Check every 2 seconds
+    }, 2000); 
 
     return () => clearInterval(interval);
   }, [logToUI]);
@@ -970,10 +965,9 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
   const allAnalyses = [...queuedAnalyses, ...pendingEventAnalyses, ...runningAnalyses, ...completedAnalyses];
 
-  // Log initial capture session ID on app load
   useEffect(() => {
     logToUI(`[App] Starting with capture session ID: ${captureSessionId} (next capture will use this ID)`);
-  }, []); // Run only once on mount
+  }, []); 
 
   useEffect(() => {
     if (pipWindow) {
@@ -987,7 +981,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         button:disabled { opacity: 0.5; cursor: not-allowed; }
       `;
       pipWindow.document.head.appendChild(style);
-      // Use ReactDOM.createRoot for React 18
       const reactRoot = ReactDOM.createRoot(root);
       reactRoot.render(<PipView events={events} onStart={handleStartScreenShare} onStop={handleStopScreenShare} isCapturing={!!stream} mainStatus={mainStatus} error={error} />);
     }
@@ -1066,10 +1059,21 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
 
+      <Card className="w-full max-w-7xl mt-4">
+        <CardHeader>
+          <CardTitle>Live Preview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <VideoPreviewArea 
+            stream={stream} 
+            videoRef={videoRefCallback}
+          />
+        </CardContent>
+      </Card>
+
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       <canvas ref={monitoringCanvasRef} style={{ display: 'none' }} />
 
-      {/* Details Section (Timeline + Screenshot) */}
       <div 
         className="w-full max-w-7xl mt-4 space-y-4"
         onMouseEnter={() => setIsHoveringScrollableArea(true)}
@@ -1107,7 +1111,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
             if (value === 'settings' || value === 'debug') {
               setSelectedMoreOption(value);
             } else {
-              setSelectedMoreOption(null);
               setSelectedMainTab(value);
             }
           }}>
@@ -1217,7 +1220,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       
       {(selectedMainTab === 'events' || (selectedMainTab === 'recent' && selectedActivity)) && !selectedMoreOption && (
         <div className="w-full max-w-7xl mt-4">
-          {/* Live Analyses Section */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-semibold">LLM traces {allAnalyses.length > 0 && `(${allAnalyses.length})`}</h2>
