@@ -551,6 +551,11 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         initialFrameCapturedRef.current = false;
     }
     
+    // Generate a new, unique session ID for this recording session
+    const newAppSessionId = crypto.randomUUID();
+    localStorage.setItem('app_session_id', newAppSessionId);
+    logToUI(`[handleStartScreenShare] New session started with ID: ${newAppSessionId}`);
+    
     const currentSessionId = captureSessionId;
     currentCaptureSessionIdRef.current = currentSessionId;
     const nextSessionId = captureSessionId + 1;
@@ -591,7 +596,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       streamRef.current = null;
       setMainStatus('Error starting share');
     }
-  }, [stream, logToUI, logError, captureSessionId]);
+  }, [stream, logToUI, logError, captureSessionId, userId]);
 
   useEffect(() => {
     const loadData = async () => {

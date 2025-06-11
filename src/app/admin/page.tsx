@@ -19,7 +19,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [userNameInput, setUserNameInput] = useState('');
-  const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' } | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' } | null>({ key: 'timestamp', direction: 'descending' });
   const [filter, setFilter] = useState('');
 
   const fetchSessions = useCallback(async () => {
@@ -94,7 +94,8 @@ export default function AdminPage() {
     if (!filter) return allSessions;
     return allSessions.filter(session => 
       session.userId.includes(filter) || 
-      (session.userName && session.userName.toLowerCase().includes(filter.toLowerCase()))
+      (session.userName && session.userName.toLowerCase().includes(filter.toLowerCase())) ||
+      session.id.includes(filter)
     );
   }, [allSessions, filter]);
 
