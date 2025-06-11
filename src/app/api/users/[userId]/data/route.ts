@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import type { ActivityItem, Event, RunningAnalysis } from '@/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -25,10 +25,10 @@ function isRunningAnalysis(item: unknown): item is RunningAnalysis {
 }
 
 export async function GET(
-  request: Request,
-  context: { params: { userId: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ userId: string }> }
 ) {
-  const { userId } = context.params;
+  const { userId } = await params;
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
 
