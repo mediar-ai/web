@@ -137,6 +137,9 @@ export default function AdminPage() {
               Total Events
             </th>
             <th scope="col" className="px-2 py-2">
+              Processed Events
+            </th>
+            <th scope="col" className="px-2 py-2">
               Live Sessions
             </th>
             <th scope="col" className="px-2 py-2">
@@ -163,6 +166,7 @@ export default function AdminPage() {
             .map(([userId, userData]) => {
               const liveSessions = userData.sessions.filter(s => s.status === 'live').length;
               const totalEvents = userData.sessions.reduce((sum, s) => sum + s.eventCount, 0);
+              const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
               const mostRecentSession = userData.sessions.sort((a, b) => 
                 new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
               )[0];
@@ -225,6 +229,9 @@ export default function AdminPage() {
                       {totalEvents}
                     </td>
                     <td className="px-2 py-1">
+                      {totalProcessedEvents}
+                    </td>
+                    <td className="px-2 py-1">
                       {liveSessions > 0 ? (
                         <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800">
                           {liveSessions} live
@@ -257,7 +264,8 @@ export default function AdminPage() {
                                   }`}>
                                     {session.type === 'lowLevel' ? 'Low-Level' : 'Web'}
                                   </span>
-                                  <span>{session.eventCount} events</span>
+                                  <span>{session.eventCount} raw events</span>
+                                  <span className="font-semibold">{session.processed_event_count || 0} processed</span>
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${
                                     session.status === 'live' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                                   }`}>

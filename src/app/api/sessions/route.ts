@@ -9,6 +9,7 @@ interface Session {
   type: 'lowLevel' | 'web';
   timestamp: string;
   eventCount: number;
+  processed_event_count: number;
   status: 'live' | 'offline';
 }
 
@@ -50,6 +51,7 @@ export async function GET() {
         type: session.session_type,
         timestamp: session.last_event_timestamp,
         eventCount: session.event_count,
+        processed_event_count: session.processed_event_count || 0,
         status: isLive ? 'live' : 'offline',
       };
     });
