@@ -91,7 +91,7 @@ export interface ScreenshotForExport {
 }
 
 // Helper types for props of new internal components
-export type PageHeaderControlsProps = {
+export interface PageHeaderControlsProps {
   stream: MediaStream | null;
   handleStartScreenShare: () => void;
   handleStopScreenShare: () => void;
@@ -106,8 +106,7 @@ export type PageHeaderControlsProps = {
   streamRef: React.RefObject<MediaStream | null>;
   MAX_PARALLEL_ANALYSES: number;
   reconnectRequired: boolean;
-  exportInProgress: boolean;
-};
+}
 
 export type VideoPreviewAreaProps = {
   stream: MediaStream | null;
@@ -166,8 +165,6 @@ export type DebugTabContentProps = {
   copyLogsToClipboard: () => void;
   copyStatus: 'idle' | 'copied';
   clearAllData: () => void;
-  handleExportAllData: () => void;
-  exportInProgress: boolean;
 };
 
 // Adding missing prop types that were defined earlier in page.tsx

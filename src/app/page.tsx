@@ -22,7 +22,6 @@ import {
   saveActivityItems,
   saveCompletedAnalyses,
   clearPersistedData,
-  getAllPersistedDataForExport,
   saveScreenshot,
 } from '../lib/db';
 import EventsTabContent from '../components/tabs/EventsTabContent';
@@ -136,7 +135,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   );
   const [mainStatus, setMainStatus] = useState<string>('Idle');
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
-  const [exportInProgress, setExportInProgress] = useState<boolean>(false);
   const [reconnectRequired, setReconnectRequired] = useState(false);
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
   const [analysesPanelCollapsed, setAnalysesPanelCollapsed] = useState(false);
@@ -150,6 +148,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   const streamActiveBeforeSleep = useRef<boolean>(false);
   const lastHeartbeat = useRef<number>(Date.now());
   const currentCaptureSessionIdRef = useRef<number>(0);
+  const streamedItemIds = useRef(new Set<string>());
 
   const [promptSaveStatus, setPromptSaveStatus] = useState<
     'idle' | 'saving' | 'saved'
@@ -181,10 +180,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     console.log(...args);
   }, []);
 
-  const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
-    videoRef.current = node;
-  }, []);
-
   const logError = useCallback((...args: unknown[]) => {
     const timestamp = new Date().toISOString();
     const message = args.map((arg) =>
@@ -193,6 +188,45 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     const logEntry = `${timestamp} [ERROR] ${message}`;
     setFrontendLogs((prevLogs) => [logEntry, ...prevLogs].slice(0, 100));
     console.error(...args);
+  }, []);
+
+  const streamData = useCallback(async <T extends {id: string, timestamp: string}>(itemType: string, item: T) => {
+    const appSessionId = localStorage.getItem('app_session_id');
+    if (!userId || !appSessionId) {
+      // Don't log an error here, as this can happen normally on startup
+      return;
+    }
+    
+    // Prevent re-streaming the same item
+    if (streamedItemIds.current.has(item.id)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          sessionId: appSessionId,
+          itemType,
+          item,
+        }),
+      });
+
+      if (response.ok) {
+        streamedItemIds.current.add(item.id);
+      } else {
+        const errorData = await response.json();
+        logError(`[streamData] API error for ${itemType} (${item.id}):`, errorData.details || response.statusText);
+      }
+    } catch (err) {
+      logError(`[streamData] Network error for ${itemType} (${item.id}):`, err);
+    }
+  }, [userId, logError]);
+
+  const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
   }, []);
 
   useEffect(() => {
@@ -455,85 +489,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     }
   }, [logToUI, logError, setActivityItems]);
 
-  const handleExportAllData = useCallback(async () => {
-    logToUI('[handleExportAllData] Starting data export...');
-    setExportInProgress(true);
-
-    if (!userId) {
-      logError('[handleExportAllData] User ID not set. Cannot export.');
-      setError('User ID not available. Please reload.');
-      setExportInProgress(false);
-      return;
-    }
-
-    try {
-      const allLocalData = await getAllPersistedDataForExport();
-      logToUI(
-        '[handleExportAllData] Retrieved local data. Size (chars):',
-        JSON.stringify(allLocalData).length,
-      );
-
-      let sessionId = localStorage.getItem('app_session_id');
-      if (!sessionId) {
-        sessionId = crypto.randomUUID(); 
-        localStorage.setItem('app_session_id', sessionId);
-        logToUI(
-          '[handleExportAllData] Generated new session ID for export:',
-          sessionId,
-        );
-      } else {
-        logToUI(
-          '[handleExportAllData] Using existing session ID for export:',
-          sessionId,
-        );
-      }
-
-      const payload = {
-        sessionId: sessionId,
-        userId: userId,
-        exportedData: allLocalData,
-      };
-
-      logToUI(
-        "[handleExportAllData] Invoking 'ingest-user-activity' API...",
-      );
-
-      const response = await fetch('/api/ingest-user-activity', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        logError(
-          "[handleExportAllData] API error:",
-          errorData.details || response.statusText,
-        );
-        setError(
-          `API export failed: ${errorData.details || response.statusText}.`,
-        );
-      } else {
-        const result = await response.json();
-        logToUI(
-          "[handleExportAllData] API success:",
-          result,
-        );
-      }
-    } catch (err) {
-      let errorMessage = 'Unknown export error';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      logError('[handleExportAllData] Export process error:', err);
-      setError(`Export error: ${errorMessage}.`);
-    } finally {
-      setExportInProgress(false);
-    }
-  }, [logToUI, logError, setError, userId]);
-
   const dismissError = useCallback(() => {
     setShowError(false);
     setTimeout(() => setError(null), 300);
@@ -702,6 +657,20 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   useEffect(() => {
     if (completedAnalyses.length > 0) saveCompletedAnalyses(completedAnalyses);
   }, [completedAnalyses]);
+
+  // Stream new activity items to Supabase
+  useEffect(() => {
+    if (!stream) return; // Only stream when capture is active
+    const newItems = activityItems.filter(item => !streamedItemIds.current.has(item.id));
+    newItems.forEach(item => streamData('activity_item', item));
+  }, [activityItems, streamData, stream]);
+
+  // Stream new events to Supabase
+  useEffect(() => {
+    if (!stream) return; // Only stream when capture is active
+    const newItems = events.filter(item => !streamedItemIds.current.has(item.id));
+    newItems.forEach(item => streamData('event', item));
+  }, [events, streamData, stream]);
 
   useEffect(() => {
     if (selectedActivity) {
@@ -1032,7 +1001,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
   return (
     <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
-      <ExportStatusDialog exportInProgress={exportInProgress} />
+      <ExportStatusDialog exportInProgress={false} />
 
       <PageHeaderControls
         stream={stream}
@@ -1049,7 +1018,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         streamRef={streamRef}
         MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
         reconnectRequired={reconnectRequired}
-        exportInProgress={exportInProgress}
       />
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
@@ -1205,8 +1173,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
                 copyLogsToClipboard={copyLogsToClipboard}
                 copyStatus={copyStatus}
                 clearAllData={clearAllData}
-                handleExportAllData={handleExportAllData}
-                exportInProgress={exportInProgress}
               />
             </TabsContent>
           </Tabs>
