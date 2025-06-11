@@ -116,7 +116,19 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
   };
 
   if (runningAnalyses.length === 0) {
-    return null;
+    return (
+      <Card>
+        <CardContent className='pt-4 text-center text-muted-foreground'>
+          <p>No LLM analyses yet. Start a capture session to see traces.</p>
+          <p className='text-sm mt-2'>Traces will appear here when:</p>
+          <ul className='text-sm mt-1'>
+            <li>• Screenshots are captured (Auto Detection enabled)</li>
+            <li>• Frames are analyzed for UI differences</li>
+            <li>• Events are generated from activities</li>
+          </ul>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

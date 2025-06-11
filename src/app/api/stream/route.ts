@@ -23,6 +23,38 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
+// Helper function to recursively convert timestamp-like strings to ISO format
+function normalizeTimestamps(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj;
+  
+  if (typeof obj === 'string') {
+    // Check if it looks like a time string (e.g., "11:15:34 AM")
+    const timePattern = /^\d{1,2}:\d{2}:\d{2}\s*(AM|PM)$/i;
+    if (timePattern.test(obj)) {
+      // Convert to today's date with this time
+      const today = new Date();
+      const dateStr = `${today.toDateString()} ${obj}`;
+      const date = new Date(dateStr);
+      return date.toISOString();
+    }
+    return obj;
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(normalizeTimestamps);
+  }
+  
+  if (typeof obj === 'object') {
+    const normalized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      normalized[key] = normalizeTimestamps(value);
+    }
+    return normalized;
+  }
+  
+  return obj;
+}
+
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as StreamPayload;
@@ -57,13 +89,26 @@ export async function POST(request: Request) {
         }
     } else {
         const { id, timestamp, ...item_data } = item;
+        
+        // Normalize any timestamp-like strings in the item data
+        const normalizedItemData = normalizeTimestamps(item_data);
+        
+        // Ensure the main timestamp is in ISO format
+        let clientTimestamp: string;
+        try {
+          clientTimestamp = new Date(timestamp).toISOString();
+        } catch {
+          console.error(`[API/STREAM] Invalid timestamp format: ${timestamp}`);
+          clientTimestamp = new Date().toISOString(); // Fallback to current time
+        }
+        
         const { error } = await supabaseAdmin.from('user_activity_data').upsert({
             session_id: sessionId,
             user_id: userId,
             item_type: itemType,
             client_item_id: id,
-            item_data: item_data,
-            client_timestamp: timestamp,
+            item_data: normalizedItemData,
+            client_timestamp: clientTimestamp,
         }, {
           onConflict: 'session_id, item_type, client_item_id',
         });

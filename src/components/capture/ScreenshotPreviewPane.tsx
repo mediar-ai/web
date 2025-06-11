@@ -22,7 +22,11 @@ interface ScreenshotPreviewPaneProps {
   onActivitySelect: (item: ActivityItem) => void;
 }
 
-const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ selectedActivity, activityItems, onActivitySelect }) => {
+const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ 
+  selectedActivity, 
+  activityItems, 
+  onActivitySelect
+}) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);

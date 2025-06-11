@@ -716,7 +716,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       
       const newWorkflow: Workflow = {
         id: crypto.randomUUID(),
-        name: `Workflow ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
+        name: `Workflow ${new Date().toISOString()}`,
         description: '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -932,6 +932,51 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   }));
 
   const allAnalyses = [...queuedAnalyses, ...pendingEventAnalyses, ...runningAnalyses, ...completedAnalyses];
+
+  // Debug logging for LLM traces
+  useEffect(() => {
+    console.log('[LLM Traces Debug]', {
+      selectedMainTab,
+      selectedActivity: !!selectedActivity,
+      selectedMoreOption,
+      showCondition: (selectedMainTab === 'events' || (selectedMainTab === 'recent' && selectedActivity)) && !selectedMoreOption,
+      analysesCounts: {
+        queued: queuedAnalyses.length,
+        pending: pendingEventAnalyses.length,
+        running: runningAnalyses.length,
+        completed: completedAnalyses.length,
+        total: allAnalyses.length
+      },
+      frameBufferLength: frameBuffer.length,
+      analysesPanelCollapsed
+    });
+  }, [selectedMainTab, selectedActivity, selectedMoreOption, allAnalyses.length, analysesPanelCollapsed]);
+
+  // Debug: Check IndexedDB directly
+  useEffect(() => {
+    const checkIndexedDB = async () => {
+      try {
+        const dbRequest = indexedDB.open('WorkflowCaptureDB', 5);
+        dbRequest.onsuccess = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+          const transaction = db.transaction(['completedAnalyses'], 'readonly');
+          const store = transaction.objectStore('completedAnalyses');
+          const getAllRequest = store.getAll();
+          
+          getAllRequest.onsuccess = () => {
+            console.log('[IndexedDB Check] Completed analyses in DB:', getAllRequest.result?.length || 0);
+            if (getAllRequest.result && getAllRequest.result.length > 0) {
+              console.log('[IndexedDB Check] Sample:', getAllRequest.result[0]);
+            }
+          };
+        };
+      } catch (err) {
+        console.error('[IndexedDB Check] Error:', err);
+      }
+    };
+    
+    checkIndexedDB();
+  }, []);
 
   useEffect(() => {
     logToUI(`[App] Starting with capture session ID: ${captureSessionId} (next capture will use this ID)`);
@@ -1189,7 +1234,8 @@ Analyze the activity sequence for context, then create ONE clear, complete event
         </div>
       </div>
       
-      {(selectedMainTab === 'events' || (selectedMainTab === 'recent' && selectedActivity)) && !selectedMoreOption && (
+      {/* Temporarily always show LLM traces for debugging */}
+      {true && (
         <div className="w-full max-w-7xl mt-4">
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -1201,6 +1247,14 @@ Analyze the activity sequence for context, then create ONE clear, complete event
             {!analysesPanelCollapsed && (
               <LiveAnalysesPanel runningAnalyses={allAnalyses} />
             )}
+            <div className="text-xs text-muted-foreground mt-2">
+              Debug: Tab={selectedMainTab}, Activity Selected={!!selectedActivity}, More Option={selectedMoreOption || 'none'}, 
+              Condition Met={(selectedMainTab === 'events' || (selectedMainTab === 'recent' && selectedActivity)) && !selectedMoreOption ? 'YES' : 'NO'}
+              <br />
+              Analyses: Queued={queuedAnalyses.length}, Pending={pendingEventAnalyses.length}, 
+              Running={runningAnalyses.length}, Completed={completedAnalyses.length}, 
+              Total={allAnalyses.length}, FrameBuffer={frameBuffer.length}
+            </div>
           </div>
         </div>
       )}
