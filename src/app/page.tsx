@@ -562,8 +562,6 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       '[handleStartScreenShare] Cleared buffers for new session. ID:', currentSessionId,
     );
 
-    handleTogglePip(true);
-
     setMainStatus('Initializing...');
     try {
       const mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -593,7 +591,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       streamRef.current = null;
       setMainStatus('Error starting share');
     }
-  }, [stream, logToUI, logError, captureSessionId, pipWindow]);
+  }, [stream, logToUI, logError, captureSessionId]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -1006,7 +1004,10 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
       <PageHeaderControls
         stream={stream}
-        handleStartScreenShare={handleStartScreenShare}
+        handleStartScreenShare={() => {
+          handleStartScreenShare();
+          handleTogglePip(true);
+        }}
         handleStopScreenShare={handleStopScreenShare}
         onTogglePip={() => handleTogglePip()}
         isPipOpen={!!pipWindow}

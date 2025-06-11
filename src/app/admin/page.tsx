@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { getSessions, type UserSessionData, type Session } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { useDebouncedCallback } from 'use-debounce';
 
 type EnhancedSession = Session & { userName: string | null };
 type SortableKeys = keyof EnhancedSession | 'userName';
@@ -18,17 +20,44 @@ export default function AdminPage() {
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [userNameInput, setUserNameInput] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' } | null>(null);
+  const [filter, setFilter] = useState('');
 
-  const fetchSessions = async () => {
-    setLoading(true);
+  const fetchSessions = useCallback(async () => {
     const sessionData = await getSessions();
     setUserSessions(sessionData);
-    setLoading(false);
-  };
+  }, []);
+
+  const debouncedFetchSessions = useDebouncedCallback(fetchSessions, 1000);
 
   useEffect(() => {
-    fetchSessions();
-  }, []);
+    const initialFetch = async () => {
+      setLoading(true);
+      await fetchSessions();
+      setLoading(false);
+    }
+    initialFetch();
+
+    const channel = supabase
+      .channel('public:session_metadata')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'session_metadata' }, 
+        (payload) => {
+          console.log('[Realtime] Change detected in session_metadata', payload);
+          debouncedFetchSessions();
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Realtime] Successfully subscribed to session_metadata');
+        }
+        if (status === 'CHANNEL_ERROR') {
+          console.error('[Realtime] Error subscribing to session_metadata:', err);
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchSessions, debouncedFetchSessions]);
 
   const handleSaveName = async (userId: string) => {
     try {
@@ -41,7 +70,7 @@ export default function AdminPage() {
       });
       setEditingUser(null);
       setUserNameInput('');
-      fetchSessions(); // Refresh data
+      debouncedFetchSessions(); // Refresh data using debounced fetch
     } catch (error) {
       console.error('Failed to save user name:', error);
     }
@@ -61,8 +90,16 @@ export default function AdminPage() {
     return sessions;
   }, [userSessions]);
 
+  const filteredSessions = useMemo(() => {
+    if (!filter) return allSessions;
+    return allSessions.filter(session => 
+      session.userId.includes(filter) || 
+      (session.userName && session.userName.toLowerCase().includes(filter.toLowerCase()))
+    );
+  }, [allSessions, filter]);
+
   const sortedSessions = useMemo(() => {
-    const sortableItems = [...allSessions];
+    const sortableItems = [...filteredSessions];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
         const aValue = sortConfig.key === 'userName' ? a.userName || a.userId : a[sortConfig.key];
@@ -78,7 +115,7 @@ export default function AdminPage() {
       });
     }
     return sortableItems;
-  }, [allSessions, sortConfig]);
+  }, [filteredSessions, sortConfig]);
 
   const requestSort = (key: SortableKeys) => {
     let direction: 'ascending' | 'descending' = 'ascending';
@@ -106,7 +143,16 @@ export default function AdminPage() {
     <div className="container mx-auto py-4">
       <div className="flex justify-between items-center mb-3">
         <h1 className="text-xl font-bold">Admin - All Sessions</h1>
-        <ThemeSwitcher />
+        <div className="flex items-center gap-2">
+          <Input 
+            type="text"
+            placeholder="Filter by User ID or Name..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="h-8 w-48"
+          />
+          <ThemeSwitcher />
+        </div>
       </div>
       
       <table className="w-full text-sm text-left">
