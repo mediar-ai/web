@@ -95,6 +95,7 @@ const TimelineSlider: React.FC<TimelineSliderProps> = ({
         const isLast = i === maxLabels - 1;
         
         labels.push({
+          id: item.id,
           index,
           time: date.toLocaleDateString([], { 
             month: 'short', 
@@ -131,7 +132,7 @@ const TimelineSlider: React.FC<TimelineSliderProps> = ({
             {timeLabels.map((label) => (
               (label.isFirst || label.isLast) && (
                 <div
-                  key={`tick-${label.index}`}
+                  key={`tick-${label.id}-${label.index}`}
                   className='absolute w-0.5 h-3 bg-muted-foreground -top-1'
                   style={{ left: `${(label.index / (reversedActivityItems.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}
                 />
@@ -168,7 +169,7 @@ const TimelineSlider: React.FC<TimelineSliderProps> = ({
           
           return (
             <div
-              key={`${label.time}-${label.index}`}
+              key={`${label.id}-${label.index}`}
               className={cn(
                 'absolute text-xs text-muted-foreground whitespace-nowrap',
                 label.isFirst ? 'left-0' : label.isLast ? 'right-0' : '-translate-x-1/2'

@@ -189,35 +189,15 @@ export function useFrameAnalysisDispatcher({
           body: JSON.stringify(analysisPayload),
         });
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let jsonString = '';
-        let result;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-          jsonString += decoder.decode(value, { stream: true });
-        }
+        const result = await response.json();
         
-        try {
-          result = JSON.parse(jsonString);
-        } catch (e) {
-          logError('[processUIDiffRequest] Failed to parse final JSON string:', e, 'Raw string:', jsonString);
-          result = { error: 'Failed to parse JSON response from server.' };
-        }
-
-        logToUI(`[processUIDiffRequest] ✅ Stream finished. Total content length: ${jsonString.length}`);
-        
-        if (typeof result === 'object') {
-          const diffData = result as Omit<
+        if (result && result.analysis) {
+          const diffData = result.analysis as Omit<
             UIDiffAnalysis,
             'type' | 'id' | 'timestamp' | 'image1_id' | 'image2_id'
           >;
