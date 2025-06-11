@@ -3,11 +3,11 @@ import { NextResponse } from 'next/server';
 
 export async function PUT(
   request: Request,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     const { name } = await request.json();
-    const userId = params.userId;
+    const { userId } = await params;
 
     if (!userId || typeof name !== 'string') {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
