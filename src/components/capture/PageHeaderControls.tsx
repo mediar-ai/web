@@ -79,36 +79,36 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   }, []);
 
   return (
-      <div className='w-full flex flex-col sm:flex-row justify-between items-center mb-1 py-2'>
-        <div className="flex items-center gap-2">
-          <StatusIndicator
-            mainStatus={mainStatus}
-            autoDetectionEnabled={autoDetectionEnabled}
-            isMonitoring={isMonitoring}
-            displayChangePercent={displayChangePercent}
-            activeAnalysesCount={activeAnalysesCount}
-            error={error}
-            streamRef={streamRef}
-            MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
-            reconnectRequired={reconnectRequired}
-          />
-        </div>
-
-        <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0">
-          {!stream ? (
-            <Button onClick={handleStartScreenShare}>
-              <Zap className="mr-2 h-4 w-4" /> Start Training
-            </Button>
-          ) : (
-            <Button onClick={handleStopScreenShare} variant="destructive">
-              Stop Training
-            </Button>
-          )}
-          <Button onClick={onTogglePip} variant="outline" size="icon" aria-label="Toggle Picture-in-Picture" disabled={!isPipSupported}>
-            <PictureInPicture className="h-4 w-4" />
-          </Button>
-        </div>
+    <div className="w-full max-w-7xl sticky top-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col sm:flex-row items-center justify-between mt-4 p-3 border rounded-lg shadow-sm gap-4">
+      <div className="flex items-center gap-4 text-sm font-mono w-full sm:w-auto">
+        <StatusIndicator
+          mainStatus={mainStatus}
+          autoDetectionEnabled={autoDetectionEnabled}
+          isMonitoring={isMonitoring}
+          displayChangePercent={displayChangePercent}
+          activeAnalysesCount={activeAnalysesCount}
+          error={error}
+          streamRef={streamRef}
+          MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
+          reconnectRequired={reconnectRequired}
+        />
       </div>
+
+      <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0">
+        {!stream ? (
+          <Button onClick={handleStartScreenShare}>
+            <Zap className="mr-2 h-4 w-4" /> Start Training
+          </Button>
+        ) : (
+          <Button onClick={handleStopScreenShare} variant="destructive">
+            Stop Training
+          </Button>
+        )}
+        <Button onClick={onTogglePip} variant="outline" size="icon" aria-label="Toggle Picture-in-Picture" disabled={!isPipSupported}>
+          <PictureInPicture className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
   );
 };
 
