@@ -51,6 +51,7 @@ import { MoreHorizontal, Settings, Bug } from 'lucide-react';
 import ReactDOM from 'react-dom/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import VideoPreviewArea from '@/components/capture/VideoPreviewArea';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 
 export default function Home() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
@@ -1093,29 +1094,32 @@ Analyze the activity sequence for context, then create ONE clear, complete event
                 }}>Workflow</TabsTrigger>
               </TabsList>
               
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant='outline' size='sm' className='h-9 px-2 flex-shrink-0'>
-                    <MoreHorizontal className='h-4 w-4' />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align='end'>
-                  <DropdownMenuItem onClick={() => {
-                    setSelectedMoreOption('settings');
-                    setSelectedMainTab('settings');
-                  }}>
-                    <Settings className='mr-2 h-4 w-4' />
-                    Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
-                    setSelectedMoreOption('debug');
-                    setSelectedMainTab('debug');
-                  }}>
-                    <Bug className='mr-2 h-4 w-4' />
-                    Debug Logs
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant='outline' size='sm' className='h-9 px-2 flex-shrink-0'>
+                      <MoreHorizontal className='h-4 w-4' />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align='end'>
+                    <DropdownMenuItem onClick={() => {
+                      setSelectedMoreOption('settings');
+                      setSelectedMainTab('settings');
+                    }}>
+                      <Settings className='mr-2 h-4 w-4' />
+                      Settings
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => {
+                      setSelectedMoreOption('debug');
+                      setSelectedMainTab('debug');
+                    }}>
+                      <Bug className='mr-2 h-4 w-4' />
+                      Debug Logs
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <ThemeSwitcher />
+              </div>
             </div>
 
             <TabsContent value='recent' className='-mt-3'>
