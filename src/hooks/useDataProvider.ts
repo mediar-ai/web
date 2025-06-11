@@ -6,15 +6,15 @@ export function useDataProvider(viewingMode: ViewingMode): DataProvider {
   const dataProvider = useMemo(() => {
     if (viewingMode.type === 'local') {
       console.log('[useDataProvider] Using LocalDataProvider');
-      return new LocalDataProvider();
+      return LocalDataProvider;
     } else {
       console.log('[useDataProvider] Using RemoteDataProvider for user:', viewingMode.userId, 'session:', viewingMode.sessionId);
-      if (!viewingMode.userId || !viewingMode.sessionId) {
-        throw new Error('RemoteDataProvider requires userId and sessionId');
+      if (!viewingMode.userId) {
+        throw new Error('RemoteDataProvider requires userId');
       }
-      return new RemoteDataProvider(viewingMode.userId, viewingMode.sessionId);
+      return new RemoteDataProvider(viewingMode.userId);
     }
-  }, [viewingMode.type, viewingMode.userId, viewingMode.sessionId]);
+  }, [viewingMode]);
 
   return dataProvider;
 } 
