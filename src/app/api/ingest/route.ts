@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { analyzeTextEvent } from '@/lib/analysis';
+import { EVENTS_PROMPT } from '@/lib/prompts';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -95,6 +97,57 @@ export async function POST(request: Request) {
         failedUploads,
       }, { status: 500 });
     }
+
+    // --- Start of New Analysis Logic ---
+    try {
+      // 1. Format the event payload into a human-readable string.
+      // This is a simple version; it can be made more sophisticated.
+      let eventForAnalysis = `Event Type: ${finalPayload.type}`;
+      if (finalPayload.event) {
+        eventForAnalysis += `, Details: ${JSON.stringify(finalPayload.event)}`;
+      }
+      if (finalPayload.screenshot_paths && finalPayload.screenshot_paths.length > 0) {
+        eventForAnalysis += `, Screenshots: ${finalPayload.screenshot_paths.join(', ')}`;
+      }
+
+      // 2. Call the centralized analysis function.
+      console.log(`[INGEST ANALYSIS] Analyzing event: "${eventForAnalysis}"`);
+      const analysisResult = await analyzeTextEvent(eventForAnalysis, EVENTS_PROMPT);
+
+      // 3. Log the result to the server console.
+      console.log('--- LLM ANALYSIS RESULT (LOW-LEVEL EVENT) ---');
+      console.log(analysisResult);
+      console.log('---------------------------------------------');
+
+      // 4. Save the analysis result to the user_activity_data table.
+      if (analysisResult) {
+        const { error: insertAnalysisError } = await supabaseAdmin
+          .from('user_activity_data')
+          .insert({
+            session_id,
+            user_id,
+            item_type: 'event', // Stored as a high-level 'event'
+            client_item_id: `llm-event-${Date.now()}-${Math.random()}`, // Create a unique ID
+            item_data: {
+              summary: analysisResult,
+              // We could add more structured data here if the LLM returns it
+            },
+            client_timestamp: new Date().toISOString(),
+            source: 'low_level', // Set the source for low-level events
+          });
+        
+        if (insertAnalysisError) {
+          console.error('[INGEST ANALYSIS] Failed to save analysis to database:', insertAnalysisError);
+        } else {
+          console.log('[INGEST ANALYSIS] Successfully saved analysis to database.');
+        }
+      }
+
+    } catch (analysisError) {
+      console.error('[INGEST ANALYSIS] Failed to analyze low-level event:', analysisError);
+      // We don't return an error here because the main goal (ingestion) succeeded.
+    }
+    // --- End of New Analysis Logic ---
 
     const responseStatus = failedUploads.length > 0 ? 207 : 200; // 207 Multi-Status if partial success
     const responseMessage = failedUploads.length > 0 

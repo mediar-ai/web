@@ -76,6 +76,7 @@ export async function POST(request: Request) {
                 client_item_id: item.id,
                 item_data: { storage_path: item.storage_path, ...(item.metadata as Record<string, unknown>) },
                 client_timestamp: new Date(item.timestamp).toISOString(),
+                source: 'web',
             }, {
               onConflict: 'session_id, item_type, client_item_id',
             });
@@ -109,6 +110,7 @@ export async function POST(request: Request) {
             client_item_id: id,
             item_data: normalizedItemData,
             client_timestamp: clientTimestamp,
+            source: 'web',
         }, {
           onConflict: 'session_id, item_type, client_item_id',
         });
