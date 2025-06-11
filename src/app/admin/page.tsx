@@ -23,8 +23,10 @@ export default function AdminPage() {
   const [filter, setFilter] = useState('');
 
   const fetchSessions = useCallback(async () => {
+    console.log('[Admin] Fetching sessions...');
     const sessionData = await getSessions();
     setUserSessions(sessionData);
+    console.log('[Admin] Sessions fetched:', Object.keys(sessionData).length, 'users');
   }, []);
 
   const debouncedFetchSessions = useDebouncedCallback(fetchSessions, 1000);
@@ -41,7 +43,8 @@ export default function AdminPage() {
       .channel('public:session_metadata')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'session_metadata' }, 
         (payload) => {
-          console.log('[Realtime] Change detected in session_metadata', payload);
+          console.log('[Realtime] Change detected in session_metadata. Payload:', payload);
+          console.log('[Realtime] Queueing refetch...');
           debouncedFetchSessions();
         }
       )
@@ -145,6 +148,13 @@ export default function AdminPage() {
       <div className="flex justify-between items-center mb-3">
         <h1 className="text-xl font-bold">Admin - All Sessions</h1>
         <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            onClick={fetchSessions}
+            size="sm"
+          >
+            Refresh
+          </Button>
           <Input 
             type="text"
             placeholder="Filter by User ID or Name..."
