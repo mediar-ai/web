@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { AlertTriangle, RotateCcw, Zap, RefreshCw, PictureInPicture } from 'lucide-react';
 import type { PageHeaderControlsProps } from '../../types';
-import { AlertTriangle, RotateCcw, Zap, RefreshCw } from 'lucide-react';
 
 interface StatusIndicatorProps {
   mainStatus: string;
@@ -55,13 +55,11 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
   );
 };
 
-
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
   handleStartScreenShare,
   handleStopScreenShare,
   onTogglePip,
-  isPipOpen,
   mainStatus,
   autoDetectionEnabled,
   isMonitoring,
@@ -72,15 +70,15 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   MAX_PARALLEL_ANALYSES,
   reconnectRequired,
 }) => {
-    const [isPipSupported, setIsPipSupported] = useState(false);
+  const [isPipSupported, setIsPipSupported] = useState(false);
 
-    useEffect(() => {
-        if (window.documentPictureInPicture) {
-            setIsPipSupported(true);
-        }
-    }, []);
+  useEffect(() => {
+    if (window.documentPictureInPicture) {
+      setIsPipSupported(true);
+    }
+  }, []);
 
-    return (
+  return (
       <div className='w-full flex flex-col sm:flex-row justify-between items-center mb-1 py-2'>
         <div className="flex items-center gap-2">
           <StatusIndicator
@@ -96,25 +94,22 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-2 mt-2 sm:mt-0">
-          <Button onClick={onTogglePip} variant="outline" size="sm" disabled={!isPipSupported}>
-            {isPipOpen ? 'Close PiP' : 'Open PiP'}
+        <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0">
+          {!stream ? (
+            <Button onClick={handleStartScreenShare}>
+              <Zap className="mr-2 h-4 w-4" /> Start Training
+            </Button>
+          ) : (
+            <Button onClick={handleStopScreenShare} variant="destructive">
+              Stop Training
+            </Button>
+          )}
+          <Button onClick={onTogglePip} variant="outline" size="icon" aria-label="Toggle Picture-in-Picture" disabled={!isPipSupported}>
+            <PictureInPicture className="h-4 w-4" />
           </Button>
-
-          {!stream && (
-            <Button onClick={handleStartScreenShare} size="sm">
-              Start Capture
-            </Button>
-          )}
-
-          {stream && (
-            <Button onClick={handleStopScreenShare} variant="destructive" size="sm">
-              Stop Capture
-            </Button>
-          )}
         </div>
       </div>
-    )
+  );
 };
 
 export default PageHeaderControls; 
