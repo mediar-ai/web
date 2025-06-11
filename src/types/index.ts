@@ -231,4 +231,29 @@ export interface LowLevelEvent {
     event: Record<string, unknown>; // More specific than any
   };
   created_at: string;
+}
+
+// =================================================================
+// Types for Multi-User Viewing
+// =================================================================
+
+export type ViewingMode = {
+  type: 'local' | 'remote';
+  userId?: string;
+  sessionId?: string;
+  userName?: string;
+};
+
+export interface DataProvider {
+  loadActivityItems(): Promise<ActivityItem[]>;
+  loadEvents(): Promise<Event[]>;
+  loadScreenshot(id: string): Promise<Blob | string | null>;
+  loadWorkflowSteps(): Promise<Array<{
+    id: string;
+    analysis: string;
+    parsed: ParsedAnalysis | null;
+    timestamp: string;
+  }>>;
+  loadCompletedAnalyses(): Promise<RunningAnalysis[]>;
+  // Add more methods as needed
 } 

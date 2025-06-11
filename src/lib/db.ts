@@ -195,12 +195,14 @@ export const clearPersistedData = async () => {
       EVENTS_STORE,
       SCREENSHOTS_STORE,
       ACTIVITY_ITEMS_STORE,
+      COMPLETED_ANALYSES_STORE,
     ], 'readwrite');
     await transaction.objectStore(WORKFLOW_STORE).clear();
     await transaction.objectStore(LOGS_STORE).clear();
     await transaction.objectStore(EVENTS_STORE).clear();
     await transaction.objectStore(SCREENSHOTS_STORE).clear();
     await transaction.objectStore(ACTIVITY_ITEMS_STORE).clear();
+    await transaction.objectStore(COMPLETED_ANALYSES_STORE).clear();
   } catch (err) {
     console.error('[clearPersistedData] Failed to clear:', err);
   }
@@ -429,6 +431,7 @@ export const getAllPersistedDataForExport = async (): Promise<object> => {
     EVENTS_STORE,
     SCREENSHOTS_STORE,
     ACTIVITY_ITEMS_STORE,
+    COMPLETED_ANALYSES_STORE,
   ], 'readonly');
 
   const workflowSteps = await new Promise<
@@ -466,6 +469,12 @@ export const getAllPersistedDataForExport = async (): Promise<object> => {
     request.onsuccess = () => resolve(request.result || []);
   });
 
+  const completedAnalyses = await new Promise<RunningAnalysis[]>((resolve, reject) => {
+    const request = transaction.objectStore(COMPLETED_ANALYSES_STORE).getAll();
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result || []);
+  });
+
   const screenshotsFromDB = await new Promise<
     Array<{ id: string; blob: Blob; timestamp: number; size: number }>
   >((resolve, reject) => {
@@ -495,6 +504,7 @@ export const getAllPersistedDataForExport = async (): Promise<object> => {
     frontendLogs,
     events,
     activityItems,
+    completedAnalyses,
     screenshots: screenshotsForExport,
     exportedAt: new Date().toISOString(),
   };
