@@ -8,6 +8,20 @@ import type {
   RunningAnalysis,
 } from '../types';
 
+export interface Session {
+  id: string;
+  userId: string;
+  type: 'lowLevel' | 'web';
+  timestamp: string;
+  eventCount: number;
+  status: 'live' | 'offline';
+}
+
+export interface UserSessionData {
+  name: string | null;
+  sessions: Session[];
+}
+
 // IndexedDB utilities for persistence
 export const DB_NAME = 'WorkflowCaptureDB';
 export const DB_VERSION = 5; // Incremented for completed analyses store
@@ -486,18 +500,18 @@ export const getAllPersistedDataForExport = async (): Promise<object> => {
   };
 };
 
-export const getSessions = async (): Promise<{ lowLevel: string[]; web: string[] }> => {
+export const getSessions = async (): Promise<Record<string, UserSessionData>> => {
   try {
     const response = await fetch('/api/sessions');
     if (!response.ok) {
       const errorData = await response.json();
       console.error('[getSessions] Error fetching sessions:', errorData);
-      return { lowLevel: [], web: [] };
+      return {};
     }
     const data = await response.json();
     return data;
   } catch (err) {
     console.error('[getSessions] Failed to get sessions:', err);
-    return { lowLevel: [], web: [] };
+    return {};
   }
 }; 
