@@ -17,16 +17,6 @@ interface UserSessionData {
   sessions: Session[];
 }
 
-// I'll assume session_id is in the format `userId-uuid`
-const getUserIdFromSessionId = (sessionId: string) => {
-  // a bit more robust
-  const parts = sessionId.split('-');
-  if (parts.length > 1) {
-    return parts.slice(0, -1).join('-');
-  }
-  return sessionId;
-};
-
 export async function GET() {
   try {
     const supabase = createClient(
@@ -34,61 +24,36 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_KEY!
     );
 
-    // Fetch all events from both tables
-    const { data: lowLevelEvents, error: lowLevelError } = await supabase
-      .from('low_level_events')
-      .select('session_id, created_at');
+    // Fetch all sessions from the new metadata table
+    const { data: sessions, error: sessionsError } = await supabase
+      .from('session_metadata')
+      .select('*');
 
-    if (lowLevelError) {
-      console.error('[api/sessions] Error fetching low level event sessions:', lowLevelError);
-      return NextResponse.json({ error: lowLevelError.message }, { status: 500 });
+    if (sessionsError) {
+      console.error('[api/sessions] Error fetching session metadata:', sessionsError);
+      return NextResponse.json({ error: sessionsError.message }, { status: 500 });
     }
 
-    const { data: webRecorderEvents, error: webRecorderError } = await supabase
-      .from('user_activity_data')
-      .select('session_id, client_timestamp');
-
-    if (webRecorderError) {
-      console.error('[api/sessions] Error fetching web recorder sessions:', webRecorderError);
-      return NextResponse.json({ error: webRecorderError.message }, { status: 500 });
-    }
-
-    const allEvents = [
-      ...(lowLevelEvents || []).map(e => ({ ...e, type: 'lowLevel' })),
-      ...(webRecorderEvents || []).map(e => ({ ...e, created_at: e.client_timestamp, type: 'web' })),
-    ];
-
-    if (allEvents.length === 0) {
+    if (!sessions || sessions.length === 0) {
       return NextResponse.json({});
     }
 
-    // Group events by session_id
-    const sessionsMap = new Map<string, { type: 'lowLevel' | 'web'; events: { created_at: string }[] }>();
-    for (const event of allEvents) {
-      if (!sessionsMap.has(event.session_id)) {
-        sessionsMap.set(event.session_id, { type: event.type as 'lowLevel' | 'web', events: [] });
-      }
-      sessionsMap.get(event.session_id)!.events.push({ created_at: event.created_at });
-    }
-
-    // Process sessions to get required data
-    const processedSessions: Session[] = Array.from(sessionsMap.entries()).map(([sessionId, data]) => {
-      const sortedEvents = data.events.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      const lastEventTimestamp = new Date(sortedEvents[0].created_at).getTime();
-      const firstEventTimestamp = new Date(sortedEvents[sortedEvents.length - 1].created_at).getTime();
+    // Process sessions to add status
+    const processedSessions: Session[] = sessions.map(session => {
+      const lastEventTimestamp = new Date(session.last_event_timestamp).getTime();
       const now = Date.now();
       const isLive = (now - lastEventTimestamp) < 60000; // 60 seconds
 
       return {
-        id: sessionId,
-        userId: getUserIdFromSessionId(sessionId),
-        type: data.type,
-        timestamp: new Date(firstEventTimestamp).toISOString(),
-        eventCount: data.events.length,
+        id: session.session_id,
+        userId: session.user_id || 'unknown_user',
+        type: session.session_type,
+        timestamp: session.last_event_timestamp,
+        eventCount: session.event_count,
         status: isLive ? 'live' : 'offline',
       };
     });
-
+    
     // Get all unique user IDs
     const userIds = [...new Set(processedSessions.map(s => s.userId))];
 
