@@ -168,7 +168,7 @@ const TimelineSlider: React.FC<TimelineSliderProps> = ({
           
           return (
             <div
-              key={label.index}
+              key={`${label.time}-${label.index}`}
               className={cn(
                 'absolute text-xs text-muted-foreground whitespace-nowrap',
                 label.isFirst ? 'left-0' : label.isLast ? 'right-0' : '-translate-x-1/2'

@@ -1,5 +1,7 @@
 'use client';
 
+import { Suspense } from 'react';
+import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
@@ -9,13 +11,10 @@ import type {
   ActivityItem,
   Workflow,
   RunningAnalysis,
+  DataProvider,
 } from '../types';
 import {
-  loadWorkflowSteps,
-  loadEvents,
   loadFrontendLogs,
-  loadActivityItems,
-  loadCompletedAnalyses,
   saveWorkflowSteps,
   saveEvents,
   saveFrontendLogs,
@@ -24,6 +23,7 @@ import {
   clearPersistedData,
   saveScreenshot,
 } from '../lib/db';
+import { LocalDataProvider, RemoteDataProvider } from '../lib/dataProviders';
 import EventsTabContent from '../components/tabs/EventsTabContent';
 import ActivityTabContent from '../components/tabs/ActivityTabContent';
 import SettingsTabContent from '../components/tabs/SettingsTabContent';
@@ -52,10 +52,17 @@ import ReactDOM from 'react-dom/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import VideoPreviewArea from '@/components/capture/VideoPreviewArea';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { useViewingMode } from '@/hooks/useViewingMode';
+import { Alert } from '@/components/ui/alert';
+import { User } from 'lucide-react';
 
-export default function Home() {
+function HomeComponent() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
   const MAX_PARALLEL_ANALYSES = 5;
+
+  const viewingMode = useViewingMode();
+  const [dataProvider, setDataProvider] = useState<DataProvider>(LocalDataProvider);
+  const [remoteUserName, setRemoteUserName] = useState<string | null>(null);
 
   const [screenshotQuality, setScreenshotQuality] = useState<number>(0.95);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
@@ -231,7 +238,28 @@ Analyze the activity sequence for context, then create ONE clear, complete event
   }, []);
 
   useEffect(() => {
+    if (viewingMode.type === 'remote') {
+      // Clear local data to prevent flash of incorrect content
+      setActivityItems([]);
+      setEvents([]);
+      setCompletedAnalyses([]);
+      setWorkflowSteps([]);
+      setFrontendLogs([]);
+      setSelectedActivity(null);
+      setSelectedEvent(null);
+      
+      const remoteProvider = new RemoteDataProvider(viewingMode.userId);
+      setDataProvider(remoteProvider);
+      logToUI(`[Mode] Switched to remote data provider for user ${viewingMode.userId}`);
+    } else {
+      setDataProvider(LocalDataProvider);
+      logToUI('[Mode] Switched to local data provider.');
+    }
+  }, [viewingMode, logToUI]);
+
+  useEffect(() => {
     // On initial load, check for a user ID in local storage or create a new one.
+    // This is the *local* user's ID, used for Supabase streaming.
     let storedUserId = localStorage.getItem('user_id');
     if (!storedUserId) {
       storedUserId = crypto.randomUUID();
@@ -600,81 +628,112 @@ Analyze the activity sequence for context, then create ONE clear, complete event
 
   useEffect(() => {
     const loadData = async () => {
+      if (!dataProvider) return;
+      logToUI(`[loadData] Loading data using ${dataProvider.constructor.name}...`);
       try {
-        const [savedSteps, savedEvents, savedLogs, savedActivityItemsFromDB, savedCompletedAnalyses] =
+        const [savedSteps, savedEvents, savedActivityItemsFromDB, savedCompletedAnalyses] =
           await Promise.all([
-            loadWorkflowSteps(),
-            loadEvents(),
-            loadFrontendLogs(),
-            loadActivityItems(),
-            loadCompletedAnalyses(),
+            dataProvider.loadWorkflowSteps(),
+            dataProvider.loadEvents(),
+            dataProvider.loadActivityItems(),
+            dataProvider.loadCompletedAnalyses(),
           ]);
-        if (savedSteps.length > 0) {
-          setWorkflowSteps(savedSteps);
-          logToUI(
-            `[loadPersistedData] Loaded ${savedSteps.length} workflow steps`,
-          );
+        
+        // De-duplicate data on the client-side to prevent key errors
+        const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
+        const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
+        const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
+
+        if (dataProvider instanceof RemoteDataProvider) {
+            setRemoteUserName(dataProvider.getUserName());
         }
-        if (savedEvents.length > 0) {
-          setEvents(savedEvents);
-          logToUI(
-            `[loadPersistedData] Loaded ${savedEvents.length} events`,
-          );
+
+        // Always set the data, even if it's empty, to clear out old state.
+        setWorkflowSteps(savedSteps);
+        logToUI(
+          `[loadData] Loaded ${savedSteps.length} workflow steps`
+        );
+
+        setEvents(uniqueEvents);
+        logToUI(
+          `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
+        );
+        
+        setActivityItems(uniqueActivityItems);
+        logToUI(
+          `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
+        );
+
+        setCompletedAnalyses(uniqueCompletedAnalyses);
+        logToUI(
+          `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
+        );
+        
+        // In local mode, we also load frontend logs
+        if (viewingMode.type === 'local') {
+          const logs = await loadFrontendLogs();
+           if (logs.length > 0) {
+            setFrontendLogs(logs);
+            logToUI(
+              `[loadData] Loaded ${logs.length} frontend logs`
+            );
+          }
         }
-        if (savedLogs.length > 0) {
-          setFrontendLogs(savedLogs);
-          logToUI(
-            `[loadPersistedData] Loaded ${savedLogs.length} frontend logs`,
-          );
-        }
-        if (savedActivityItemsFromDB.length > 0) {
-          setActivityItems(savedActivityItemsFromDB);
-          logToUI(
-            `[loadPersistedData] Loaded ${savedActivityItemsFromDB.length} activity items`,
-          );
-        }
-        if (savedCompletedAnalyses.length > 0) {
-          setCompletedAnalyses(savedCompletedAnalyses);
-          logToUI(
-            `[loadPersistedData] Loaded ${savedCompletedAnalyses.length} completed analyses`,
-          );
-        }
+
       } catch (err) {
-        logError('[loadPersistedData] Failed to load persisted data:', err);
+        logError('[loadData] Failed to load data:', err);
       }
     };
     loadData();
-  }, [logError]); 
+  }, [logError, dataProvider, viewingMode.type, logToUI]); 
 
   useEffect(() => {
-    if (workflowSteps.length > 0) saveWorkflowSteps(workflowSteps);
-  }, [workflowSteps]);
+    if (viewingMode.type === 'local' && workflowSteps.length > 0) saveWorkflowSteps(workflowSteps);
+  }, [workflowSteps, viewingMode.type]);
   useEffect(() => {
-    if (events.length > 0) saveEvents(events);
-  }, [events]);
+    if (viewingMode.type === 'local' && events.length > 0) saveEvents(events);
+  }, [events, viewingMode.type]);
   useEffect(() => {
-    if (frontendLogs.length > 0) saveFrontendLogs(frontendLogs);
-  }, [frontendLogs]);
+    if (viewingMode.type === 'local' && frontendLogs.length > 0) saveFrontendLogs(frontendLogs);
+  }, [frontendLogs, viewingMode.type]);
   useEffect(() => {
-    if (activityItems.length > 0) saveActivityItems(activityItems);
-  }, [activityItems]);
+    if (viewingMode.type === 'local' && activityItems.length > 0) saveActivityItems(activityItems);
+  }, [activityItems, viewingMode.type]);
   useEffect(() => {
-    if (completedAnalyses.length > 0) saveCompletedAnalyses(completedAnalyses);
-  }, [completedAnalyses]);
+    if (viewingMode.type === 'local' && completedAnalyses.length > 0) saveCompletedAnalyses(completedAnalyses);
+  }, [completedAnalyses, viewingMode.type]);
 
   // Stream new activity items to Supabase
   useEffect(() => {
-    if (!stream) return; // Only stream when capture is active
+    if (viewingMode.type !== 'local' || !stream) return; // Only stream when capture is active in local mode
     const newItems = activityItems.filter(item => !streamedItemIds.current.has(item.id));
     newItems.forEach(item => streamData('activity_item', item));
-  }, [activityItems, streamData, stream]);
+  }, [activityItems, streamData, stream, viewingMode.type]);
 
   // Stream new events to Supabase
   useEffect(() => {
-    if (!stream) return; // Only stream when capture is active
+    if (viewingMode.type !== 'local' || !stream) return; // Only stream when capture is active in local mode
     const newItems = events.filter(item => !streamedItemIds.current.has(item.id));
     newItems.forEach(item => streamData('event', item));
-  }, [events, streamData, stream]);
+  }, [events, streamData, stream, viewingMode.type]);
+
+  // Stream new completed analyses to Supabase
+  useEffect(() => {
+    if (viewingMode.type !== 'local' || !stream) return; // Only stream when capture is active in local mode
+    
+    const newItems = completedAnalyses.filter(item => 
+      !streamedItemIds.current.has(item.id) && item.status === 'completed' && item.endTime
+    );
+
+    newItems.forEach(item => {
+      // Adapt the item to fit the streamData signature
+      const itemToStream = {
+        ...item,
+        timestamp: new Date(item.endTime!).toISOString(), // Use endTime as the timestamp
+      };
+      streamData('completed_analysis', itemToStream);
+    });
+  }, [completedAnalyses, streamData, stream, viewingMode.type]);
 
   useEffect(() => {
     if (selectedActivity) {
@@ -1052,25 +1111,43 @@ Analyze the activity sequence for context, then create ONE clear, complete event
     <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
       <ExportStatusDialog exportInProgress={false} />
 
-      <PageHeaderControls
-        stream={stream}
-        handleStartScreenShare={() => {
-          handleStartScreenShare();
-          handleTogglePip(true);
-        }}
-        handleStopScreenShare={handleStopScreenShare}
-        onTogglePip={() => handleTogglePip()}
-        isPipOpen={!!pipWindow}
-        mainStatus={mainStatus}
-        autoDetectionEnabled={autoDetectionEnabled}
-        isMonitoring={isMonitoring}
-        displayChangePercent={displayChangePercent}
-        activeAnalysesCount={activeAnalysesCount}
-        error={error}
-        streamRef={streamRef}
-        MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
-        reconnectRequired={reconnectRequired}
-      />
+      {viewingMode.type === 'local' ? (
+        <PageHeaderControls
+          stream={stream}
+          handleStartScreenShare={() => {
+            handleStartScreenShare();
+            handleTogglePip(true);
+          }}
+          handleStopScreenShare={handleStopScreenShare}
+          onTogglePip={() => handleTogglePip()}
+          isPipOpen={!!pipWindow}
+          mainStatus={mainStatus}
+          autoDetectionEnabled={autoDetectionEnabled}
+          isMonitoring={isMonitoring}
+          displayChangePercent={displayChangePercent}
+          activeAnalysesCount={activeAnalysesCount}
+          error={error}
+          streamRef={streamRef}
+          MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
+          reconnectRequired={reconnectRequired}
+        />
+      ) : (
+        <Alert className="w-full max-w-7xl mt-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4" />
+            <p className="text-sm">
+              <span className="font-semibold">Viewing recording for:</span>{' '}
+              <strong className="font-bold">{remoteUserName || viewingMode.userId}</strong>.
+              <span className="text-muted-foreground ml-2">Recording controls are disabled.</span>
+            </p>
+          </div>
+          <Link href="/admin">
+            <Button variant="outline" size="sm">
+              Back to Admin Panel
+            </Button>
+          </Link>
+        </Alert>
+      )}
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
 
@@ -1108,6 +1185,7 @@ Analyze the activity sequence for context, then create ONE clear, complete event
                   selectedActivity={selectedActivity} 
                   activityItems={activityItems}
                   onActivitySelect={setSelectedActivity}
+                  dataProvider={dataProvider}
                 />
                 <TimelineSlider
                   activityItems={activityItems}
@@ -1260,5 +1338,13 @@ Analyze the activity sequence for context, then create ONE clear, complete event
       )}
       <ScrollHint show={showScrollHint} onDismiss={handleDismissScrollHint} />
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <HomeComponent />
+    </Suspense>
   );
 }
