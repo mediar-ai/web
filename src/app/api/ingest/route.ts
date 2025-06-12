@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { analyzeTextEvent } from '@/lib/analysis';
 import { EVENTS_PROMPT } from '@/lib/prompts';
+import type { UIDiffAnalysis } from '@/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -121,17 +122,22 @@ export async function POST(request: Request) {
 
       // 4. Save the analysis result to the user_activity_data table.
       if (analysisResult) {
+        // The result from analyzeTextEvent is just a summary string.
+        // We will create a UIDiffAnalysis-like object to store it.
+        const newActivityItem: Omit<UIDiffAnalysis, 'id' | 'timestamp'> = {
+          type: 'ui_diff', // All low-level events are treated as UI diffs for now
+          change_detected: 'yes',
+          change_description: analysisResult,
+        };
+
         const { error: insertAnalysisError } = await supabaseAdmin
           .from('user_activity_data')
           .insert({
             session_id,
             user_id,
-            item_type: 'event', // Stored as a high-level 'event'
-            client_item_id: `llm-event-${Date.now()}-${Math.random()}`, // Create a unique ID
-            item_data: {
-              summary: analysisResult,
-              // We could add more structured data here if the LLM returns it
-            },
+            item_type: 'activity_item', // Stored as an intermediate 'activity_item'
+            client_item_id: `llm-activity-${Date.now()}-${Math.random()}`, // Create a unique ID
+            item_data: newActivityItem,
             client_timestamp: new Date().toISOString(),
             source: 'low_level', // Set the source for low-level events
           });
@@ -139,7 +145,7 @@ export async function POST(request: Request) {
         if (insertAnalysisError) {
           console.error('[INGEST ANALYSIS] Failed to save analysis to database:', insertAnalysisError);
         } else {
-          console.log('[INGEST ANALYSIS] Successfully saved analysis to database.');
+          console.log('[INGEST ANALYSIS] Successfully saved analysis to database as activity_item.');
         }
       }
 
