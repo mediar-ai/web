@@ -122,14 +122,10 @@ export async function POST(request: Request) {
     }
     
     // After successful insert, trigger the metadata update
-    try {
-      const { error: rpcError } = await supabaseAdmin.rpc('update_session_metadata_from_all_events');
-      if (rpcError) {
-        console.error('[API/STREAM] Error triggering metadata update:', rpcError);
-      }
-    } catch (rpcError) {
-      console.error('[API/STREAM] Critical error calling RPC:', rpcError);
-    }
+    // const { error: rpcError } = await supabaseAdmin.rpc('update_session_metadata_from_all_events');
+    // if (rpcError) {
+    //   console.error('[API/STREAM] Error calling RPC function for session ${sessionId}:', rpcError);
+    // }
 
     return NextResponse.json({ message: `Item ${itemType} streamed successfully` }, { status: 200 });
 
