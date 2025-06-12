@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { analyzeTextEvent, analyzeUIDiff } from '@/lib/analysis';
-import { EVENTS_PROMPT, TEXT_EXTRACTION_PROMPT } from '@/lib/prompts';
+import { EVENTS_PROMPT, UI_TREE_ANALYSIS_PROMPT } from '@/lib/prompts';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
         if (payload.event?.screen?.ui_tree) {
           // If there's a ui_tree, analyze it directly for a detailed dump.
           const uiTree = payload.event.screen.ui_tree;
-          analysisResult = await analyzeTextEvent(uiTree, TEXT_EXTRACTION_PROMPT);
+          analysisResult = await analyzeTextEvent(uiTree, UI_TREE_ANALYSIS_PROMPT);
           activityType = 'initial_dump'; // This is a full state analysis
         } else {
           // Fallback if ui_tree is missing

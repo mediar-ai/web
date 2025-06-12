@@ -44,4 +44,19 @@ FOCUS ON THE LATEST ACTIVITY:
 - Chat participants and full message content
 - Completed transactions or submissions
 
-Analyze the activity sequence for context, then create ONE clear, complete event summary that captures what the user accomplished in the LATEST activity only.`; 
+Analyze the activity sequence for context, then create ONE clear, complete event summary that captures what the user accomplished in the LATEST activity only.`;
+
+export const UI_TREE_ANALYSIS_PROMPT = `Analyze the provided UI tree, which represents the full accessibility tree of an application screen. Your goal is to provide a comprehensive, human-readable summary of the user's current view.
+
+CRITICAL INSTRUCTIONS:
+- Parse the hierarchical structure. Identify parent-child relationships between elements (e.g., a "Button" inside a "Toolbar").
+- Describe the overall layout. What are the main panes, windows, or sections of the application?
+- List all interactive elements such as buttons, text fields, tabs, and menus, including their names and current state (e.g., "Save button, enabled," "Username text field, empty").
+- Extract and list all static text content, such as labels, headings, and descriptions.
+- Infer the application's purpose and the user's likely goal based on the combination of elements.
+- DO NOT just list the elements. Synthesize the information into a coherent description of the screen.
+
+EXAMPLE:
+- Input ui_tree: { role: "Window", name: "Gmail", children: [...] }
+- Good Output: "The user is viewing the main Gmail window. The left pane shows a list of folders (Inbox, Sent, Drafts). The main pane displays an email with the subject 'Project Update' from 'jane.doe@example.com'. The email body contains..."
+`; 
