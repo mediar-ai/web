@@ -47,28 +47,32 @@ def aggregate_and_update_sessions():
         BEGIN
             -- Step 1: Aggregate all uncounted events from both tables into a temporary table
             CREATE TEMP TABLE temp_new_counts AS
-            SELECT
-                session_id,
-                MAX(user_id) as user_id,
-                MAX(last_event_timestamp) as last_event_timestamp,
-                SUM(new_event_count) as new_event_count
-            FROM (
+            WITH new_events_with_rn AS (
                 SELECT
                     session_id,
                     user_id,
+                    'lowLevel' as session_type,
                     created_at AS last_event_timestamp,
-                    1 AS new_event_count
+                    ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY created_at) as rn
                 FROM public.low_level_events
                 WHERE is_counted = false AND session_id IS NOT NULL
                 UNION ALL
                 SELECT
                     session_id,
                     user_id,
+                    'web' as session_type,
                     client_timestamp AS last_event_timestamp,
-                    1 AS new_event_count
+                    ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY client_timestamp) as rn
                 FROM public.user_activity_data
                 WHERE is_counted = false AND session_id IS NOT NULL
-            ) as new_events
+            )
+            SELECT
+                session_id,
+                (SELECT user_id FROM new_events_with_rn WHERE rn = 1 AND session_id = ne.session_id LIMIT 1) as user_id,
+                MAX(session_type) as session_type, -- Aggregate session_type
+                MAX(last_event_timestamp) as last_event_timestamp,
+                COUNT(*) as new_event_count
+            FROM new_events_with_rn ne
             GROUP BY session_id;
 
             -- If there's nothing to update, exit early.
@@ -83,17 +87,18 @@ def aggregate_and_update_sessions():
                 event_count = sm.event_count + tnc.new_event_count,
                 last_event_timestamp = tnc.last_event_timestamp
             FROM temp_new_counts tnc
-            WHERE sm.id = tnc.session_id;
+            WHERE sm.session_id = tnc.session_id;
 
             -- Step 3: Insert new sessions if they don't exist in session_metadata
-            INSERT INTO public.session_metadata (id, user_id, event_count, last_event_timestamp)
+            INSERT INTO public.session_metadata (session_id, user_id, session_type, event_count, last_event_timestamp)
             SELECT
                 session_id,
                 user_id,
+                session_type,
                 new_event_count,
                 last_event_timestamp
             FROM temp_new_counts
-            WHERE session_id NOT IN (SELECT id FROM public.session_metadata);
+            WHERE session_id NOT IN (SELECT session_id FROM public.session_metadata);
 
             -- Step 4: Mark the events we just counted as "done"
             UPDATE public.low_level_events SET is_counted = true WHERE is_counted = false;
