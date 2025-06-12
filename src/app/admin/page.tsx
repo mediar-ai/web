@@ -272,7 +272,7 @@ export default function AdminPage() {
                                   <span className="text-gray-500">{new Date(session.timestamp).toLocaleString()}</span>
                                 </div>
                                 <Link href={`/sessions/${session.type}/${session.id}`}>
-                                  <Button size="sm" variant="outline">View Session</Button>
+                                  <Button size="sm" variant="outline">Raw JSON Session Logs</Button>
                                 </Link>
                               </div>
                             ))}
