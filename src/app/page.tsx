@@ -887,20 +887,6 @@ function HomeComponent() {
   }, [logToUI]);
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && stream) {
-        handleTogglePip(true);
-      } else if (document.visibilityState === 'visible') {
-        handleTogglePip(false);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [stream]);
-
-  useEffect(() => {
     const storedDetailsCollapsed = localStorage.getItem('detailsCollapsed');
     if (storedDetailsCollapsed) {
       setDetailsCollapsed(storedDetailsCollapsed === 'true');

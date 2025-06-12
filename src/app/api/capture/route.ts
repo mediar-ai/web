@@ -50,4 +50,4 @@ export async function POST(request: Request) {
     console.error(`[API/capture] Error: ${errorMessage}`);
     return NextResponse.json({ error: 'Failed to process capture request.', details: errorMessage }, { status: 500 });
   }
-}
+} 
