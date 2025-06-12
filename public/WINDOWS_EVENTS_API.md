@@ -51,8 +51,7 @@ This is the primary method for capturing a complete snapshot of the UI state. It
     "event": {
       "mouse": null,
       "screen": {
-        "ui_tree": "{\\\"id\\\": ... }",
-        "screenshot_data": "data:image/jpeg;base64,..."
+        "ui_tree": "{\\\"id\\\": ... }"
       }
     }
   }
