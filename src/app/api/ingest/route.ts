@@ -136,13 +136,13 @@ export async function POST(request: Request) {
       console.log(`[INGEST] Successfully saved analysis as ${activityType}.`);
     }
 
-    // Trigger metadata update
-    const { error: rpcError } = await supabaseAdmin.rpc('update_session_metadata_from_all_events');
-    if (rpcError) {
-      console.error('[INGEST] Error triggering metadata update:', rpcError);
-    }
+    // const { error: rpcError } = await supabaseAdmin.rpc('update_session_metadata_from_all_events');
+    // if (rpcError) {
+    //   console.error('Error calling RPC function:', rpcError);
+    //   // Decide if you want to return an error to the client
+    // }
 
-    return NextResponse.json({ message: 'Event processed successfully.' });
+    return NextResponse.json({ success: true, message: 'Data ingested' });
 
   } catch (error) {
     console.error('Error processing request:', error);
