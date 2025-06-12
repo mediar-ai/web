@@ -149,6 +149,16 @@ export async function POST(request: Request) {
     }
     // --- End of New Analysis Logic ---
 
+    // After all processing, trigger the metadata update
+    try {
+      const { error: rpcError } = await supabaseAdmin.rpc('update_session_metadata_from_all_events');
+      if (rpcError) {
+        console.error('[INGEST] Error triggering metadata update:', rpcError);
+      }
+    } catch (rpcError) {
+      console.error('[INGEST] Critical error calling RPC:', rpcError);
+    }
+
     const responseStatus = failedUploads.length > 0 ? 207 : 200; // 207 Multi-Status if partial success
     const responseMessage = failedUploads.length > 0 
       ? 'Event ingested with partial success' 
