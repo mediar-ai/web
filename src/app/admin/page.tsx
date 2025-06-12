@@ -39,7 +39,8 @@ export default function AdminPage() {
     console.log('[Admin] Sessions fetched:', Object.keys(sessionData).length, 'users');
   }, []);
 
-  const debouncedFetchSessions = useDebouncedCallback(fetchSessions, 1000);
+  // Debounce for 2 seconds to handle the firehose of events and refresh efficiently.
+  const debouncedFetchSessions = useDebouncedCallback(fetchSessions, 2000);
 
   useEffect(() => {
     const initialFetch = async () => {
@@ -52,22 +53,20 @@ export default function AdminPage() {
     const channel = supabase
       .channel('public:session_metadata')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'session_metadata' }, 
-        (payload) => {
-          console.log('[Realtime] Change detected in session_metadata. Payload:', payload);
-          console.log('[Realtime] Queueing refetch...');
+        () => {
+          console.log('[Realtime] Change detected, queueing data refresh...');
           debouncedFetchSessions();
         }
       )
       .subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('[Realtime] Successfully subscribed to session_metadata');
-        }
-        if (status === 'CHANNEL_ERROR') {
-          console.error('[Realtime] Error subscribing to session_metadata:', err);
+        console.log('[Realtime] Subscription status changed:', status);
+        if (err) {
+          console.error('[Realtime] Subscription error:', err as Error);
         }
       });
 
     return () => {
+      console.log('[Realtime] Removing channel subscription.');
       supabase.removeChannel(channel);
     };
   }, [fetchSessions, debouncedFetchSessions]);
@@ -220,8 +219,8 @@ export default function AdminPage() {
                     </td>
                     <td className="px-2 py-1">
                       <div className="flex items-center gap-1">
-                        {[...new Set(userData.sessions.map(s => s.type))].map(type => (
-                          <span key={type} className={`px-2 py-0.5 text-xs rounded-full ${
+                        {[...new Set(userData.sessions.map(s => s.type))].map((type, index) => (
+                          <span key={`${type}-${index}`} className={`px-2 py-0.5 text-xs rounded-full ${
                             type === 'lowLevel' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
                           }`}>
                             {type === 'lowLevel' ? 'Low-Level' : 'Web'}
