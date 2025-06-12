@@ -42,12 +42,69 @@ export async function POST(request: Request) {
       case 'screenshot_diff':
         console.log('[INGEST] Processing screenshot_diff...');
         const { screenshot_before, screenshot_after } = payload.event || {};
-        if (screenshot_before && screenshot_after) {
-            const diffResult = await analyzeUIDiff(screenshot_before, screenshot_after, "");
-            analysisResult = diffResult.change_description || "Analyzed screenshot changes.";
-        } else {
+        if (!screenshot_before || !screenshot_after) {
             return NextResponse.json({ error: 'screenshot_before and screenshot_after are required for screenshot_diff' }, { status: 400 });
         }
+        
+        // 1. Generate IDs for the screenshots
+        const timestamp = Date.now();
+        const sequenceId = `${session_id}-${timestamp}`;
+        const image1_id = `before-${sequenceId}`;
+        const image2_id = `after-${sequenceId}`;
+
+        // 2. Upload images to Supabase Storage
+        const uploadImage = async (dataUrl: string, path: string) => {
+            const mimeTypeMatch = dataUrl.match(/^data:(image\/[^;]+);base64,/);
+            if (!mimeTypeMatch) throw new Error('Invalid dataUrl format');
+            const mimeType = mimeTypeMatch[1];
+            const base64Data = dataUrl.substring(mimeTypeMatch[0].length);
+            const imageBuffer = Buffer.from(base64Data, 'base64');
+            
+            const { error } = await supabaseAdmin.storage
+              .from('recordings')
+              .upload(path, imageBuffer, { contentType: mimeType, upsert: true });
+
+            if (error) throw new Error(`Failed to upload to Supabase Storage: ${error.message}`);
+        };
+
+        try {
+            await uploadImage(screenshot_before, `${user_id}/${session_id}/screenshots/${image1_id}.jpeg`);
+            await uploadImage(screenshot_after, `${user_id}/${session_id}/screenshots/${image2_id}.jpeg`);
+            console.log(`[INGEST] Successfully uploaded screenshots for diff: ${sequenceId}`);
+        } catch (uploadError) {
+            console.error('[INGEST] Screenshot upload failed:', uploadError);
+            return NextResponse.json({ error: 'Failed to upload screenshots.' }, { status: 500 });
+        }
+        
+        // 3. Perform the analysis
+        const diffResult = await analyzeUIDiff(screenshot_before, screenshot_after, "");
+        analysisResult = diffResult.change_description || "Analyzed screenshot changes.";
+        
+        // Ensure the result is stored as a ui_diff type
+        activityType = 'ui_diff';
+        
+        // 4. Create the activity item with correct image references
+        const newActivityItemData = {
+            type: 'ui_diff',
+            change_detected: 'yes',
+            change_description: analysisResult,
+            image1_id: image1_id,
+            image2_id: image2_id,
+            sequenceId: sequenceId,
+        };
+
+        await supabaseAdmin.from('user_activity_data').insert({
+            session_id,
+            user_id,
+            item_type: 'activity_item',
+            client_item_id: `llm-activity-${timestamp}`,
+            item_data: newActivityItemData,
+            client_timestamp: new Date().toISOString(),
+            source: 'low_level',
+        });
+        console.log(`[INGEST] Successfully saved screenshot_diff analysis.`);
+        
+        // Since we already handled the database insert, we can break here
         break;
 
       default: // Handles simple low-level events (mouse_click, key_press, etc.)
@@ -62,7 +119,7 @@ export async function POST(request: Request) {
     // --- End Router Logic ---
 
     // Save the analysis result as an activity_item
-    if (analysisResult) {
+    if (analysisResult && payload.type !== 'screenshot_diff') {
       const newActivityItemData = activityType === 'initial_dump' 
         ? { type: 'initial_dump', raw_content: analysisResult }
         : { type: 'ui_diff', change_detected: 'yes', change_description: analysisResult };
