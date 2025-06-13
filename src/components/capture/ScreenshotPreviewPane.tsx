@@ -57,20 +57,23 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
       setImageUrl(null);
       setTimestampDiff(null);
 
+      // First, try to get a directly linked image
       const directImageId = selectedActivity.type === 'ui_diff'
         ? (selectedActivity as UIDiffAnalysis).image2_id
         : (selectedActivity as InitialFrameDumpAnalysis).image_id;
 
       if (directImageId) {
-        // This is a temporary measure for local data, as the remote path is different.
-        // In a remote context, even direct IDs might need URL construction.
         try {
           const result = await dataProvider.loadScreenshot(selectedActivity);
           if (result instanceof Blob) {
             const url = await blobToDataURL(result);
             setImageUrl(url);
+            // For local data or direct links, the difference is considered 0
+            setTimestampDiff(0); 
           } else if (typeof result === 'string') {
+            // In a remote context, the provider should ideally return the timestamp info
             setImageUrl(result);
+            setTimestampDiff(0); // Assume 0 for now, can be improved if provider returns more info
           } else {
             setError('Screenshot not found.');
           }

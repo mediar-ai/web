@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { BufferedFrame, ActivityItem, UIDiffAnalysis, RunningAnalysis } from '../types'; // Assuming types are exported
+import type { BufferedFrame, ActivityItem, UIDiffAnalysis, RunningAnalysis, ViewingMode } from '../types'; // Assuming types are exported
 
 interface UseFrameAnalysisDispatcherProps {
   frameBuffer: BufferedFrame[];
@@ -8,14 +8,15 @@ interface UseFrameAnalysisDispatcherProps {
   setRunningAnalyses: React.Dispatch<React.SetStateAction<RunningAnalysis[]>>;
   setCompletedAnalyses: React.Dispatch<React.SetStateAction<RunningAnalysis[]>>;
   activeAnalysesCount: number;
-  setActiveAnalysesCount: React.Dispatch<React.SetStateAction<number>>;
+  setActiveAnalysesCount: (count: number | ((prev: number) => number)) => void;
   logToUI: (...args: unknown[]) => void;
   logError: (...args: unknown[]) => void;
-  setMainStatus: React.Dispatch<React.SetStateAction<string>>;
+  setMainStatus: (status: string) => void;
   MAX_PARALLEL_ANALYSES: number;
+  viewingMode: ViewingMode;
 }
 
-export function useFrameAnalysisDispatcher({
+export const useFrameAnalysisDispatcher = ({
   frameBuffer,
   setFrameBuffer,
   setActivityItems,
@@ -27,7 +28,8 @@ export function useFrameAnalysisDispatcher({
   logError,
   setMainStatus,
   MAX_PARALLEL_ANALYSES,
-}: UseFrameAnalysisDispatcherProps): void { // This hook might not need to return anything directly
+  viewingMode,
+}: UseFrameAnalysisDispatcherProps): void => { // This hook might not need to return anything directly
   const [baselineFrameForDiff, setBaselineFrameForDiff] = useState<BufferedFrame | null>(null);
   const [pendingFrameForDiff, setPendingFrameForDiff] = useState<BufferedFrame | null>(null);
   const [initialDumpInProgress, setInitialDumpInProgress] = useState<boolean>(false);
@@ -269,7 +271,10 @@ export function useFrameAnalysisDispatcher({
   );
 
   useEffect(() => {
-    // This is the main dispatcher effect
+    if (viewingMode.type !== 'local') {
+      return;
+    }
+
     if (activeAnalysesCount >= MAX_PARALLEL_ANALYSES) {
       return; // Max capacity, wait for an analysis to complete
     }
@@ -326,11 +331,11 @@ export function useFrameAnalysisDispatcher({
       const frame2 = pendingFrameForDiff;
       setPendingFrameForDiff(null); // Clear pending frame
       processUIDiffRequest(frame1, frame2);
-      // No return here, let subsequent logic run if any (though not in this structure)
     }
   }, [
     frameBuffer,
     activeAnalysesCount,
+    viewingMode,
     baselineFrameForDiff,
     pendingFrameForDiff,
     initialDumpInProgress,
@@ -339,8 +344,7 @@ export function useFrameAnalysisDispatcher({
     processUIDiffRequest,
     logToUI,
     setFrameBuffer,
-    // setBaselineFrameForDiff is implicitly handled by processInitialFrameDump/processUIDiffRequest
     setPendingFrameForDiff,
     MAX_PARALLEL_ANALYSES,
   ]);
-} 
+};

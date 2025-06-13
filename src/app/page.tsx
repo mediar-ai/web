@@ -265,8 +265,7 @@ function HomeComponent() {
         const sequenceId = `${currentCaptureSessionIdRef.current}-${newScreenshotNumber}`;
         
         const newFrame: BufferedFrame = {
-          id: new Date(timestamp).toISOString() +
-            `-change-${changePercent.toFixed(2)}`,
+          id: `${timestamp}-change-${changePercent.toFixed(2)}`,
           imageDataUrl,
           timestamp,
           percentChange: changePercent,
@@ -393,6 +392,7 @@ function HomeComponent() {
     logError,
     setMainStatus,
     MAX_PARALLEL_ANALYSES,
+    viewingMode,
   });
 
   useEventGenerator({
@@ -411,6 +411,7 @@ function HomeComponent() {
     MAX_PARALLEL_ANALYSES,
     EVENTS_MODEL_NAME,
     eventsPrompt,
+    viewingMode,
   });
 
   const handleEventSelect = (event: Event) => {

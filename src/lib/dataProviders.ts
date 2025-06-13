@@ -8,6 +8,12 @@ import {
 } from './db';
 import { supabase } from './supabase';
 
+const constructScreenshotUrl = (userId: string, sessionId: string, imageId: string): string => {
+  const path = `${userId}/${sessionId}/screenshots/${imageId}.jpeg`;
+  const { data } = supabase.storage.from('low-level-event-screenshots').getPublicUrl(path);
+  return data.publicUrl;
+};
+
 export const LocalDataProvider: DataProvider = {
   loadActivityItems: async () => loadLocalActivityItems(),
   loadEvents: async () => loadLocalEvents(),
@@ -48,6 +54,7 @@ export class RemoteDataProvider implements DataProvider {
         throw new Error(`Failed to fetch remote data for user ${this.userId}`);
       }
       const data = await response.json();
+      console.log('[RemoteDataProvider] Data received from API:', data);
       
       this.userName = data.userName;
       this.activityItems = data.activityItems || [];
@@ -82,6 +89,14 @@ export class RemoteDataProvider implements DataProvider {
   }
 
   async loadScreenshot(item: ActivityItem): Promise<string | null> {
+    console.log('[RemoteDataProvider.loadScreenshot] Called with item:', {
+      id: item.id,
+      type: item.type,
+      user_id: item.user_id,
+      session_id: item.session_id,
+      image_id: item.type === 'ui_diff' ? item.image2_id : item.image_id
+    });
+    
     const imageId = item.type === 'ui_diff' ? item.image2_id : item.image_id;
     if (!imageId) {
       console.error('[RemoteDataProvider] Activity item has no image ID.', item);
@@ -93,27 +108,20 @@ export class RemoteDataProvider implements DataProvider {
     const sessionId = item.session_id;
 
     if (!userId || !sessionId) {
-      console.error('[RemoteDataProvider] Missing user_id or session_id on the activity item.', item);
+      console.error('[RemoteDataProvider] Missing user_id or session_id on the activity item for URL construction.', item);
       return null;
     }
     
     // Construct the correct path to the screenshot in Supabase Storage
-    const path = `${userId}/${sessionId}/screenshots/${imageId}.jpeg`;
+    const url = constructScreenshotUrl(userId, sessionId, imageId);
+    console.log('[RemoteDataProvider] Constructed URL:', url);
     
-    const { data } = supabase.storage.from('low-level-event-screenshots').getPublicUrl(path);
-
-    if (!data || !data.publicUrl) {
-      console.warn(`[RemoteDataProvider] Could not get public URL for screenshot: ${path}`);
-      return null;
-    }
-    
-    // Check if the image actually exists before returning the URL
     try {
-      const response = await fetch(data.publicUrl, { method: 'HEAD' });
+      const response = await fetch(url, { method: 'HEAD' });
       if (response.ok) {
-        return data.publicUrl;
+        return url; // Return the public URL if the image exists
       }
-      console.warn(`[RemoteDataProvider] Screenshot not found at public URL (HEAD request failed): ${data.publicUrl}`);
+      console.warn(`[RemoteDataProvider] Screenshot not found at public URL (HEAD request failed): ${url}`);
       return null;
     } catch(err) {
       console.error(`[RemoteDataProvider] Error checking screenshot existence:`, err);
