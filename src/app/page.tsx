@@ -58,10 +58,10 @@ import { User } from 'lucide-react';
 import { TEXT_EXTRACTION_PROMPT, EVENTS_PROMPT } from '@/lib/prompts';
 
 function HomeComponent() {
+  const viewingMode = useViewingMode();
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
   const MAX_PARALLEL_ANALYSES = 5;
 
-  const viewingMode = useViewingMode();
   const [dataProvider, setDataProvider] = useState<DataProvider>(LocalDataProvider);
   const [remoteUserName, setRemoteUserName] = useState<string | null>(null);
 
@@ -580,66 +580,69 @@ function HomeComponent() {
     }
   }, [stream, logToUI, logError, captureSessionId, userId]);
 
-  useEffect(() => {
-    const loadData = async () => {
-      if (!dataProvider) return;
-      logToUI(`[loadData] Loading data using ${dataProvider.constructor.name}...`);
-      try {
-        const [savedSteps, savedEvents, savedActivityItemsFromDB, savedCompletedAnalyses] =
-          await Promise.all([
-            dataProvider.loadWorkflowSteps(),
-            dataProvider.loadEvents(),
-            dataProvider.loadActivityItems(),
-            dataProvider.loadCompletedAnalyses(),
-          ]);
-        
-        // De-duplicate data on the client-side to prevent key errors
-        const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
-        const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
-        const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
+  const loadData = useCallback(async () => {
+    if (!dataProvider) return;
+    logToUI(`[loadData] Loading data using ${dataProvider.constructor.name}...`);
+    try {
+      const [savedSteps, savedEvents, savedActivityItemsFromDB, savedCompletedAnalyses] =
+        await Promise.all([
+          dataProvider.loadWorkflowSteps(),
+          dataProvider.loadEvents(),
+          dataProvider.loadActivityItems(),
+          dataProvider.loadCompletedAnalyses(),
+        ]);
+      
+      // De-duplicate data on the client-side to prevent key errors
+      const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
+      const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
+      const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
 
-        if (dataProvider instanceof RemoteDataProvider) {
-            setRemoteUserName(dataProvider.getUserName());
-        }
-
-        // Always set the data, even if it's empty, to clear out old state.
-        setWorkflowSteps(savedSteps);
-        logToUI(
-          `[loadData] Loaded ${savedSteps.length} workflow steps`
-        );
-
-        setEvents(uniqueEvents);
-        logToUI(
-          `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
-        );
-        
-        setActivityItems(uniqueActivityItems);
-        logToUI(
-          `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
-        );
-
-        setCompletedAnalyses(uniqueCompletedAnalyses);
-        logToUI(
-          `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
-        );
-        
-        // In local mode, we also load frontend logs
-        if (viewingMode.type === 'local') {
-          const logs = await loadFrontendLogs();
-           if (logs.length > 0) {
-            setFrontendLogs(logs);
-            logToUI(
-              `[loadData] Loaded ${logs.length} frontend logs`
-            );
-          }
-        }
-
-      } catch (err) {
-        logError('[loadData] Failed to load data:', err);
+      if (dataProvider instanceof RemoteDataProvider) {
+          setRemoteUserName(dataProvider.getUserName());
       }
-    };
-    loadData();
-  }, [logError, dataProvider, viewingMode.type, logToUI]); 
+
+      // Always set the data, even if it's empty, to clear out old state.
+      setWorkflowSteps(savedSteps);
+      logToUI(
+        `[loadData] Loaded ${savedSteps.length} workflow steps`
+      );
+
+      setEvents(uniqueEvents);
+      logToUI(
+        `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
+      );
+      
+      setActivityItems(uniqueActivityItems);
+      logToUI(
+        `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
+      );
+
+      setCompletedAnalyses(uniqueCompletedAnalyses);
+      logToUI(
+        `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
+      );
+      
+      // In local mode, we also load frontend logs
+      if (viewingMode.type === 'local') {
+        const logs = await loadFrontendLogs();
+         if (logs.length > 0) {
+          setFrontendLogs(logs);
+          logToUI(
+            `[loadData] Loaded ${logs.length} frontend logs`
+          );
+        }
+      }
+
+    } catch (err) {
+      logError('[loadData] Failed to load data:', err);
+    }
+  }, [logError, dataProvider, viewingMode.type, logToUI]);
+
+  useEffect(() => {
+    if (viewingMode.type === 'local') {
+      loadData();
+    }
+  }, [loadData, viewingMode.type]);
 
   useEffect(() => {
     if (viewingMode.type === 'local' && workflowSteps.length > 0) saveWorkflowSteps(workflowSteps);
@@ -1051,232 +1054,233 @@ function HomeComponent() {
     <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
       <ExportStatusDialog exportInProgress={false} />
 
-      {viewingMode.type === 'local' ? (
-        <PageHeaderControls
-          stream={stream}
-          handleStartScreenShare={() => {
-            handleStartScreenShare();
-            handleTogglePip(true);
-          }}
-          handleStopScreenShare={handleStopScreenShare}
-          onTogglePip={() => handleTogglePip()}
-          isPipOpen={!!pipWindow}
-          mainStatus={mainStatus}
-          autoDetectionEnabled={autoDetectionEnabled}
-          isMonitoring={isMonitoring}
-          displayChangePercent={displayChangePercent}
-          activeAnalysesCount={activeAnalysesCount}
-          error={error}
-          streamRef={streamRef}
-          MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
-          reconnectRequired={reconnectRequired}
-        />
-      ) : (
+      {viewingMode.type === 'remote' ? (
         <Alert className="w-full max-w-7xl mt-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            <p className="text-sm">
-              <span className="font-semibold">Viewing recording for:</span>{' '}
-              <strong className="font-bold">{remoteUserName || viewingMode.userId}</strong>.
-              <span className="text-muted-foreground ml-2">Recording controls are disabled.</span>
-            </p>
-          </div>
-          <Link href="/admin">
-            <Button variant="outline" size="sm">
-              Back to Admin Panel
-            </Button>
-          </Link>
-        </Alert>
-      )}
-
-      <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
-
-      <Card className="w-full max-w-7xl mt-4 hidden">
-        <CardHeader>
-          <CardTitle>Live Preview</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <VideoPreviewArea 
-            stream={stream} 
-            videoRef={videoRefCallback}
+           <div className="flex items-center gap-2">
+             <User className="h-4 w-4" />
+             <p className="text-sm">
+               <span className="font-semibold">Viewing recording for:</span>{' '}
+               <strong className="font-bold">{remoteUserName || viewingMode.userId}</strong>.
+               <span className="text-muted-foreground ml-2">Recording controls are disabled.</span>
+             </p>
+           </div>
+           <Link href="/admin">
+             <Button variant="outline" size="sm">
+               Back to Admin Panel
+             </Button>
+           </Link>
+         </Alert>
+      ) : (
+        <>
+          <PageHeaderControls
+            stream={stream}
+            handleStartScreenShare={() => {
+              handleStartScreenShare();
+              handleTogglePip(true);
+            }}
+            handleStopScreenShare={handleStopScreenShare}
+            onTogglePip={() => handleTogglePip()}
+            isPipOpen={!!pipWindow}
+            mainStatus={mainStatus}
+            autoDetectionEnabled={autoDetectionEnabled}
+            isMonitoring={isMonitoring}
+            displayChangePercent={displayChangePercent}
+            activeAnalysesCount={activeAnalysesCount}
+            error={error}
+            streamRef={streamRef}
+            MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
+            reconnectRequired={reconnectRequired}
           />
-        </CardContent>
-      </Card>
 
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
-      <canvas ref={monitoringCanvasRef} style={{ display: 'none' }} />
+          <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
 
-      <div 
-        className="w-full max-w-7xl mt-4 space-y-4"
-        onMouseEnter={() => setIsHoveringScrollableArea(true)}
-        onMouseLeave={() => setIsHoveringScrollableArea(false)}
-      >
-        {activityItems.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Timeline & Screenshot Preview</h2>
-              <Button variant="ghost" size="sm" onClick={toggleDetailsPanel}>
-                {detailsCollapsed ? 'Show' : 'Hide'}
-              </Button>
-            </div>
-            {!detailsCollapsed && (
-              <div className="space-y-4">
-                <ScreenshotPreviewPane 
-                  selectedActivity={selectedActivity} 
-                  activityItems={activityItems}
-                  onActivitySelect={setSelectedActivity}
-                  dataProvider={dataProvider}
-                />
-                <TimelineSlider
-                  activityItems={activityItems}
-                  selectedActivity={selectedActivity}
-                  onActivitySelect={setSelectedActivity}
-                />
+          <Card className="w-full max-w-7xl mt-4 hidden">
+            <CardHeader>
+              <CardTitle>Live Preview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <VideoPreviewArea 
+                stream={stream} 
+                videoRef={videoRefCallback}
+              />
+            </CardContent>
+          </Card>
+
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+          <canvas ref={monitoringCanvasRef} style={{ display: 'none' }} />
+
+          <div 
+            className="w-full max-w-7xl mt-4 space-y-4"
+            onMouseEnter={() => setIsHoveringScrollableArea(true)}
+            onMouseLeave={() => setIsHoveringScrollableArea(false)}
+          >
+            {activityItems.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-lg font-semibold">Timeline & Screenshot Preview</h2>
+                  <Button variant="ghost" size="sm" onClick={toggleDetailsPanel}>
+                    {detailsCollapsed ? 'Show' : 'Hide'}
+                  </Button>
+                </div>
+                {!detailsCollapsed && (
+                  <div className="space-y-4">
+                    <ScreenshotPreviewPane 
+                      selectedActivity={selectedActivity} 
+                      activityItems={activityItems}
+                      onActivitySelect={setSelectedActivity}
+                      dataProvider={dataProvider}
+                    />
+                    <TimelineSlider
+                      activityItems={activityItems}
+                      selectedActivity={selectedActivity}
+                      onActivitySelect={setSelectedActivity}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-      </div>
 
-      <div className="w-full max-w-7xl grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="lg:col-span-2 flex flex-col gap-4">
-          <Tabs defaultValue='recent' className='w-full -mt-2' value={selectedMoreOption || selectedMainTab} onValueChange={(value) => {
-            if (value === 'settings' || value === 'debug') {
-              setSelectedMoreOption(value);
-            } else {
-              setSelectedMainTab(value);
-            }
-          }}>
-            <div className='flex items-center justify-between mb-1'>
-              <TabsList className='grid grid-cols-3 flex-1 mr-2'>
-                <TabsTrigger value='recent' onClick={() => {
-                  setSelectedMoreOption(null);
-                  setSelectedMainTab('recent');
-                }}>Recent Activity</TabsTrigger>
-                <TabsTrigger value='events' onClick={() => {
-                  setSelectedMoreOption(null);
-                  setSelectedMainTab('events');
-                }}>Events</TabsTrigger>
-                <TabsTrigger value='workflow' onClick={() => {
-                  setSelectedMoreOption(null);
-                  setSelectedMainTab('workflow');
-                }}>Workflow</TabsTrigger>
-              </TabsList>
-              
-              <div className="flex items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant='outline' size='sm' className='h-9 px-2 flex-shrink-0'>
-                      <MoreHorizontal className='h-4 w-4' />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align='end'>
-                    <DropdownMenuItem onClick={() => {
-                      setSelectedMoreOption('settings');
-                      setSelectedMainTab('settings');
-                    }}>
-                      <Settings className='mr-2 h-4 w-4' />
-                      Settings
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => {
-                      setSelectedMoreOption('debug');
-                      setSelectedMainTab('debug');
-                    }}>
-                      <Bug className='mr-2 h-4 w-4' />
-                      Debug Logs
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <ThemeSwitcher />
-              </div>
-            </div>
+          <div className="w-full max-w-7xl grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="lg:col-span-2 flex flex-col gap-4">
+              <Tabs defaultValue='recent' className='w-full -mt-2' value={selectedMoreOption || selectedMainTab} onValueChange={(value) => {
+                if (value === 'settings' || value === 'debug') {
+                  setSelectedMoreOption(value);
+                } else {
+                  setSelectedMainTab(value);
+                }
+              }}>
+                <div className='flex items-center justify-between mb-1'>
+                  <TabsList className='grid grid-cols-3 flex-1 mr-2'>
+                    <TabsTrigger value='recent' onClick={() => {
+                      setSelectedMoreOption(null);
+                      setSelectedMainTab('recent');
+                    }}>Recent Activity</TabsTrigger>
+                    <TabsTrigger value='events' onClick={() => {
+                      setSelectedMoreOption(null);
+                      setSelectedMainTab('events');
+                    }}>Events</TabsTrigger>
+                    <TabsTrigger value='workflow' onClick={() => {
+                      setSelectedMoreOption(null);
+                      setSelectedMainTab('workflow');
+                    }}>Workflow</TabsTrigger>
+                  </TabsList>
+                  
+                  <div className="flex items-center gap-2">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant='outline' size='sm' className='h-9 px-2 flex-shrink-0'>
+                          <MoreHorizontal className='h-4 w-4' />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align='end'>
+                        <DropdownMenuItem onClick={() => {
+                          setSelectedMoreOption('settings');
+                          setSelectedMainTab('settings');
+                        }}>
+                          <Settings className='mr-2 h-4 w-4' />
+                          Settings
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                          setSelectedMoreOption('debug');
+                          setSelectedMainTab('debug');
+                        }}>
+                          <Bug className='mr-2 h-4 w-4' />
+                          Debug Logs
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <ThemeSwitcher />
+                  </div>
+                </div>
 
-            <TabsContent value='recent' className='-mt-3'>
-              <ActivityTabContent
-                activityItems={activityItems}
-                selectedActivity={selectedActivity}
-                onActivitySelect={setSelectedActivity}
-              />
-            </TabsContent>
+                <TabsContent value='recent' className='-mt-3'>
+                  <ActivityTabContent
+                    activityItems={activityItems}
+                    selectedActivity={selectedActivity}
+                    onActivitySelect={setSelectedActivity}
+                  />
+                </TabsContent>
 
-            <TabsContent value='events' className='-mt-3'>
-              <EventsTabContent
-                events={events}
-                selectedEvent={selectedEvent}
-                onEventSelect={handleEventSelect}
-              />
-            </TabsContent>
+                <TabsContent value='events' className='-mt-3'>
+                  <EventsTabContent
+                    events={events}
+                    selectedEvent={selectedEvent}
+                    onEventSelect={handleEventSelect}
+                  />
+                </TabsContent>
 
-            <TabsContent value='workflow' className='-mt-3'>
-              <WorkflowTabContent
-                workflow={workflow}
-                onWorkflowUpdate={handleWorkflowUpdate}
-              />
-            </TabsContent>
+                <TabsContent value='workflow' className='-mt-3'>
+                  <WorkflowTabContent
+                    workflow={workflow}
+                    onWorkflowUpdate={handleWorkflowUpdate}
+                  />
+                </TabsContent>
 
-            <TabsContent value='settings' className='-mt-3'>
-              <SettingsTabContent
-                customPrompt={customPrompt}
-                handlePromptChange={handlePromptChange}
-                promptSaveStatus={promptSaveStatus}
-                eventsPrompt={eventsPrompt}
-                EVENTS_MODEL_NAME={EVENTS_MODEL_NAME}
-                autoDetectionEnabled={autoDetectionEnabled}
-                setAutoDetectionEnabled={setAutoDetectionEnabled}
-                monitoringFrequency={monitoringFrequency}
-                setMonitoringFrequency={setMonitoringFrequency}
-                changeThreshold={changeThreshold}
-                setChangeThreshold={setChangeThreshold}
-                stabilityDelay={stabilityDelay}
-                setStabilityDelay={setStabilityDelay}
-                screenshotQuality={screenshotQuality}
-                setScreenshotQuality={setScreenshotQuality}
-                maxScreenshots={maxScreenshots}
-                setMaxScreenshots={setMaxScreenshots}
-                pixelDifferenceThreshold={pixelDifferenceThreshold}
-                setPixelDifferenceThreshold={setPixelDifferenceThreshold}
-                stream={stream}
-                activeAnalysesCount={activeAnalysesCount}
-              />
-            </TabsContent>
+                <TabsContent value='settings' className='-mt-3'>
+                  <SettingsTabContent
+                    customPrompt={customPrompt}
+                    handlePromptChange={handlePromptChange}
+                    promptSaveStatus={promptSaveStatus}
+                    eventsPrompt={eventsPrompt}
+                    EVENTS_MODEL_NAME={EVENTS_MODEL_NAME}
+                    autoDetectionEnabled={autoDetectionEnabled}
+                    setAutoDetectionEnabled={setAutoDetectionEnabled}
+                    monitoringFrequency={monitoringFrequency}
+                    setMonitoringFrequency={setMonitoringFrequency}
+                    changeThreshold={changeThreshold}
+                    setChangeThreshold={setChangeThreshold}
+                    stabilityDelay={stabilityDelay}
+                    setStabilityDelay={setStabilityDelay}
+                    screenshotQuality={screenshotQuality}
+                    setScreenshotQuality={setScreenshotQuality}
+                    maxScreenshots={maxScreenshots}
+                    setMaxScreenshots={setMaxScreenshots}
+                    pixelDifferenceThreshold={pixelDifferenceThreshold}
+                    setPixelDifferenceThreshold={setPixelDifferenceThreshold}
+                    stream={stream}
+                    activeAnalysesCount={activeAnalysesCount}
+                  />
+                </TabsContent>
 
-            <TabsContent value='debug' className='-mt-3'>
-              <DebugTabContent
-                frontendLogs={frontendLogs}
-                copyLogsToClipboard={copyLogsToClipboard}
-                copyStatus={copyStatus}
-                clearAllData={clearAllData}
-              />
-            </TabsContent>
-          </Tabs>
-        </div>
-      </div>
-      
-      {/* Temporarily always show LLM traces for debugging */}
-      {true && (
-        <div className="w-full max-w-7xl mt-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">LLM traces {allAnalyses.length > 0 && `(${allAnalyses.length})`}</h2>
-              <Button variant="ghost" size="sm" onClick={toggleAnalysesPanel}>
-                {analysesPanelCollapsed ? 'Show' : 'Hide'}
-              </Button>
-            </div>
-            {!analysesPanelCollapsed && (
-              <LiveAnalysesPanel runningAnalyses={allAnalyses} />
-            )}
-            <div className="text-xs text-muted-foreground mt-2">
-              Debug: Tab={selectedMainTab}, Activity Selected={!!selectedActivity}, More Option={selectedMoreOption || 'none'}, 
-              Condition Met={(selectedMainTab === 'events' || (selectedMainTab === 'recent' && selectedActivity)) && !selectedMoreOption ? 'YES' : 'NO'}
-              <br />
-              Analyses: Queued={queuedAnalyses.length}, Pending={pendingEventAnalyses.length}, 
-              Running={runningAnalyses.length}, Completed={completedAnalyses.length}, 
-              Total={allAnalyses.length}, FrameBuffer={frameBuffer.length}
+                <TabsContent value='debug' className='-mt-3'>
+                  <DebugTabContent
+                    frontendLogs={frontendLogs}
+                    copyLogsToClipboard={copyLogsToClipboard}
+                    copyStatus={copyStatus}
+                    clearAllData={clearAllData}
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
-        </div>
+          
+          {true && (
+            <div className="w-full max-w-7xl mt-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-lg font-semibold">LLM traces {allAnalyses.length > 0 && `(${allAnalyses.length})`}</h2>
+                  <Button variant="ghost" size="sm" onClick={toggleAnalysesPanel}>
+                    {analysesPanelCollapsed ? 'Show' : 'Hide'}
+                  </Button>
+                </div>
+                {!analysesPanelCollapsed && (
+                  <LiveAnalysesPanel runningAnalyses={allAnalyses} />
+                )}
+                <div className="text-xs text-muted-foreground mt-2">
+                  Debug: Tab={selectedMainTab}, Activity Selected={!!selectedActivity}, More Option={selectedMoreOption || 'none'}, 
+                  Condition Met={(selectedMainTab === 'events' || (selectedMainTab === 'recent' && selectedActivity)) && !selectedMoreOption ? 'YES' : 'NO'}
+                  <br />
+                  Analyses: Queued={queuedAnalyses.length}, Pending={pendingEventAnalyses.length}, 
+                  Running={runningAnalyses.length}, Completed={completedAnalyses.length}, 
+                  Total={allAnalyses.length}, FrameBuffer={frameBuffer.length}
+                </div>
+              </div>
+            </div>
+          )}
+          <ScrollHint show={showScrollHint} onDismiss={handleDismissScrollHint} />
+        </>
       )}
-      <ScrollHint show={showScrollHint} onDismiss={handleDismissScrollHint} />
     </div>
   );
 }
