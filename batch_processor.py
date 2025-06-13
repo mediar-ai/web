@@ -64,8 +64,8 @@ def aggregate_and_update_sessions():
                     user_id,
                     'web' as session_type,
                     client_timestamp AS last_event_timestamp,
-                    -- Web events are only "processed" if they are of a specific type
-                    CASE WHEN item_type IN ('initial_dump', 'ui_diff', 'event') THEN 1 ELSE 0 END as processed_event_increment,
+                    -- Web events are "processed" if they are of type 'activity_item'
+                    CASE WHEN item_type = 'activity_item' THEN 1 ELSE 0 END as processed_event_increment,
                     ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY client_timestamp) as rn
                 FROM public.user_activity_data
                 WHERE is_counted = false AND session_id IS NOT NULL
