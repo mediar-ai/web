@@ -49,8 +49,15 @@ export async function GET(
     const { data: urlData } = supabaseAdmin.storage
       .from('low-level-event-screenshots')
       .getPublicUrl(imagePath);
+      
+    const screenshotTimestampMatch = imageFilename.match(/(\d{13,})/);
+    const screenshotTimestamp = screenshotTimestampMatch ? parseInt(screenshotTimestampMatch[1], 10) : null;
 
-    return NextResponse.json({ url: urlData.publicUrl, timestamp: targetTimestamp });
+    return NextResponse.json({ 
+      url: urlData.publicUrl, 
+      screenshotTimestamp: screenshotTimestamp,
+      eventTimestamp: new Date(targetTimestamp).getTime()
+    });
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';

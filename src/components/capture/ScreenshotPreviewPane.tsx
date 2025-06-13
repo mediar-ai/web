@@ -36,6 +36,7 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [timestampDiff, setTimestampDiff] = useState<number | null>(null);
   const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
   const prevActivityIdRef = useRef<string | null>(null);
 
@@ -44,6 +45,7 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
       if (!selectedActivity) {
         setImageUrl(null);
         setError(null);
+        setTimestampDiff(null);
         return;
       }
       
@@ -53,6 +55,7 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
       setLoading(true);
       setError(null);
       setImageUrl(null);
+      setTimestampDiff(null);
 
       const directImageId = selectedActivity.type === 'ui_diff'
         ? (selectedActivity as UIDiffAnalysis).image2_id
@@ -90,6 +93,10 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
             }
             const data = await response.json();
             setImageUrl(data.url);
+            if (data.screenshotTimestamp && data.eventTimestamp) {
+              const diff = (data.screenshotTimestamp - data.eventTimestamp) / 1000;
+              setTimestampDiff(diff);
+            }
           } catch (err) {
             setError('Could not find a nearby screenshot.');
             console.error('[ScreenshotPreviewPane] Error finding closest screenshot:', err);
@@ -158,6 +165,11 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
         <CardContent className="p-1 h-full">
           {renderContent()}
         </CardContent>
+        {imageUrl && !loading && timestampDiff !== null && (
+          <div className="absolute top-2 left-2 bg-black/50 text-white text-xs font-mono px-2 py-1 rounded">
+            Screenshot: {timestampDiff > 0 ? '+' : ''}{timestampDiff.toFixed(2)}s from event
+          </div>
+        )}
         {imageUrl && !loading && (
           <>
             <Button

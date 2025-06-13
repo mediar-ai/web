@@ -38,9 +38,10 @@ export class RemoteDataProvider implements DataProvider {
     // }
 
     try {
+      const cacheBuster = `cb=${Date.now()}`;
       const url = sessionId 
-        ? `/api/users/${this.userId}/data?sessionId=${sessionId}`
-        : `/api/users/${this.userId}/data`;
+        ? `/api/users/${this.userId}/data?sessionId=${sessionId}&${cacheBuster}`
+        : `/api/users/${this.userId}/data?${cacheBuster}`;
       
       const response = await fetch(url);
       if (!response.ok) {
