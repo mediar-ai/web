@@ -65,6 +65,17 @@ export async function GET(
     // Execute query
     const { data, error } = await query;
     
+    console.log('[API/data] Raw query result:', {
+      dataLength: data?.length || 0,
+      firstItem: data?.[0] ? {
+        item_type: data[0].item_type,
+        user_id: data[0].user_id,
+        session_id: data[0].session_id,
+        client_item_id: data[0].client_item_id,
+        item_data_keys: Object.keys(data[0].item_data || {})
+      } : null
+    });
+    
     if (error) {
       console.error(`[API/data] Initial query failed for user ${userId}. Full error:`, JSON.stringify(error, null, 2));
       throw error;
@@ -85,7 +96,18 @@ export async function GET(
     const events: Event[] = [];
     const completedAnalyses: RunningAnalysis[] = [];
     
-    data.forEach(item => {
+    data.forEach((item, index) => {
+      // Debug log for first few items
+      if (index < 3) {
+        console.log(`[API/data] Processing item ${index}:`, {
+          item_type: item.item_type,
+          user_id: item.user_id,
+          session_id: item.session_id,
+          client_item_id: item.client_item_id,
+          item_data_type: item.item_data?.type
+        });
+      }
+      
       // Start with base properties common to all
       const baseItem = {
         id: item.client_item_id,
@@ -101,6 +123,12 @@ export async function GET(
             user_id: item.user_id,
             session_id: item.session_id,
           };
+          console.log(`[API/data] Created activity item:`, {
+            id: activityItem.id,
+            type: 'type' in activityItem ? (activityItem as ActivityItem).type : 'unknown',
+            user_id: activityItem.user_id,
+            session_id: activityItem.session_id
+          });
           activityItems.push(activityItem as ActivityItem);
           break;
         case 'event':
@@ -121,6 +149,15 @@ export async function GET(
     events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     completedAnalyses.sort((a, b) => (b.endTime || 0) - (a.endTime || 0));
 
+    console.log(`[API/data] Returning ${activityItems.length} activity items, first item:`, 
+      activityItems[0] ? {
+        id: activityItems[0].id,
+        type: activityItems[0].type,
+        user_id: activityItems[0].user_id,
+        session_id: activityItems[0].session_id
+      } : null
+    );
+
     return NextResponse.json({
       userName: userData?.name || null,
       activityItems,
@@ -139,4 +176,4 @@ export async function GET(
     console.error(`[API/data] Critical error for user ${userId}:`, error);
     return NextResponse.json({ error: 'Failed to fetch user data', details: errorMessage }, { status: 500 });
   }
-} 
+}

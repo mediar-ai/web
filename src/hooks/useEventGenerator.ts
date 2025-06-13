@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { ActivityItem, Event, RunningAnalysis } from '../types';
-import { useDebouncedEffect } from './useDebouncedEffect';
+import type { ActivityItem, Event, RunningAnalysis, ViewingMode } from '../types';
 
-interface UseEventGeneratorProps {
+export interface UseEventGeneratorProps {
   stream: MediaStream | null;
   activityItems: ActivityItem[];
   setActivityItems: React.Dispatch<React.SetStateAction<ActivityItem[]>>;
@@ -18,6 +17,7 @@ interface UseEventGeneratorProps {
   MAX_PARALLEL_ANALYSES: number;
   EVENTS_MODEL_NAME: string;
   eventsPrompt: string;
+  viewingMode: ViewingMode;
 }
 
 export function useEventGenerator({
@@ -36,6 +36,7 @@ export function useEventGenerator({
   MAX_PARALLEL_ANALYSES,
   EVENTS_MODEL_NAME,
   eventsPrompt,
+  viewingMode,
 }: UseEventGeneratorProps): void {
   const eventGenerationInProgressRef = useRef<boolean>(false);
   const activeAnalysesCountRef = useRef(activeAnalysesCount);
@@ -272,13 +273,24 @@ export function useEventGenerator({
     setActivityItems,
   ]);
 
-  useDebouncedEffect(
-    () => {
-      if (stream) {
-        processMultiActivityEvent();
-      }
-    },
-    [stream, activityItems, processMultiActivityEvent],
-    2000 
-  );
+  useEffect(() => {
+    if (viewingMode.type !== 'local') {
+      return;
+    }
+
+    if (activeAnalysesCount >= MAX_PARALLEL_ANALYSES) {
+      return;
+    }
+
+    if (stream) {
+      processMultiActivityEvent();
+    }
+  }, [
+    stream,
+    activityItems,
+    processMultiActivityEvent,
+    activeAnalysesCount,
+    MAX_PARALLEL_ANALYSES,
+    viewingMode,
+  ]);
 } 
