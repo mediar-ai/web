@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { analyzeTextEvent, analyzeUIDiff } from '@/lib/analysis';
 import { EVENTS_PROMPT, UI_TREE_ANALYSIS_PROMPT } from '@/lib/prompts';
+import { uploadImage } from '@/lib/storage';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -53,20 +54,6 @@ export async function POST(request: Request) {
         const image2_id = `after-${sequenceId}`;
 
         // 2. Upload images to Supabase Storage
-        const uploadImage = async (dataUrl: string, path: string) => {
-            const mimeTypeMatch = dataUrl.match(/^data:(image\/[^;]+);base64,/);
-            if (!mimeTypeMatch) throw new Error('Invalid dataUrl format');
-            const mimeType = mimeTypeMatch[1];
-            const base64Data = dataUrl.substring(mimeTypeMatch[0].length);
-            const imageBuffer = Buffer.from(base64Data, 'base64');
-            
-            const { error } = await supabaseAdmin.storage
-              .from('recordings')
-              .upload(path, imageBuffer, { contentType: mimeType, upsert: true });
-
-            if (error) throw new Error(`Failed to upload to Supabase Storage: ${error.message}`);
-        };
-
         try {
             await uploadImage(screenshot_before, `${user_id}/${session_id}/screenshots/${image1_id}.jpeg`);
             await uploadImage(screenshot_after, `${user_id}/${session_id}/screenshots/${image2_id}.jpeg`);
