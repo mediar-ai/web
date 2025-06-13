@@ -46,7 +46,7 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
         setError(null);
         return;
       }
-
+      
       if (selectedActivity.id === prevActivityIdRef.current && imageUrl) return;
       prevActivityIdRef.current = selectedActivity.id;
 
@@ -54,29 +54,53 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
       setError(null);
       setImageUrl(null);
 
-      const imageId = selectedActivity.type === 'ui_diff'
+      const directImageId = selectedActivity.type === 'ui_diff'
         ? (selectedActivity as UIDiffAnalysis).image2_id
         : (selectedActivity as InitialFrameDumpAnalysis).image_id;
 
-      if (imageId) {
+      if (directImageId) {
+        // This is a temporary measure for local data, as the remote path is different.
+        // In a remote context, even direct IDs might need URL construction.
         try {
-          const result = await dataProvider.loadScreenshot(imageId);
+          const result = await dataProvider.loadScreenshot(selectedActivity);
           if (result instanceof Blob) {
             const url = await blobToDataURL(result);
             setImageUrl(url);
           } else if (typeof result === 'string') {
             setImageUrl(result);
           } else {
-            setError(`Screenshot not found.`);
+            setError('Screenshot not found.');
           }
         } catch (err) {
           setError('Failed to load screenshot.');
-          console.error('[ScreenshotPreviewPane] Error loading screenshot:', err);
+          console.error('[ScreenshotPreviewPane] Error loading direct screenshot:', err);
+        } finally {
+          setLoading(false);
         }
       } else {
-        setError('No screenshot is associated with this activity.');
+        // If no direct image, find the closest one by timestamp via our new API endpoint
+        const { user_id, session_id, timestamp } = selectedActivity as ActivityItem & { user_id?: string; session_id?: string; };
+        
+        if (user_id && session_id && timestamp) {
+          try {
+            const response = await fetch(`/api/users/${user_id}/sessions/${session_id}/find-closest-screenshot?timestamp=${encodeURIComponent(timestamp)}`);
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || `Request failed with status ${response.status}`);
+            }
+            const data = await response.json();
+            setImageUrl(data.url);
+          } catch (err) {
+            setError('Could not find a nearby screenshot.');
+            console.error('[ScreenshotPreviewPane] Error finding closest screenshot:', err);
+          } finally {
+            setLoading(false);
+          }
+        } else {
+          setError('Activity is missing information needed to find a screenshot.');
+          setLoading(false);
+        }
       }
-      setLoading(false);
     };
 
     fetchImage();

@@ -48,8 +48,8 @@ export async function POST(request: Request) {
         }
         
         // 1. Generate IDs for the screenshots
-        const timestamp = Date.now();
-        const sequenceId = `${session_id}-${timestamp}`;
+        const eventTimestamp = new Date(payload.timestamp).getTime(); // Use the original timestamp from the payload
+        const sequenceId = `${session_id}-${eventTimestamp}`;
         const image1_id = `before-${sequenceId}`;
         const image2_id = `after-${sequenceId}`;
 
@@ -84,9 +84,9 @@ export async function POST(request: Request) {
             session_id,
             user_id,
             item_type: 'activity_item',
-            client_item_id: `llm-activity-${timestamp}`,
+            client_item_id: `llm-activity-${eventTimestamp}`,
             item_data: newActivityItemData,
-            client_timestamp: new Date().toISOString(),
+            client_timestamp: new Date(eventTimestamp).toISOString(),
             source: 'low_level',
         });
         console.log(`[INGEST] Successfully saved screenshot_diff analysis.`);

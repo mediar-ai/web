@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import type { ActivityItem, Event, RunningAnalysis } from '@/types';
 
+export const dynamic = 'force-dynamic'; // Prevent caching
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -52,7 +54,7 @@ export async function GET(
     // Base query
     let query = supabaseAdmin
       .from('user_activity_data')
-      .select('item_type, item_data, client_item_id, client_timestamp')
+      .select('item_type, item_data, client_item_id, client_timestamp, user_id, session_id')
       .eq('user_id', userId);
 
     // Filter by session ID if provided
@@ -84,7 +86,8 @@ export async function GET(
     const completedAnalyses: RunningAnalysis[] = [];
     
     data.forEach(item => {
-      const fullItem = {
+      // Start with base properties common to all
+      const baseItem = {
         id: item.client_item_id,
         timestamp: item.client_timestamp,
         ...item.item_data as object,
@@ -92,16 +95,22 @@ export async function GET(
 
       switch (item.item_type) {
         case 'activity_item':
-          activityItems.push(fullItem as ActivityItem);
+          // For activities, we also need user and session IDs for image paths
+          const activityItem = {
+            ...baseItem,
+            user_id: item.user_id,
+            session_id: item.session_id,
+          };
+          activityItems.push(activityItem as ActivityItem);
           break;
         case 'event':
-          events.push(fullItem as Event);
+          events.push(baseItem as Event);
           break;
         case 'completed_analysis':
-          if (isRunningAnalysis(fullItem)) {
-            completedAnalyses.push(fullItem);
+          if (isRunningAnalysis(baseItem)) {
+            completedAnalyses.push(baseItem);
           } else {
-            console.warn('[API/data] Received item with type "completed_analysis" that did not match RunningAnalysis shape:', fullItem);
+            console.warn('[API/data] Received item with type "completed_analysis" that did not match RunningAnalysis shape:', baseItem);
           }
           break;
       }
@@ -118,7 +127,12 @@ export async function GET(
       events,
       completedAnalyses,
       // workflowSteps can be added here if stored
-    }, { status: 200 });
+    }, { 
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      }
+    });
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';

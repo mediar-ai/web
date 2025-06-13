@@ -43,6 +43,8 @@ export interface InitialFrameDumpAnalysis {
   image_id: string; // ID of the dumped frame from BufferedFrame
   processedForEvent?: boolean;
   sequenceId?: string; // Format: "sessionId-screenshotNumber" e.g. "1-3"
+  user_id?: string; // Added for remote data fetching
+  session_id?: string; // Added for remote data fetching
 }
 
 // UIDiffAnalysis now includes a type discriminator
@@ -79,6 +81,8 @@ export interface UIDiffAnalysis {
   image2_id?: string;
   processedForEvent?: boolean;
   sequenceId?: string; // Format: "sessionId-screenshotNumber" e.g. "1-3" - from the second/newer frame
+  user_id?: string; // Added for remote data fetching
+  session_id?: string; // Added for remote data fetching
 }
 
 export type ActivityItem = InitialFrameDumpAnalysis | UIDiffAnalysis;
@@ -244,7 +248,7 @@ export type ViewingMode =
 export interface DataProvider {
   loadActivityItems(sessionId?: string): Promise<ActivityItem[]>;
   loadEvents(sessionId?: string): Promise<Event[]>;
-  loadScreenshot(id: string): Promise<Blob | string | null>; // Blob for local, string (URL) for remote
+  loadScreenshot(item: ActivityItem): Promise<Blob | string | null>;
   loadWorkflowSteps(sessionId?: string): Promise<Array<{
     id: string;
     analysis: string;
