@@ -11,7 +11,11 @@ import { supabase } from './supabase';
 export const LocalDataProvider: DataProvider = {
   loadActivityItems: async () => loadLocalActivityItems(),
   loadEvents: async () => loadLocalEvents(),
-  loadScreenshot: async (id: string) => getScreenshotById(id),
+  loadScreenshot: async (item: ActivityItem) => {
+    const imageId = item.type === 'ui_diff' ? item.image2_id : item.image_id;
+    if (!imageId) return null;
+    return getScreenshotById(imageId);
+  },
   loadWorkflowSteps: async () => loadLocalWorkflowSteps(),
   loadCompletedAnalyses: async () => loadLocalCompletedAnalyses(),
 };
@@ -28,10 +32,10 @@ export class RemoteDataProvider implements DataProvider {
   }
   
   private async fetchData(sessionId?: string) {
-    // Only fetch if data hasn't been loaded yet
-    if (this.activityItems !== null && this.events !== null && this.completedAnalyses !== null) {
-      return;
-    }
+    // Only fetch if data hasn't been loaded yet - REMOVED CACHING LOGIC
+    // if (this.activityItems !== null && this.events !== null && this.completedAnalyses !== null) {
+    //   return;
+    // }
 
     try {
       const url = sessionId 
@@ -76,21 +80,26 @@ export class RemoteDataProvider implements DataProvider {
     return this.completedAnalyses || [];
   }
 
-  async loadScreenshot(id: string): Promise<string | null> {
-    // Screenshots are identified by their frame ID, which contains session info
-    // Format: `session-screenshotNumber`
-    const parts = id.split('-');
-    if (parts.length < 2) {
-      console.error('[RemoteDataProvider] Invalid screenshot ID format:', id);
+  async loadScreenshot(item: ActivityItem): Promise<string | null> {
+    const imageId = item.type === 'ui_diff' ? item.image2_id : item.image_id;
+    if (!imageId) {
+      console.error('[RemoteDataProvider] Activity item has no image ID.', item);
       return null;
     }
-    const sessionId = parts[0]; 
-    const sequenceId = parts.slice(0, 2).join('-'); // e.g., "1-3"
+
+    // The API now provides user_id and session_id on the activity item
+    const userId = item.user_id;
+    const sessionId = item.session_id;
+
+    if (!userId || !sessionId) {
+      console.error('[RemoteDataProvider] Missing user_id or session_id on the activity item.', item);
+      return null;
+    }
     
-    // Construct the path to the screenshot in Supabase Storage
-    const path = `${this.userId}/${sessionId}/screenshots/${sequenceId}.jpeg`;
+    // Construct the correct path to the screenshot in Supabase Storage
+    const path = `${userId}/${sessionId}/screenshots/${imageId}.jpeg`;
     
-    const { data } = supabase.storage.from('recordings').getPublicUrl(path);
+    const { data } = supabase.storage.from('low-level-event-screenshots').getPublicUrl(path);
 
     if (!data || !data.publicUrl) {
       console.warn(`[RemoteDataProvider] Could not get public URL for screenshot: ${path}`);

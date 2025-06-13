@@ -41,7 +41,9 @@ export async function GET(request: Request, { params }: Params) {
     // Extract the activity items from the item_data field
     const activities: ActivityItem[] = data?.map(row => ({
       ...row.item_data,
-      timestamp: row.client_timestamp // Ensure timestamp is included
+      user_id: row.user_id,
+      session_id: row.session_id,
+      timestamp: row.client_timestamp
     })) || [];
 
     console.log(`[API] Found ${activities.length} activities for session ${sessionId}`);
