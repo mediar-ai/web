@@ -127,9 +127,6 @@ export default function AdminPage() {
               User
             </th>
             <th scope="col" className="px-2 py-2">
-              Type(s)
-            </th>
-            <th scope="col" className="px-2 py-2">
               Sessions
             </th>
             <th scope="col" className="px-2 py-2">
@@ -218,17 +215,6 @@ export default function AdminPage() {
                       </div>
                     </td>
                     <td className="px-2 py-1">
-                      <div className="flex items-center gap-1">
-                        {[...new Set(userData.sessions.map(s => s.type))].map((type, index) => (
-                          <span key={`${type}-${index}`} className={`px-2 py-0.5 text-xs rounded-full ${
-                            type === 'lowLevel' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
-                          }`}>
-                            {type === 'lowLevel' ? 'Low-Level' : 'Web'}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-2 py-1">
                       {userData.sessions.length}
                     </td>
                     <td className="px-2 py-1">
@@ -248,7 +234,7 @@ export default function AdminPage() {
                   </tr>
                   {expandedUsers.has(userId) && (
                     <tr>
-                      <td colSpan={7} className="px-8 py-2 bg-gray-50">
+                      <td colSpan={6} className="px-8 py-2 bg-gray-50">
                         <div className="space-y-1">
                           {userData.sessions
                             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -256,11 +242,6 @@ export default function AdminPage() {
                               <div key={session.id} className="flex items-center justify-between py-1 px-2 text-sm bg-white rounded border">
                                 <div className="flex items-center gap-3">
                                   <span className="font-mono text-xs">{truncateId(session.id)}</span>
-                                  <span className={`px-2 py-0.5 text-xs rounded ${
-                                    session.type === 'lowLevel' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
-                                  }`}>
-                                    {session.type === 'lowLevel' ? 'Low-Level' : 'Web'}
-                                  </span>
                                   <span>{session.eventCount} raw events</span>
                                   <span className="font-semibold">{session.processed_event_count || 0} processed</span>
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${
@@ -270,7 +251,7 @@ export default function AdminPage() {
                                   </span>
                                   <span className="text-gray-500">{new Date(session.timestamp).toLocaleString()}</span>
                                 </div>
-                                <Link href={`/sessions/${session.type}/${session.id}`}>
+                                <Link href={`/sessions/generic/${session.id}`}>
                                   <Button size="sm" variant="outline">Raw JSON Session Logs</Button>
                                 </Link>
                               </div>
