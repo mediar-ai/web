@@ -53,6 +53,8 @@ def aggregate_and_update_sessions():
                     user_id,
                     'lowLevel' as session_type,
                     created_at AS last_event_timestamp,
+                    -- Low-level events are always considered "processed"
+                    1 as processed_event_increment,
                     ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY created_at) as rn
                 FROM public.low_level_events
                 WHERE is_counted = false AND session_id IS NOT NULL
@@ -62,6 +64,8 @@ def aggregate_and_update_sessions():
                     user_id,
                     'web' as session_type,
                     client_timestamp AS last_event_timestamp,
+                    -- Web events are only "processed" if they are of a specific type
+                    CASE WHEN item_type IN ('initial_dump', 'ui_diff', 'event') THEN 1 ELSE 0 END as processed_event_increment,
                     ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY client_timestamp) as rn
                 FROM public.user_activity_data
                 WHERE is_counted = false AND session_id IS NOT NULL
@@ -69,9 +73,10 @@ def aggregate_and_update_sessions():
             SELECT
                 session_id,
                 (SELECT user_id FROM new_events_with_rn WHERE rn = 1 AND session_id = ne.session_id LIMIT 1) as user_id,
-                MAX(session_type) as session_type, -- Aggregate session_type
+                MAX(session_type) as session_type,
                 MAX(last_event_timestamp) as last_event_timestamp,
-                COUNT(*) as new_event_count
+                COUNT(*) as new_event_count,
+                SUM(processed_event_increment) as new_processed_event_count
             FROM new_events_with_rn ne
             GROUP BY session_id;
 
@@ -85,17 +90,19 @@ def aggregate_and_update_sessions():
             UPDATE session_metadata sm
             SET
                 event_count = sm.event_count + tnc.new_event_count,
+                processed_event_count = COALESCE(sm.processed_event_count, 0) + tnc.new_processed_event_count,
                 last_event_timestamp = tnc.last_event_timestamp
             FROM temp_new_counts tnc
             WHERE sm.session_id = tnc.session_id;
 
             -- Step 3: Insert new sessions if they don't exist in session_metadata
-            INSERT INTO public.session_metadata (session_id, user_id, session_type, event_count, last_event_timestamp)
+            INSERT INTO public.session_metadata (session_id, user_id, session_type, event_count, processed_event_count, last_event_timestamp)
             SELECT
                 session_id,
                 user_id,
                 session_type,
                 new_event_count,
+                new_processed_event_count,
                 last_event_timestamp
             FROM temp_new_counts
             WHERE session_id NOT IN (SELECT session_id FROM public.session_metadata);
