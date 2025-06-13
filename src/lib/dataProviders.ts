@@ -19,12 +19,20 @@ export const LocalDataProvider: DataProvider = {
 export class RemoteDataProvider implements DataProvider {
   private userId: string;
   private userName: string | null = null;
+  private activityItems: ActivityItem[] | null = null;
+  private events: Event[] | null = null;
+  private completedAnalyses: RunningAnalysis[] | null = null;
   
   constructor(userId: string) {
     this.userId = userId;
   }
   
-  private async fetchDataForSession(sessionId?: string) {
+  private async fetchData(sessionId?: string) {
+    // Only fetch if data hasn't been loaded yet
+    if (this.activityItems !== null && this.events !== null && this.completedAnalyses !== null) {
+      return;
+    }
+
     try {
       const url = sessionId 
         ? `/api/users/${this.userId}/data?sessionId=${sessionId}`
@@ -34,11 +42,18 @@ export class RemoteDataProvider implements DataProvider {
       if (!response.ok) {
         throw new Error(`Failed to fetch remote data for user ${this.userId}`);
       }
-      return await response.json();
+      const data = await response.json();
+      
+      this.userName = data.userName;
+      this.activityItems = data.activityItems || [];
+      this.events = data.events || [];
+      this.completedAnalyses = data.completedAnalyses || [];
+
     } catch (error) {
       console.error('[RemoteDataProvider] Error fetching data:', error);
-      // Return a default structure on error to prevent crashes
-      return { userName: null, activityItems: [], events: [], completedAnalyses: [] };
+      this.activityItems = [];
+      this.events = [];
+      this.completedAnalyses = [];
     }
   }
 
@@ -47,21 +62,18 @@ export class RemoteDataProvider implements DataProvider {
   }
 
   async loadActivityItems(sessionId?: string): Promise<ActivityItem[]> {
-    const data = await this.fetchDataForSession(sessionId);
-    if (data.userName) this.userName = data.userName;
-    return data.activityItems || [];
+    await this.fetchData(sessionId);
+    return this.activityItems || [];
   }
 
   async loadEvents(sessionId?: string): Promise<Event[]> {
-    const data = await this.fetchDataForSession(sessionId);
-    if (data.userName) this.userName = data.userName;
-    return data.events || [];
+    await this.fetchData(sessionId);
+    return this.events || [];
   }
   
   async loadCompletedAnalyses(sessionId?: string): Promise<RunningAnalysis[]> {
-    const data = await this.fetchDataForSession(sessionId);
-    if (data.userName) this.userName = data.userName;
-    return data.completedAnalyses || [];
+    await this.fetchData(sessionId);
+    return this.completedAnalyses || [];
   }
 
   async loadScreenshot(id: string): Promise<string | null> {
