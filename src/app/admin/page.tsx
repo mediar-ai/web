@@ -251,7 +251,7 @@ export default function AdminPage() {
                                   </span>
                                   <span className="text-gray-500">{new Date(session.timestamp).toLocaleString()}</span>
                                 </div>
-                                <Link href={`/sessions/generic/${session.id}`}>
+                                <Link href={`/sessions/${session.type === 'lowLevel' ? 'low-level' : 'web'}/${session.id}`}>
                                   <Button size="sm" variant="outline">Raw JSON Session Logs</Button>
                                 </Link>
                               </div>
