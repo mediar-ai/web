@@ -43,3 +43,12 @@ next-env.d.ts
 
 # Log files
 logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
