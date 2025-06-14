@@ -59,6 +59,7 @@ import { User } from 'lucide-react';
 import { TEXT_EXTRACTION_PROMPT, EVENTS_PROMPT } from '@/lib/prompts';
 import { uploadScreenshot } from '@/lib/screenshotUploader';
 import { Input } from '@/components/ui/input';
+import LowLevelLogsTabContent from '@/components/tabs/LowLevelLogsTabContent';
 
 function HomeComponent() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
@@ -70,6 +71,7 @@ function HomeComponent() {
   const [isRemoteUserOnline, setIsRemoteUserOnline] = useState<boolean>(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [userType, setUserType] = useState<string | null>(null);
 
   const [screenshotQuality, setScreenshotQuality] = useState<number>(0.95);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
@@ -211,6 +213,14 @@ function HomeComponent() {
       const remoteProvider = new RemoteDataProvider(viewingMode.userId);
       setDataProvider(remoteProvider);
       logToUI(`[Mode] Switched to remote data provider for user ${viewingMode.userId}`);
+
+      // Also grab userType from URL params in remote mode
+      const searchParams = new URLSearchParams(window.location.search);
+      const type = searchParams.get('userType');
+      if (type) {
+        setUserType(type);
+        logToUI(`[Mode] Viewing user of type: ${type}`);
+      }
     } else {
       setDataProvider(LocalDataProvider);
       logToUI('[Mode] Switched to local data provider.');
@@ -1152,7 +1162,7 @@ function HomeComponent() {
         <Alert className="w-full max-w-7xl mt-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <User className="h-4 w-4" />
-            <p className="text-sm">
+            <div className="text-sm">
               <span className="font-semibold">Viewing recording for:</span>{' '}
               {isEditingName ? (
                 <div className="inline-flex items-center gap-2 ml-1">
@@ -1195,7 +1205,7 @@ function HomeComponent() {
                 </span>
               )}
               <span className="text-muted-foreground ml-2">Recording controls are disabled.</span>
-            </p>
+            </div>
           </div>
           <Link href="/admin">
             <Button variant="outline" size="sm">
@@ -1257,7 +1267,7 @@ function HomeComponent() {
       <div className="w-full max-w-7xl grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="lg:col-span-2 flex flex-col gap-4">
           <Tabs defaultValue='recent' className='w-full -mt-2' value={selectedMoreOption || selectedMainTab} onValueChange={(value) => {
-            if (value === 'settings' || value === 'debug') {
+            if (value === 'settings' || value === 'debug' || value === 'low-level') {
               setSelectedMoreOption(value);
             } else {
               setSelectedMainTab(value);
@@ -1287,6 +1297,15 @@ function HomeComponent() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align='end'>
+                    {(userType === 'low-level' || userType === 'mixed') && (
+                      <DropdownMenuItem onClick={() => {
+                        setSelectedMoreOption('low-level');
+                        setSelectedMainTab('low-level');
+                      }}>
+                        <Bug className='mr-2 h-4 w-4' />
+                        Low-level Logs
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => {
                       setSelectedMoreOption('settings');
                       setSelectedMainTab('settings');
@@ -1328,6 +1347,10 @@ function HomeComponent() {
                 workflow={workflow}
                 onWorkflowUpdate={handleWorkflowUpdate}
               />
+            </TabsContent>
+
+            <TabsContent value='low-level' className='-mt-3'>
+              <LowLevelLogsTabContent />
             </TabsContent>
 
             <TabsContent value='settings' className='-mt-3'>

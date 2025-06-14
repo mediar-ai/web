@@ -58,12 +58,9 @@ export default function AdminPage() {
   };
 
   const fetchSessions = useCallback(async () => {
-    console.log('[Admin] Fetching sessions...');
     const response = await fetch(`/api/sessions?v=${Date.now()}`);
     const sessionData = await response.json();
-    console.log('[Admin] Received sessions data:', JSON.stringify(sessionData, null, 2));
     setUserSessions(sessionData);
-    console.log('[Admin] Sessions fetched:', Object.keys(sessionData).length, 'users');
   }, []);
 
   // Debounce for 2 seconds to handle the firehose of events and refresh efficiently.
@@ -81,19 +78,16 @@ export default function AdminPage() {
       .channel('public:session_metadata')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'session_metadata' }, 
         () => {
-          console.log('[Realtime] Change detected, queueing data refresh...');
           debouncedFetchSessions();
         }
       )
       .subscribe((status, err) => {
-        console.log('[Realtime] Subscription status changed:', status);
         if (err) {
           console.error('[Realtime] Subscription error:', err as Error);
         }
       });
 
     return () => {
-      console.log('[Realtime] Removing channel subscription.');
       supabase.removeChannel(channel);
     };
   }, [fetchSessions, debouncedFetchSessions]);
@@ -128,7 +122,6 @@ export default function AdminPage() {
         throw new Error(errorData.details || `Failed to delete user: ${response.statusText}`);
       }
       
-      console.log(`[Admin] Successfully deleted user ${userId}`);
       setUserToDelete(null); // Close the dialog
       await fetchSessions(); // Refresh the user list
     } catch (error) {
@@ -299,7 +292,7 @@ export default function AdminPage() {
                     </td>
                     <td className="px-2 py-1 text-right">
                       <div className="flex items-center justify-end space-x-2">
-                        <Link href={`/?userId=${userId}`}>
+                        <Link href={`/?userId=${userId}&userType=${userType}`}>
                           <Button size="sm" variant="outline">Recordings</Button>
                         </Link>
                         <Button 
