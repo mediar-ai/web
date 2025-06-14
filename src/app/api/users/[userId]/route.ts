@@ -38,10 +38,10 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const { userId } = params;
+    const { userId } = await params;
     console.log(`[API/DELETE] Received request to delete user: ${userId}`);
 
     if (!userId) {

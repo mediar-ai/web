@@ -6,9 +6,7 @@ import type {
   InitialFrameDumpAnalysis,
   UIDiffAnalysis,
   RunningAnalysis,
-  UserSessionData
 } from '../types';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export interface Session {
   id: string;
@@ -18,6 +16,7 @@ export interface Session {
   eventCount: number;
   processed_event_count: number;
   status: 'live' | 'offline';
+  duration_seconds: number | null;
 }
 
 export interface UserSessionData {
