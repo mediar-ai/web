@@ -1,0 +1,10 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+whenever you work with web related tasks, e.g. frontend or web navigation tasks, checking production deployment, etc-> always call MCP-playwright tools
+you often don't see that you already opened the browser in debug mode, try closing it and starting again
+always pay attention which tabs you have already started through playwright and close all of them if you feel confused
+check for browser logs, and if there are no logs that help you accomplish user tasks, edit code to add console logs and rerun MCP tools,
+repeat this loop until you solve user task

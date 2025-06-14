@@ -6,17 +6,20 @@ export const dynamic = 'force-dynamic';
 interface Session {
   id: string;
   userId: string;
-  type: 'lowLevel' | 'web';
+  type: string;
   timestamp: string;
   eventCount: number;
   processed_event_count: number;
   status: 'live' | 'offline';
+  duration_seconds?: number;
 }
 
 interface UserSessionData {
   name: string | null;
   sessions: Session[];
 }
+
+export const revalidate = 0;
 
 export async function GET() {
   try {
@@ -25,7 +28,6 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_KEY!
     );
 
-    // Fetch all sessions from the new metadata table
     const { data: sessions, error: sessionsError } = await supabase
       .from('session_metadata')
       .select('*');
@@ -39,11 +41,10 @@ export async function GET() {
       return NextResponse.json({});
     }
 
-    // Process sessions to add status
     const processedSessions: Session[] = sessions.map(session => {
       const lastEventTimestamp = new Date(session.last_event_timestamp).getTime();
       const now = Date.now();
-      const isLive = (now - lastEventTimestamp) < 60000; // 60 seconds
+      const isLive = (now - lastEventTimestamp) < 60000;
 
       return {
         id: session.session_id,
@@ -52,14 +53,13 @@ export async function GET() {
         timestamp: session.last_event_timestamp,
         eventCount: session.event_count,
         processed_event_count: session.processed_event_count || 0,
+        duration_seconds: session.duration_seconds,
         status: isLive ? 'live' : 'offline',
       };
     });
     
-    // Get all unique user IDs
-    const userIds = [...new Set(processedSessions.map(s => s.userId))];
-
-    // Fetch user names
+    const userIds = [...new Set(processedSessions.map(s => s.userId).filter(id => id !== 'unknown_user'))];
+    
     const { data: users, error: usersError } = await supabase
       .from('mediar_users')
       .select('user_id, name')
@@ -67,7 +67,6 @@ export async function GET() {
 
     if (usersError) {
       console.error('[api/sessions] Error fetching users:', usersError);
-      // Not fatal, we can proceed without names
     }
 
     const usersMap = new Map<string, string | null>();
@@ -75,7 +74,6 @@ export async function GET() {
       usersMap.set(user.user_id, user.name);
     }
 
-    // Group sessions by user
     const userSessions: Record<string, UserSessionData> = {};
     for (const session of processedSessions) {
       if (!userSessions[session.userId]) {
@@ -86,8 +84,13 @@ export async function GET() {
       }
       userSessions[session.userId].sessions.push(session);
     }
-
-    return NextResponse.json(userSessions);
+    
+    console.log('[API/SESSIONS] Returning sessions data:', JSON.stringify(userSessions, null, 2));
+    return NextResponse.json(userSessions, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    });
   } catch (err) {
     console.error('[api/sessions] Failed to get sessions:', err);
     return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 500 });

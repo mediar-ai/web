@@ -258,4 +258,19 @@ export interface DataProvider {
   }>>;
   loadCompletedAnalyses(sessionId?: string): Promise<RunningAnalysis[]>;
   // Add more methods as needed
-} 
+}
+
+export interface Session {
+  id: string;
+  eventCount: number;
+  processed_event_count?: number;
+  duration_seconds?: number;
+  status: 'live' | 'ended';
+  timestamp: string;
+  type: string;
+}
+
+export interface UserSessionData {
+  name: string | null;
+  sessions: Session[];
+}

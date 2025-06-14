@@ -1,0 +1,13 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+when asked to run terminal commands usually you need to run development server
+pay attention on which port the server is running and check for existing running servers and logs before running a new one
+when you run it remember that you need to stream logs to some file so you can access logs for debugging later,
+e.g. npm run dev > server.log 2>&1
+then use other tools and commands to trigger logic you wanted to test
+sleep if needed for some appropriate time to have logs arrive
+stop server if you don't see logs and restart it, don't ask user
+then don't stop and keep calling logs and make new changes as need and call logs again until you complete user task
