@@ -6,10 +6,8 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Helper function to convert a base64 data URL into a Blob
-function dataUrlToBlob(dataUrl: string): Blob {
-    const parts = dataUrl.split(',');
-    const mimeType = parts[0].match(/:(.*?);/)![1];
-    const b64 = atob(parts[1]);
+function base64ToBlob(base64: string, mimeType: string): Blob {
+    const b64 = atob(base64);
     let n = b64.length;
     const u8arr = new Uint8Array(n);
     while (n--) {
@@ -19,7 +17,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
 }
 
 export const uploadScreenshot = async (
-    imageDataUrl: string, 
+    base64Data: string, 
     userId: string, 
     sessionId: string,
     imageId: string
@@ -41,15 +39,20 @@ export const uploadScreenshot = async (
             throw new Error(`Failed to get upload URL: ${errorBody.error}`);
         }
         
-        const { signedUrl } = await uploadUrlResponse.json();
+        const uploadData = await uploadUrlResponse.json();
+        const { token } = uploadData;
+
+        if (!token) {
+            throw new Error('Upload token not found in API response.');
+        }
         
         // 2. Convert the base64 image data into a binary Blob for uploading
-        const fileBlob = dataUrlToBlob(imageDataUrl);
+        const fileBlob = base64ToBlob(base64Data, 'image/jpeg');
 
         // 3. Upload the file directly to Supabase Storage using the signed URL
         const { error } = await supabase.storage
             .from('low-level-event-screenshots')
-            .uploadToSignedUrl(path, signedUrl.token, fileBlob, {
+            .uploadToSignedUrl(path, token, fileBlob, {
                 upsert: true, // Overwrite if it already exists
             });
 

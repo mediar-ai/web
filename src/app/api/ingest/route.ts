@@ -126,7 +126,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, message: 'Data ingested' });
 
   } catch (error) {
-    console.error('Error processing request:', error);
+    let errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    // Check if it's a Google AI error and customize the message to be cleaner
+    if (errorMessage.includes('GoogleGenerativeAI Error')) {
+      const specificError = errorMessage.split('Base64 decoding failed')[0] || 'AI analysis failed';
+      errorMessage = `[INGEST] ${specificError.trim()}`;
+      console.error(errorMessage); // Log the clean message
+    } else {
+      console.error('[INGEST] Error processing request:', error);
+    }
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });
   }
 } 

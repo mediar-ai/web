@@ -43,7 +43,7 @@ export const useFrameAnalysisDispatcher = ({
 
       const analysisId = `dump-${frameToDump.id}`;
       const analysisPayload = {
-        image: frameToDump.imageDataUrl,
+        image: `data:image/jpeg;base64,${frameToDump.base64Data}`,
         timestamp: new Date(frameToDump.timestamp).toISOString(),
         prompt:
           'List in maximum detail all visible text and UI elements from the screenshot. Describe layout and objects.',
@@ -157,8 +157,8 @@ export const useFrameAnalysisDispatcher = ({
 
       const analysisId = `diff-${frame1.id}-to-${frame2.id}`;
       const analysisPayload = {
-        image1_dataUrl: frame1.imageDataUrl,
-        image2_dataUrl: frame2.imageDataUrl,
+        image1_dataUrl: `data:image/jpeg;base64,${frame1.base64Data}`,
+        image2_dataUrl: `data:image/jpeg;base64,${frame2.base64Data}`,
         analysisType: 'ui_diff',
         prompt: 'Perform UI difference analysis',
       };

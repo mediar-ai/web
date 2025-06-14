@@ -262,6 +262,9 @@ function HomeComponent() {
         const imageDataUrl = canvas.toDataURL('image/jpeg', screenshotQuality);
         const timestamp = Date.now();
         
+        // Ensure we only store the pure base64 part for uploads and API calls
+        const base64Data = imageDataUrl.split(';base64,')[1];
+        
         // Increment screenshot counter
         const newScreenshotNumber = screenshotCounter + 1;
         setScreenshotCounter(newScreenshotNumber);
@@ -269,7 +272,8 @@ function HomeComponent() {
         
         const newFrame: BufferedFrame = {
           id: `${timestamp}-change-${changePercent.toFixed(2)}`,
-          imageDataUrl,
+          imageDataUrl: `data:image/jpeg;base64,${base64Data}`, // Keep prefix for local display
+          base64Data, // Store pure base64 for processing
           timestamp,
           percentChange: changePercent,
           sequenceId,
@@ -283,7 +287,8 @@ function HomeComponent() {
         if (userId) {
           const appSessionId = localStorage.getItem('app_session_id');
           if (appSessionId) {
-            uploadScreenshot(imageDataUrl, userId, appSessionId, newFrame.id)
+            // Use the pure base64 data for the upload function, which will construct the data URL internally
+            uploadScreenshot(base64Data, userId, appSessionId, newFrame.id)
               .catch(err => logError('[captureFrameToBuffer] Screenshot upload failed:', err));
           }
         }

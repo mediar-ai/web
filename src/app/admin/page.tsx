@@ -8,7 +8,17 @@ import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { useDebouncedCallback } from 'use-debounce';
-import { ChevronDown, ChevronRight, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
@@ -19,6 +29,7 @@ export default function AdminPage() {
   const [userNameInput, setUserNameInput] = useState('');
   const [filter, setFilter] = useState('');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [userToDelete, setUserToDelete] = useState<{id: string, name: string} | null>(null);
 
   const toggleUserExpansion = (userId: string) => {
     setExpandedUsers(prev => {
@@ -88,6 +99,28 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    if (!userId) return;
+
+    try {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || `Failed to delete user: ${response.statusText}`);
+      }
+      
+      console.log(`[Admin] Successfully deleted user ${userId}`);
+      setUserToDelete(null); // Close the dialog
+      await fetchSessions(); // Refresh the user list
+    } catch (error) {
+      console.error('Failed to delete user:', error);
+      // You might want to show an error notification to the user here
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto py-4">
@@ -98,7 +131,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="container mx-auto py-4">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
       <div className="flex justify-between items-center mb-3">
         <h1 className="text-xl font-bold">Admin - All Users</h1>
         <div className="flex items-center gap-2">
@@ -130,13 +163,13 @@ export default function AdminPage() {
               Sessions
             </th>
             <th scope="col" className="px-2 py-2">
-              Session Types
+              Type
             </th>
             <th scope="col" className="px-2 py-2">
-              Total Events
+              Total
             </th>
             <th scope="col" className="px-2 py-2">
-              Processed Events
+              Processed
             </th>
             <th scope="col" className="px-2 py-2">
               Last Active
@@ -149,6 +182,7 @@ export default function AdminPage() {
         <tbody>
           {Object.entries(userSessions)
             .filter(([userId, userData]) => {
+              if (!userId) return false;
               if (!filter) return true;
               return userId.includes(filter) || 
                 (userData.name && userData.name.toLowerCase().includes(filter.toLowerCase()));
@@ -243,9 +277,18 @@ export default function AdminPage() {
                       {mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}
                     </td>
                     <td className="px-2 py-1 text-right">
-                      <Link href={`/?userId=${userId}`}>
-                        <Button size="sm">View Recordings</Button>
-                      </Link>
+                      <div className="flex items-center justify-end space-x-2">
+                        <Link href={`/?userId=${userId}`}>
+                          <Button size="sm" variant="outline">Recordings</Button>
+                        </Link>
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          onClick={() => setUserToDelete({ id: userId, name: userData.name || `User ${truncateId(userId)}` })}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                   {expandedUsers.has(userId) && (
@@ -297,6 +340,29 @@ export default function AdminPage() {
             })}
         </tbody>
       </table>
+      
+      {userToDelete && (
+        <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete all data for user{' '}
+                <span className="font-bold">{userToDelete.name}</span> and remove all their associated sessions, events, and screenshots from our servers.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => handleDeleteUser(userToDelete.id)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Continue
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 } 
