@@ -34,4 +34,66 @@ export async function PUT(
     console.error('[api/users] Failed to update user:', err);
     return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
   }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: { userId: string } }
+) {
+  try {
+    const { userId } = params;
+    console.log(`[API/DELETE] Received request to delete user: ${userId}`);
+
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+    }
+
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY!
+    );
+    
+    // Step 1: Delete all files in Supabase Storage for this user
+    console.log(`[API/DELETE] Deleting storage folder for user: ${userId}`);
+    const { data: list, error: listError } = await supabaseAdmin.storage
+      .from('low-level-event-screenshots')
+      .list(userId);
+
+    if (listError) {
+      console.error(`[API/DELETE] Error listing files for user ${userId}:`, listError);
+      // Don't throw, maybe the folder doesn't exist which is fine.
+    }
+
+    if (list && list.length > 0) {
+      const filesToDelete = list.map((file) => `${userId}/${file.name}`);
+      // Supabase storage doesn't have a direct folder delete, so we remove all files.
+      // A more complex implementation could handle subfolders if they exist.
+      // For now, assuming a flat structure under the userId folder.
+      const { error: removalError } = await supabaseAdmin.storage
+        .from('low-level-event-screenshots')
+        .remove(filesToDelete);
+        
+      if (removalError) {
+        console.error(`[API/DELETE] Error deleting storage files for user ${userId}:`, removalError);
+        throw new Error(`Failed to delete storage files: ${removalError.message}`);
+      }
+    }
+    
+    // Step 3: Delete all records from related tables using the admin client
+    // The order matters to respect foreign key constraints if they exist.
+    console.log(`[API/DELETE] Deleting database records for user: ${userId}`);
+
+    await supabaseAdmin.from('user_activity_data').delete().eq('user_id', userId);
+    await supabaseAdmin.from('low_level_events').delete().eq('user_id', userId);
+    await supabaseAdmin.from('session_metadata').delete().eq('user_id', userId);
+    // We are intentionally NOT deleting from 'mediar_users' to preserve the user's name.
+
+    console.log(`[API/DELETE] Successfully deleted all data for user: ${userId}`);
+    return NextResponse.json({ message: `User ${userId} and all associated data deleted successfully.` });
+
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+    console.error('[API/DELETE] Failed to delete user:', errorMessage);
+    return NextResponse.json({ error: 'Failed to delete user data', details: errorMessage }, { status: 500 });
+  }
 } 

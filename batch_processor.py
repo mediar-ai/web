@@ -77,6 +77,7 @@ def aggregate_and_update_sessions():
                 -- Get user_id and session_type from the first event in the batch for this session
                 (SELECT user_id FROM new_events_with_rn WHERE rn = 1 AND session_id = ne.session_id LIMIT 1) as user_id,
                 (SELECT session_type FROM new_events_with_rn WHERE rn = 1 AND session_id = ne.session_id LIMIT 1) as session_type,
+                MIN(event_timestamp) as first_event_timestamp,
                 MAX(event_timestamp) as last_event_timestamp,
                 COUNT(*) as new_event_count,
                 SUM(processed_event_increment) as new_processed_event_count
@@ -99,13 +100,14 @@ def aggregate_and_update_sessions():
             WHERE sm.session_id = tnc.session_id;
 
             -- Step 3: Insert new sessions if they don't exist in session_metadata
-            INSERT INTO public.session_metadata (session_id, user_id, session_type, event_count, processed_event_count, last_event_timestamp)
+            INSERT INTO public.session_metadata (session_id, user_id, session_type, event_count, processed_event_count, first_event_timestamp, last_event_timestamp)
             SELECT
                 session_id,
                 user_id,
                 session_type,
                 new_event_count,
                 new_processed_event_count,
+                first_event_timestamp,
                 last_event_timestamp
             FROM temp_new_counts
             WHERE session_id NOT IN (SELECT session_id FROM public.session_metadata);

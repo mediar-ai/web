@@ -1,6 +1,7 @@
 export interface BufferedFrame {
   id: string;
   imageDataUrl: string;
+  base64Data?: string; // Pure base64 data for processing
   timestamp: number;
   percentChange: number;
   sequenceId?: string; // Format: "sessionId-screenshotNumber" e.g. "1-3"

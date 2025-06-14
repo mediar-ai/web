@@ -47,7 +47,15 @@ export async function POST(request: Request) {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    console.error(`[API/capture] Error: ${errorMessage}`);
-    return NextResponse.json({ error: 'Failed to process capture request.', details: errorMessage }, { status: 500 });
+    // Check if it's a Google AI error and customize the message to be cleaner
+    if (errorMessage.includes('GoogleGenerativeAI Error')) {
+      const specificError = errorMessage.split('Base64 decoding failed')[0] || 'AI analysis failed';
+      const cleanMessage = `[API/capture] ${specificError.trim()}`;
+      console.error(cleanMessage);
+      return NextResponse.json({ error: 'Failed to process capture request.', details: cleanMessage }, { status: 500 });
+    } else {
+      console.error(`[API/capture] Error: ${errorMessage}`);
+      return NextResponse.json({ error: 'Failed to process capture request.', details: errorMessage }, { status: 500 });
+    }
   }
 } 

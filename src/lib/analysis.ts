@@ -91,20 +91,15 @@ export async function analyzeUIDiff(
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     const imageParts: Part[] = [image1_dataUrl, image2_dataUrl].map(url => {
-        const parts = url.split(';base64,');
-        if (parts.length !== 2) throw new Error('Malformed base64 image data.');
+        // Find the start of the base64 data
+        const base64StartIndex = url.indexOf(';base64,');
+        if (base64StartIndex === -1) {
+            throw new Error('Malformed data URL: could not find ;base64,');
+        }
         
-        const mimeType = parts[0].split(':')[1];
-        let base64Data = parts[1].trim();
-
-        // If the data starts with a rogue character (like a slash from incorrect parsing), remove it.
-        if (base64Data.startsWith('/') || base64Data.startsWith('"')) {
-            base64Data = base64Data.substring(1);
-        }
-        // Also remove a potential trailing quote
-        if (base64Data.endsWith('"')) {
-            base64Data = base64Data.slice(0, -1);
-        }
+        // Extract the mime type and the pure base64 data
+        const mimeType = url.substring(url.indexOf(':') + 1, base64StartIndex);
+        const base64Data = url.substring(base64StartIndex + 8); // +8 for ';base64,'
 
         return { inlineData: { mimeType: mimeType, data: base64Data } };
     });
