@@ -33,7 +33,6 @@ export async function GET() {
       .select('*');
 
     if (sessionsError) {
-      console.error('[api/sessions] Error fetching session metadata:', sessionsError);
       return NextResponse.json({ error: sessionsError.message }, { status: 500 });
     }
 
@@ -85,14 +84,12 @@ export async function GET() {
       userSessions[session.userId].sessions.push(session);
     }
     
-    console.log('[API/SESSIONS] Returning sessions data:', JSON.stringify(userSessions, null, 2));
     return NextResponse.json(userSessions, {
       headers: {
         'Cache-Control': 'no-store, max-age=0',
       },
     });
-  } catch (err) {
-    console.error('[api/sessions] Failed to get sessions:', err);
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 500 });
   }
 } 
