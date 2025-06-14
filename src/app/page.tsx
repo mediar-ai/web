@@ -48,7 +48,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Settings, Bug } from 'lucide-react';
+import { MoreHorizontal, Settings, Bug, Pencil } from 'lucide-react';
 import ReactDOM from 'react-dom/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import VideoPreviewArea from '@/components/capture/VideoPreviewArea';
@@ -58,6 +58,7 @@ import { Alert } from '@/components/ui/alert';
 import { User } from 'lucide-react';
 import { TEXT_EXTRACTION_PROMPT, EVENTS_PROMPT } from '@/lib/prompts';
 import { uploadScreenshot } from '@/lib/screenshotUploader';
+import { Input } from '@/components/ui/input';
 
 function HomeComponent() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
@@ -67,6 +68,8 @@ function HomeComponent() {
   const [dataProvider, setDataProvider] = useState<DataProvider>(LocalDataProvider);
   const [remoteUserName, setRemoteUserName] = useState<string | null>(null);
   const [isRemoteUserOnline, setIsRemoteUserOnline] = useState<boolean>(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   const [screenshotQuality, setScreenshotQuality] = useState<number>(0.95);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
@@ -1094,6 +1097,33 @@ function HomeComponent() {
     }
   }, [viewingMode, logError]);
 
+  const handleSaveName = async () => {
+    if (viewingMode.type !== 'remote' || !viewingMode.userId || !nameInput.trim()) {
+      logError('[handleSaveName] User ID not found or name is empty.');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/users/${viewingMode.userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nameInput }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || 'Failed to save name');
+      }
+
+      setRemoteUserName(nameInput);
+      setIsEditingName(false);
+      logToUI(`[User] Updated user name to: ${nameInput}`);
+    } catch (err) {
+      logError('[handleSaveName] Error saving user name:', err);
+      // Optionally, show an error message to the user in the UI
+    }
+  };
+
   return (
     <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
       <ExportStatusDialog exportInProgress={false} />
@@ -1124,7 +1154,37 @@ function HomeComponent() {
             <User className="h-4 w-4" />
             <p className="text-sm">
               <span className="font-semibold">Viewing recording for:</span>{' '}
-              <strong className="font-bold">{remoteUserName || viewingMode.userId}</strong>
+              {isEditingName ? (
+                <div className="inline-flex items-center gap-2 ml-1">
+                  <Input
+                    type="text"
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    className="h-8"
+                    placeholder="Enter user name"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveName();
+                      if (e.key === 'Escape') setIsEditingName(false);
+                    }}
+                  />
+                  <Button size="sm" onClick={handleSaveName} className="h-8">Save</Button>
+                  <Button size="sm" variant="outline" onClick={() => setIsEditingName(false)} className="h-8">Cancel</Button>
+                </div>
+              ) : (
+                <div
+                  className="inline-flex items-center gap-2 cursor-pointer group ml-1"
+                  onClick={() => {
+                    setNameInput(remoteUserName || '');
+                    setIsEditingName(true);
+                  }}
+                >
+                  <strong className="font-bold border-b border-dotted border-transparent group-hover:border-gray-400">
+                    {remoteUserName || (viewingMode.type === 'remote' ? viewingMode.userId : '')}
+                  </strong>
+                  <Pencil className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              )}
               {isRemoteUserOnline && (
                 <span className="flex items-center gap-1.5 ml-3 inline-flex">
                   <span className="relative flex h-2 w-2">
