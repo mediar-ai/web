@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+when asked to do tasks related to database, connect to the database directly through terminal
+You should read database credentials from .env or .env.local file using terminal from root of the project if you don't have them
+use commands that run in one prompt because you can't interact with terminal in a dialogue format
+Do not run automatically commands that are distructive in nature ever! Always ask for explicit CONFIRMATION FROM USER If they want to run it.

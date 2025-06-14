@@ -95,12 +95,13 @@ def aggregate_and_update_sessions():
             SET
                 event_count = sm.event_count + tnc.new_event_count,
                 processed_event_count = COALESCE(sm.processed_event_count, 0) + tnc.new_processed_event_count,
-                last_event_timestamp = tnc.last_event_timestamp
+                last_event_timestamp = tnc.last_event_timestamp,
+                duration_seconds = EXTRACT(EPOCH FROM (tnc.last_event_timestamp - sm.first_event_timestamp))
             FROM temp_new_counts tnc
             WHERE sm.session_id = tnc.session_id;
 
             -- Step 3: Insert new sessions if they don't exist in session_metadata
-            INSERT INTO public.session_metadata (session_id, user_id, session_type, event_count, processed_event_count, first_event_timestamp, last_event_timestamp)
+            INSERT INTO public.session_metadata (session_id, user_id, session_type, event_count, processed_event_count, first_event_timestamp, last_event_timestamp, duration_seconds)
             SELECT
                 session_id,
                 user_id,
@@ -108,7 +109,8 @@ def aggregate_and_update_sessions():
                 new_event_count,
                 new_processed_event_count,
                 first_event_timestamp,
-                last_event_timestamp
+                last_event_timestamp,
+                EXTRACT(EPOCH FROM (last_event_timestamp - first_event_timestamp))
             FROM temp_new_counts
             WHERE session_id NOT IN (SELECT session_id FROM public.session_metadata);
 

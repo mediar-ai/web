@@ -6,7 +6,9 @@ import type {
   InitialFrameDumpAnalysis,
   UIDiffAnalysis,
   RunningAnalysis,
+  UserSessionData
 } from '../types';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export interface Session {
   id: string;
@@ -513,16 +515,15 @@ export const getAllPersistedDataForExport = async (): Promise<object> => {
 
 export const getSessions = async (): Promise<Record<string, UserSessionData>> => {
   try {
-    const response = await fetch('/api/sessions', { cache: 'no-store' });
+    const cacheBuster = `v=${Date.now()}`;
+    const response = await fetch(`/api/sessions?${cacheBuster}`);
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('[getSessions] Error fetching sessions:', errorData);
-      return {};
+      throw new Error(`Failed to fetch sessions: ${response.statusText}`);
     }
     const data = await response.json();
     return data;
-  } catch (err) {
-    console.error('[getSessions] Failed to get sessions:', err);
+  } catch (error) {
+    console.error("[db.ts] Error fetching sessions:", error);
     return {};
   }
 }; 

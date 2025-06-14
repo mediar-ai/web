@@ -22,6 +22,20 @@ import {
 
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
+const formatDuration = (seconds: number | null | undefined): string => {
+  if (seconds === null || seconds === undefined || seconds === 0) return 'N/A';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  
+  let result = '';
+  if (h > 0) result += `${h}h `;
+  if (m > 0) result += `${m}m`;
+  
+  return result.trim();
+};
+
 export default function AdminPage() {
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
@@ -45,7 +59,9 @@ export default function AdminPage() {
 
   const fetchSessions = useCallback(async () => {
     console.log('[Admin] Fetching sessions...');
-    const sessionData = await getSessions();
+    const response = await fetch(`/api/sessions?v=${Date.now()}`);
+    const sessionData = await response.json();
+    console.log('[Admin] Received sessions data:', JSON.stringify(sessionData, null, 2));
     setUserSessions(sessionData);
     console.log('[Admin] Sessions fetched:', Object.keys(sessionData).length, 'users');
   }, []);
@@ -172,6 +188,9 @@ export default function AdminPage() {
               Processed
             </th>
             <th scope="col" className="px-2 py-2">
+              Duration
+            </th>
+            <th scope="col" className="px-2 py-2">
               Last Active
             </th>
             <th scope="col" className="px-2 py-2 text-right">
@@ -197,19 +216,18 @@ export default function AdminPage() {
               const liveSessions = userData.sessions.filter(s => s.status === 'live').length;
               const totalEvents = userData.sessions.reduce((sum, s) => sum + s.eventCount, 0);
               const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
+              const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
               const mostRecentSession = userData.sessions.sort((a, b) => 
                 new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
               )[0];
 
-              const sessionTypesSummary = userData.sessions.reduce((acc, session) => {
-                const type = session.type || 'unknown';
-                acc[type] = (acc[type] || 0) + 1;
-                return acc;
-              }, {} as Record<string, number>);
-
-              const summaryString = Object.entries(sessionTypesSummary)
-                .map(([type, count]) => `${count} ${type}`)
-                .join(', ');
+              const sessionTypes = new Set(userData.sessions.map(s => s.type.toLowerCase()));
+              let userType = 'mixed';
+              if (sessionTypes.size === 1) {
+                if (sessionTypes.has('web')) userType = 'web';
+                if (sessionTypes.has('low-level')) userType = 'low-level';
+              }
+              if (sessionTypes.size === 0) userType = 'N/A';
 
               return (
                 <React.Fragment key={userId}>
@@ -265,13 +283,16 @@ export default function AdminPage() {
                       {userData.sessions.length}
                     </td>
                     <td className="px-2 py-1">
-                      {summaryString}
+                      {userType}
                     </td>
                     <td className="px-2 py-1">
                       {totalEvents}
                     </td>
                     <td className="px-2 py-1">
                       {totalProcessedEvents}
+                    </td>
+                    <td className="px-2 py-1">
+                      {formatDuration(totalDuration)}
                     </td>
                     <td className="px-2 py-1">
                       {mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}
@@ -301,6 +322,7 @@ export default function AdminPage() {
                               <th scope="col" className="px-2 py-1">Type</th>
                               <th scope="col" className="px-2 py-1">Events</th>
                               <th scope="col" className="px-2 py-1">Processed</th>
+                              <th scope="col" className="px-2 py-1">Duration</th>
                               <th scope="col" className="px-2 py-1">Status</th>
                               <th scope="col" className="px-2 py-1">Last Active</th>
                               <th scope="col" className="px-2 py-1 text-right">Actions</th>
@@ -315,6 +337,7 @@ export default function AdminPage() {
                                 <td className="px-2 py-1 font-semibold">{session.type}</td>
                                 <td className="px-2 py-1">{session.eventCount}</td>
                                 <td className="px-2 py-1">{session.processed_event_count || 0}</td>
+                                <td className="px-2 py-1">{formatDuration(session.duration_seconds)}</td>
                                 <td className="px-2 py-1">
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${
                                     session.status === 'live' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
