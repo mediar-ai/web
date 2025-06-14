@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -139,6 +139,29 @@ function HomeComponent() {
   const [screenshotCounter, setScreenshotCounter] = useState(0);
 
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
+  const [lowLevelLogsCount, setLowLevelLogsCount] = useState<number>(0);
+
+  // Calculate screenshot count
+  const screenshotCount = useMemo(() => {
+    return activityItems.filter(item => 
+      (item.type === 'initial_dump' && item.image_id) || 
+      (item.type === 'ui_diff' && (item.image1_id || item.image2_id))
+    ).length;
+  }, [activityItems]);
+
+  // Calculate average time between events
+  const avgTimeBetweenEvents = useMemo(() => {
+    if (events.length < 2) return null;
+    const sortedEvents = [...events].sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    let totalDiff = 0;
+    for (let i = 1; i < sortedEvents.length; i++) {
+      totalDiff += new Date(sortedEvents[i].timestamp).getTime() - 
+                   new Date(sortedEvents[i-1].timestamp).getTime();
+    }
+    return Math.round(totalDiff / (sortedEvents.length - 1) / 1000); // in seconds
+  }, [events]);
 
   const logToUI = useCallback((...args: unknown[]) => {
     const timestamp = new Date().toISOString();
@@ -205,6 +228,7 @@ function HomeComponent() {
       setActivityItems([]);
       setEvents([]);
       setCompletedAnalyses([]);
+      setRunningAnalyses([]);
       setWorkflowSteps([]);
       setFrontendLogs([]);
       setSelectedActivity(null);
@@ -1240,7 +1264,7 @@ function HomeComponent() {
         {activityItems.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Timeline & Screenshot Preview</h2>
+              <h2 className="text-lg font-semibold">Timeline & Screenshot Preview ({screenshotCount})</h2>
               <Button variant="ghost" size="sm" onClick={toggleDetailsPanel}>
                 {detailsCollapsed ? 'Show' : 'Hide'}
               </Button>
@@ -1278,11 +1302,11 @@ function HomeComponent() {
                 <TabsTrigger value='recent' onClick={() => {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('recent');
-                }}>Recent Activity</TabsTrigger>
+                }}>Recent Activity ({activityItems.length})</TabsTrigger>
                 <TabsTrigger value='events' onClick={() => {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('events');
-                }}>Events</TabsTrigger>
+                }}>Events ({events.length}){avgTimeBetweenEvents !== null && ` • ~${avgTimeBetweenEvents}s`}</TabsTrigger>
                 <TabsTrigger value='workflow' onClick={() => {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('workflow');
@@ -1303,7 +1327,7 @@ function HomeComponent() {
                         setSelectedMainTab('low-level');
                       }}>
                         <Bug className='mr-2 h-4 w-4' />
-                        Low-level Logs
+                        Low-level Logs{lowLevelLogsCount > 0 && ` (${lowLevelLogsCount})`}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onClick={() => {
@@ -1350,7 +1374,7 @@ function HomeComponent() {
             </TabsContent>
 
             <TabsContent value='low-level' className='-mt-3'>
-              <LowLevelLogsTabContent />
+              <LowLevelLogsTabContent onLogsCountChange={setLowLevelLogsCount} />
             </TabsContent>
 
             <TabsContent value='settings' className='-mt-3'>

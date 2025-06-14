@@ -16,7 +16,11 @@ interface RawLogItem {
   session_id: string;
 }
 
-export default function LowLevelLogsTabContent() {
+interface LowLevelLogsTabContentProps {
+  onLogsCountChange?: (count: number) => void;
+}
+
+export default function LowLevelLogsTabContent({ onLogsCountChange }: LowLevelLogsTabContentProps = {}) {
   const [logs, setLogs] = useState<RawLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +43,9 @@ export default function LowLevelLogsTabContent() {
         }
         const data = await response.json();
         setLogs(data);
+        if (onLogsCountChange) {
+          onLogsCountChange(data.length);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
       } finally {
@@ -47,7 +54,7 @@ export default function LowLevelLogsTabContent() {
     };
 
     fetchRawLogs();
-  }, [viewingMode]);
+  }, [viewingMode, onLogsCountChange]);
 
   if (loading) {
     return <div>Loading low-level logs...</div>;
