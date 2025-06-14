@@ -52,3 +52,10 @@ __pycache__/
 .Python
 env/
 venv/
+
+# sveltekit
+.svelte-kit/
+
+# cursor
+.cursor/
+.cursor
