@@ -1,0 +1,58 @@
+import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error('Missing Supabase URL or Service Role Key');
+}
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+const downloadUrlSchema = z.object({
+  path: z.string().min(1, { message: "Path is required" }),
+});
+
+// This policy allows any authenticated user to download files
+// but ONLY from a folder that matches their own user ID.
+//
+// CREATE POLICY "Allow authenticated downloads"
+// ON storage.objects FOR SELECT
+// TO authenticated
+// USING (
+//   bucket_id = 'low-level-event-screenshots'
+//   AND (storage.foldername(name))[1] = auth.uid()::text
+// );
+//
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const validation = downloadUrlSchema.safeParse(body);
+
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Invalid request body', details: validation.error.flatten() }, { status: 400 });
+    }
+    
+    const { path } = validation.data;
+    
+    // Generate a signed URL that's valid for 60 seconds.
+    // This provides temporary, secure access to the private file.
+    const { data, error } = await supabaseAdmin.storage
+      .from('low-level-event-screenshots')
+      .createSignedUrl(path, 60); 
+
+    if (error) {
+      console.error('[API/get-download-url] Supabase error:', error);
+      return NextResponse.json({ error: 'Failed to create signed URL', details: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data, { status: 200 });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    console.error('[API/get-download-url] Critical error:', error);
+    return NextResponse.json({ error: 'Failed to process request', details: errorMessage }, { status: 500 });
+  }
+} 

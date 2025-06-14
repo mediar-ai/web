@@ -22,6 +22,7 @@ import {
   saveCompletedAnalyses,
   clearPersistedData,
   saveScreenshot,
+  getSessions,
 } from '../lib/db';
 import { LocalDataProvider, RemoteDataProvider } from '../lib/dataProviders';
 import EventsTabContent from '../components/tabs/EventsTabContent';
@@ -56,6 +57,7 @@ import { useViewingMode } from '@/hooks/useViewingMode';
 import { Alert } from '@/components/ui/alert';
 import { User } from 'lucide-react';
 import { TEXT_EXTRACTION_PROMPT, EVENTS_PROMPT } from '@/lib/prompts';
+import { uploadScreenshot } from '@/lib/screenshotUploader';
 
 function HomeComponent() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
@@ -64,6 +66,7 @@ function HomeComponent() {
   const viewingMode = useViewingMode();
   const [dataProvider, setDataProvider] = useState<DataProvider>(LocalDataProvider);
   const [remoteUserName, setRemoteUserName] = useState<string | null>(null);
+  const [isRemoteUserOnline, setIsRemoteUserOnline] = useState<boolean>(false);
 
   const [screenshotQuality, setScreenshotQuality] = useState<number>(0.95);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
@@ -276,6 +279,15 @@ function HomeComponent() {
           '[captureFrameToBuffer] Creating frame with sequence ID:', sequenceId,
         );
 
+        // Asynchronously upload the screenshot to Supabase Storage via signed URL
+        if (userId) {
+          const appSessionId = localStorage.getItem('app_session_id');
+          if (appSessionId) {
+            uploadScreenshot(imageDataUrl, userId, appSessionId, newFrame.id)
+              .catch(err => logError('[captureFrameToBuffer] Screenshot upload failed:', err));
+          }
+        }
+
         setFrameBuffer((prevBuffer: BufferedFrame[]) => {
           const newBufferFull = [...prevBuffer, newFrame]; 
           let newBufferTrimmed = newBufferFull;
@@ -351,6 +363,7 @@ function HomeComponent() {
     streamRef,
     currentCaptureSessionIdRef,
     screenshotCounter,
+    userId,
   ]);
 
   const {
@@ -1048,6 +1061,34 @@ function HomeComponent() {
     }
   };
 
+  // Check if remote user is online
+  useEffect(() => {
+    if (viewingMode.type === 'remote') {
+      const checkOnlineStatus = async () => {
+        try {
+          const sessions = await getSessions();
+          const userSessions = sessions[viewingMode.userId];
+          if (userSessions) {
+            setRemoteUserName(userSessions.name);
+            // Check if any session is live
+            const hasLiveSession = userSessions.sessions.some(s => s.status === 'live');
+            setIsRemoteUserOnline(hasLiveSession);
+          }
+        } catch (error) {
+          logError('[checkOnlineStatus] Failed to fetch session status:', error);
+        }
+      };
+
+      // Check immediately
+      checkOnlineStatus();
+
+      // Check periodically
+      const interval = setInterval(checkOnlineStatus, 30000); // Check every 30 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [viewingMode, logError]);
+
   return (
     <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
       <ExportStatusDialog exportInProgress={false} />
@@ -1078,7 +1119,16 @@ function HomeComponent() {
             <User className="h-4 w-4" />
             <p className="text-sm">
               <span className="font-semibold">Viewing recording for:</span>{' '}
-              <strong className="font-bold">{remoteUserName || viewingMode.userId}</strong>.
+              <strong className="font-bold">{remoteUserName || viewingMode.userId}</strong>
+              {isRemoteUserOnline && (
+                <span className="flex items-center gap-1.5 ml-3 inline-flex">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  </span>
+                  <span className="text-xs text-green-600 font-semibold">ONLINE</span>
+                </span>
+              )}
               <span className="text-muted-foreground ml-2">Recording controls are disabled.</span>
             </p>
           </div>

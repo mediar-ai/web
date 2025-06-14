@@ -93,7 +93,20 @@ export async function analyzeUIDiff(
     const imageParts: Part[] = [image1_dataUrl, image2_dataUrl].map(url => {
         const parts = url.split(';base64,');
         if (parts.length !== 2) throw new Error('Malformed base64 image data.');
-        return { inlineData: { mimeType: parts[0].split(':')[1], data: parts[1] } };
+        
+        const mimeType = parts[0].split(':')[1];
+        let base64Data = parts[1].trim();
+
+        // If the data starts with a rogue character (like a slash from incorrect parsing), remove it.
+        if (base64Data.startsWith('/') || base64Data.startsWith('"')) {
+            base64Data = base64Data.substring(1);
+        }
+        // Also remove a potential trailing quote
+        if (base64Data.endsWith('"')) {
+            base64Data = base64Data.slice(0, -1);
+        }
+
+        return { inlineData: { mimeType: mimeType, data: base64Data } };
     });
 
     const uiDiffAnalysisSchema: Schema = {
