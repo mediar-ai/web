@@ -47,34 +47,37 @@ def aggregate_and_update_sessions():
         BEGIN
             -- Step 1: Aggregate all uncounted events from both tables into a temporary table
             CREATE TEMP TABLE temp_new_counts AS
-            WITH new_events_with_rn AS (
+            WITH all_new_events AS (
                 SELECT
                     session_id,
                     user_id,
-                    'lowLevel' as session_type,
-                    created_at AS last_event_timestamp,
-                    -- Low-level events are always considered "processed"
-                    1 as processed_event_increment,
-                    ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY created_at) as rn
+                    'low-level' as session_type, -- Standardized type
+                    created_at AS event_timestamp,
+                    1 as processed_event_increment -- Low-level events are always "processed"
                 FROM public.low_level_events
                 WHERE is_counted = false AND session_id IS NOT NULL
                 UNION ALL
                 SELECT
                     session_id,
                     user_id,
-                    'web' as session_type,
-                    client_timestamp AS last_event_timestamp,
-                    -- Web events are "processed" if they are of type 'activity_item'
-                    CASE WHEN item_type = 'activity_item' THEN 1 ELSE 0 END as processed_event_increment,
-                    ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY client_timestamp) as rn
+                    COALESCE(source, 'web') as session_type, -- Use the source column, default to 'web'
+                    client_timestamp AS event_timestamp,
+                    CASE WHEN item_type = 'activity_item' THEN 1 ELSE 0 END as processed_event_increment
                 FROM public.user_activity_data
                 WHERE is_counted = false AND session_id IS NOT NULL
+            ),
+            new_events_with_rn AS (
+                SELECT
+                    *,
+                    ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY event_timestamp ASC) as rn
+                FROM all_new_events
             )
             SELECT
                 session_id,
+                -- Get user_id and session_type from the first event in the batch for this session
                 (SELECT user_id FROM new_events_with_rn WHERE rn = 1 AND session_id = ne.session_id LIMIT 1) as user_id,
-                MAX(session_type) as session_type,
-                MAX(last_event_timestamp) as last_event_timestamp,
+                (SELECT session_type FROM new_events_with_rn WHERE rn = 1 AND session_id = ne.session_id LIMIT 1) as session_type,
+                MAX(event_timestamp) as last_event_timestamp,
                 COUNT(*) as new_event_count,
                 SUM(processed_event_increment) as new_processed_event_count
             FROM new_events_with_rn ne
@@ -137,4 +140,4 @@ def aggregate_and_update_sessions():
 @app.function()
 @modal.fastapi_endpoint()
 def dummy():
-    return {"status": "ok"} 
+    return {"status": "ok"}

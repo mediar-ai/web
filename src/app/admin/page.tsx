@@ -130,6 +130,9 @@ export default function AdminPage() {
               Sessions
             </th>
             <th scope="col" className="px-2 py-2">
+              Session Types
+            </th>
+            <th scope="col" className="px-2 py-2">
               Total Events
             </th>
             <th scope="col" className="px-2 py-2">
@@ -163,6 +166,16 @@ export default function AdminPage() {
               const mostRecentSession = userData.sessions.sort((a, b) => 
                 new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
               )[0];
+
+              const sessionTypesSummary = userData.sessions.reduce((acc, session) => {
+                const type = session.type || 'unknown';
+                acc[type] = (acc[type] || 0) + 1;
+                return acc;
+              }, {} as Record<string, number>);
+
+              const summaryString = Object.entries(sessionTypesSummary)
+                .map(([type, count]) => `${count} ${type}`)
+                .join(', ');
 
               return (
                 <React.Fragment key={userId}>
@@ -218,6 +231,9 @@ export default function AdminPage() {
                       {userData.sessions.length}
                     </td>
                     <td className="px-2 py-1">
+                      {summaryString}
+                    </td>
+                    <td className="px-2 py-1">
                       {totalEvents}
                     </td>
                     <td className="px-2 py-1">
@@ -235,28 +251,44 @@ export default function AdminPage() {
                   {expandedUsers.has(userId) && (
                     <tr>
                       <td colSpan={6} className="px-8 py-2 bg-gray-50">
-                        <div className="space-y-1">
+                        <table className="w-full text-sm text-left">
+                          <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                            <tr>
+                              <th scope="col" className="px-2 py-1">Session ID</th>
+                              <th scope="col" className="px-2 py-1">Type</th>
+                              <th scope="col" className="px-2 py-1">Events</th>
+                              <th scope="col" className="px-2 py-1">Processed</th>
+                              <th scope="col" className="px-2 py-1">Status</th>
+                              <th scope="col" className="px-2 py-1">Last Active</th>
+                              <th scope="col" className="px-2 py-1 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
                           {userData.sessions
                             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                             .map((session) => (
-                              <div key={session.id} className="flex items-center justify-between py-1 px-2 text-sm bg-white rounded border">
-                                <div className="flex items-center gap-3">
-                                  <span className="font-mono text-xs">{truncateId(session.id)}</span>
-                                  <span>{session.eventCount} raw events</span>
-                                  <span className="font-semibold">{session.processed_event_count || 0} processed</span>
+                              <tr key={session.id} className="bg-white border-b hover:bg-gray-50">
+                                <td className="px-2 py-1 font-mono text-xs">{truncateId(session.id)}</td>
+                                <td className="px-2 py-1 font-semibold">{session.type}</td>
+                                <td className="px-2 py-1">{session.eventCount}</td>
+                                <td className="px-2 py-1">{session.processed_event_count || 0}</td>
+                                <td className="px-2 py-1">
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${
                                     session.status === 'live' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                                   }`}>
                                     {session.status}
                                   </span>
-                                  <span className="text-gray-500">{new Date(session.timestamp).toLocaleString()}</span>
-                                </div>
-                                <Link href={`/sessions/${session.type === 'lowLevel' ? 'low-level' : 'web'}/${session.id}`}>
-                                  <Button size="sm" variant="outline">Raw JSON Session Logs</Button>
-                                </Link>
-                              </div>
+                                </td>
+                                <td className="px-2 py-1 text-gray-500">{new Date(session.timestamp).toLocaleString()}</td>
+                                <td className="px-2 py-1 text-right">
+                                  <Link href={`/sessions/${session.type === 'lowLevel' ? 'low-level' : 'web'}/${session.id}`}>
+                                    <Button size="sm" variant="outline">Raw JSON</Button>
+                                  </Link>
+                                </td>
+                              </tr>
                             ))}
-                        </div>
+                          </tbody>
+                        </table>
                       </td>
                     </tr>
                   )}

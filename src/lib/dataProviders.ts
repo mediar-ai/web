@@ -6,13 +6,13 @@ import {
   loadWorkflowSteps as loadLocalWorkflowSteps,
   loadCompletedAnalyses as loadLocalCompletedAnalyses
 } from './db';
-import { supabase } from './supabase';
 
-const constructScreenshotUrl = (userId: string, sessionId: string, imageId: string): string => {
-  const path = `${userId}/${sessionId}/screenshots/${imageId}.jpeg`;
-  const { data } = supabase.storage.from('low-level-event-screenshots').getPublicUrl(path);
-  return data.publicUrl;
-};
+// This function is no longer needed as we are moving to signed URLs for downloads
+// const constructScreenshotUrl = (userId: string, sessionId: string, imageId: string): string => {
+//   const path = `${userId}/${sessionId}/screenshots/${imageId}.jpeg`;
+//   const { data } = supabase.storage.from('low-level-event-screenshots').getPublicUrl(path);
+//   return data.publicUrl;
+// };
 
 export const LocalDataProvider: DataProvider = {
   loadActivityItems: async () => loadLocalActivityItems(),
@@ -103,28 +103,49 @@ export class RemoteDataProvider implements DataProvider {
       return null;
     }
 
+    // `initial_dump` items are local-only and won't have a remote screenshot.
+    if (item.type === 'initial_dump') {
+      console.warn('[RemoteDataProvider] Attempted to load screenshot for a local-only "initial_dump" activity. These do not have remote screenshots. Skipping.');
+      return null;
+    }
+
     // The API now provides user_id and session_id on the activity item
     const userId = item.user_id;
     const sessionId = item.session_id;
 
     if (!userId || !sessionId) {
+      // This can happen if a locally-generated item (like a ui_diff) is still in state
+      // when switching to remote view. These don't have remote screenshots.
+      if (item.type === 'ui_diff') {
+        console.warn(`[RemoteDataProvider] Skipping screenshot for local "ui_diff" activity: ${item.id}`);
+        return null;
+      }
       console.error('[RemoteDataProvider] Missing user_id or session_id on the activity item for URL construction.', item);
       return null;
     }
     
-    // Construct the correct path to the screenshot in Supabase Storage
-    const url = constructScreenshotUrl(userId, sessionId, imageId);
-    console.log('[RemoteDataProvider] Constructed URL:', url);
+    const path = `${userId}/${sessionId}/screenshots/${imageId}.jpeg`;
     
     try {
-      const response = await fetch(url, { method: 'HEAD' });
-      if (response.ok) {
-        return url; // Return the public URL if the image exists
+      // Fetch a short-lived, secure URL from our backend
+      const response = await fetch('/api/capture/get-download-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json();
+        console.warn(`[RemoteDataProvider] Failed to get download URL for ${path}:`, errorBody.details || response.statusText);
+        return null;
       }
-      console.warn(`[RemoteDataProvider] Screenshot not found at public URL (HEAD request failed): ${url}`);
-      return null;
-    } catch(err) {
-      console.error(`[RemoteDataProvider] Error checking screenshot existence:`, err);
+      
+      const data = await response.json();
+      // The 'signedUrl' property contains the temporary URL for the image
+      return data.signedUrl;
+
+    } catch (err) {
+      console.error(`[RemoteDataProvider] Error fetching signed download URL for ${path}:`, err);
       return null;
     }
   }

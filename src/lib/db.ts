@@ -513,7 +513,7 @@ export const getAllPersistedDataForExport = async (): Promise<object> => {
 
 export const getSessions = async (): Promise<Record<string, UserSessionData>> => {
   try {
-    const response = await fetch('/api/sessions');
+    const response = await fetch('/api/sessions', { cache: 'no-store' });
     if (!response.ok) {
       const errorData = await response.json();
       console.error('[getSessions] Error fetching sessions:', errorData);
