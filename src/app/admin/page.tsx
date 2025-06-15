@@ -165,28 +165,28 @@ export default function AdminPage() {
       <table className="w-full text-sm text-left">
         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
           <tr>
-            <th scope="col" className="px-2 py-2">
+            <th scope="col" className="px-1 py-2 w-2/5">
               User
             </th>
-            <th scope="col" className="px-2 py-2">
+            <th scope="col" className="px-1 py-2">
               Sessions
             </th>
-            <th scope="col" className="px-2 py-2">
+            <th scope="col" className="px-1 py-2">
               Type
             </th>
-            <th scope="col" className="px-2 py-2">
+            <th scope="col" className="px-1 py-2">
               Total
             </th>
-            <th scope="col" className="px-2 py-2">
+            <th scope="col" className="px-1 py-2">
               Processed
             </th>
-            <th scope="col" className="px-2 py-2">
+            <th scope="col" className="px-1 py-2">
               Duration
             </th>
-            <th scope="col" className="px-2 py-2">
+            <th scope="col" className="px-1 py-2">
               Last Active
             </th>
-            <th scope="col" className="px-2 py-2 text-right">
+            <th scope="col" className="px-1 py-2 text-right">
               Actions
             </th>
           </tr>
@@ -230,11 +230,11 @@ export default function AdminPage() {
               return (
                 <React.Fragment key={userId}>
                   <tr className="bg-white border-b hover:bg-gray-50">
-                    <td className="px-2 py-1 font-medium text-gray-900 whitespace-nowrap">
+                    <td className="px-1 py-1 font-medium text-gray-900 whitespace-nowrap">
                       <div className="flex items-center">
                         <button
                           onClick={() => toggleUserExpansion(userId)}
-                          className="mr-2 p-1 hover:bg-gray-200 rounded"
+                          className="mr-1 p-1 hover:bg-gray-200 rounded"
                         >
                           {expandedUsers.has(userId) ? (
                             <ChevronDown className="h-4 w-4" />
@@ -277,26 +277,26 @@ export default function AdminPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-1 py-1">
                       {userData.sessions.length}
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-1 py-1">
                       {userType}
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-1 py-1">
                       {totalEvents}
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-1 py-1">
                       {totalProcessedEvents}
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-1 py-1">
                       {formatDuration(totalDuration)}
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-1 py-1">
                       {mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}
                     </td>
-                    <td className="px-2 py-1 text-right">
-                      <div className="flex items-center justify-end space-x-2">
+                    <td className="px-1 py-1 text-right">
+                      <div className="flex items-center justify-end space-x-1">
                         <Link href={`/?userId=${userId}&userType=${userType}`}>
                           <Button size="sm" variant="outline">Recordings</Button>
                         </Link>
@@ -312,18 +312,18 @@ export default function AdminPage() {
                   </tr>
                   {expandedUsers.has(userId) && (
                     <tr>
-                      <td colSpan={6} className="px-8 py-2 bg-gray-50">
+                      <td colSpan={8} className="px-4 py-2 bg-gray-50">
                         <table className="w-full text-sm text-left">
                           <thead className="text-xs text-gray-700 uppercase bg-gray-100">
                             <tr>
-                              <th scope="col" className="px-2 py-1">Session ID</th>
-                              <th scope="col" className="px-2 py-1">Type</th>
-                              <th scope="col" className="px-2 py-1">Events</th>
-                              <th scope="col" className="px-2 py-1">Processed</th>
-                              <th scope="col" className="px-2 py-1">Duration</th>
-                              <th scope="col" className="px-2 py-1">Status</th>
-                              <th scope="col" className="px-2 py-1">Last Active</th>
-                              <th scope="col" className="px-2 py-1 text-right">Actions</th>
+                              <th scope="col" className="px-1 py-1">Session ID</th>
+                              <th scope="col" className="px-1 py-1">Type</th>
+                              <th scope="col" className="px-1 py-1">Events</th>
+                              <th scope="col" className="px-1 py-1">Processed</th>
+                              <th scope="col" className="px-1 py-1">Duration</th>
+                              <th scope="col" className="px-1 py-1">Status</th>
+                              <th scope="col" className="px-1 py-1">Last Active</th>
+                              <th scope="col" className="px-1 py-1 text-right">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -331,20 +331,20 @@ export default function AdminPage() {
                             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                             .map((session) => (
                               <tr key={session.id} className="bg-white border-b hover:bg-gray-50">
-                                <td className="px-2 py-1 font-mono text-xs">{truncateId(session.id)}</td>
-                                <td className="px-2 py-1 font-semibold">{session.type}</td>
-                                <td className="px-2 py-1">{session.eventCount}</td>
-                                <td className="px-2 py-1">{session.processed_event_count || 0}</td>
-                                <td className="px-2 py-1">{formatDuration(session.duration_seconds)}</td>
-                                <td className="px-2 py-1">
+                                <td className="px-1 py-1 font-mono text-xs">{truncateId(session.id)}</td>
+                                <td className="px-1 py-1 font-semibold">{session.type}</td>
+                                <td className="px-1 py-1">{session.eventCount}</td>
+                                <td className="px-1 py-1">{session.processed_event_count || 0}</td>
+                                <td className="px-1 py-1">{formatDuration(session.duration_seconds)}</td>
+                                <td className="px-1 py-1">
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${
                                     session.status === 'live' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                                   }`}>
                                     {session.status}
                                   </span>
                                 </td>
-                                <td className="px-2 py-1 text-gray-500">{new Date(session.timestamp).toLocaleString()}</td>
-                                <td className="px-2 py-1 text-right">
+                                <td className="px-1 py-1 text-gray-500">{new Date(session.timestamp).toLocaleString()}</td>
+                                <td className="px-1 py-1 text-right">
                                   <Link href={`/sessions/${session.type.toLowerCase() === 'low_level' ? 'low-level' : 'web'}/${session.id}`}>
                                     <Button size="sm" variant="outline">Raw JSON</Button>
                                   </Link>
