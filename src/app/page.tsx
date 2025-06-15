@@ -48,7 +48,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Settings, Bug, Pencil } from 'lucide-react';
+import { MoreHorizontal, Settings, Bug, Pencil, RefreshCw } from 'lucide-react';
 import ReactDOM from 'react-dom/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import VideoPreviewArea from '@/components/capture/VideoPreviewArea';
@@ -636,66 +636,67 @@ function HomeComponent() {
     }
   }, [stream, logToUI, logError, captureSessionId, userId]);
 
-  useEffect(() => {
-    const loadData = async () => {
-      if (!dataProvider) return;
-      logToUI(`[loadData] Loading data using ${dataProvider.constructor.name}...`);
-      try {
-        const [savedSteps, savedEvents, savedActivityItemsFromDB, savedCompletedAnalyses] =
-          await Promise.all([
-            dataProvider.loadWorkflowSteps(),
-            dataProvider.loadEvents(),
-            dataProvider.loadActivityItems(),
-            dataProvider.loadCompletedAnalyses(),
-          ]);
-        
-        // De-duplicate data on the client-side to prevent key errors
-        const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
-        const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
-        const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
+  const loadData = useCallback(async () => {
+    if (!dataProvider) return;
+    logToUI(`[loadData] Loading data using ${dataProvider.constructor.name}...`);
+    try {
+      const [savedSteps, savedEvents, savedActivityItemsFromDB, savedCompletedAnalyses] =
+        await Promise.all([
+          dataProvider.loadWorkflowSteps(),
+          dataProvider.loadEvents(),
+          dataProvider.loadActivityItems(),
+          dataProvider.loadCompletedAnalyses(),
+        ]);
+      
+      // De-duplicate data on the client-side to prevent key errors
+      const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
+      const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
+      const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
 
-        if (dataProvider instanceof RemoteDataProvider) {
-            setRemoteUserName(dataProvider.getUserName());
-        }
-
-        // Always set the data, even if it's empty, to clear out old state.
-        setWorkflowSteps(savedSteps);
-        logToUI(
-          `[loadData] Loaded ${savedSteps.length} workflow steps`
-        );
-
-        setEvents(uniqueEvents);
-        logToUI(
-          `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
-        );
-        
-        setActivityItems(uniqueActivityItems);
-        logToUI(
-          `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
-        );
-
-        setCompletedAnalyses(uniqueCompletedAnalyses);
-        logToUI(
-          `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
-        );
-        
-        // In local mode, we also load frontend logs
-        if (viewingMode.type === 'local') {
-          const logs = await loadFrontendLogs();
-           if (logs.length > 0) {
-            setFrontendLogs(logs);
-            logToUI(
-              `[loadData] Loaded ${logs.length} frontend logs`
-            );
-          }
-        }
-
-      } catch (err) {
-        logError('[loadData] Failed to load data:', err);
+      if (dataProvider instanceof RemoteDataProvider) {
+          setRemoteUserName(dataProvider.getUserName());
       }
-    };
+
+      // Always set the data, even if it's empty, to clear out old state.
+      setWorkflowSteps(savedSteps);
+      logToUI(
+        `[loadData] Loaded ${savedSteps.length} workflow steps`
+      );
+
+      setEvents(uniqueEvents);
+      logToUI(
+        `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
+      );
+      
+      setActivityItems(uniqueActivityItems);
+      logToUI(
+        `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
+      );
+
+      setCompletedAnalyses(uniqueCompletedAnalyses);
+      logToUI(
+        `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
+      );
+      
+      // In local mode, we also load frontend logs
+      if (viewingMode.type === 'local') {
+        const logs = await loadFrontendLogs();
+         if (logs.length > 0) {
+          setFrontendLogs(logs);
+          logToUI(
+            `[loadData] Loaded ${logs.length} frontend logs`
+          );
+        }
+      }
+
+    } catch (err) {
+      logError('[loadData] Failed to load data:', err);
+    }
+  }, [dataProvider, logError, logToUI, viewingMode.type]);
+
+  useEffect(() => {
     loadData();
-  }, [logError, dataProvider, viewingMode.type, logToUI]); 
+  }, [loadData]); 
 
   useEffect(() => {
     if (viewingMode.type === 'local' && workflowSteps.length > 0) saveWorkflowSteps(workflowSteps);
@@ -1231,11 +1232,17 @@ function HomeComponent() {
               <span className="text-muted-foreground ml-2">Recording controls are disabled.</span>
             </div>
           </div>
-          <Link href="/admin">
-            <Button variant="outline" size="sm">
-              Back to Admin Panel
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={loadData}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
             </Button>
-          </Link>
+            <Link href="/admin">
+              <Button variant="outline" size="sm">
+                Back to Admin Panel
+              </Button>
+            </Link>
+          </div>
         </Alert>
       )}
 
