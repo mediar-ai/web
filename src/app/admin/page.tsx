@@ -217,7 +217,7 @@ export default function AdminPage() {
               const sessionTypes = new Set(userData.sessions.map(s => s.type?.toLowerCase()).filter(Boolean));
               let userType = 'N/A';
               const hasWeb = sessionTypes.has('web');
-              const hasLowLevel = sessionTypes.has('lowlevel');
+              const hasLowLevel = sessionTypes.has('low_level');
 
               if (hasWeb && hasLowLevel) {
                 userType = 'mixed';
@@ -345,7 +345,7 @@ export default function AdminPage() {
                                 </td>
                                 <td className="px-2 py-1 text-gray-500">{new Date(session.timestamp).toLocaleString()}</td>
                                 <td className="px-2 py-1 text-right">
-                                  <Link href={`/sessions/${session.type.toLowerCase() === 'lowlevel' ? 'low-level' : 'web'}/${session.id}`}>
+                                  <Link href={`/sessions/${session.type.toLowerCase() === 'low_level' ? 'low-level' : 'web'}/${session.id}`}>
                                     <Button size="sm" variant="outline">Raw JSON</Button>
                                   </Link>
                                 </td>
