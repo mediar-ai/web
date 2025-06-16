@@ -7,7 +7,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   BufferedFrame,
   Event,
-  ParsedAnalysis,
   ActivityItem,
   Workflow,
   RunningAnalysis,
@@ -84,14 +83,6 @@ function HomeComponent() {
   const [error, setError] = useState<string | null>(null);
   const [showError, setShowError] = useState<boolean>(false);
   const [isCapturingForBuffer, setIsCapturingForBuffer] = useState(false);
-  const [workflowSteps, setWorkflowSteps] = useState<
-    Array<{
-      id: string;
-      analysis: string;
-      parsed: ParsedAnalysis | null;
-      timestamp: string;
-    }>
-  >([]);
   const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [frameBuffer, setFrameBuffer] = useState<BufferedFrame[]>([]);
@@ -169,7 +160,12 @@ function HomeComponent() {
       typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
     ).join(' ');
     const logEntry = `${timestamp} ${message}`;
-    setFrontendLogs((prevLogs) => [logEntry, ...prevLogs].slice(0, 100));
+    setFrontendLogs((prevLogs) => {
+      const newLogs = [logEntry, ...prevLogs].slice(0, 100);
+      // Persist logs as they are created
+      saveFrontendLogs(newLogs);
+      return newLogs;
+    });
     console.log(...args);
   }, []);
 
@@ -179,7 +175,12 @@ function HomeComponent() {
       typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
     ).join(' ');
     const logEntry = `${timestamp} [ERROR] ${message}`;
-    setFrontendLogs((prevLogs) => [logEntry, ...prevLogs].slice(0, 100));
+    setFrontendLogs((prevLogs) => {
+      const newLogs = [logEntry, ...prevLogs].slice(0, 100);
+      // Persist logs as they are created
+      saveFrontendLogs(newLogs);
+      return newLogs;
+    });
     console.error(...args);
   }, []);
 
@@ -222,6 +223,70 @@ function HomeComponent() {
     videoRef.current = node;
   }, []);
 
+  const loadData = useCallback(async (provider: DataProvider) => {
+    if (!provider) return;
+    logToUI(`[loadData] Loading data using ${provider.constructor.name}...`);
+    try {
+      const [savedSteps, savedEvents, savedActivityItemsFromDB, savedCompletedAnalyses] =
+        await Promise.all([
+          provider.loadWorkflowSteps(),
+          provider.loadEvents(),
+          provider.loadActivityItems(),
+          provider.loadCompletedAnalyses(),
+        ]);
+      
+      // De-duplicate data on the client-side to prevent key errors
+      const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
+      const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
+      const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
+
+      if (provider instanceof RemoteDataProvider) {
+          setRemoteUserName(provider.getUserName());
+      }
+
+      // Always set the data, even if it's empty, to clear out old state.
+      setActivityItems(uniqueActivityItems);
+      logToUI(
+        `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
+      );
+
+      setCompletedAnalyses(uniqueCompletedAnalyses);
+      logToUI(
+        `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
+      );
+      
+      // In local mode, we also load and save data to IndexedDB
+      if (viewingMode.type === 'local') {
+        const logs = await loadFrontendLogs();
+        if (logs.length > 0) {
+          setFrontendLogs(logs);
+          logToUI(`[loadData] Loaded ${logs.length} frontend logs`);
+        }
+        // Persist all loaded data locally
+        if (savedSteps.length > 0) saveWorkflowSteps(savedSteps);
+        if (uniqueEvents.length > 0) saveEvents(uniqueEvents);
+        if (uniqueActivityItems.length > 0) saveActivityItems(uniqueActivityItems);
+        if (uniqueCompletedAnalyses.length > 0) saveCompletedAnalyses(uniqueCompletedAnalyses);
+      }
+
+      // In local mode AND when capturing, stream new items to Supabase
+      if (viewingMode.type === 'local' && stream) {
+        uniqueActivityItems.filter(item => !streamedItemIds.current.has(item.id))
+          .forEach(item => streamData('activity_item', item));
+        uniqueEvents.filter(item => !streamedItemIds.current.has(item.id))
+          .forEach(item => streamData('event', item));
+        uniqueCompletedAnalyses.filter(item => !streamedItemIds.current.has(item.id) && item.status === 'completed' && item.endTime)
+          .forEach(item => {
+            const itemToStream = { ...item, timestamp: new Date(item.endTime!).toISOString() };
+            streamData('completed_analysis', itemToStream);
+          });
+      }
+
+    } catch (err) {
+      logError('[loadData] Failed to load data:', err);
+    }
+  }, [logError, logToUI, viewingMode.type, stream, streamData]);
+
   useEffect(() => {
     if (viewingMode.type === 'remote') {
       // Clear local data to prevent flash of incorrect content
@@ -229,7 +294,6 @@ function HomeComponent() {
       setEvents([]);
       setCompletedAnalyses([]);
       setRunningAnalyses([]);
-      setWorkflowSteps([]);
       setFrontendLogs([]);
       setSelectedActivity(null);
       setSelectedEvent(null);
@@ -237,6 +301,7 @@ function HomeComponent() {
       const remoteProvider = new RemoteDataProvider(viewingMode.userId);
       setDataProvider(remoteProvider);
       logToUI(`[Mode] Switched to remote data provider for user ${viewingMode.userId}`);
+      loadData(remoteProvider); // Fetch data immediately with the new provider
 
       // Also grab userType from URL params in remote mode
       const searchParams = new URLSearchParams(window.location.search);
@@ -247,9 +312,10 @@ function HomeComponent() {
       }
     } else {
       setDataProvider(LocalDataProvider);
+      loadData(LocalDataProvider); // Fetch local data
       logToUI('[Mode] Switched to local data provider.');
     }
-  }, [viewingMode, logToUI]);
+  }, [viewingMode, logToUI, loadData]);
 
   useEffect(() => {
     // On initial load, check for a user ID in local storage or create a new one.
@@ -515,7 +581,6 @@ function HomeComponent() {
   const clearAllData = useCallback(async () => {
     try {
       await clearPersistedData();
-      setWorkflowSteps([]);
       setEvents([]);
       setFrontendLogs([]);
       setActivityItems([]); 
@@ -635,116 +700,6 @@ function HomeComponent() {
       setMainStatus('Error starting share');
     }
   }, [stream, logToUI, logError, captureSessionId, userId]);
-
-  const loadData = useCallback(async () => {
-    if (!dataProvider) return;
-    logToUI(`[loadData] Loading data using ${dataProvider.constructor.name}...`);
-    try {
-      const [savedSteps, savedEvents, savedActivityItemsFromDB, savedCompletedAnalyses] =
-        await Promise.all([
-          dataProvider.loadWorkflowSteps(),
-          dataProvider.loadEvents(),
-          dataProvider.loadActivityItems(),
-          dataProvider.loadCompletedAnalyses(),
-        ]);
-      
-      // De-duplicate data on the client-side to prevent key errors
-      const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
-      const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
-      const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
-
-      if (dataProvider instanceof RemoteDataProvider) {
-          setRemoteUserName(dataProvider.getUserName());
-      }
-
-      // Always set the data, even if it's empty, to clear out old state.
-      setWorkflowSteps(savedSteps);
-      logToUI(
-        `[loadData] Loaded ${savedSteps.length} workflow steps`
-      );
-
-      setEvents(uniqueEvents);
-      logToUI(
-        `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
-      );
-      
-      setActivityItems(uniqueActivityItems);
-      logToUI(
-        `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
-      );
-
-      setCompletedAnalyses(uniqueCompletedAnalyses);
-      logToUI(
-        `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
-      );
-      
-      // In local mode, we also load frontend logs
-      if (viewingMode.type === 'local') {
-        const logs = await loadFrontendLogs();
-         if (logs.length > 0) {
-          setFrontendLogs(logs);
-          logToUI(
-            `[loadData] Loaded ${logs.length} frontend logs`
-          );
-        }
-      }
-
-    } catch (err) {
-      logError('[loadData] Failed to load data:', err);
-    }
-  }, [dataProvider, logError, logToUI, viewingMode.type]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]); 
-
-  useEffect(() => {
-    if (viewingMode.type === 'local' && workflowSteps.length > 0) saveWorkflowSteps(workflowSteps);
-  }, [workflowSteps, viewingMode.type]);
-  useEffect(() => {
-    if (viewingMode.type === 'local' && events.length > 0) saveEvents(events);
-  }, [events, viewingMode.type]);
-  useEffect(() => {
-    if (viewingMode.type === 'local' && frontendLogs.length > 0) saveFrontendLogs(frontendLogs);
-  }, [frontendLogs, viewingMode.type]);
-  useEffect(() => {
-    if (viewingMode.type === 'local' && activityItems.length > 0) saveActivityItems(activityItems);
-  }, [activityItems, viewingMode.type]);
-  useEffect(() => {
-    if (viewingMode.type === 'local' && completedAnalyses.length > 0) saveCompletedAnalyses(completedAnalyses);
-  }, [completedAnalyses, viewingMode.type]);
-
-  // Stream new activity items to Supabase
-  useEffect(() => {
-    if (viewingMode.type !== 'local' || !stream) return; // Only stream when capture is active in local mode
-    const newItems = activityItems.filter(item => !streamedItemIds.current.has(item.id));
-    newItems.forEach(item => streamData('activity_item', item));
-  }, [activityItems, streamData, stream, viewingMode.type]);
-
-  // Stream new events to Supabase
-  useEffect(() => {
-    if (viewingMode.type !== 'local' || !stream) return; // Only stream when capture is active in local mode
-    const newItems = events.filter(item => !streamedItemIds.current.has(item.id));
-    newItems.forEach(item => streamData('event', item));
-  }, [events, streamData, stream, viewingMode.type]);
-
-  // Stream new completed analyses to Supabase
-  useEffect(() => {
-    if (viewingMode.type !== 'local' || !stream) return; // Only stream when capture is active in local mode
-    
-    const newItems = completedAnalyses.filter(item => 
-      !streamedItemIds.current.has(item.id) && item.status === 'completed' && item.endTime
-    );
-
-    newItems.forEach(item => {
-      // Adapt the item to fit the streamData signature
-      const itemToStream = {
-        ...item,
-        timestamp: new Date(item.endTime!).toISOString(), // Use endTime as the timestamp
-      };
-      streamData('completed_analysis', itemToStream);
-    });
-  }, [completedAnalyses, streamData, stream, viewingMode.type]);
 
   useEffect(() => {
     if (selectedActivity) {
@@ -1233,7 +1188,7 @@ function HomeComponent() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={loadData}>
+            <Button variant="outline" size="sm" onClick={() => loadData(dataProvider)}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
