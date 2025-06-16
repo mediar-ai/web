@@ -22,7 +22,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'session_id and payload with a type are required' }, { status: 400 });
     }
 
-    // --- Start Router Logic ---
+    // --- Step 1 (New): Insert the raw, unmodified payload into low_level_events ---
+    try {
+      const { error: rawInsertError } = await supabaseAdmin
+        .from('low_level_events')
+        .insert({
+          session_id,
+          user_id,
+          payload,
+          source: 'windows_app' // Add a source to distinguish from other potential low-level sources
+        });
+
+      if (rawInsertError) {
+        console.error('[INGEST] Error saving raw event:', rawInsertError);
+        // We can choose to continue or fail here. For now, we'll log the error and continue.
+      }
+    } catch (e) {
+      console.error('[INGEST] Exception during raw event insert:', e);
+    }
+
+    // --- Step 2 (Existing): Continue with AI analysis and processing ---
     let analysisResult;
     let activityType: 'initial_dump' | 'ui_diff' = 'ui_diff'; // Default to ui_diff
 
