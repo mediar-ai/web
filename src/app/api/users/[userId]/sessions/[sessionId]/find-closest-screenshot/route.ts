@@ -43,20 +43,19 @@ export async function GET(
       return NextResponse.json({ error: 'No suitable screenshot found.' }, { status: 404 });
     }
     
-    const imageFilename = data;
-    const imagePath = `${userId}/${sessionId}/screenshots/${imageFilename}`;
+    // The RPC function now returns a JSON object with all the data we need.
+    const { filename, screenshot_timestamp, event_timestamp } = data;
+    
+    const imagePath = `${userId}/${sessionId}/screenshots/${filename}`;
     
     const { data: urlData } = supabaseAdmin.storage
       .from('low-level-event-screenshots')
       .getPublicUrl(imagePath);
-      
-    const screenshotTimestampMatch = imageFilename.match(/(\d{13,})/);
-    const screenshotTimestamp = screenshotTimestampMatch ? parseInt(screenshotTimestampMatch[1], 10) : null;
 
     return NextResponse.json({ 
       url: urlData.publicUrl, 
-      screenshotTimestamp: screenshotTimestamp,
-      eventTimestamp: new Date(targetTimestamp).getTime()
+      screenshotTimestamp: screenshot_timestamp,
+      eventTimestamp: event_timestamp
     });
 
   } catch (err) {
