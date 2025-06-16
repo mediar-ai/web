@@ -65,33 +65,19 @@ export async function POST(request: Request) {
         
         // 3. Perform the analysis
         const diffResult = await analyzeUIDiff(screenshot_before, screenshot_after, "");
-        analysisResult = diffResult.change_description || "Analyzed screenshot changes.";
         
-        // Ensure the result is stored as a ui_diff type
-        activityType = 'ui_diff';
-        
-        // 4. Create the activity item with correct image references
-        const newActivityItemData = {
+        // 4. Prepare the results to be saved by the final, generic handler
+        analysisResult = {
             type: 'ui_diff',
             change_detected: 'yes',
-            change_description: analysisResult,
+            change_description: diffResult.change_description || "Analyzed screenshot changes.",
             image1_id: image1_id,
             image2_id: image2_id,
             sequenceId: sequenceId,
         };
-
-        await supabaseAdmin.from('user_activity_data').insert({
-            session_id,
-            user_id,
-            item_type: 'activity_item',
-            client_item_id: `llm-activity-${eventTimestamp}`,
-            item_data: newActivityItemData,
-            client_timestamp: new Date(eventTimestamp).toISOString(),
-            source: 'low_level',
-        });
-        console.log(`[INGEST] Successfully saved screenshot_diff analysis.`);
+        activityType = 'ui_diff'; // Ensure the activity type is set correctly
         
-        // Since we already handled the database insert, we can break here
+        // No longer inserting here; will fall through to the generic handler.
         break;
 
       default: // Handles simple low-level events (mouse_click, key_press, etc.)
@@ -106,17 +92,24 @@ export async function POST(request: Request) {
     // --- End Router Logic ---
 
     // Save the analysis result as an activity_item
-    if (analysisResult && payload.type !== 'screenshot_diff') {
-      const newActivityItemData = activityType === 'initial_dump' 
-        ? { type: 'initial_dump', raw_content: analysisResult }
-        : { type: 'ui_diff', change_detected: 'yes', change_description: analysisResult };
+    if (analysisResult) {
+      let itemData;
+
+      if (activityType === 'initial_dump') {
+        itemData = { type: 'initial_dump', raw_content: analysisResult };
+      } else if (activityType === 'ui_diff') {
+        // The analysisResult for ui_diff is now the full object.
+        itemData = analysisResult;
+      } else {
+        itemData = { type: 'ui_diff', change_detected: 'yes', change_description: analysisResult };
+      }
 
       await supabaseAdmin.from('user_activity_data').insert({
         session_id,
         user_id,
         item_type: 'activity_item',
         client_item_id: `llm-activity-${Date.now()}-${Math.random()}`,
-        item_data: newActivityItemData,
+        item_data: itemData,
         client_timestamp: new Date().toISOString(),
         source: 'low_level',
       });
