@@ -1,21 +1,27 @@
+-- First, drop the existing function to allow changing the return type.
+DROP FUNCTION IF EXISTS find_closest_screenshot(text,text,text);
+
 -- Function to find the screenshot with the filename timestamp closest to a target timestamp.
+-- It now returns a JSON object with the filename and both timestamps.
 CREATE OR REPLACE FUNCTION find_closest_screenshot(
     p_user_id TEXT,
     p_session_id TEXT,
     p_target_timestamp_text TEXT
 )
-RETURNS TEXT AS $$
+RETURNS JSON AS $$
 DECLARE
-    closest_filename TEXT;
+    result RECORD;
     target_epoch BIGINT;
 BEGIN
     -- Convert the text timestamp from the API (which is in milliseconds) to a BIGINT
     target_epoch := (p_target_timestamp_text::numeric);
 
     SELECT 
-        o.path_tokens[4] -- Select the filename from the path tokens
+        o.path_tokens[4] as filename,
+        (substring(o.path_tokens[4] from '(\\d{13,})$'))::numeric as screenshot_timestamp,
+        target_epoch as event_timestamp
     INTO 
-        closest_filename
+        result
     FROM 
         storage.objects o
     WHERE 
@@ -30,6 +36,6 @@ BEGIN
         )
     LIMIT 1;
 
-    RETURN closest_filename;
+    RETURN row_to_json(result);
 END;
 $$ LANGUAGE plpgsql; 
