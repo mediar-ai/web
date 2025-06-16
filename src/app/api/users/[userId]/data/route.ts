@@ -95,6 +95,8 @@ export async function GET(
 
       switch (item.item_type) {
         case 'activity_item':
+        case 'ui_diff':
+        case 'initial_dump':
           // For activities, we also need user and session IDs for image paths
           const activityItem = {
             ...baseItem,
