@@ -297,7 +297,7 @@ export default function AdminPage() {
                     </td>
                     <td className="px-1 py-1 text-right">
                       <div className="flex items-center justify-end space-x-1">
-                        <Link href={`/?userId=${userId}&userType=${userType}`}>
+                        <Link href={userType === 'low-level' || userType === 'mixed' ? `/low-level/${userId}` : `/?userId=${userId}&userType=${userType}`}>
                           <Button size="sm" variant="outline">Recordings</Button>
                         </Link>
                         <Button 

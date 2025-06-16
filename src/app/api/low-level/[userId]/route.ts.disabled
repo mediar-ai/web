@@ -1,0 +1,45 @@
+import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error('Missing Supabase URL or Service Role Key');
+}
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(
+  request: Request,
+  { params }: { params: { userId: string } }
+) {
+  const { userId } = params;
+
+  if (!userId) {
+    return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('user_activity_data')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('source', 'low_level')
+      .order('client_timestamp', { ascending: false });
+
+    if (error) {
+      console.error('[API/low-level] Error fetching raw events:', error);
+      throw error;
+    }
+
+    return NextResponse.json(data || []);
+
+  } catch (err) {
+    const error = err as { message: string };
+    console.error('[API/low-level] Critical error:', error);
+    return NextResponse.json({ error: 'Failed to fetch raw events', details: error.message }, { status: 500 });
+  }
+} 
