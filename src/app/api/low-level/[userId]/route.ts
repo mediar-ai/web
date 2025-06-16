@@ -14,9 +14,9 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: Request,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
-  const { userId } = params;
+  const { userId } = await params;
 
   if (!userId) {
     return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
@@ -24,11 +24,10 @@ export async function GET(
 
   try {
     const { data, error } = await supabaseAdmin
-      .from('user_activity_data')
+      .from('low_level_events')
       .select('*')
       .eq('user_id', userId)
-      .eq('source', 'low_level')
-      .order('client_timestamp', { ascending: false });
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('[API/low-level] Error fetching raw events:', error);
