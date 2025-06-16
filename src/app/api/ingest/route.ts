@@ -23,22 +23,18 @@ export async function POST(request: Request) {
     }
 
     // --- Step 1 (New): Insert the raw, unmodified payload into low_level_events ---
-    try {
-      const { error: rawInsertError } = await supabaseAdmin
-        .from('low_level_events')
-        .insert({
-          session_id,
-          user_id,
-          payload,
-          source: 'windows_app' // Add a source to distinguish from other potential low-level sources
-        });
+    const { error: rawInsertError } = await supabaseAdmin
+      .from('low_level_events')
+      .insert({
+        session_id,
+        user_id,
+        payload,
+        source: 'windows_app' // Add a source to distinguish from other potential low-level sources
+      });
 
-      if (rawInsertError) {
-        console.error('[INGEST] Error saving raw event:', rawInsertError);
-        // We can choose to continue or fail here. For now, we'll log the error and continue.
-      }
-    } catch (e) {
-      console.error('[INGEST] Exception during raw event insert:', e);
+    if (rawInsertError) {
+      console.error('[INGEST] Error saving raw event:', rawInsertError);
+      return NextResponse.json({ error: 'Failed to save raw event.', details: rawInsertError.message }, { status: 500 });
     }
 
     // --- Step 2 (Existing): Continue with AI analysis and processing ---
@@ -62,8 +58,18 @@ export async function POST(request: Request) {
       case 'screenshot_diff':
         console.log('[INGEST] Processing screenshot_diff...');
         const { screenshot_before, screenshot_after } = payload.event || {};
+
+        // Handle the edge case where the first screenshot is sent as a diff
+        if (screenshot_after && !screenshot_before) {
+            console.log('[INGEST] Handling initial screenshot as a meaningful_event...');
+            // This is the first screenshot, treat it like an initial dump for analysis
+            analysisResult = await analyzeUIDiff("", screenshot_after, "This is the first screenshot of the session. Describe all visible text and UI elements in maximum detail.");
+            activityType = 'initial_dump';
+            break; // Exit the switch, fall through to the generic saver
+        }
+
         if (!screenshot_before || !screenshot_after) {
-            return NextResponse.json({ error: 'screenshot_before and screenshot_after are required for screenshot_diff' }, { status: 400 });
+            return NextResponse.json({ error: 'screenshot_before and screenshot_after are required for a standard screenshot_diff' }, { status: 400 });
         }
         
         // 1. Generate IDs for the screenshots
@@ -149,4 +155,4 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });
   }
-} 
+}

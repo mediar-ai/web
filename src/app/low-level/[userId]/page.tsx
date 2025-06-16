@@ -1,0 +1,88 @@
+'use client';
+
+import { useEffect, useState, use } from 'react';
+import { type LowLevelEvent } from '@/types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft } from 'lucide-react';
+
+export default function LowLevelViewerPage({ params }: { params: Promise<{ userId: string }> }) {
+  const [events, setEvents] = useState<LowLevelEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { userId } = use(params);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const fetchRawEvents = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/low-level/${userId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch raw events');
+        }
+        const data = await response.json();
+        setEvents(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRawEvents();
+  }, [userId]);
+
+  return (
+    <div className="container mx-auto py-8 font-mono">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+            <h1 className="text-2xl font-bold">Low-Level Event Inspector</h1>
+            <p className="text-sm text-gray-500">User ID: {userId}</p>
+        </div>
+        <Link href="/admin">
+            <Button variant="outline">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Admin
+            </Button>
+        </Link>
+      </div>
+
+      {loading && (
+        <div className="space-y-4">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+        </div>
+      )}
+
+      {error && <div className="text-red-500 font-bold p-4 bg-red-50 rounded-md">Error: {error}</div>}
+
+      {!loading && !error && events.length === 0 && (
+        <p>No low-level events found for this user.</p>
+      )}
+
+      <div className="space-y-4">
+        {events.map((event) => (
+          <Card key={event.id}>
+            <CardHeader className="p-3 bg-gray-50 border-b">
+              <CardTitle className="text-sm flex justify-between items-center">
+                <span>Event ID: {event.id}</span>
+                <span className="text-xs text-gray-500">{new Date(event.created_at).toISOString()}</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <pre className="p-3 text-xs overflow-auto">
+                {JSON.stringify(event.payload, null, 2)}
+              </pre>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+} 
