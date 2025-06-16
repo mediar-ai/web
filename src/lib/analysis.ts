@@ -90,19 +90,24 @@ export async function analyzeUIDiff(
     const genAI = getGenAI();
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
-    const imageParts: Part[] = [image1_dataUrl, image2_dataUrl].map(url => {
-        // Find the start of the base64 data
-        const base64StartIndex = url.indexOf(';base64,');
-        if (base64StartIndex === -1) {
-            throw new Error('Malformed data URL: could not find ;base64,');
-        }
-        
-        // Extract the mime type and the pure base64 data
-        const mimeType = url.substring(url.indexOf(':') + 1, base64StartIndex);
-        const base64Data = url.substring(base64StartIndex + 8); // +8 for ';base64,'
+    const imageParts: Part[] = [];
 
-        return { inlineData: { mimeType: mimeType, data: base64Data } };
-    });
+    // Handle the "before" image only if it's a valid data URL
+    if (image1_dataUrl && image1_dataUrl.includes(';base64,')) {
+        const base64StartIndex1 = image1_dataUrl.indexOf(';base64,');
+        const mimeType1 = image1_dataUrl.substring(image1_dataUrl.indexOf(':') + 1, base64StartIndex1);
+        const base64Data1 = image1_dataUrl.substring(base64StartIndex1 + 8);
+        imageParts.push({ inlineData: { mimeType: mimeType1, data: base64Data1 } });
+    }
+
+    // Always process the "after" image
+    const base64StartIndex2 = image2_dataUrl.indexOf(';base64,');
+    if (base64StartIndex2 === -1) {
+        throw new Error('Malformed data URL for after_image: could not find ;base64,');
+    }
+    const mimeType2 = image2_dataUrl.substring(image2_dataUrl.indexOf(':') + 1, base64StartIndex2);
+    const base64Data2 = image2_dataUrl.substring(base64StartIndex2 + 8);
+    imageParts.push({ inlineData: { mimeType: mimeType2, data: base64Data2 } });
 
     const uiDiffAnalysisSchema: Schema = {
       type: SchemaType.OBJECT,
