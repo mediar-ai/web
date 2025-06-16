@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, use, useMemo } from 'react';
 import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 export default function LowLevelViewerPage({ params }: { params: Promise<{ userId: string }> }) {
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
@@ -37,6 +38,15 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
     fetchRawEvents();
   }, [userId]);
 
+  const eventStats = useMemo(() => {
+    const stats = new Map<string, number>();
+    for (const event of events) {
+      const eventType = event.payload?.type || 'unknown';
+      stats.set(eventType, (stats.get(eventType) || 0) + 1);
+    }
+    return Array.from(stats.entries());
+  }, [events]);
+
   return (
     <div className="container mx-auto py-8 font-mono">
       <div className="flex justify-between items-center mb-6">
@@ -51,6 +61,19 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
             </Button>
         </Link>
       </div>
+
+      {events.length > 0 && (
+        <Card className="mb-6">
+            <CardHeader className="p-3 bg-gray-50 border-b">
+                <CardTitle className="text-sm">Event Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 flex flex-wrap gap-2">
+                {eventStats.map(([type, count]) => (
+                    <Badge key={type} variant="secondary">{type}: {count}</Badge>
+                ))}
+            </CardContent>
+        </Card>
+      )}
 
       {loading && (
         <div className="space-y-4">
