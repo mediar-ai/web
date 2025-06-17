@@ -78,6 +78,53 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const { setUserId } = useUser();
   const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<LowLevelEvent | null>(null);
+  const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
+  const [openSubAccordionItems, setOpenSubAccordionItems] = useState<string[]>([]);
+
+  const ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-accordion-state-${userId}`, [userId]);
+  const SUB_ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-sub-accordion-state-${userId}`, [userId]);
+
+  useEffect(() => {
+    if (userId) {
+      const storedState = localStorage.getItem(ACCORDION_STORAGE_KEY);
+      if (storedState) {
+        try {
+          setOpenAccordionItems(JSON.parse(storedState));
+        } catch (e) {
+          console.error("Failed to parse accordion state from localStorage", e);
+          setOpenAccordionItems([]);
+        }
+      } else {
+        setOpenAccordionItems([]);
+      }
+
+      const storedSubState = localStorage.getItem(SUB_ACCORDION_STORAGE_KEY);
+      if (storedSubState) {
+        try {
+          setOpenSubAccordionItems(JSON.parse(storedSubState));
+        } catch (e) {
+          console.error("Failed to parse sub-accordion state from localStorage", e);
+          setOpenSubAccordionItems([]);
+        }
+      } else {
+        setOpenSubAccordionItems([]);
+      }
+    }
+  }, [userId, ACCORDION_STORAGE_KEY, SUB_ACCORDION_STORAGE_KEY]);
+
+  const handleAccordionValueChange = (value: string[]) => {
+    setOpenAccordionItems(value);
+    if (userId) {
+      localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(value));
+    }
+  };
+
+  const handleSubAccordionValueChange = (value: string[]) => {
+    setOpenSubAccordionItems(value);
+    if (userId) {
+      localStorage.setItem(SUB_ACCORDION_STORAGE_KEY, JSON.stringify(value));
+    }
+  };
 
   useEffect(() => {
     setUserId(userId);
@@ -224,14 +271,24 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         <div className="w-12 text-xs text-gray-500">(Included)</div>
         <div className="flex-1"></div>
       </div>
-      <Accordion type="multiple" className="w-full" defaultValue={["item-1"]}>
+      <Accordion 
+        type="multiple" 
+        className="w-full" 
+        value={openAccordionItems}
+        onValueChange={handleAccordionValueChange}
+      >
         <AccordionItem value="item-1">
           <div className="flex items-center">
             <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
             <AccordionTrigger className="flex-1">Context</AccordionTrigger>
           </div>
           <AccordionContent className="space-y-4 pl-4">
-            <Accordion type="multiple" className="w-full">
+            <Accordion 
+              type="multiple" 
+              className="w-full"
+              value={openSubAccordionItems}
+              onValueChange={handleSubAccordionValueChange}
+            >
               <AccordionItem value="sub-item-1">
                 <div className="flex items-center">
                   <div className="w-12 flex justify-center"><Checkbox disabled /></div>
