@@ -5,7 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp, Clipboard, Check } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -112,12 +112,13 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
   const [selectedWindow, setSelectedWindow] = useState<string | null>(null);
-  const [isSummaryOpen, setIsSummaryOpen] = useState(true);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState<Record<number, boolean>>({});
   const [copiedEventId, setCopiedEventId] = useState<number | null>(null);
   const { userId } = use(params);
 
   const LOCAL_STORAGE_KEY = `low-level-viewer-expanded-events-${userId}`;
+  const SUMMARY_OPEN_STORAGE_KEY = `raw-events-summary-open-${userId}`;
 
   useEffect(() => {
     try {
@@ -132,6 +133,18 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         setExpandedEvents({});
     }
   }, [LOCAL_STORAGE_KEY]);
+
+  useEffect(() => {
+    try {
+      const storedState = localStorage.getItem(SUMMARY_OPEN_STORAGE_KEY);
+      if (storedState !== null) {
+        setIsSummaryOpen(JSON.parse(storedState));
+      }
+    } catch (error) {
+        console.error("Failed to parse summary open state from localStorage", error);
+        setIsSummaryOpen(false);
+    }
+  }, [SUMMARY_OPEN_STORAGE_KEY]);
 
   const fetchRawEvents = useCallback(async () => {
     if (!userId) return;
@@ -156,7 +169,13 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     fetchRawEvents();
   }, [fetchRawEvents]);
 
-  const toggleSummary = () => setIsSummaryOpen(prev => !prev);
+  const toggleSummary = () => {
+    setIsSummaryOpen(prev => {
+      const newState = !prev;
+      localStorage.setItem(SUMMARY_OPEN_STORAGE_KEY, JSON.stringify(newState));
+      return newState;
+    });
+  };
 
   const toggleEventExpansion = (eventId: number) => {
     setExpandedEvents(prev => {
@@ -373,9 +392,24 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       )}
 
       {loading && (
-        <div className="space-y-2">
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
+        <div className="space-y-4 p-1">
+          <div className="flex items-center gap-2 py-2 border-b mb-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-10 w-64" />
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-24" />
+          </div>
+          <div className="border rounded-md p-4 mb-2">
+            <Skeleton className="h-6 w-1/4 mb-4" />
+            <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+            </div>
+          </div>
+          <div className="flex flex-col items-center justify-center pt-16">
+            <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground mt-4">Loading Events...</p>
+          </div>
         </div>
       )}
 

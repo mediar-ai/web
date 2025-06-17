@@ -7,6 +7,7 @@ import { Pencil, Clipboard, Check, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePathname, useRouter } from 'next/navigation';
 import { UserProvider, useUser } from '@/context/UserContext';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const UserLayoutContent = ({
   children,
@@ -19,6 +20,7 @@ const UserLayoutContent = ({
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [isCopied, setIsCopied] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
   const { userId } = params;
@@ -29,6 +31,7 @@ const UserLayoutContent = ({
 
   const fetchUserName = useCallback(async () => {
     if (!userId) return;
+    setIsLoading(true);
     try {
       const response = await fetch(`/api/users/${userId}`);
       if (response.ok) {
@@ -38,6 +41,8 @@ const UserLayoutContent = ({
       }
     } catch (err) {
       console.error("Failed to fetch user name", err);
+    } finally {
+      setIsLoading(false);
     }
   }, [userId, setUserName]);
 
@@ -79,11 +84,16 @@ const UserLayoutContent = ({
                 <Button variant="ghost" size="icon" onClick={() => router.push('/admin')}>
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={fetchUserName}>
-                  <RefreshCw className="h-4 w-4" />
+                <Button variant="ghost" size="icon" onClick={fetchUserName} disabled={isLoading}>
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                 </Button>
               </div>
-              {isEditingName ? (
+              {isLoading ? (
+                <div className="flex items-center gap-4">
+                  <Skeleton className="h-10 w-48" />
+                  <Skeleton className="h-10 w-24" />
+                </div>
+              ) : isEditingName ? (
                 <div className="flex items-center gap-2">
                   <Input
                     type="text"
