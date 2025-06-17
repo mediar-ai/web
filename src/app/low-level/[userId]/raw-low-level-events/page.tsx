@@ -5,7 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -120,10 +120,12 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState<Record<number, boolean>>({});
   const [copiedEventId, setCopiedEventId] = useState<number | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const { userId } = use(params);
 
   const LOCAL_STORAGE_KEY = `low-level-viewer-expanded-events-${userId}`;
   const SUMMARY_OPEN_STORAGE_KEY = `raw-events-summary-open-${userId}`;
+  const SORT_ORDER_STORAGE_KEY = `raw-events-sort-order-${userId}`;
 
   useEffect(() => {
     try {
@@ -151,6 +153,17 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     }
   }, [SUMMARY_OPEN_STORAGE_KEY]);
 
+  useEffect(() => {
+    try {
+      const storedState = localStorage.getItem(SORT_ORDER_STORAGE_KEY);
+      if (storedState === 'asc' || storedState === 'desc') {
+        setSortOrder(storedState);
+      }
+    } catch (error) {
+      console.error("Failed to parse sort order from localStorage", error);
+    }
+  }, [SORT_ORDER_STORAGE_KEY]);
+
   const fetchRawEvents = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
@@ -161,18 +174,31 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         throw new Error('Failed to fetch raw events');
       }
       const data = await response.json();
-      setEvents(data.events.reverse()); // Show newest first
+      const sortedEvents = data.events.sort((a: LowLevelEvent, b: LowLevelEvent) => {
+        const dateA = new Date(a.created_at).getTime();
+        const dateB = new Date(b.created_at).getTime();
+        return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+      });
+      setEvents(sortedEvents);
       setSessionCount(data.sessionCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, sortOrder]);
 
   useEffect(() => {
     fetchRawEvents();
   }, [fetchRawEvents]);
+
+  const toggleSortOrder = () => {
+    setSortOrder(prev => {
+      const newOrder = prev === 'asc' ? 'desc' : 'asc';
+      localStorage.setItem(SORT_ORDER_STORAGE_KEY, newOrder);
+      return newOrder;
+    });
+  };
 
   const toggleSummary = () => {
     setIsSummaryOpen(prev => {
@@ -302,6 +328,9 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-64"
         />
+        <Button variant="outline" size="sm" onClick={toggleSortOrder}>
+          {sortOrder === 'desc' ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
+        </Button>
         <Button variant="outline" size="sm" onClick={expandAll}>Expand All</Button>
         <Button variant="outline" size="sm" onClick={collapseAll}>Collapse All</Button>
       </div>

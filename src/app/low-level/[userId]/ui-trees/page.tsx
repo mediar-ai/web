@@ -5,7 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import DiffView from '@/components/low-level/DiffView';
@@ -37,7 +37,21 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   const [selectedEvent, setSelectedEvent] = useState<UITreeEvent | null>(null);
   const [diffMode, setDiffMode] = useState<'raw' | 'previous' | 'next'>('raw');
   const [isCopied, setIsCopied] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const { userId } = use(params);
+
+  const SORT_ORDER_STORAGE_KEY = `ui-trees-sort-order-${userId}`;
+
+  useEffect(() => {
+    try {
+      const storedState = localStorage.getItem(SORT_ORDER_STORAGE_KEY);
+      if (storedState === 'asc' || storedState === 'desc') {
+        setSortOrder(storedState);
+      }
+    } catch (error) {
+      console.error("Failed to parse sort order from localStorage", error);
+    }
+  }, [SORT_ORDER_STORAGE_KEY]);
 
   const fetchUITrees = useCallback(async () => {
     if (!userId) return;
@@ -60,6 +74,14 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   useEffect(() => {
     fetchUITrees();
   }, [fetchUITrees]);
+
+  const toggleSortOrder = () => {
+    setSortOrder(prev => {
+      const newOrder = prev === 'asc' ? 'desc' : 'asc';
+      localStorage.setItem(SORT_ORDER_STORAGE_KEY, newOrder);
+      return newOrder;
+    });
+  };
 
   const toggleGroupExpansion = (groupName: string) => {
     setExpandedGroups(prev => ({
@@ -128,16 +150,33 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
       }
       groups[title].push(event);
     });
-    // Sort events within each group by timestamp descending
+    // Sort events within each group by timestamp ascending (oldest first)
     for (const title in groups) {
-        groups[title].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        groups[title].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     }
     return groups;
   }, [events]);
 
+  const sortedGroupedEvents = useMemo(() => {
+    return Object.entries(groupedEvents).sort(([, groupA], [, groupB]) => {
+      const firstEventA = groupA[0];
+      const firstEventB = groupB[0];
+      if (!firstEventA || !firstEventB) return 0;
+
+      const timeA = new Date(firstEventA.created_at).getTime();
+      const timeB = new Date(firstEventB.created_at).getTime();
+
+      return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+    });
+  }, [groupedEvents, sortOrder]);
+
   return (
     <div>
       <div className="flex items-center gap-2 py-2 border-b mb-2">
+        <Button variant="outline" size="sm" onClick={toggleSortOrder}>
+          {sortOrder === 'desc' ? <ArrowDown className="h-4 w-4 mr-2" /> : <ArrowUp className="h-4 w-4 mr-2" />}
+          Sort Events
+        </Button>
       </div>
       
       {loading && (
@@ -161,7 +200,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
       )}
 
       <div className="space-y-2">
-        {Object.entries(groupedEvents).map(([windowName, eventGroup]) => {
+        {sortedGroupedEvents.map(([windowName, eventGroup]) => {
           const isExpanded = expandedGroups[windowName] || false;
           const firstEvent = eventGroup[0];
           const lastEvent = eventGroup[eventGroup.length - 1];
