@@ -5,7 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, ChevronDown, ChevronUp, Clipboard, Check } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import DiffView from '@/components/low-level/DiffView';
@@ -138,10 +138,6 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   return (
     <div>
       <div className="flex items-center gap-2 py-2 border-b mb-2">
-        <Button variant="outline" onClick={fetchUITrees}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-        </Button>
       </div>
       
       {loading && (

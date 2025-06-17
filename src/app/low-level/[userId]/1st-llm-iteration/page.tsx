@@ -13,6 +13,7 @@ import UITreeTimeline from "@/components/low-level/UITreeTimeline";
 import FormattedUITree from "@/components/low-level/FormattedUITree";
 import ScreenshotView from "@/components/low-level/ScreenshotView";
 import DiffView from "@/components/low-level/DiffView";
+import { useUser } from "@/context/UserContext";
 
 const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
   const payload = event.payload.payload
@@ -74,8 +75,13 @@ const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
 
 export default function LlmIterationPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = use(params);
+  const { setUserId } = useUser();
   const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<LowLevelEvent | null>(null);
+
+  useEffect(() => {
+    setUserId(userId);
+  }, [userId, setUserId]);
 
   const fetchAllEvents = useCallback(async () => {
     if (!userId) return;
@@ -283,7 +289,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
               </AccordionItem>
               <AccordionItem value="sub-item-prev-same-window">
                 <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                  <div className="w-12 flex justify-center"><Checkbox disabled /></div>
                   <AccordionTrigger className="text-sm font-semibold flex-1">Previous ui-tree (same window)</AccordionTrigger>
                 </div>
                 <AccordionContent>
@@ -332,8 +338,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
               </AccordionItem>
               <AccordionItem value="sub-item-current-tree">
                 <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Current ui-tree</AccordionTrigger>
+                  <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                  <AccordionTrigger className="text-sm font-semibold flex-1">Latest ui-tree</AccordionTrigger>
                 </div>
                 <AccordionContent>
                   {currentUiTree ? (

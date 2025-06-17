@@ -10,8 +10,8 @@ export default function LowLevelUserPage({ params }: { params: Promise<{ userId:
   useEffect(() => {
     if (userId) {
       router.replace(`/low-level/${userId}/raw-low-level-events`);
-    }
+          }
   }, [userId, router]);
 
-  return null;
+    return null;
 } 

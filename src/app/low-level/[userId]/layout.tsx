@@ -3,24 +3,29 @@
 import React, { useState, useCallback, useEffect, use } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Pencil, Clipboard, Check } from 'lucide-react';
+import { Pencil, Clipboard, Check, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePathname, useRouter } from 'next/navigation';
+import { UserProvider, useUser } from '@/context/UserContext';
 
-export default function UserLayout({
+const UserLayoutContent = ({
   children,
   params,
 }: {
   children: React.ReactNode;
-  params: Promise<{ userId: string }>;
-}) {
-  const { userId } = use(params);
-  const [userName, setUserName] = useState<string | null>(null);
+  params: { userId: string };
+}) => {
+  const { userName, setUserName, setUserId } = useUser();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [isCopied, setIsCopied] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { userId } = params;
+
+  useEffect(() => {
+    setUserId(userId);
+  }, [userId, setUserId]);
 
   const fetchUserName = useCallback(async () => {
     if (!userId) return;
@@ -34,7 +39,7 @@ export default function UserLayout({
     } catch (err) {
       console.error("Failed to fetch user name", err);
     }
-  }, [userId]);
+  }, [userId, setUserName]);
 
   useEffect(() => {
     fetchUserName();
@@ -66,9 +71,9 @@ export default function UserLayout({
   const activeTab = pathname.split('/').pop();
 
   return (
-    <div className="container mx-auto font-mono">
-      <div className="sticky top-0 z-10 bg-background py-5 border-b mb-2">
-        <div className="container mx-auto flex flex-col gap-2">
+    <div className="w-full">
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="container mx-auto flex flex-col px-6 gap-2 py-5">
             <div className="flex items-center">
               {isEditingName ? (
                 <div className="flex items-center gap-2">
@@ -108,6 +113,14 @@ export default function UserLayout({
                   </div>
                 </div>
               )}
+              <div className="flex items-center gap-2 ml-auto">
+                <Button variant="ghost" size="icon" onClick={fetchUserName}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => router.push('/admin')}>
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           <Tabs value={activeTab} onValueChange={(value) => router.push(`/low-level/${userId}/${value}`)}>
             <TabsList>
@@ -118,7 +131,24 @@ export default function UserLayout({
           </Tabs>
         </div>
       </div>
-      <main>{children}</main>
+      <main className="container mx-auto mt-4">{children}</main>
     </div>
   );
+}
+
+export default function UserLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ userId: string }>;
+}) {
+  const resolvedParams = use(params);
+  return (
+    <UserProvider>
+      <UserLayoutContent params={resolvedParams}>
+        {children}
+      </UserLayoutContent>
+    </UserProvider>
+  )
 } 
