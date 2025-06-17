@@ -113,6 +113,7 @@ export default function UserLayout({
             <TabsList>
               <TabsTrigger value="raw-low-level-events">Raw Low-Level Events</TabsTrigger>
               <TabsTrigger value="ui-trees">UI Trees</TabsTrigger>
+              <TabsTrigger value="1st-llm-iteration">1st LLM Iteration</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
