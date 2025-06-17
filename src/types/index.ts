@@ -231,9 +231,11 @@ export interface LowLevelEvent {
   session_id: string;
   user_id?: string;
   payload: {
-    type: string;
-    timestamp: string;
-    event: Record<string, unknown>; // More specific than any
+    payload?: {
+      type: string;
+      timestamp: string;
+      event: Record<string, unknown>;
+    }
   };
   created_at: string;
 }

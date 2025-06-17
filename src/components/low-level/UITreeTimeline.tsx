@@ -41,37 +41,36 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
   selectedEvent,
   onEventSelect,
 }) => {
-  const reversedEvents = React.useMemo(() => [...uiTreeEvents].reverse(), [uiTreeEvents]);
   const sliderRef = useRef<HTMLDivElement>(null);
   const lastScrollTimeRef = useRef<number>(0);
 
   const selectedIndex = selectedEvent
-    ? reversedEvents.findIndex((item) => item.id === selectedEvent.id)
+    ? uiTreeEvents.findIndex((item) => item.id === selectedEvent.id)
     : -1;
 
   const getTimeLabels = () => {
-    if (reversedEvents.length === 0) return [];
+    if (uiTreeEvents.length === 0) return [];
     
     // If there are few events, label all of them
-    if (reversedEvents.length <= 5) {
-      return reversedEvents.map((item, index) => {
+    if (uiTreeEvents.length <= 5) {
+      return uiTreeEvents.map((item, index) => {
         const date = new Date(item.created_at);
         return {
           id: item.id,
           index,
           time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
           isFirst: index === 0,
-          isLast: index === reversedEvents.length - 1,
+          isLast: index === uiTreeEvents.length - 1,
         };
       });
     }
 
     const labels = [];
-    const maxLabels = Math.min(6, Math.max(3, Math.floor(reversedEvents.length / 5)));
+    const maxLabels = Math.min(6, Math.max(3, Math.floor(uiTreeEvents.length / 5)));
     
     for (let i = 0; i < maxLabels; i++) {
-      const index = Math.floor((i / (maxLabels - 1)) * (reversedEvents.length - 1));
-      const item = reversedEvents[index];
+      const index = Math.floor((i / (maxLabels - 1)) * (uiTreeEvents.length - 1));
+      const item = uiTreeEvents[index];
       if (item) {
         const date = new Date(item.created_at);
         const isFirst = i === 0;
@@ -107,9 +106,9 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
         return;
       }
 
-      if (!selectedEvent || reversedEvents.length === 0) return;
+      if (!selectedEvent || uiTreeEvents.length === 0) return;
 
-      const currentIndex = reversedEvents.findIndex(item => item.id === selectedEvent.id);
+      const currentIndex = uiTreeEvents.findIndex(item => item.id === selectedEvent.id);
       if (currentIndex === -1) return;
 
       let nextIndex = currentIndex;
@@ -118,12 +117,12 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
         nextIndex = Math.max(0, currentIndex - 1);
       } else {
         // Scroll down - go to next (right)
-        nextIndex = Math.min(reversedEvents.length - 1, currentIndex + 1);
+        nextIndex = Math.min(uiTreeEvents.length - 1, currentIndex + 1);
       }
 
       if (nextIndex !== currentIndex) {
         lastScrollTimeRef.current = now;
-        onEventSelect(reversedEvents[nextIndex]);
+        onEventSelect(uiTreeEvents[nextIndex]);
       }
     };
 
@@ -137,9 +136,9 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
         sliderElement.removeEventListener('wheel', handleWheel);
       }
     };
-  }, [selectedEvent, reversedEvents, onEventSelect]);
+  }, [selectedEvent, uiTreeEvents, onEventSelect]);
 
-  if (reversedEvents.length < 2) {
+  if (uiTreeEvents.length < 2) {
     return null;
   }
 
@@ -151,8 +150,8 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
           const rect = e.currentTarget.getBoundingClientRect();
           const clickX = e.clientX - rect.left;
           const percentage = clickX / rect.width;
-          const index = Math.round(percentage * (reversedEvents.length - 1));
-          onEventSelect(reversedEvents[index]);
+          const index = Math.round(percentage * (uiTreeEvents.length - 1));
+          onEventSelect(uiTreeEvents[index]);
         }}
         className="relative w-full h-4 bg-muted rounded-full cursor-pointer group"
       >
@@ -162,32 +161,32 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
                 <div
                   key={`tick-${label.id}-${label.index}`}
                   className='absolute w-0.5 h-3 bg-muted-foreground -top-1'
-                  style={{ left: `${(label.index / (reversedEvents.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}
+                  style={{ left: `${(label.index / (uiTreeEvents.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}
                 />
               )
             ))}
-          {reversedEvents.map((event, index) => (
+          {uiTreeEvents.map((event, index) => (
             <div
               key={event.id}
               className={cn(
                 'absolute w-2 h-2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-150 group-hover:scale-125',
                 selectedIndex === index ? 'bg-primary scale-150' : 'bg-muted-foreground'
               )}
-              style={{ left: `${(index / (reversedEvents.length - 1)) * 100}%` }}
+              style={{ left: `${(index / (uiTreeEvents.length - 1)) * 100}%` }}
               title={new Date(event.created_at).toLocaleTimeString()}
             />
           ))}
           {selectedIndex !== -1 && (
             <div
               className="absolute w-4 h-4 bg-primary rounded-full border-2 border-background shadow-lg top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-              style={{ left: `${(selectedIndex / (reversedEvents.length - 1)) * 100}%` }}
+              style={{ left: `${(selectedIndex / (uiTreeEvents.length - 1)) * 100}%` }}
             />
           )}
         </div>
       </div>
       <div className='relative w-full h-5 mt-1'>
         {timeLabels.map((label) => {
-          const leftPercent = (label.index / (reversedEvents.length - 1)) * 100;
+          const leftPercent = (label.index / (uiTreeEvents.length - 1)) * 100;
           
           return (
             <div

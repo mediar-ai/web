@@ -67,7 +67,7 @@ export default function UserLayout({
 
   return (
     <div className="container mx-auto font-mono">
-      <div className="sticky top-0 z-10 bg-background py-2 border-b mb-2">
+      <div className="sticky top-0 z-10 bg-background py-5 border-b mb-2">
         <div className="container mx-auto flex flex-col gap-2">
             <div className="flex items-center">
               {isEditingName ? (
