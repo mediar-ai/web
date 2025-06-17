@@ -65,7 +65,8 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
   const eventStats = useMemo(() => {
     const stats = new Map<string, number>();
     for (const event of filteredEvents) {
-      const eventType = event.payload?.type || 'unknown';
+      const payload = event.payload as { payload?: LowLevelEventPayload };
+      const eventType = payload.payload?.type || 'unknown';
       stats.set(eventType, (stats.get(eventType) || 0) + 1);
     }
     return Array.from(stats.entries());
@@ -75,7 +76,8 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
     const windows = new Set<string>();
     for (const event of filteredEvents) {
       try {
-        const p = event.payload as LowLevelEventPayload;
+        const payload = event.payload as { payload?: LowLevelEventPayload };
+        const p = payload.payload;
         if (p?.event?.screen?.ui_tree) {
           const uiTree = JSON.parse(p.event.screen.ui_tree);
           if (uiTree.attributes?.name) {

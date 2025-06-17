@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       .insert({
         session_id,
         user_id,
-        payload,
+        payload: body, // Save the entire request body in the payload column
         source: 'windows_app' // Add a source to distinguish from other potential low-level sources
       });
 
