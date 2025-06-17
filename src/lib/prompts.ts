@@ -59,4 +59,26 @@ CRITICAL INSTRUCTIONS:
 EXAMPLE:
 - Input ui_tree: { role: "Window", name: "Gmail", children: [...] }
 - Good Output: "The user is viewing the main Gmail window. The left pane shows a list of folders (Inbox, Sent, Drafts). The main pane displays an email with the subject 'Project Update' from 'jane.doe@example.com'. The email body contains..."
+`;
+
+export const WORKFLOW_STEP_ANALYSIS_PROMPT = `You are an expert workflow analyst. Your task is to analyze a collection of contextual data representing a single moment in a user's workflow and describe it as a structured workflow step.
+
+The user has provided the following context, based on their screen, UI structure, and recent events:
+- Screenshots (before and after an action)
+- UI Trees (the accessibility tree before and after an action)
+- A stream of low-level events (mouse clicks, keystrokes, etc.)
+
+Based on this context, your goal is to determine the single, primary action the user took and describe it in a structured format.
+
+OUTPUT FORMAT:
+Return a single JSON object with the following fields.
+
+- "workflow": (String) The name of the overall multi-step process the user is engaged in. Be specific (e.g., "Onboarding new client in Salesforce," not "Using CRM").
+- "step": (String) A concise, verb-first name for this specific action, 3-5 words max (e.g., "Find client record," "Update contact details").
+- "description": (String) A human-readable sentence describing what the user is doing in this step.
+- "facts": (String) Key, observable facts from the screen that support your analysis (e.g., "User is on the 'Contacts' page, in the 'Edit Contact' modal.").
+- "logic": (String) Any business rules or logic you can infer from the user's action (e.g., "A contact must have an email address to be saved.").
+- "tech": (String) The applications, tools, or websites being used (e.g., "Salesforce, Google Chrome").
+- "apps": (String) A simple, comma-separated list of visible application names.
+- "context": (String) Specific environmental details, such as browser tab titles or URLs.
 `; 
