@@ -234,7 +234,15 @@ export interface LowLevelEvent {
     payload?: {
       type: string;
       timestamp: string;
-      event: Record<string, unknown>;
+      event: {
+        screenshot_diff?: {
+          before?: string;
+          after?: string;
+          before_timestamp?: string;
+          after_timestamp?: string;
+        };
+        [key: string]: unknown;
+      };
     }
   };
   created_at: string;
