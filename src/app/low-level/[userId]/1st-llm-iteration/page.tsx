@@ -90,6 +90,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const [openContextGroupItems, setOpenContextGroupItems] = useState<string[]>([]);
   const [openDetailItems, setOpenDetailItems] = useState<string[]>([]);
+  const [accordionSelection, setAccordionSelection] = useState<'expand' | 'collapse' | null>(null);
+  const [contextGroupSelection, setContextGroupSelection] = useState<'expand' | 'collapse' | null>(null);
+  const [detailSelection, setDetailSelection] = useState<'expand' | 'collapse' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,6 +145,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     if (userId) {
       localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(value));
     }
+    setAccordionSelection(null);
   };
 
   const handleContextGroupValueChange = (value: string[]) => {
@@ -149,6 +153,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     if (userId) {
       localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify(value));
     }
+    setContextGroupSelection(null);
   };
 
   const handleDetailItemsValueChange = (value: string[]) => {
@@ -156,28 +161,33 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     if (userId) {
       localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(value));
     }
+    setDetailSelection(null);
   };
 
   const expandAll = () => {
     const allItemValues = ["item-1", "item-2", "item-3", "item-4", "item-5"];
     setOpenAccordionItems(allItemValues);
     localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(allItemValues));
+    setAccordionSelection('expand');
   };
 
   const collapseAll = () => {
     setOpenAccordionItems([]);
     localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify([]));
+    setAccordionSelection('collapse');
   };
 
   const expandAllContextGroups = () => {
     const allGroupValues = ["group-screenshots", "group-ui-tree", "group-events"];
     setOpenContextGroupItems(allGroupValues);
     localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify(allGroupValues));
+    setContextGroupSelection('expand');
   };
 
   const collapseAllContextGroups = () => {
     setOpenContextGroupItems([]);
     localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify([]));
+    setContextGroupSelection('collapse');
   };
 
   const expandAllDetails = () => {
@@ -188,11 +198,13 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     ];
     setOpenDetailItems(allDetailValues);
     localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(allDetailValues));
+    setDetailSelection('expand');
   }
 
   const collapseAllDetails = () => {
     setOpenDetailItems([]);
     localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify([]));
+    setDetailSelection('collapse');
   }
 
   useEffect(() => {
@@ -362,54 +374,64 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         <div className="w-12 text-xs text-gray-500">(Included)</div>
         <div className="flex-1"></div>
         <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={expandAll}><Expand className="h-4 w-4" /></Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Expand All Sections</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={collapseAll}><Minimize2 className="h-4 w-4" /></Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Collapse All Sections</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={expandAllContextGroups}><PlusSquare className="h-4 w-4" /></Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Expand Context Groups</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={collapseAllContextGroups}><MinusSquare className="h-4 w-4" /></Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Collapse Context Groups</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={expandAllDetails}><ChevronsDown className="h-4 w-4" /></Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Expand All Details</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={collapseAllDetails}><ChevronsUp className="h-4 w-4" /></Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Collapse All Details</p>
-            </TooltipContent>
-          </Tooltip>
+          <div className="flex items-end space-x-2">
+            <div className="flex items-center space-x-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant={accordionSelection === 'expand' ? 'default' : 'outline'} size="sm" onClick={expandAll}><Expand className="h-4 w-4" /></Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Expand All Sections</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant={accordionSelection === 'collapse' ? 'default' : 'outline'} size="sm" onClick={collapseAll}><Minimize2 className="h-4 w-4" /></Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Collapse All Sections</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="h-4 border-l border-gray-300 mx-1"></div>
+            <div className="flex items-center space-x-2 transform translate-y-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant={contextGroupSelection === 'expand' ? 'default' : 'outline'} size="sm" onClick={expandAllContextGroups}><PlusSquare className="h-4 w-4" /></Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Expand Context Groups</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant={contextGroupSelection === 'collapse' ? 'default' : 'outline'} size="sm" onClick={collapseAllContextGroups}><MinusSquare className="h-4 w-4" /></Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Collapse Context Groups</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="h-4 border-l border-gray-300 mx-1"></div>
+            <div className="flex items-center space-x-2 transform translate-y-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant={detailSelection === 'expand' ? 'default' : 'outline'} size="sm" onClick={expandAllDetails}><ChevronsDown className="h-4 w-4" /></Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Expand All Details</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant={detailSelection === 'collapse' ? 'default' : 'outline'} size="sm" onClick={collapseAllDetails}><ChevronsUp className="h-4 w-4" /></Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Collapse All Details</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
         </TooltipProvider>
       </div>
       {loading ? (
