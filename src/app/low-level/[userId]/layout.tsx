@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect, use } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Pencil } from 'lucide-react';
+import { Pencil, Clipboard, Check } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -18,6 +18,7 @@ export default function UserLayout({
   const [userName, setUserName] = useState<string | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [isCopied, setIsCopied] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -54,6 +55,14 @@ export default function UserLayout({
     }
   };
 
+  const handleCopy = () => {
+    if (!userId) return;
+    navigator.clipboard.writeText(userId).then(() => {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    });
+  };
+
   const activeTab = pathname.split('/').pop();
 
   return (
@@ -74,18 +83,29 @@ export default function UserLayout({
                   <Button variant="outline" onClick={() => setIsEditingName(false)} size="sm">Cancel</Button>
                 </div>
               ) : (
-                <div
-                  className="flex items-center gap-2 cursor-pointer group"
-                  onClick={() => {
-                    setNameInput(userName || '');
-                    setIsEditingName(true);
-                  }}
-                >
-                  <h1 className="text-2xl font-bold">
-                    <span className="border-b border-dotted border-transparent group-hover:border-gray-400">{userName || 'Unnamed User'}</span>
-                    <span className="text-gray-500 font-normal ml-2">({userId})</span>
-                  </h1>
-                  <Pencil className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="flex items-center gap-4">
+                  <div
+                    className="flex items-center gap-2 cursor-pointer group"
+                    onClick={() => {
+                      setNameInput(userName || '');
+                      setIsEditingName(true);
+                    }}
+                  >
+                    <h1 className="text-2xl font-bold">
+                      <span className="border-b border-dotted border-transparent group-hover:border-gray-400">{userName || 'Unnamed User'}</span>
+                    </h1>
+                    <Pencil className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <div className="flex items-center text-2xl text-gray-500 font-normal">
+                    <span>({userId})</span>
+                    <Button variant="ghost" size="icon" onClick={handleCopy} className="h-8 w-8 ml-1">
+                      {isCopied ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Clipboard className="h-4 w-4 text-gray-500" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
