@@ -71,10 +71,18 @@ const UserLayoutContent = ({
   const activeTab = pathname.split('/').pop();
 
   return (
-    <div className="w-full">
-      <div className="sticky top-0 z-10 bg-background border-b">
-        <div className="container mx-auto flex flex-col px-6 gap-2 py-5">
-            <div className="flex items-center">
+    <div className="w-full max-w-7xl px-4">
+      <div className="sticky top-0 z-10 bg-background container mx-auto gap-2 py-5 border-b">
+        <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" onClick={() => router.push('/admin')}>
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={fetchUserName}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
               {isEditingName ? (
                 <div className="flex items-center gap-2">
                   <Input
@@ -113,14 +121,6 @@ const UserLayoutContent = ({
                   </div>
                 </div>
               )}
-              <div className="flex items-center gap-2 ml-auto">
-                <Button variant="ghost" size="icon" onClick={fetchUserName}>
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => router.push('/admin')}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              </div>
             </div>
           <Tabs value={activeTab} onValueChange={(value) => router.push(`/low-level/${userId}/${value}`)}>
             <TabsList>
