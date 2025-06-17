@@ -76,10 +76,10 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
     const windows = new Set<string>();
     for (const event of filteredEvents) {
       try {
-        const payload = event.payload as { payload?: LowLevelEventPayload };
-        const p = payload.payload;
-        if (p?.event?.screen?.ui_tree) {
-          const uiTree = JSON.parse(p.event.screen.ui_tree);
+        const payload = event.payload as { payload?: { event?: { screen?: { ui_tree?: string } } } };
+        const uiTreeStr = payload.payload?.event?.screen?.ui_tree;
+        if (uiTreeStr) {
+          const uiTree = JSON.parse(uiTreeStr);
           if (uiTree.attributes?.name) {
             windows.add(uiTree.attributes.name);
           }
@@ -129,7 +129,7 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
                 </div>
                 {seenWindows.length > 0 && (
                     <div>
-                        <h4 className="text-xs font-semibold mb-2">Windows Used:</h4>
+                        <h4 className="text-xs font-semibold mb-2">Applications Used:</h4>
                         <div className="flex flex-wrap gap-2">
                             {seenWindows.map((windowName) => (
                                 <Badge key={windowName} variant="default">{windowName}</Badge>
