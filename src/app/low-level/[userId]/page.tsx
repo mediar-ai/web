@@ -1,24 +1,14 @@
 'use client';
 
-import { useEffect, useState, use, useMemo } from 'react';
+import { useEffect, useState, use, useMemo, useCallback } from 'react';
 import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-
-// Define a more specific type for the payload to avoid using 'any'
-interface LowLevelEventPayload {
-    type?: string;
-    event?: {
-        screen?: {
-            ui_tree?: string;
-        }
-    }
-}
 
 export default function LowLevelViewerPage({ params }: { params: Promise<{ userId: string }> }) {
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
@@ -28,29 +18,28 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
   const [searchTerm, setSearchTerm] = useState('');
   const { userId } = use(params);
 
+  const fetchRawEvents = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/low-level/${userId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch raw events');
+      }
+      const data = await response.json();
+      setEvents(data.events);
+      setSessionCount(data.sessionCount);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
   useEffect(() => {
     if (!userId) return;
-
-    const fetchRawEvents = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch(`/api/low-level/${userId}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch raw events');
-        }
-        const data = await response.json();
-        setEvents(data.events);
-        setSessionCount(data.sessionCount);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchRawEvents();
-  }, [userId]);
+  }, [userId, fetchRawEvents]);
 
   const filteredEvents = useMemo(() => {
     if (!searchTerm) {
@@ -65,8 +54,8 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
   const eventStats = useMemo(() => {
     const stats = new Map<string, number>();
     for (const event of filteredEvents) {
-      const payload = event.payload as { payload?: LowLevelEventPayload };
-      const eventType = payload.payload?.type || 'unknown';
+      const body = event.payload as Record<string, unknown>;
+      const eventType = (body.payload as Record<string, unknown>)?.type as string || 'unknown';
       stats.set(eventType, (stats.get(eventType) || 0) + 1);
     }
     return Array.from(stats.entries());
@@ -76,10 +65,10 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
     const windows = new Set<string>();
     for (const event of filteredEvents) {
       try {
-        const payload = event.payload as { payload?: { event?: { screen?: { ui_tree?: string } } } };
-        const uiTreeStr = payload.payload?.event?.screen?.ui_tree;
-        if (uiTreeStr) {
-          const uiTree = JSON.parse(uiTreeStr);
+        const body = event.payload as Record<string, unknown>;
+        const uiTreeStr = ((body.payload as Record<string, unknown>)?.event as Record<string, unknown>)?.screen as { ui_tree?: string } | undefined;
+        if (uiTreeStr?.ui_tree) {
+          const uiTree = JSON.parse(uiTreeStr.ui_tree);
           if (uiTree.attributes?.name) {
             windows.add(uiTree.attributes.name);
           }
@@ -106,6 +95,10 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-64"
             />
+            <Button variant="outline" onClick={fetchRawEvents}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+            </Button>
             <Link href="/admin">
                 <Button variant="outline">
                     <ArrowLeft className="h-4 w-4 mr-2" />
@@ -129,7 +122,7 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
                 </div>
                 {seenWindows.length > 0 && (
                     <div>
-                        <h4 className="text-xs font-semibold mb-2">Applications Used:</h4>
+                        <h4 className="text-xs font-semibold mb-2">Windows Used:</h4>
                         <div className="flex flex-wrap gap-2">
                             {seenWindows.map((windowName) => (
                                 <Badge key={windowName} variant="default">{windowName}</Badge>
