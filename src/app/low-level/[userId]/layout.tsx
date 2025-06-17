@@ -112,7 +112,7 @@ export default function UserLayout({
           <Tabs value={activeTab} onValueChange={(value) => router.push(`/low-level/${userId}/${value}`)}>
             <TabsList>
               <TabsTrigger value="raw-low-level-events">Raw Low-Level Events</TabsTrigger>
-              {/* Add other tabs here as needed */}
+              <TabsTrigger value="ui-trees">UI Trees</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
