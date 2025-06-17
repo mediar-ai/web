@@ -9,6 +9,16 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
+// Define a more specific type for the payload to avoid using 'any'
+interface LowLevelEventPayload {
+    type?: string;
+    event?: {
+        screen?: {
+            ui_tree?: string;
+        }
+    }
+}
+
 export default function LowLevelViewerPage({ params }: { params: Promise<{ userId: string }> }) {
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
   const [sessionCount, setSessionCount] = useState<number>(0);
@@ -49,6 +59,24 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
     return Array.from(stats.entries());
   }, [events]);
 
+  const seenWindows = useMemo(() => {
+    const windows = new Set<string>();
+    for (const event of events) {
+      try {
+        const p = event.payload as LowLevelEventPayload;
+        if (p?.event?.screen?.ui_tree) {
+          const uiTree = JSON.parse(p.event.screen.ui_tree);
+          if (uiTree.attributes?.name) {
+            windows.add(uiTree.attributes.name);
+          }
+        }
+      } catch {
+        // Ignore parsing errors for now
+      }
+    }
+    return Array.from(windows);
+  }, [events]);
+
   return (
     <div className="container mx-auto py-8 font-mono">
       <div className="flex justify-between items-center mb-6">
@@ -69,11 +97,23 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
             <CardHeader className="p-3 bg-gray-50 border-b">
                 <CardTitle className="text-sm">Event Summary</CardTitle>
             </CardHeader>
-            <CardContent className="p-3 flex flex-wrap gap-2">
-                <Badge variant="outline">Sessions: {sessionCount}</Badge>
-                {eventStats.map(([type, count]) => (
-                    <Badge key={type} variant="secondary">{type}: {count}</Badge>
-                ))}
+            <CardContent className="p-3 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">Sessions: {sessionCount}</Badge>
+                    {eventStats.map(([type, count]) => (
+                        <Badge key={type} variant="secondary">{type}: {count}</Badge>
+                    ))}
+                </div>
+                {seenWindows.length > 0 && (
+                    <div>
+                        <h4 className="text-xs font-semibold mb-2">Windows Used:</h4>
+                        <div className="flex flex-wrap gap-2">
+                            {seenWindows.map((windowName) => (
+                                <Badge key={windowName} variant="default">{windowName}</Badge>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </CardContent>
         </Card>
       )}
