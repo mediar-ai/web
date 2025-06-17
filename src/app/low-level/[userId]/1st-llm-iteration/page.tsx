@@ -7,6 +7,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Button } from "@/components/ui/button"
 import { useState, useEffect, use, useCallback, useMemo } from "react";
 import type { LowLevelEvent } from "@/types";
 import UITreeTimeline from "@/components/low-level/UITreeTimeline";
@@ -14,7 +15,7 @@ import FormattedUITree from "@/components/low-level/FormattedUITree";
 import ScreenshotView from "@/components/low-level/ScreenshotView";
 import DiffView from "@/components/low-level/DiffView";
 import { useUser } from "@/context/UserContext";
-import { Skeleton } from "@/components/ui/skeleton";
+import { RefreshCw } from "lucide-react";
 
 const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
   const payload = event.payload.payload
@@ -127,6 +128,39 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     if (userId) {
       localStorage.setItem(SUB_ACCORDION_STORAGE_KEY, JSON.stringify(value));
     }
+  };
+
+  const expandAll = () => {
+    const allItemValues = ["item-1", "item-2", "item-3", "item-4"];
+    setOpenAccordionItems(allItemValues);
+    localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(allItemValues));
+  };
+
+  const collapseAll = () => {
+    setOpenAccordionItems([]);
+    localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify([]));
+  };
+
+  const expandAllSub = () => {
+    const allSubItemValues = [
+      "sub-item-1",
+      "sub-item-prev-screenshot-same-window",
+      "sub-item-2",
+      "sub-item-prev-window-title",
+      "sub-item-prev-same-window",
+      "sub-item-3",
+      "sub-item-events-same-window",
+      "sub-item-current-tree",
+      "sub-item-4",
+      "sub-item-5",
+    ];
+    setOpenSubAccordionItems(allSubItemValues);
+    localStorage.setItem(SUB_ACCORDION_STORAGE_KEY, JSON.stringify(allSubItemValues));
+  };
+
+  const collapseAllSub = () => {
+    setOpenSubAccordionItems([]);
+    localStorage.setItem(SUB_ACCORDION_STORAGE_KEY, JSON.stringify([]));
   };
 
   useEffect(() => {
@@ -271,14 +305,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
   if (loading) {
     return (
-      <div className="p-4 space-y-4">
-        <Skeleton className="h-20 w-full" />
-        <div className="space-y-2 pt-4">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </div>
+      <div className="flex flex-col items-center justify-center h-screen">
+        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-muted-foreground mt-4">Loading Events...</p>
       </div>
     );
   }
@@ -300,9 +329,13 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           onEventSelect={setSelectedEvent}
         />
       </div>
-      <div className="flex items-center my-4">
+      <div className="flex items-center my-4 space-x-2">
         <div className="w-12 text-xs text-gray-500">(Included)</div>
         <div className="flex-1"></div>
+        <Button variant="outline" size="sm" onClick={expandAll}>Expand All</Button>
+        <Button variant="outline" size="sm" onClick={collapseAll}>Collapse All</Button>
+        <Button variant="outline" size="sm" onClick={expandAllSub}>Expand All Context</Button>
+        <Button variant="outline" size="sm" onClick={collapseAllSub}>Collapse All Context</Button>
       </div>
       <Accordion 
         type="multiple" 
