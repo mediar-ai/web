@@ -19,7 +19,7 @@ const Clock = () => {
         return () => clearInterval(timerId);
     }, []);
 
-    return <div className="text-sm text-gray-500 font-mono">{time.toUTCString()}</div>;
+    return <div className="text-sm text-gray-500 font-mono">UTC: {time.toUTCString()}</div>;
 };
 
 export default function LowLevelViewerPage({ params }: { params: Promise<{ userId: string }> }) {
@@ -31,6 +31,7 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
   const { userId } = use(params);
 
   const fetchRawEvents = useCallback(async () => {
+    if (!userId) return;
     setLoading(true);
     setError(null);
     try {
@@ -49,9 +50,8 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
   }, [userId]);
 
   useEffect(() => {
-    if (!userId) return;
     fetchRawEvents();
-  }, [userId, fetchRawEvents]);
+  }, [fetchRawEvents]);
 
   const filteredEvents = useMemo(() => {
     if (!searchTerm) {
@@ -90,6 +90,17 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
       }
     }
     return Array.from(windows);
+  }, [filteredEvents]);
+
+  const clientIdentity = useMemo(() => {
+    const firstEventWithIdentity = filteredEvents.find(e => {
+        const payload = e.payload as { client_identity?: unknown };
+        return payload && typeof payload === 'object' && 'client_identity' in payload;
+    });
+    if (firstEventWithIdentity) {
+        return (firstEventWithIdentity.payload as unknown as { client_identity: Record<string, unknown> }).client_identity;
+    }
+    return null;
   }, [filteredEvents]);
 
   return (
@@ -137,10 +148,22 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
                 </div>
                 {seenWindows.length > 0 && (
                     <div>
-                        <h4 className="text-xs font-semibold mb-1">Applications Used:</h4>
+                        <h4 className="text-xs font-semibold mb-1 mt-2">Windows Used:</h4>
                         <div className="flex flex-wrap gap-1">
                             {seenWindows.map((windowName) => (
                                 <Badge key={windowName} variant="default">{windowName}</Badge>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                {clientIdentity && (
+                    <div>
+                        <h4 className="text-xs font-semibold mb-1 mt-2">Client Info:</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-2 gap-y-1 text-xs">
+                            {Object.entries(clientIdentity).map(([key, value]) => (
+                                <div key={key}>
+                                    <span className="font-semibold">{key}:</span> {JSON.stringify(value)}
+                                </div>
                             ))}
                         </div>
                     </div>
