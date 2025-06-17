@@ -151,6 +151,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [analysisOutput, setAnalysisOutput] = useState<AnalysisOutput>(null);
   const [previousAnalyses, setPreviousAnalyses] = useState<PreviousAnalysis[]>([]);
   const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [currentBatchStep, setCurrentBatchStep] = useState(0);
+  const [totalBatchSteps, setTotalBatchSteps] = useState(0);
   
   // State to control which context elements are included
   const [contextConfig, ] = useState({
@@ -277,6 +280,91 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     setOpenDetailItems([]);
     localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify([]));
   }
+
+  const handleProcessAllRemaining = async () => {
+    setIsBatchProcessing(true);
+    setTotalBatchSteps(unprocessedUiTreeEvents.length);
+    setCurrentBatchStep(0);
+
+    let recentAnalyses: PreviousAnalysis[] = [...previousAnalyses];
+
+    for (let i = 0; i < unprocessedUiTreeEvents.length; i++) {
+      const eventToProcess = unprocessedUiTreeEvents[i];
+      setCurrentBatchStep(i + 1);
+
+      // Assemble context for the current step
+      const currentIndex = uiTreeEvents.findIndex(e => e.id === eventToProcess.id);
+      const prevEvent = currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
+      
+      const context: ContextForAnalysis = {};
+      
+      // This logic should be encapsulated to avoid repetition, but for now, we'll build it here
+      const prevUiTree = prevEvent ? (prevEvent.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree : null;
+
+      if (contextConfig.includePreviousUiTree && prevUiTree) {
+        context.previousUiTree = prevUiTree;
+      }
+      if (contextConfig.includeCurrentUiTree) {
+        context.currentUiTree = (eventToProcess.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree;
+      }
+      if (contextConfig.includePreviousAnalyses && recentAnalyses.length > 0) {
+        context.previousAnalyses = recentAnalyses;
+      }
+
+      // In a real implementation, we would also gather screenshots and other events here.
+      
+      try {
+        const processResponse = await fetch('/api/process-workflow-step', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: WORKFLOW_STEP_ANALYSIS_PROMPT,
+            model: selectedModel,
+            context,
+          }),
+        });
+
+        if (!processResponse.ok) {
+          throw new Error(`API error for step ${i + 1}: ${processResponse.statusText}`);
+        }
+
+        const result = await processResponse.json();
+        
+        if (result.analysis) {
+          const sessionId = localStorage.getItem('app_session_id') || 'unknown-session';
+          const clientTimestamp = eventToProcess.created_at;
+
+          await fetch('/api/save-llm-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId,
+              sessionId,
+              analysis: result.analysis,
+              clientTimestamp,
+            }),
+          });
+          
+          const newAnalysis: PreviousAnalysis = {
+            id: `batch-${Date.now()}`, // temp id
+            ...result.analysis,
+            client_timestamp: clientTimestamp,
+            created_at: new Date().toISOString()
+          };
+          
+          recentAnalyses = [newAnalysis, ...recentAnalyses].slice(0, 3);
+          setAllWorkflowAnalyses(prev => [...prev, newAnalysis]);
+        }
+      } catch (err) {
+        console.error(`Failed to process step ${i + 1}`, err);
+        // Optional: decide if you want to stop the batch on error
+      }
+    }
+
+    setIsBatchProcessing(false);
+    setCurrentBatchStep(0);
+    setTotalBatchSteps(0);
+  };
 
   const handleReprocess = async () => {
     setIsProcessing(true);
@@ -413,6 +501,15 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
     return count;
   }, [allWorkflowAnalyses, uiTreeEvents]);
+
+  const unprocessedUiTreeEvents = useMemo(() => {
+    return uiTreeEvents.filter(event => {
+      const eventTime = new Date(event.created_at).getTime();
+      return !allWorkflowAnalyses.some(analysis => 
+        Math.abs(new Date(analysis.client_timestamp).getTime() - eventTime) < 1000
+      );
+    });
+  }, [uiTreeEvents, allWorkflowAnalyses]);
 
   useEffect(() => {
     fetchAllEvents();
@@ -618,8 +715,14 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             <span className="text-muted-foreground">Processed:</span>
             <span className="font-semibold">{processedStepsCount}</span>
           </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="text-muted-foreground">Remaining:</span>
+            <span className="font-semibold">{unprocessedUiTreeEvents.length}</span>
+          </div>
           <div className="flex-grow" />
-          <Button variant="outline" size="sm" disabled>Process all remaining Steps</Button>
+          <Button variant="outline" size="sm" onClick={handleProcessAllRemaining} disabled={isBatchProcessing || unprocessedUiTreeEvents.length === 0}>
+            {isBatchProcessing ? `Processing ${currentBatchStep}/${totalBatchSteps}...` : 'Process all remaining Steps'}
+          </Button>
         </CardContent>
       </Card>
       <div className="flex items-center my-4 space-x-2">
