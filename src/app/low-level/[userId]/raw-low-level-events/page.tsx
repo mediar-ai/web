@@ -347,28 +347,19 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                         <h4 className="text-xs font-semibold mb-1 mt-2">Client Info:</h4>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs p-2 border rounded-md">
                             {Object.entries(clientIdentity).map(([key, value]) => {
-                                if (key === 'ip_location' && typeof value === 'string') {
-                                    try {
-                                        const ipInfo = JSON.parse(value);
-                                        return (
-                                            <div key={key} className="col-span-full">
-                                                <h5 className="font-semibold">{key}:</h5>
-                                                <div className="pl-2 grid grid-cols-2 md:grid-cols-3 gap-x-4">
-                                                    {Object.entries(ipInfo).map(([ipKey, ipValue]) => (
-                                                        <div key={ipKey}>
-                                                            <span className="font-semibold">{ipKey}:</span> {String(ipValue)}
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                if (key === 'ip_location' && typeof value === 'object' && value !== null) {
+                                    return (
+                                        <div key={key} className="col-span-full">
+                                            <h5 className="font-semibold">{key}:</h5>
+                                            <div className="pl-2 grid grid-cols-2 md:grid-cols-3 gap-x-4">
+                                                {Object.entries(value).map(([ipKey, ipValue]) => (
+                                                    <div key={ipKey}>
+                                                        <span className="font-semibold">{ipKey}:</span> {String(ipValue)}
+                                                    </div>
+                                                ))}
                                             </div>
-                                        );
-                                    } catch {
-                                        return (
-                                            <div key={key}>
-                                                <span className="font-semibold">{key}:</span> {value}
-                                            </div>
-                                        );
-                                    }
+                                        </div>
+                                    );
                                 }
                                 return (
                                     <div key={key}>
