@@ -29,6 +29,10 @@ type EventPayload = {
             screen?: {
                 ui_tree?: string;
             };
+            screenshot_diff?: {
+                before_timestamp?: string;
+                after_timestamp?: string;
+            };
             [key: string]: unknown;
         };
     }
@@ -91,8 +95,9 @@ const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
       }
       break;
     case 'screenshot_diff':
-      const before = eventData.before_timestamp ? new Date(eventData.before_timestamp as string).toLocaleTimeString() : 'N/A';
-      const after = eventData.after_timestamp ? new Date(eventData.after_timestamp as string).toLocaleTimeString() : 'N/A';
+      const diffData = eventData.screenshot_diff;
+      const before = diffData?.before_timestamp ? new Date(diffData.before_timestamp as string).toLocaleTimeString() : 'N/A';
+      const after = diffData?.after_timestamp ? new Date(diffData.after_timestamp as string).toLocaleTimeString() : 'N/A';
       summary = <span><b>Screenshot Diff:</b> {before} vs {after}</span>;
       break;
   }

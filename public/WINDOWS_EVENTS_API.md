@@ -65,7 +65,11 @@ g        "ui_tree": "{\\\"id\\\": ... }"
 This path is used to get a detailed analysis of a visual change between two screenshots. It is the equivalent of a "UI Diff" in the web recorder workflow.
 
 - **`payload.type`**: `screenshot_diff`
-- **`payload.event` object**: Must contain `screenshot_before` and `screenshot_after` base64 data URLs.
+- **`payload.event` object**: Must contain a `screenshot_diff` object with the following fields:
+  - `before`: The base64 data URL for the "before" image.
+  - `after`: The base64 data URL for the "after" image.
+  - `before_timestamp`: The ISO 8601 timestamp of when the "before" image was captured.
+  - `after_timestamp`: The ISO 8601 timestamp of when the "after" image was captured.
 
 #### Example Body
 ```json
@@ -76,8 +80,12 @@ This path is used to get a detailed analysis of a visual change between two scre
     "type": "screenshot_diff",
     "timestamp": "2024-06-12T12:00:05.000Z",
     "event": {
-        "screenshot_before": "data:image/jpeg;base64,...",
-        "screenshot_after": "data:image/jpeg;base64,..."
+      "screenshot_diff": {
+        "before": "data:image/jpeg;base64,...",
+        "after": "data:image/jpeg;base64,...",
+        "before_timestamp": "2024-06-12T12:00:00.000Z",
+        "after_timestamp": "2024-06-12T12:00:05.000Z"
+      }
     }
   }
 }

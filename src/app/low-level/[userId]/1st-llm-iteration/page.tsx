@@ -60,9 +60,9 @@ const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
       }
       break;
     case 'screenshot_diff':
-      const screenshotEvent = eventData as { before_timestamp?: string, after_timestamp?: string };
-      const before = screenshotEvent.before_timestamp ? new Date(screenshotEvent.before_timestamp).toLocaleTimeString() : 'N/A';
-      const after = screenshotEvent.after_timestamp ? new Date(screenshotEvent.after_timestamp).toLocaleTimeString() : 'N/A';
+      const diffData = eventData.screenshot_diff;
+      const before = diffData?.before_timestamp ? new Date(diffData.before_timestamp).toLocaleTimeString() : 'N/A';
+      const after = diffData?.after_timestamp ? new Date(diffData.after_timestamp).toLocaleTimeString() : 'N/A';
       summary = <span><b>Screenshot Diff:</b> {before} vs {after}</span>;
       break;
   }
@@ -187,9 +187,10 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     })
   }, [allEvents, previousUiTreeEvent, selectedEvent]);
   
-  const screenshotEventPayload = relevantScreenshotDiff?.payload.payload?.event as { screenshot_before?: string, screenshot_after?: string } | undefined;
-  const beforeScreenshotDataUrl = screenshotEventPayload?.screenshot_before || null;
-  const afterScreenshotDataUrl = screenshotEventPayload?.screenshot_after || null;
+  const screenshotEventPayload = relevantScreenshotDiff?.payload.payload?.event.screenshot_diff;
+  const beforeScreenshotDataUrl = screenshotEventPayload?.before || null;
+  const afterScreenshotDataUrl = screenshotEventPayload?.after || null;
+  const beforeScreenshotTimestamp = screenshotEventPayload?.before_timestamp || null;
 
   const currentUiTree = (selectedEvent?.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree;
 
@@ -264,7 +265,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     });
   }, [allEvents, previousSameWindowUiTreeEvent, selectedEvent]);
   
-  const beforeScreenshotDataUrlSameWindow = (relevantScreenshotDiffSameWindow?.payload.payload?.event as { screenshot_before?: string })?.screenshot_before || null;
+  const screenshotEventPayloadSameWindow = relevantScreenshotDiffSameWindow?.payload.payload?.event.screenshot_diff;
+  const beforeScreenshotDataUrlSameWindow = screenshotEventPayloadSameWindow?.before || null;
+  const beforeScreenshotTimestampSameWindow = screenshotEventPayloadSameWindow?.before_timestamp || null;
 
   if (loading) {
     return (
@@ -325,7 +328,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                   <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree by timestamp)</AccordionTrigger>
                 </div>
                 <AccordionContent>
-                  <p className="text-xs text-muted-foreground mb-1">(Timestamp not available)</p>
+                  {beforeScreenshotTimestamp ? (
+                    <p className="text-xs text-muted-foreground mb-1">{new Date(beforeScreenshotTimestamp).toLocaleString()}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mb-1">(Timestamp not available)</p>
+                  )}
                   <ScreenshotView dataUrl={beforeScreenshotDataUrl} />
                 </AccordionContent>
               </AccordionItem>
@@ -335,6 +342,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                   <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree of the same window)</AccordionTrigger>
                 </div>
                 <AccordionContent>
+                  {beforeScreenshotTimestampSameWindow ? (
+                    <p className="text-xs text-muted-foreground mb-1">{new Date(beforeScreenshotTimestampSameWindow).toLocaleString()}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mb-1">(Timestamp not available)</p>
+                  )}
                   <ScreenshotView dataUrl={beforeScreenshotDataUrlSameWindow} />
                 </AccordionContent>
               </AccordionItem>
