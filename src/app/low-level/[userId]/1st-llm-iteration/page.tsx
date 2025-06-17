@@ -15,7 +15,14 @@ import FormattedUITree from "@/components/low-level/FormattedUITree";
 import ScreenshotView from "@/components/low-level/ScreenshotView";
 import DiffView from "@/components/low-level/DiffView";
 import { useUser } from "@/context/UserContext";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Expand, Minimize2, PlusSquare, MinusSquare, ChevronsDown, ChevronsUp } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
   const payload = event.payload.payload
@@ -81,12 +88,14 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<LowLevelEvent | null>(null);
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
-  const [openSubAccordionItems, setOpenSubAccordionItems] = useState<string[]>([]);
+  const [openContextGroupItems, setOpenContextGroupItems] = useState<string[]>([]);
+  const [openDetailItems, setOpenDetailItems] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-accordion-state-${userId}`, [userId]);
-  const SUB_ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-sub-accordion-state-${userId}`, [userId]);
+  const CONTEXT_GROUP_STORAGE_KEY = useMemo(() => `llm-iteration-context-group-state-${userId}`, [userId]);
+  const DETAIL_ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-detail-state-${userId}`, [userId]);
 
   useEffect(() => {
     if (userId) {
@@ -102,19 +111,31 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         setOpenAccordionItems([]);
       }
 
-      const storedSubState = localStorage.getItem(SUB_ACCORDION_STORAGE_KEY);
-      if (storedSubState) {
+      const storedGroupState = localStorage.getItem(CONTEXT_GROUP_STORAGE_KEY);
+      if (storedGroupState) {
         try {
-          setOpenSubAccordionItems(JSON.parse(storedSubState));
+          setOpenContextGroupItems(JSON.parse(storedGroupState));
         } catch (e) {
-          console.error("Failed to parse sub-accordion state from localStorage", e);
-          setOpenSubAccordionItems([]);
+          console.error("Failed to parse context group state from localStorage", e);
+          setOpenContextGroupItems([]);
         }
       } else {
-        setOpenSubAccordionItems([]);
+        setOpenContextGroupItems([]);
+      }
+      
+      const storedDetailState = localStorage.getItem(DETAIL_ACCORDION_STORAGE_KEY);
+      if (storedDetailState) {
+        try {
+          setOpenDetailItems(JSON.parse(storedDetailState));
+        } catch (e) {
+          console.error("Failed to parse detail state from localStorage", e);
+          setOpenDetailItems([]);
+        }
+      } else {
+        setOpenDetailItems([]);
       }
     }
-  }, [userId, ACCORDION_STORAGE_KEY, SUB_ACCORDION_STORAGE_KEY]);
+  }, [userId, ACCORDION_STORAGE_KEY, CONTEXT_GROUP_STORAGE_KEY, DETAIL_ACCORDION_STORAGE_KEY]);
 
   const handleAccordionValueChange = (value: string[]) => {
     setOpenAccordionItems(value);
@@ -123,15 +144,22 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
   };
 
-  const handleSubAccordionValueChange = (value: string[]) => {
-    setOpenSubAccordionItems(value);
+  const handleContextGroupValueChange = (value: string[]) => {
+    setOpenContextGroupItems(value);
     if (userId) {
-      localStorage.setItem(SUB_ACCORDION_STORAGE_KEY, JSON.stringify(value));
+      localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify(value));
+    }
+  };
+
+  const handleDetailItemsValueChange = (value: string[]) => {
+    setOpenDetailItems(value);
+    if (userId) {
+      localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(value));
     }
   };
 
   const expandAll = () => {
-    const allItemValues = ["item-1", "item-2", "item-3", "item-4"];
+    const allItemValues = ["item-1", "item-2", "item-3", "item-4", "item-5"];
     setOpenAccordionItems(allItemValues);
     localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(allItemValues));
   };
@@ -141,27 +169,31 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify([]));
   };
 
-  const expandAllSub = () => {
-    const allSubItemValues = [
-      "sub-item-1",
-      "sub-item-prev-screenshot-same-window",
-      "sub-item-2",
-      "sub-item-prev-window-title",
-      "sub-item-prev-same-window",
-      "sub-item-3",
-      "sub-item-events-same-window",
-      "sub-item-current-tree",
-      "sub-item-4",
-      "sub-item-5",
-    ];
-    setOpenSubAccordionItems(allSubItemValues);
-    localStorage.setItem(SUB_ACCORDION_STORAGE_KEY, JSON.stringify(allSubItemValues));
+  const expandAllContextGroups = () => {
+    const allGroupValues = ["group-screenshots", "group-ui-tree", "group-events"];
+    setOpenContextGroupItems(allGroupValues);
+    localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify(allGroupValues));
   };
 
-  const collapseAllSub = () => {
-    setOpenSubAccordionItems([]);
-    localStorage.setItem(SUB_ACCORDION_STORAGE_KEY, JSON.stringify([]));
+  const collapseAllContextGroups = () => {
+    setOpenContextGroupItems([]);
+    localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify([]));
   };
+
+  const expandAllDetails = () => {
+    const allDetailValues = [
+      "sub-item-1", "sub-item-prev-screenshot-same-window", "sub-item-5", // Screenshots
+      "sub-item-2", "sub-item-prev-window-title", "sub-item-prev-same-window", "sub-item-current-tree", "sub-item-4", // UI-Tree
+      "sub-item-3", "sub-item-events-same-window", // Events
+    ];
+    setOpenDetailItems(allDetailValues);
+    localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(allDetailValues));
+  }
+
+  const collapseAllDetails = () => {
+    setOpenDetailItems([]);
+    localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify([]));
+  }
 
   useEffect(() => {
     setUserId(userId);
@@ -303,244 +335,329 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const beforeScreenshotDataUrlSameWindow = screenshotEventPayloadSameWindow?.before || null;
   const beforeScreenshotTimestampSameWindow = screenshotEventPayloadSameWindow?.before_timestamp || null;
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground mt-4">Loading Events...</p>
-      </div>
-    );
-  }
-
   if (error) {
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
   }
 
-  if (allEvents.length === 0) {
+  if (!loading && allEvents.length === 0) {
     return <div className="p-4">No events found for this user.</div>;
   }
 
   return (
     <div className="p-4">
       <div className="sticky top-28 bg-background z-10 border-b">
-        <UITreeTimeline
-          uiTreeEvents={uiTreeEvents}
-          selectedEvent={selectedEvent}
-          onEventSelect={setSelectedEvent}
-        />
+        {loading ? (
+          <div className="py-4 px-2 h-[124px] flex items-center">
+            <Skeleton className="h-14 w-full" />
+          </div>
+        ) : (
+          <UITreeTimeline
+            uiTreeEvents={uiTreeEvents}
+            selectedEvent={selectedEvent}
+            onEventSelect={setSelectedEvent}
+          />
+        )}
       </div>
       <div className="flex items-center my-4 space-x-2">
         <div className="w-12 text-xs text-gray-500">(Included)</div>
         <div className="flex-1"></div>
-        <Button variant="outline" size="sm" onClick={expandAll}>Expand All</Button>
-        <Button variant="outline" size="sm" onClick={collapseAll}>Collapse All</Button>
-        <Button variant="outline" size="sm" onClick={expandAllSub}>Expand All Context</Button>
-        <Button variant="outline" size="sm" onClick={collapseAllSub}>Collapse All Context</Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" onClick={expandAll}><Expand className="h-4 w-4" /></Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Expand All Sections</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" onClick={collapseAll}><Minimize2 className="h-4 w-4" /></Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Collapse All Sections</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" onClick={expandAllContextGroups}><PlusSquare className="h-4 w-4" /></Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Expand Context Groups</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" onClick={collapseAllContextGroups}><MinusSquare className="h-4 w-4" /></Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Collapse Context Groups</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" onClick={expandAllDetails}><ChevronsDown className="h-4 w-4" /></Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Expand All Details</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" onClick={collapseAllDetails}><ChevronsUp className="h-4 w-4" /></Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Collapse All Details</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
-      <Accordion 
-        type="multiple" 
-        className="w-full" 
-        value={openAccordionItems}
-        onValueChange={handleAccordionValueChange}
-      >
-        <AccordionItem value="item-1">
-          <div className="flex items-center">
-            <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-            <AccordionTrigger className="flex-1">Context</AccordionTrigger>
-          </div>
-          <AccordionContent className="space-y-4 pl-4">
-            <Accordion 
-              type="multiple" 
-              className="w-full"
-              value={openSubAccordionItems}
-              onValueChange={handleSubAccordionValueChange}
-            >
-              <AccordionItem value="sub-item-1">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree by timestamp)</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                  {beforeScreenshotTimestamp ? (
-                    <p className="text-xs text-muted-foreground mb-1">{new Date(beforeScreenshotTimestamp).toLocaleString()}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground mb-1">(Timestamp not available)</p>
-                  )}
-                  <ScreenshotView dataUrl={beforeScreenshotDataUrl} />
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="sub-item-prev-screenshot-same-window">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree of the same window)</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                  {beforeScreenshotTimestampSameWindow ? (
-                    <p className="text-xs text-muted-foreground mb-1">{new Date(beforeScreenshotTimestampSameWindow).toLocaleString()}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground mb-1">(Timestamp not available)</p>
-                  )}
-                  <ScreenshotView dataUrl={beforeScreenshotDataUrlSameWindow} />
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="sub-item-2">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Previous ui-tree (by timestamp)</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                  {previousUiTree ? (
-                    <>
-                      <p className="text-xs text-muted-foreground mb-1">{new Date(previousUiTreeEvent!.created_at).toLocaleString()}</p>
-                      <FormattedUITree treeString={previousUiTree} />
-                    </>
-                  ) : (
-                    <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
-                      No previous UI tree to display.
-                    </div>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="sub-item-prev-window-title">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Window title of previous ui tree by timestamp</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                  {previousUiTreeEvent ? (
-                    <div className="p-2 text-sm">
-                      <p><b>Timestamp:</b> {new Date(previousUiTreeEvent.created_at).toLocaleString()}</p>
-                      <p><b>Window:</b> {getEventTitle(previousUiTreeEvent)}</p>
-                    </div>
-                  ) : (
-                     <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
-                      No previous UI tree to display.
-                    </div>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="sub-item-prev-same-window">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Previous ui-tree (same window)</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                  {previousSameWindowUiTree ? (
-                    <FormattedUITree treeString={previousSameWindowUiTree} />
-                  ) : (
-                    <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
-                      No previous UI tree found for this window.
-                    </div>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="sub-item-3">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Events (since previous ui-tree by timestamp)</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                   <div className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800 space-y-1">
-                    {eventsBetweenByTimestamp.length > 0 ? (
-                      eventsBetweenByTimestamp.map(event => <ConciseEventView key={event.id} event={event} />)
-                    ) : (
-                      <p className="text-xs text-muted-foreground">No events found in this interval.</p>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="sub-item-events-same-window">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Events (since previous ui-tree of the same window)</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                   <div className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800 space-y-1">
-                    {previousSameWindowUiTreeEvent ? (
-                      eventsBetweenSameWindow.length > 0 ? (
-                        eventsBetweenSameWindow.map(event => <ConciseEventView key={event.id} event={event} />)
-                      ) : (
-                        <p className="text-xs text-muted-foreground">No events found in this interval.</p>
-                      )
-                    ) : (
-                      <p className="text-xs text-muted-foreground">No previous UI tree from the same window to compare against.</p>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="sub-item-current-tree">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Latest ui-tree</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                  {currentUiTree ? (
-                    <FormattedUITree treeString={currentUiTree} />
-                  ) : (
-                    <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
-                      No UI tree to display.
-                    </div>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="sub-item-4">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">ui-tree diff (latest vs. previous for the same window)</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                  {currentUiTree && previousSameWindowUiTree ? (
-                    <DiffView oldTree={previousSameWindowUiTree} newTree={currentUiTree} />
-                  ) : (
-                    <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
-                      Not enough data to compute diff.
-                    </div>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="sub-item-5">
-                <div className="flex items-center">
-                  <div className="w-12 flex justify-center"><Checkbox disabled /></div>
-                  <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of the latest ui-tree)</AccordionTrigger>
-                </div>
-                <AccordionContent>
-                  {afterScreenshotDataUrl && selectedEvent && (
-                     <p className="text-xs text-muted-foreground mb-1">{new Date(selectedEvent.created_at).toLocaleString()}</p>
-                  )}
-                   <ScreenshotView dataUrl={afterScreenshotDataUrl} />
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </AccordionContent>
-        </AccordionItem>
-        <AccordionItem value="item-2">
-          <div className="flex items-center">
-            <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-            <AccordionTrigger className="flex-1">System prompt</AccordionTrigger>
-          </div>
-          <AccordionContent>
-            Placeholder for System prompt.
-          </AccordionContent>
-        </AccordionItem>
-        <AccordionItem value="item-3">
-          <div className="flex items-center">
-            <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-            <AccordionTrigger className="flex-1">Good Examples</AccordionTrigger>
-          </div>
-          <AccordionContent>
-            Placeholder for Good Examples.
-          </AccordionContent>
-        </AccordionItem>
-        <AccordionItem value="item-4">
-          <div className="flex items-center">
-            <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-            <AccordionTrigger className="flex-1">Bad Examples</AccordionTrigger>
-          </div>
-          <AccordionContent>
-            Placeholder for Bad Examples.
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+      {loading ? (
+        <div className="flex flex-col items-center justify-center pt-16">
+          <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground mt-4">Loading Events...</p>
+        </div>
+      ) : (
+        <Accordion 
+          type="multiple" 
+          className="w-full" 
+          value={openAccordionItems}
+          onValueChange={handleAccordionValueChange}
+        >
+          <AccordionItem value="item-1">
+            <div className="flex items-center">
+              <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+              <AccordionTrigger className="flex-1">Context</AccordionTrigger>
+            </div>
+            <AccordionContent className="space-y-4 pl-4">
+              <Accordion 
+                type="multiple" 
+                className="w-full"
+                value={openContextGroupItems}
+                onValueChange={handleContextGroupValueChange}
+              >
+                <AccordionItem value="group-screenshots">
+                  <AccordionTrigger className="text-md font-semibold pl-4">Screenshots</AccordionTrigger>
+                  <AccordionContent className="pl-8">
+                    <Accordion type="multiple" value={openDetailItems} onValueChange={handleDetailItemsValueChange}>
+                      <AccordionItem value="sub-item-1">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree by timestamp)</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          {beforeScreenshotTimestamp ? (
+                            <p className="text-xs text-muted-foreground mb-1">{new Date(beforeScreenshotTimestamp).toLocaleString()}</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground mb-1">(Timestamp not available)</p>
+                          )}
+                          <ScreenshotView dataUrl={beforeScreenshotDataUrl} />
+                        </AccordionContent>
+                      </AccordionItem>
+                      <AccordionItem value="sub-item-prev-screenshot-same-window">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree of the same window)</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          {beforeScreenshotTimestampSameWindow ? (
+                            <p className="text-xs text-muted-foreground mb-1">{new Date(beforeScreenshotTimestampSameWindow).toLocaleString()}</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground mb-1">(Timestamp not available)</p>
+                          )}
+                          <ScreenshotView dataUrl={beforeScreenshotDataUrlSameWindow} />
+                        </AccordionContent>
+                      </AccordionItem>
+                      <AccordionItem value="sub-item-5">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of the latest ui-tree)</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          {afterScreenshotDataUrl && selectedEvent && (
+                            <p className="text-xs text-muted-foreground mb-1">{new Date(selectedEvent.created_at).toLocaleString()}</p>
+                          )}
+                          <ScreenshotView dataUrl={afterScreenshotDataUrl} />
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="group-ui-tree">
+                  <AccordionTrigger className="text-md font-semibold pl-4">UI-Tree</AccordionTrigger>
+                  <AccordionContent className="pl-8">
+                    <Accordion type="multiple" value={openDetailItems} onValueChange={handleDetailItemsValueChange}>
+                      <AccordionItem value="sub-item-2">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">Previous ui-tree (by timestamp)</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          {previousUiTree ? (
+                            <>
+                              <p className="text-xs text-muted-foreground mb-1">{new Date(previousUiTreeEvent!.created_at).toLocaleString()}</p>
+                              <FormattedUITree treeString={previousUiTree} />
+                            </>
+                          ) : (
+                            <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
+                              No previous UI tree to display.
+                            </div>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                      <AccordionItem value="sub-item-prev-window-title">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">Window title of previous ui tree by timestamp</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          {previousUiTreeEvent ? (
+                            <div className="p-2 text-sm">
+                              <p><b>Timestamp:</b> {new Date(previousUiTreeEvent.created_at).toLocaleString()}</p>
+                              <p><b>Window:</b> {getEventTitle(previousUiTreeEvent)}</p>
+                            </div>
+                          ) : (
+                            <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
+                              No previous UI tree to display.
+                            </div>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                      <AccordionItem value="sub-item-prev-same-window">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">Previous ui-tree (same window)</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          {previousSameWindowUiTree ? (
+                            <FormattedUITree treeString={previousSameWindowUiTree} />
+                          ) : (
+                            <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
+                              No previous UI tree found for this window.
+                            </div>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                      <AccordionItem value="sub-item-current-tree">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">Latest ui-tree</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          {currentUiTree ? (
+                            <FormattedUITree treeString={currentUiTree} />
+                          ) : (
+                            <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
+                              No UI tree to display.
+                            </div>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                      <AccordionItem value="sub-item-4">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">ui-tree diff (latest vs. previous for the same window)</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          {currentUiTree && previousSameWindowUiTree ? (
+                            <DiffView oldTree={previousSameWindowUiTree} newTree={currentUiTree} />
+                          ) : (
+                            <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
+                              Not enough data to compute diff.
+                            </div>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="group-events">
+                  <AccordionTrigger className="text-md font-semibold pl-4">Events</AccordionTrigger>
+                  <AccordionContent className="pl-8">
+                    <Accordion type="multiple" value={openDetailItems} onValueChange={handleDetailItemsValueChange}>
+                      <AccordionItem value="sub-item-3">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">Events (since previous ui-tree by timestamp)</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          <div className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800 space-y-1">
+                            {eventsBetweenByTimestamp.length > 0 ? (
+                              eventsBetweenByTimestamp.map(event => <ConciseEventView key={event.id} event={event} />)
+                            ) : (
+                              <p className="text-xs text-muted-foreground">No events found in this interval.</p>
+                            )}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                      <AccordionItem value="sub-item-events-same-window">
+                        <div className="flex items-center">
+                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <AccordionTrigger className="text-sm font-semibold flex-1">Events (since previous ui-tree of the same window)</AccordionTrigger>
+                        </div>
+                        <AccordionContent>
+                          <div className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800 space-y-1">
+                            {previousSameWindowUiTreeEvent ? (
+                              eventsBetweenSameWindow.length > 0 ? (
+                                eventsBetweenSameWindow.map(event => <ConciseEventView key={event.id} event={event} />)
+                              ) : (
+                                <p className="text-xs text-muted-foreground">No events found in this interval.</p>
+                              )
+                            ) : (
+                              <p className="text-xs text-muted-foreground">No previous UI tree from the same window to compare against.</p>
+                            )}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="item-2">
+            <div className="flex items-center">
+              <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+              <AccordionTrigger className="flex-1">System prompt</AccordionTrigger>
+            </div>
+            <AccordionContent>
+              Placeholder for System prompt.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="item-3">
+            <div className="flex items-center">
+              <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+              <AccordionTrigger className="flex-1">Good Examples</AccordionTrigger>
+            </div>
+            <AccordionContent>
+              Placeholder for Good Examples.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="item-4">
+            <div className="flex items-center">
+              <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+              <AccordionTrigger className="flex-1">Bad Examples</AccordionTrigger>
+            </div>
+            <AccordionContent>
+              Placeholder for Bad Examples.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="item-5">
+            <div className="flex items-center w-full">
+              <div className="w-12" />
+              <AccordionTrigger className="flex-1">Output</AccordionTrigger>
+              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); alert("Re-processing..."); }} className="mr-4">Re-process</Button>
+            </div>
+            <AccordionContent>
+              <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
+                Formatted LLM response will be shown here.
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      )}
     </div>
   );
 } 
