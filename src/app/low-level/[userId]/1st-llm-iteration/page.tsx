@@ -49,6 +49,16 @@ type AnalysisOutput = {
   context: string;
 } | null;
 
+type ContextForAnalysis = {
+  screenshotBefore?: string | null;
+  screenshotAfter?: string | null;
+  previousUiTree?: string | null;
+  currentUiTree?: string | null;
+  events?: LowLevelEvent[];
+  uiTreeDiff?: string;
+  previousAnalyses?: PreviousAnalysis[];
+};
+
 type WorkflowStepAnalysis = {
   id: string; // Corresponds to the database primary key
   workflow: string;
@@ -141,6 +151,22 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [analysisOutput, setAnalysisOutput] = useState<AnalysisOutput>(null);
   const [previousAnalyses, setPreviousAnalyses] = useState<PreviousAnalysis[]>([]);
   const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
+  
+  // State to control which context elements are included
+  const [contextConfig, ] = useState({
+    includeScreenshots: false,
+    includePreviousUiTree: false,
+    includePreviousWindowTitle: true,
+    includePreviousSameWindowUiTree: false,
+    includeEventsSincePreviousUiTree: true,
+    includeEventsSinceSameWindowUiTree: true,
+    includeCurrentUiTree: true,
+    includeUiTreeDiff: true,
+    includeLatestScreenshot: false,
+    includePreviousAnalyses: true,
+    includeGoodExamples: false,
+    includeBadExamples: false,
+  });
 
   const ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-accordion-state-${userId}`, [userId]);
   const CONTEXT_GROUP_STORAGE_KEY = useMemo(() => `llm-iteration-context-group-state-${userId}`, [userId]);
@@ -250,21 +276,32 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const collapseAllDetails = () => {
     setOpenDetailItems([]);
     localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify([]));
-    setDetailSelection('collapse');
   }
 
   const handleReprocess = async () => {
     setIsProcessing(true);
     setAnalysisOutput(null);
 
-    const context = {
-      previousUiTree: previousSameWindowUiTree,
-      currentUiTree,
-      events: eventsBetweenSameWindow,
-      screenshotBefore: beforeScreenshotDataUrlSameWindow,
-      screenshotAfter: afterScreenshotDataUrl,
-      previousAnalyses,
-    };
+    const context: ContextForAnalysis = {};
+    if (contextConfig.includeScreenshots) {
+      context.screenshotBefore = beforeScreenshotDataUrlSameWindow;
+      context.screenshotAfter = afterScreenshotDataUrl;
+    }
+    if (contextConfig.includePreviousUiTree) {
+      context.previousUiTree = previousUiTree;
+    }
+    if (contextConfig.includeEventsSincePreviousUiTree) {
+      context.events = eventsBetweenByTimestamp;
+    }
+    if (contextConfig.includeCurrentUiTree) {
+      context.currentUiTree = currentUiTree;
+    }
+    if (contextConfig.includeUiTreeDiff) {
+      context.uiTreeDiff = (currentUiTree && previousSameWindowUiTree) ? "Diff available" : "Not available";
+    }
+    if (contextConfig.includePreviousAnalyses) {
+      context.previousAnalyses = previousAnalyses;
+    }
 
     try {
       // Step 1: Get the analysis from the processing API
@@ -679,7 +716,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                     <Accordion type="multiple" value={openDetailItems} onValueChange={handleDetailItemsValueChange}>
                       <AccordionItem value="sub-item-1">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includeScreenshots} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree by timestamp)</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -693,7 +730,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                       </AccordionItem>
                       <AccordionItem value="sub-item-prev-screenshot-same-window">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includeScreenshots} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree of the same window)</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -707,7 +744,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                       </AccordionItem>
                       <AccordionItem value="sub-item-5">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includeLatestScreenshot} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of the latest ui-tree)</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -727,7 +764,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                     <Accordion type="multiple" value={openDetailItems} onValueChange={handleDetailItemsValueChange}>
                       <AccordionItem value="sub-item-2">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includePreviousUiTree} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">Previous ui-tree (by timestamp)</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -745,7 +782,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                       </AccordionItem>
                       <AccordionItem value="sub-item-prev-window-title">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includePreviousWindowTitle} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">Window title of previous ui tree by timestamp</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -763,7 +800,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                       </AccordionItem>
                       <AccordionItem value="sub-item-prev-same-window">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includePreviousSameWindowUiTree} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">Previous ui-tree (same window)</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -778,7 +815,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                       </AccordionItem>
                       <AccordionItem value="sub-item-current-tree">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includeCurrentUiTree} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">Latest ui-tree</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -793,7 +830,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                       </AccordionItem>
                       <AccordionItem value="sub-item-4">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includeUiTreeDiff} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">ui-tree diff (latest vs. previous for the same window)</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -816,7 +853,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                     <Accordion type="multiple" value={openDetailItems} onValueChange={handleDetailItemsValueChange}>
                       <AccordionItem value="sub-item-3">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includeEventsSincePreviousUiTree} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">Events (since previous ui-tree by timestamp)</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -831,7 +868,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                       </AccordionItem>
                       <AccordionItem value="sub-item-events-same-window">
                         <div className="flex items-center">
-                          <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                          <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includeEventsSinceSameWindowUiTree} disabled /></div>
                           <AccordionTrigger className="text-sm font-semibold flex-1">Events (since previous ui-tree of the same window)</AccordionTrigger>
                         </div>
                         <AccordionContent>
@@ -870,7 +907,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           </AccordionItem>
           <AccordionItem value="item-3">
             <div className="flex items-center">
-              <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+              <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includeGoodExamples} disabled /></div>
               <AccordionTrigger className="flex-1">Good Examples</AccordionTrigger>
             </div>
             <AccordionContent>
@@ -879,7 +916,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           </AccordionItem>
           <AccordionItem value="item-4">
             <div className="flex items-center">
-              <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+              <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includeBadExamples} disabled /></div>
               <AccordionTrigger className="flex-1">Bad Examples</AccordionTrigger>
             </div>
             <AccordionContent>
@@ -888,7 +925,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           </AccordionItem>
           <AccordionItem value="item-6">
             <div className="flex items-center">
-              <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+              <div className="w-12 flex justify-center"><Checkbox checked={contextConfig.includePreviousAnalyses} disabled /></div>
               <AccordionTrigger className="flex-1">Previous Analyses</AccordionTrigger>
             </div>
             <AccordionContent className="space-y-2">
