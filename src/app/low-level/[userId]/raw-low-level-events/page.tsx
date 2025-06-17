@@ -4,9 +4,8 @@ import { useEffect, useState, use, useMemo, useCallback } from 'react';
 import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -115,6 +114,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [selectedWindow, setSelectedWindow] = useState<string | null>(null);
   const [isSummaryOpen, setIsSummaryOpen] = useState(true);
   const [expandedEvents, setExpandedEvents] = useState<Record<number, boolean>>({});
+  const [copiedEventId, setCopiedEventId] = useState<number | null>(null);
   const { userId } = use(params);
 
   const LOCAL_STORAGE_KEY = `low-level-viewer-expanded-events-${userId}`;
@@ -172,6 +172,13 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
 
   const handleWindowClick = (windowName: string) => {
     setSelectedWindow(prev => (prev === windowName ? null : windowName));
+  };
+
+  const handleCopyPayload = (event: LowLevelEvent) => {
+    navigator.clipboard.writeText(JSON.stringify(event.payload, null, 2)).then(() => {
+      setCopiedEventId(event.id);
+      setTimeout(() => setCopiedEventId(null), 2000);
+    });
   };
 
   const searchedEvents = useMemo(() => {
@@ -273,18 +280,6 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         />
         <Button variant="outline" size="sm" onClick={expandAll}>Expand All</Button>
         <Button variant="outline" size="sm" onClick={collapseAll}>Collapse All</Button>
-        <Button variant="outline" onClick={fetchRawEvents}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-        </Button>
-        <div className="ml-auto">
-            <Link href="/admin">
-                <Button variant="outline">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Admin
-                </Button>
-            </Link>
-        </div>
       </div>
       
       {events.length > 0 && (
@@ -415,7 +410,22 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                   exit={{ height: 0, opacity: 0 }}
                   className="overflow-hidden"
                 >
-                  <CardContent className="p-0">
+                  <CardContent className="p-0 relative">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-1 right-1 h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopyPayload(event);
+                      }}
+                    >
+                      {copiedEventId === event.id ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Clipboard className="h-4 w-4" />
+                      )}
+                    </Button>
                     <pre className="p-2 text-xs overflow-auto">
                       {JSON.stringify(event.payload, null, 2)}
                     </pre>

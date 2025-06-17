@@ -3,6 +3,7 @@
 import React, { useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import type { LowLevelEvent } from '@/types';
+import { useUser } from '@/context/UserContext';
 
 type UITreeEventPayload = {
   payload?: {
@@ -41,6 +42,7 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
   selectedEvent,
   onEventSelect,
 }) => {
+  const { userName } = useUser();
   const sliderRef = useRef<HTMLDivElement>(null);
   const lastScrollTimeRef = useRef<number>(0);
 
@@ -204,7 +206,7 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
       </div>
       {selectedEvent && (
         <div className="text-center text-xs text-muted-foreground mt-2">
-          <span className="font-semibold">{getEventTitle(selectedEvent)}</span> at {new Date(selectedEvent.created_at).toLocaleTimeString()}
+          <span className="font-semibold">{userName || getEventTitle(selectedEvent)}</span> at {new Date(selectedEvent.created_at).toLocaleTimeString()}
         </div>
       )}
     </div>
