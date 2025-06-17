@@ -178,7 +178,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
                 onClick={() => toggleGroupExpansion(windowName)}
               >
                 <CardTitle className="text-sm font-medium truncate pr-4" title={windowName}>
-                  {windowName} ({eventGroup.length})
+                  {windowName.length > 50 ? `${windowName.substring(0, 50)}...` : windowName} ({eventGroup.length})
                 </CardTitle>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="text-xs text-gray-500">
