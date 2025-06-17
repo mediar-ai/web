@@ -34,11 +34,9 @@ export async function GET(
       throw eventsError;
     }
 
-    // New query to count distinct sessions
+    // New, more robust query to count distinct sessions
     const { data: sessionCountData, error: countError } = await supabaseAdmin
-        .from('low_level_events')
-        .select('session_id', { count: 'exact', head: true })
-        .eq('user_id', userId);
+        .rpc('count_distinct_sessions', { p_user_id: userId });
 
     if (countError) {
         console.error('[API/low-level] Error counting sessions:', countError);
@@ -47,7 +45,7 @@ export async function GET(
 
     return NextResponse.json({
         events: events || [],
-        sessionCount: sessionCountData ? sessionCountData.length : 0 // The count is in the length of the data array with head:true
+        sessionCount: sessionCountData || 0
     });
 
   } catch (err) {

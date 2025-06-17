@@ -256,8 +256,8 @@ skip_nonce_check = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
-[auth.web3.solana]
-enabled = false
+# [auth.web3.solana]
+# enabled = false
 
 # Use Firebase Auth as a third-party provider alongside Supabase Auth.
 [auth.third_party.firebase]
@@ -290,7 +290,7 @@ policy = "oneshot"
 # Port to attach the Chrome inspector for debugging edge functions.
 inspector_port = 8083
 # The Deno major version to use.
-deno_version = 1
+# deno_version = 1
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
