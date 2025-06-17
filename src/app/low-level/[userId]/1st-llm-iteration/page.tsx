@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { useState, useEffect, use, useCallback, useMemo } from "react";
 import type { LowLevelEvent } from "@/types";
 import UITreeTimeline from "@/components/low-level/UITreeTimeline";
@@ -30,6 +31,40 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { WORKFLOW_STEP_ANALYSIS_PROMPT } from "@/lib/prompts";
+import { Badge } from "@/components/ui/badge";
+
+type AnalysisOutput = {
+  workflow: string;
+  step: string;
+  description: string;
+  facts: string;
+  logic: string;
+  tech: string;
+  apps: string;
+  context: string;
+} | null;
+
+type WorkflowStepAnalysis = {
+  id: string; // client_item_id
+  workflow: string;
+  step: string;
+  description: string;
+  facts: string;
+  logic: string;
+  tech: string;
+  apps: string;
+  context: string;
+  client_timestamp: string;
+};
+
+type PreviousAnalysis = {
+  id: number;
+  workflow: string;
+  step: string;
+  description: string;
+  created_at: string;
+};
 
 const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
   const payload = event.payload.payload
@@ -103,6 +138,10 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [analysisOutput, setAnalysisOutput] = useState<AnalysisOutput>(null);
+  const [previousAnalyses, setPreviousAnalyses] = useState<PreviousAnalysis[]>([]);
+  const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
 
   const ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-accordion-state-${userId}`, [userId]);
   const CONTEXT_GROUP_STORAGE_KEY = useMemo(() => `llm-iteration-context-group-state-${userId}`, [userId]);
@@ -173,7 +212,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   };
 
   const expandAll = () => {
-    const allItemValues = ["item-1", "item-2", "item-3", "item-4", "item-5"];
+    const allItemValues = ["item-1", "item-2", "item-3", "item-4", "item-5", "item-6"];
     setOpenAccordionItems(allItemValues);
     localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(allItemValues));
     setAccordionSelection('expand');
@@ -215,6 +254,73 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     setDetailSelection('collapse');
   }
 
+  const handleReprocess = async () => {
+    setIsProcessing(true);
+    setAnalysisOutput(null);
+
+    const context = {
+      previousUiTree: previousSameWindowUiTree,
+      currentUiTree,
+      events: eventsBetweenSameWindow,
+      screenshotBefore: beforeScreenshotDataUrlSameWindow,
+      screenshotAfter: afterScreenshotDataUrl,
+    };
+
+    try {
+      // Step 1: Get the analysis from the processing API
+      const processResponse = await fetch('/api/process-workflow-step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: WORKFLOW_STEP_ANALYSIS_PROMPT,
+          model: selectedModel,
+          context,
+        }),
+      });
+
+      if (!processResponse.ok) {
+        throw new Error(`API error: ${processResponse.statusText}`);
+      }
+
+      const result = await processResponse.json();
+      setAnalysisOutput(result.analysis);
+
+      // Step 2: Save the analysis to the new table
+      if (result.analysis && selectedEvent) {
+        const sessionId = localStorage.getItem('app_session_id') || 'unknown-session';
+        const clientTimestamp = selectedEvent.created_at;
+
+        const saveResponse = await fetch('/api/save-llm-analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            sessionId,
+            analysis: result.analysis,
+            clientTimestamp,
+          }),
+        });
+
+        if (saveResponse.ok) {
+          const newAnalysis: WorkflowStepAnalysis = {
+            id: `local-${Date.now()}`, // Placeholder ID
+            ...result.analysis,
+            client_timestamp: clientTimestamp
+          };
+          setAllWorkflowAnalyses(prev => [newAnalysis, ...prev]);
+        }
+
+        // Refresh previous analyses after saving
+        fetchPreviousAnalyses();
+      }
+    } catch (err) {
+      console.error("Failed to re-process", err);
+      // You might want to set an error state here to show in the UI
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   useEffect(() => {
     setUserId(userId);
   }, [userId, setUserId]);
@@ -244,9 +350,63 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
   }, [userId]);
 
+  const fetchPreviousAnalyses = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch previous analyses');
+      }
+      const data = await response.json();
+      setPreviousAnalyses(data.analyses);
+    } catch (err) {
+      console.error("Failed to fetch previous analyses", err);
+    }
+  }, [userId]);
+
+  const fetchAllWorkflowAnalyses = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch all workflow analyses');
+      }
+      const data = await response.json();
+      console.log("Fetched all workflow analyses:", data.analyses);
+      setAllWorkflowAnalyses(data.analyses);
+    } catch (err) {
+      console.error("Failed to fetch all workflow analyses", err);
+    }
+  }, [userId]);
+
   useEffect(() => {
     fetchAllEvents();
-  }, [fetchAllEvents]);
+    fetchPreviousAnalyses();
+    fetchAllWorkflowAnalyses();
+  }, [fetchAllEvents, fetchPreviousAnalyses, fetchAllWorkflowAnalyses]);
+
+  const existingAnalysisForSelectedEvent = useMemo(() => {
+    if (!selectedEvent || !allWorkflowAnalyses) return null;
+    
+    console.log("Searching for analysis for event created at:", new Date(selectedEvent.created_at).toISOString());
+    
+    const analysis = allWorkflowAnalyses.find(a => {
+      const analysisTime = new Date(a.client_timestamp).getTime();
+      const eventTime = new Date(selectedEvent.created_at).getTime();
+      
+      if (Math.abs(analysisTime - eventTime) < 1000) { // Allow for a small difference
+          console.log("Found matching analysis:", a);
+          return true;
+      }
+      return false;
+    });
+
+    if (!analysis) {
+        console.log("No matching analysis found.");
+    }
+
+    return analysis || null;
+  }, [selectedEvent, allWorkflowAnalyses]);
 
   const uiTreeEvents = useMemo(() => {
     return allEvents.filter(e => e.payload.payload?.type === 'ui_tree');
@@ -653,7 +813,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
               <AccordionTrigger className="flex-1">System prompt</AccordionTrigger>
             </div>
             <AccordionContent>
-              Placeholder for System prompt.
+              <Textarea
+                value={WORKFLOW_STEP_ANALYSIS_PROMPT}
+                readOnly
+                disabled
+                className="h-64 text-xs bg-gray-50 dark:bg-gray-800"
+              />
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="item-3">
@@ -674,10 +839,39 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
               Placeholder for Bad Examples.
             </AccordionContent>
           </AccordionItem>
+          {previousAnalyses.length > 0 && (
+            <AccordionItem value="item-6">
+              <div className="flex items-center">
+                <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+                <AccordionTrigger className="flex-1">Previous Analyses</AccordionTrigger>
+              </div>
+              <AccordionContent className="space-y-2">
+                {previousAnalyses.map((analysis) => (
+                  <div key={analysis.id} className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800 text-xs">
+                    <p><strong>Workflow:</strong> {analysis.workflow}</p>
+                    <p><strong>Step:</strong> {analysis.step}</p>
+                    <p><strong>Description:</strong> {analysis.description}</p>
+                    <p className="text-muted-foreground">{new Date(analysis.created_at).toLocaleString()}</p>
+                  </div>
+                ))}
+              </AccordionContent>
+            </AccordionItem>
+          )}
           <AccordionItem value="item-5">
             <div className="flex items-center w-full">
               <div className="w-12" />
-              <AccordionTrigger className="flex-grow-0 pr-2">Output</AccordionTrigger>
+              <AccordionTrigger className="flex-grow-0 pr-2">
+                <div className="flex items-center gap-2">
+                  <span>Output</span>
+                  {isProcessing ? (
+                    <Badge variant="outline">Processing...</Badge>
+                  ) : existingAnalysisForSelectedEvent ? (
+                    <Badge variant="secondary">Processed</Badge>
+                  ) : (
+                    <Badge variant="destructive">Not Processed</Badge>
+                  )}
+                </div>
+              </AccordionTrigger>
               <div className="flex-grow" />
               <div className="flex items-center space-x-2 mr-4">
                 <DropdownMenu>
@@ -700,13 +894,43 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                     </DropdownMenuRadioGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button variant="outline" size="default" onClick={(e) => { e.stopPropagation(); alert("Re-processing..."); }}>Re-process</Button>
+                <Button variant="outline" size="default" onClick={handleReprocess} disabled={isProcessing || !selectedEvent}>
+                  {isProcessing ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Re-process"}
+                </Button>
               </div>
             </div>
             <AccordionContent>
-              <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
-                Formatted LLM response will be shown here.
-              </div>
+              {isProcessing ? (
+                <div className="flex items-center justify-center p-8">
+                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : analysisOutput ? (
+                <div className="space-y-2 p-2 text-sm">
+                  <p><strong>Workflow:</strong> {analysisOutput.workflow}</p>
+                  <p><strong>Step:</strong> {analysisOutput.step}</p>
+                  <p><strong>Description:</strong> {analysisOutput.description}</p>
+                  <p><strong>Facts:</strong> {analysisOutput.facts}</p>
+                  <p><strong>Logic:</strong> {analysisOutput.logic}</p>
+                  <p><strong>Tech:</strong> {analysisOutput.tech}</p>
+                  <p><strong>Apps:</strong> {analysisOutput.apps}</p>
+                  <p><strong>Context:</strong> {analysisOutput.context}</p>
+                </div>
+              ) : existingAnalysisForSelectedEvent ? (
+                <div className="space-y-2 p-2 text-sm">
+                  <p><strong>Workflow:</strong> {existingAnalysisForSelectedEvent.workflow}</p>
+                  <p><strong>Step:</strong> {existingAnalysisForSelectedEvent.step}</p>
+                  <p><strong>Description:</strong> {existingAnalysisForSelectedEvent.description}</p>
+                  <p><strong>Facts:</strong> {existingAnalysisForSelectedEvent.facts}</p>
+                  <p><strong>Logic:</strong> {existingAnalysisForSelectedEvent.logic}</p>
+                  <p><strong>Tech:</strong> {existingAnalysisForSelectedEvent.tech}</p>
+                  <p><strong>Apps:</strong> {existingAnalysisForSelectedEvent.apps}</p>
+                  <p><strong>Context:</strong> {existingAnalysisForSelectedEvent.context}</p>
+                </div>
+              ) : (
+                <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
+                  Click &rdquo;Re-process&rdquo; to generate the workflow step analysis.
+                </div>
+              )}
             </AccordionContent>
           </AccordionItem>
         </Accordion>
