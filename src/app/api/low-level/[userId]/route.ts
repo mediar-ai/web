@@ -23,18 +23,32 @@ export async function GET(
   }
 
   try {
-    const { data, error } = await supabaseAdmin
+    const { data: events, error: eventsError } = await supabaseAdmin
       .from('low_level_events')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('[API/low-level] Error fetching raw events:', error);
-      throw error;
+    if (eventsError) {
+      console.error('[API/low-level] Error fetching raw events:', eventsError);
+      throw eventsError;
     }
 
-    return NextResponse.json(data || []);
+    // New query to count distinct sessions
+    const { data: sessionCountData, error: countError } = await supabaseAdmin
+        .from('low_level_events')
+        .select('session_id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+    if (countError) {
+        console.error('[API/low-level] Error counting sessions:', countError);
+        throw countError;
+    }
+
+    return NextResponse.json({
+        events: events || [],
+        sessionCount: sessionCountData ? sessionCountData.length : 0 // The count is in the length of the data array with head:true
+    });
 
   } catch (err) {
     const error = err as { message: string };

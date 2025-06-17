@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 
 export default function LowLevelViewerPage({ params }: { params: Promise<{ userId: string }> }) {
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
+  const [sessionCount, setSessionCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { userId } = use(params);
@@ -27,7 +28,8 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
           throw new Error('Failed to fetch raw events');
         }
         const data = await response.json();
-        setEvents(data);
+        setEvents(data.events);
+        setSessionCount(data.sessionCount);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
       } finally {
@@ -68,6 +70,7 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
                 <CardTitle className="text-sm">Event Summary</CardTitle>
             </CardHeader>
             <CardContent className="p-3 flex flex-wrap gap-2">
+                <Badge variant="outline">Sessions: {sessionCount}</Badge>
                 {eventStats.map(([type, count]) => (
                     <Badge key={type} variant="secondary">{type}: {count}</Badge>
                 ))}
