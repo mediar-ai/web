@@ -27,7 +27,7 @@ export async function GET(
       .from('low_level_events')
       .select('*')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .order("payload->'payload'->>'timestamp'", { ascending: true });
 
     if (eventsError) {
       console.error('[API/low-level] Error fetching raw events:', eventsError);
