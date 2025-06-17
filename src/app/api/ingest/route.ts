@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { analyzeTextEvent, analyzeUIDiff } from '@/lib/analysis';
+import { analyzeTextEvent, analyzeUIDiff, performInitialFrameDump } from '@/lib/analysis';
 import { EVENTS_PROMPT, UI_TREE_ANALYSIS_PROMPT } from '@/lib/prompts';
 import { uploadImage } from '@/lib/storage';
 
@@ -63,7 +63,20 @@ export async function POST(request: Request) {
         if (screenshot_after && !screenshot_before) {
             console.log('[INGEST] Handling initial screenshot as a meaningful_event...');
             // This is the first screenshot, treat it like an initial dump for analysis
-            analysisResult = await analyzeUIDiff("", screenshot_after, "This is the first screenshot of the session. Describe all visible text and UI elements in maximum detail.");
+            const dumpStream = await performInitialFrameDump(screenshot_after);
+            // We need to read the stream to get the string content
+            const reader = dumpStream.getReader();
+            const decoder = new TextDecoder();
+            let dumpText = '';
+            let done = false;
+            while (!done) {
+                const { value, done: readerDone } = await reader.read();
+                done = readerDone;
+                if (value) {
+                    dumpText += decoder.decode(value, { stream: true });
+                }
+            }
+            analysisResult = dumpText;
             activityType = 'initial_dump';
             break; // Exit the switch, fall through to the generic saver
         }
