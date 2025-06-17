@@ -81,8 +81,8 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
   }, [filteredEvents]);
 
   return (
-    <div className="container mx-auto py-8 font-mono">
-      <div className="flex justify-between items-center mb-6">
+    <div className="container mx-auto py-4 font-mono">
+      <div className="flex justify-between items-center mb-4">
         <div>
             <h1 className="text-2xl font-bold">Low-Level Event Inspector</h1>
             <p className="text-sm text-gray-500">User ID: {userId}</p>
@@ -109,12 +109,12 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
       </div>
 
       {events.length > 0 && (
-        <Card className="mb-6">
-            <CardHeader className="p-3 bg-gray-50 border-b">
+        <Card className="mb-4">
+            <CardHeader className="p-2 bg-gray-50 border-b">
                 <CardTitle className="text-sm">Event Summary</CardTitle>
             </CardHeader>
-            <CardContent className="p-3 space-y-3">
-                <div className="flex flex-wrap gap-2">
+            <CardContent className="p-2 space-y-2">
+                <div className="flex flex-wrap gap-1">
                     <Badge variant="outline">Sessions: {sessionCount}</Badge>
                     {eventStats.map(([type, count]) => (
                         <Badge key={type} variant="secondary">{type}: {count}</Badge>
@@ -122,8 +122,8 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
                 </div>
                 {seenWindows.length > 0 && (
                     <div>
-                        <h4 className="text-xs font-semibold mb-2">Windows Used:</h4>
-                        <div className="flex flex-wrap gap-2">
+                        <h4 className="text-xs font-semibold mb-1">Applications Used:</h4>
+                        <div className="flex flex-wrap gap-1">
                             {seenWindows.map((windowName) => (
                                 <Badge key={windowName} variant="default">{windowName}</Badge>
                             ))}
@@ -150,17 +150,17 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
         </p>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-2">
         {filteredEvents.map((event) => (
           <Card key={event.id}>
-            <CardHeader className="p-3 bg-gray-50 border-b">
+            <CardHeader className="p-2 bg-gray-50 border-b">
               <CardTitle className="text-sm flex justify-between items-center">
                 <span>Event ID: {event.id}</span>
                 <span className="text-xs text-gray-500">{new Date(event.created_at).toISOString()}</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <pre className="p-3 text-xs overflow-auto">
+              <pre className="p-2 text-xs overflow-auto">
                 {JSON.stringify(event.payload, null, 2)}
               </pre>
             </CardContent>
