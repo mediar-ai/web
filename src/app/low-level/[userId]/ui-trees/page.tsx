@@ -5,10 +5,12 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronUp, Clipboard, Check } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import DiffView from '@/components/low-level/DiffView';
+import { preprocessTree } from '@/lib/diff';
+import { diffLines } from 'diff';
 
 type UITreeEvent = LowLevelEvent & {
   payload: {
@@ -34,6 +36,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [selectedEvent, setSelectedEvent] = useState<UITreeEvent | null>(null);
   const [diffMode, setDiffMode] = useState<'raw' | 'previous' | 'next'>('raw');
+  const [isCopied, setIsCopied] = useState(false);
   const { userId } = use(params);
 
   const fetchUITrees = useCallback(async () => {
@@ -88,6 +91,33 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
     }
     return appName;
   }
+
+  const getDiffText = (oldTree: string, newTree: string) => {
+    const differences = diffLines(preprocessTree(oldTree), preprocessTree(newTree));
+    return differences
+      .filter(part => part.added || part.removed)
+      .map(part => {
+        const prefix = part.added ? '+ ' : part.removed ? '- ' : '';
+        return prefix + part.value;
+      })
+      .join('');
+  }
+
+  const handleCopy = (currentTree: string, previousTree?: string, nextTree?: string) => {
+    let textToCopy = '';
+    if (diffMode === 'raw') {
+      textToCopy = JSON.stringify(JSON.parse(currentTree), null, 2);
+    } else if (diffMode === 'previous' && previousTree) {
+      textToCopy = getDiffText(previousTree, currentTree);
+    } else if (diffMode === 'next' && nextTree) {
+      textToCopy = getDiffText(currentTree, nextTree);
+    }
+    
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+    });
+  };
 
   const groupedEvents = useMemo<GroupedUITrees>(() => {
     const groups: GroupedUITrees = {};
@@ -183,11 +213,16 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
                         </div>
                         {selectedEvent && currentTree && (
                            <div className="space-y-2">
-                            <ToggleGroup type="single" value={diffMode} onValueChange={(value: 'raw' | 'previous' | 'next') => value && setDiffMode(value)} className="justify-start">
-                                <div className="mr-1"><ToggleGroupItem value="previous" disabled={!previousEvent}>Diff Previous</ToggleGroupItem></div>
-                                <div className="mr-1"><ToggleGroupItem value="raw">Raw</ToggleGroupItem></div>
-                                <div className="mr-1"><ToggleGroupItem value="next" disabled={!nextEvent}>Diff Next</ToggleGroupItem></div>
-                            </ToggleGroup>
+                             <div className="flex justify-between items-center">
+                                <ToggleGroup type="single" value={diffMode} onValueChange={(value: 'raw' | 'previous' | 'next') => value && setDiffMode(value)} className="justify-start">
+                                    <div className="mr-1"><ToggleGroupItem value="previous" disabled={!previousEvent}>Diff Previous</ToggleGroupItem></div>
+                                    <div className="mr-1"><ToggleGroupItem value="raw">Raw</ToggleGroupItem></div>
+                                    <div className="mr-1"><ToggleGroupItem value="next" disabled={!nextEvent}>Diff Next</ToggleGroupItem></div>
+                                </ToggleGroup>
+                                <Button variant="ghost" size="icon" onClick={() => handleCopy(currentTree, previousTree, nextTree)} className="h-8 w-8">
+                                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Clipboard className="h-4 w-4" />}
+                                </Button>
+                             </div>
 
                             {diffMode === 'raw' && (
                                 <pre className="p-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 rounded">
