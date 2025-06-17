@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, use, useMemo, useCallback } from 'react';
-import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
@@ -10,6 +9,7 @@ import { ArrowLeft, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AnimatePresence, motion } from 'framer-motion';
+import { processEventsWithUITrees, findElementLabel, type EnrichedEvent } from '@/lib/ui-tree-helpers';
 
 const Clock = () => {
     const [time, setTime] = useState<Date | null>(null);
@@ -35,7 +35,7 @@ type EventPayload = {
     }
 };
 
-const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
+const ConciseEventView = ({ event }: { event: EnrichedEvent }) => {
   const payload = event.payload as EventPayload;
   const eventType = payload?.payload?.type ?? 'unknown';
   const eventData = payload?.payload?.event ?? {};
@@ -59,15 +59,21 @@ const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
       }
       break;
     case 'mouse':
-      const mouseEvent = eventData.mouse as { button?: string, metadata?: { ui_element?: { application?: string } }, event_type?: string };
+      const mouseEvent = eventData.mouse as { button?: string, metadata?: { ui_element?: { application?: string, id?: string } }, event_type?: string };
       const button = mouseEvent?.button || 'click';
-      const eventType = mouseEvent?.event_type ? `(${mouseEvent.event_type.toLowerCase()})` : '';
+      const eventTypeStr = mouseEvent?.event_type ? `(${mouseEvent.event_type.toLowerCase()})` : '';
       const appName = mouseEvent?.metadata?.ui_element?.application || eventData.app_name as string || 'Unknown App';
-      const elementName = eventData.element_name as string;
+      const elementId = mouseEvent?.metadata?.ui_element?.id;
+      
+      let elementName = eventData.element_name as string;
+      if (elementId && event.activeUITree) {
+        elementName = findElementLabel(event.activeUITree, elementId) || elementName;
+      }
+
       if (elementName) {
-        summary = <span><b>Mouse:</b> {button} {eventType} on &quot;{elementName}&quot; in {appName}</span>;
+        summary = <span><b>Mouse:</b> {button} {eventTypeStr} on &quot;{elementName}&quot; in {appName}</span>;
       } else {
-        summary = <span><b>Mouse:</b> {button} {eventType} in {appName}</span>;
+        summary = <span><b>Mouse:</b> {button} {eventTypeStr} in {appName}</span>;
       }
       break;
     case 'application_switch':
@@ -102,7 +108,7 @@ const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
 };
 
 export default function RawLowLevelEventsPage({ params }: { params: Promise<{ userId: string }> }) {
-  const [events, setEvents] = useState<LowLevelEvent[]>([]);
+  const [events, setEvents] = useState<EnrichedEvent[]>([]);
   const [sessionCount, setSessionCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,7 +145,8 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         throw new Error('Failed to fetch raw events');
       }
       const data = await response.json();
-      setEvents(data.events);
+      const processedEvents = processEventsWithUITrees(data.events);
+      setEvents(processedEvents.reverse()); // Show newest first
       setSessionCount(data.sessionCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
