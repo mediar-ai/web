@@ -6,6 +6,13 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, use, useCallback, useMemo } from "react";
@@ -95,6 +102,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [detailSelection, setDetailSelection] = useState<'expand' | 'collapse' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
 
   const ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-accordion-state-${userId}`, [userId]);
   const CONTEXT_GROUP_STORAGE_KEY = useMemo(() => `llm-iteration-context-group-state-${userId}`, [userId]);
@@ -669,8 +677,31 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           <AccordionItem value="item-5">
             <div className="flex items-center w-full">
               <div className="w-12" />
-              <AccordionTrigger className="flex-1">Output</AccordionTrigger>
-              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); alert("Re-processing..."); }} className="mr-4">Re-process</Button>
+              <AccordionTrigger className="flex-grow-0 pr-2">Output</AccordionTrigger>
+              <div className="flex-grow" />
+              <div className="flex items-center space-x-2 mr-4">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      {selectedModel}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuRadioGroup
+                      value={selectedModel}
+                      onValueChange={setSelectedModel}
+                    >
+                      <DropdownMenuRadioItem value="gemini-2.5-flash-preview-05-20">
+                        gemini-2.5-flash-preview-05-20
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="gemini-2.5-pro-preview-06-05">
+                        gemini-2.5-pro-preview-06-05
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="outline" size="default" onClick={(e) => { e.stopPropagation(); alert("Re-processing..."); }}>Re-process</Button>
+              </div>
             </div>
             <AccordionContent>
               <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
