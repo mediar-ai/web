@@ -1,0 +1,70 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Next.js: Dynamic Route Parameter Patterns
+
+## Context
+When working with Next.js, especially after version upgrades, the syntax for accessing dynamic route parameters in both API Routes and Page Components can change, leading to build and runtime errors.
+
+## Rule
+When encountering a type error related to dynamic route parameters (`[...slug]`), my **first action** must be to search the existing codebase for a similar, working dynamic route or page to use as a reference.
+
+### Example 1: API Route (`/api/.../[slug]/route.ts`)
+
+**The User's Prompt that revealed the pattern:**
+> "can you review other routes and see how we did it there?"
+
+This led to finding the correct pattern in `src/app/api/users/[userId]/route.ts`.
+
+**Wrong Code (My failed attempts):**
+```typescript
+// This signature caused a build error:
+// "Type error: Route ... has an invalid "GET" export"
+export async function GET(
+  request: Request,
+  { params }: { params: { userId: string } }
+) {
+  const { userId } = params;
+}
+```
+
+**Good Code (The working pattern from the codebase):**
+```typescript
+// This signature, found in a working route, correctly
+// types `params` as a Promise and awaits it.
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ userId: string }> }
+) {
+  const { userId } = await params;
+}
+```
+
+---
+
+### Example 2: Page Component (`/app/.../[slug]/page.tsx`)
+
+**The User's Prompt that revealed the pattern:**
+> "i mean look through similar pages as well"
+> ... followed by the console error:
+> "A param property was accessed directly with `params.userId`. `params` is now a Promise and should be unwrapped with `React.use()`"
+
+**Wrong Code:**
+```typescript
+// This code caused a client-side hydration error.
+export default function LowLevelViewerPage({ params }: { params: { userId: string } }) {
+  const { userId } = params; 
+}
+```
+
+**Good Code:**
+```typescript
+// The fix was to treat `params` as a Promise and use the `React.use()` hook.
+import { use } from 'react';
+
+export default function LowLevelViewerPage({ params }: { params: Promise<{ userId: string }> }) {
+  const { userId } = use(params);
+}
+```
