@@ -33,6 +33,10 @@ import {
 } from "@/components/ui/tooltip"
 import { WORKFLOW_STEP_ANALYSIS_PROMPT } from "@/lib/prompts";
 import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
 
 type AnalysisOutput = {
   workflow: string;
@@ -357,6 +361,22 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     return allEvents.filter(e => e.payload.payload?.type === 'ui_tree');
   }, [allEvents]);
 
+  const processedStepsCount = useMemo(() => {
+    if (!allWorkflowAnalyses.length || !uiTreeEvents.length) return 0;
+
+    const analysesTimestamps = allWorkflowAnalyses.map(a => new Date(a.client_timestamp).getTime());
+
+    let count = 0;
+    for (const event of uiTreeEvents) {
+        const eventTime = new Date(event.created_at).getTime();
+        const hasAnalysis = analysesTimestamps.some(analysisTime => Math.abs(analysisTime - eventTime) < 1000);
+        if (hasAnalysis) {
+            count++;
+        }
+    }
+    return count;
+  }, [allWorkflowAnalyses, uiTreeEvents]);
+
   useEffect(() => {
     fetchAllEvents();
     fetchAllWorkflowAnalyses();
@@ -550,6 +570,21 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           />
         )}
       </div>
+      <Card className="my-4">
+        <CardContent className="p-4 flex items-center space-x-4 text-sm">
+          <span className="font-semibold text-base">Summary:</span>
+          <div className="flex items-center space-x-1.5">
+            <span className="text-muted-foreground">Total Steps:</span>
+            <span className="font-semibold">{uiTreeEvents.length}</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="text-muted-foreground">Processed:</span>
+            <span className="font-semibold">{processedStepsCount}</span>
+          </div>
+          <div className="flex-grow" />
+          <Button variant="outline" size="sm" disabled>Process all remaining Steps</Button>
+        </CardContent>
+      </Card>
       <div className="flex items-center my-4 space-x-2">
         <div className="w-12 text-xs text-gray-500">(Included)</div>
         <div className="flex-1"></div>
@@ -897,7 +932,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
               <div className="flex items-center space-x-2 mr-4">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline">
+                    <Button variant="outline" size="sm">
                       {selectedModel}
                     </Button>
                   </DropdownMenuTrigger>
@@ -915,7 +950,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                     </DropdownMenuRadioGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button variant="outline" size="default" onClick={handleReprocess} disabled={isProcessing || !selectedEvent}>
+                <Button variant="outline" size="sm" onClick={handleReprocess} disabled={isProcessing || !selectedEvent}>
                   {isProcessing ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Re-process"}
                 </Button>
               </div>
