@@ -79,6 +79,10 @@ export async function POST(req: NextRequest) {
         const eventsText = context.events.map((e: LowLevelEvent) => `[${new Date(e.created_at).toISOString()}] ${e.payload.payload?.type}`).join('\n');
         contextParts.push({ text: `\n\nEvents:\n${eventsText}` });
     }
+    if (context.previousAnalyses && context.previousAnalyses.length > 0) {
+        const analysesText = context.previousAnalyses.map((a: { created_at: string, step: string, description: string }) => `[${new Date(a.created_at).toISOString()}] ${a.step}: ${a.description}`).join('\n');
+        contextParts.push({ text: `\n\nRecent Workflow Steps:\n${analysesText}` });
+    }
     
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }, ...contextParts] }],

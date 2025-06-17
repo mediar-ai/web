@@ -46,7 +46,7 @@ type AnalysisOutput = {
 } | null;
 
 type WorkflowStepAnalysis = {
-  id: string; // client_item_id
+  id: string; // Corresponds to the database primary key
   workflow: string;
   step: string;
   description: string;
@@ -56,15 +56,10 @@ type WorkflowStepAnalysis = {
   apps: string;
   context: string;
   client_timestamp: string;
-};
-
-type PreviousAnalysis = {
-  id: number;
-  workflow: string;
-  step: string;
-  description: string;
   created_at: string;
 };
+
+type PreviousAnalysis = WorkflowStepAnalysis;
 
 const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
   const payload = event.payload.payload
@@ -264,6 +259,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       events: eventsBetweenSameWindow,
       screenshotBefore: beforeScreenshotDataUrlSameWindow,
       screenshotAfter: afterScreenshotDataUrl,
+      previousAnalyses,
     };
 
     try {
@@ -302,16 +298,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         });
 
         if (saveResponse.ok) {
-          const newAnalysis: WorkflowStepAnalysis = {
-            id: `local-${Date.now()}`, // Placeholder ID
-            ...result.analysis,
-            client_timestamp: clientTimestamp
-          };
-          setAllWorkflowAnalyses(prev => [newAnalysis, ...prev]);
+          fetchAllWorkflowAnalyses();
         }
-
-        // Refresh previous analyses after saving
-        fetchPreviousAnalyses();
       }
     } catch (err) {
       console.error("Failed to re-process", err);
@@ -350,20 +338,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
   }, [userId]);
 
-  const fetchPreviousAnalyses = useCallback(async () => {
-    if (!userId) return;
-    try {
-      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch previous analyses');
-      }
-      const data = await response.json();
-      setPreviousAnalyses(data.analyses);
-    } catch (err) {
-      console.error("Failed to fetch previous analyses", err);
-    }
-  }, [userId]);
-
   const fetchAllWorkflowAnalyses = useCallback(async () => {
     if (!userId) return;
     try {
@@ -379,11 +353,53 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
   }, [userId]);
 
+  const uiTreeEvents = useMemo(() => {
+    return allEvents.filter(e => e.payload.payload?.type === 'ui_tree');
+  }, [allEvents]);
+
   useEffect(() => {
     fetchAllEvents();
-    fetchPreviousAnalyses();
     fetchAllWorkflowAnalyses();
-  }, [fetchAllEvents, fetchPreviousAnalyses, fetchAllWorkflowAnalyses]);
+  }, [fetchAllEvents, fetchAllWorkflowAnalyses]);
+
+  useEffect(() => {
+    if (!selectedEvent || !userId || uiTreeEvents.length < 1) {
+      setPreviousAnalyses([]);
+      return;
+    };
+
+    const fetchRelativeAnalyses = async () => {
+      const currentIndex = uiTreeEvents.findIndex(e => e.id === selectedEvent.id);
+      if (currentIndex === -1) return;
+
+      const previousEventTimestamps = uiTreeEvents
+        .slice(Math.max(0, currentIndex - 3), currentIndex)
+        .map(e => e.created_at);
+      
+      if (previousEventTimestamps.length === 0) {
+        setPreviousAnalyses([]);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/fetch-analyses-by-timestamps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, timestamps: previousEventTimestamps }),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to fetch relative analyses');
+        }
+        const data = await response.json();
+        setPreviousAnalyses(data.analyses || []);
+      } catch (err) {
+        console.error("Failed to fetch relative analyses", err);
+        setPreviousAnalyses([]);
+      }
+    };
+    
+    fetchRelativeAnalyses();
+  }, [selectedEvent, userId, uiTreeEvents]);
 
   const existingAnalysisForSelectedEvent = useMemo(() => {
     if (!selectedEvent || !allWorkflowAnalyses) return null;
@@ -407,10 +423,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
     return analysis || null;
   }, [selectedEvent, allWorkflowAnalyses]);
-
-  const uiTreeEvents = useMemo(() => {
-    return allEvents.filter(e => e.payload.payload?.type === 'ui_tree');
-  }, [allEvents]);
 
   const previousUiTreeEvent = useMemo(() => {
     if (!selectedEvent || uiTreeEvents.length < 2) return null;
@@ -839,24 +851,33 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
               Placeholder for Bad Examples.
             </AccordionContent>
           </AccordionItem>
-          {previousAnalyses.length > 0 && (
-            <AccordionItem value="item-6">
-              <div className="flex items-center">
-                <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
-                <AccordionTrigger className="flex-1">Previous Analyses</AccordionTrigger>
-              </div>
-              <AccordionContent className="space-y-2">
-                {previousAnalyses.map((analysis) => (
+          <AccordionItem value="item-6">
+            <div className="flex items-center">
+              <div className="w-12 flex justify-center"><Checkbox checked disabled /></div>
+              <AccordionTrigger className="flex-1">Previous Analyses</AccordionTrigger>
+            </div>
+            <AccordionContent className="space-y-2">
+              {previousAnalyses.length > 0 ? (
+                previousAnalyses.map((analysis) => (
                   <div key={analysis.id} className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800 text-xs">
                     <p><strong>Workflow:</strong> {analysis.workflow}</p>
                     <p><strong>Step:</strong> {analysis.step}</p>
                     <p><strong>Description:</strong> {analysis.description}</p>
-                    <p className="text-muted-foreground">{new Date(analysis.created_at).toLocaleString()}</p>
+                    <p><strong>Facts:</strong> {analysis.facts}</p>
+                    <p><strong>Logic:</strong> {analysis.logic}</p>
+                    <p><strong>Tech:</strong> {analysis.tech}</p>
+                    <p><strong>Apps:</strong> {analysis.apps}</p>
+                    <p><strong>Context:</strong> {analysis.context}</p>
+                    <p className="text-muted-foreground mt-1">{new Date(analysis.created_at).toLocaleString()}</p>
                   </div>
-                ))}
-              </AccordionContent>
-            </AccordionItem>
-          )}
+                ))
+              ) : (
+                <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800 text-xs text-muted-foreground">
+                  No previous analyses found for the steps immediately preceding the selected event.
+                </div>
+              )}
+            </AccordionContent>
+          </AccordionItem>
           <AccordionItem value="item-5">
             <div className="flex items-center w-full">
               <div className="w-12" />

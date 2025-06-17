@@ -67,6 +67,7 @@ The user has provided the following context, based on their screen, UI structure
 - Screenshots (before and after an action)
 - UI Trees (the accessibility tree before and after an action)
 - A stream of low-level events (mouse clicks, keystrokes, etc.)
+- The three most recent workflow steps that were previously analyzed.
 
 Based on this context, your goal is to determine the single, primary action the user took and describe it in a structured format.
 
