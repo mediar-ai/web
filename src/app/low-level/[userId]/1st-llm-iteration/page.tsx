@@ -14,6 +14,7 @@ import FormattedUITree from "@/components/low-level/FormattedUITree";
 import ScreenshotView from "@/components/low-level/ScreenshotView";
 import DiffView from "@/components/low-level/DiffView";
 import { useUser } from "@/context/UserContext";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
   const payload = event.payload.payload
@@ -80,6 +81,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [selectedEvent, setSelectedEvent] = useState<LowLevelEvent | null>(null);
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const [openSubAccordionItems, setOpenSubAccordionItems] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-accordion-state-${userId}`, [userId]);
   const SUB_ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-sub-accordion-state-${userId}`, [userId]);
@@ -132,6 +135,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
   const fetchAllEvents = useCallback(async () => {
     if (!userId) return;
+    setLoading(true);
+    setError(null);
     try {
       const response = await fetch(`/api/low-level/${userId}`);
       if (!response.ok) {
@@ -147,6 +152,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       }
     } catch (err) {
       console.error(err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    } finally {
+      setLoading(false);
     }
   }, [userId]);
 
@@ -257,6 +265,28 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   }, [allEvents, previousSameWindowUiTreeEvent, selectedEvent]);
   
   const beforeScreenshotDataUrlSameWindow = (relevantScreenshotDiffSameWindow?.payload.payload?.event as { screenshot_before?: string })?.screenshot_before || null;
+
+  if (loading) {
+    return (
+      <div className="p-4 space-y-4">
+        <Skeleton className="h-20 w-full" />
+        <div className="space-y-2 pt-4">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
+  }
+
+  if (allEvents.length === 0) {
+    return <div className="p-4">No events found for this user.</div>;
+  }
 
   return (
     <div className="p-4">

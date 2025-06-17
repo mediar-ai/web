@@ -5,7 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp, Clipboard, Check } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import DiffView from '@/components/low-level/DiffView';
@@ -142,8 +142,15 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
       
       {loading && (
         <div className="space-y-2">
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <div className="border rounded-md">
+                <Skeleton className="h-14 w-full" />
+                <div className="p-8 flex flex-col items-center justify-center">
+                    <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <p className="text-muted-foreground mt-4">Loading UI Trees...</p>
+                </div>
+            </div>
+            <Skeleton className="h-14 w-full" />
         </div>
       )}
 
