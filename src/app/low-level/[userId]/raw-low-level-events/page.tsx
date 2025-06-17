@@ -27,6 +27,9 @@ type EventPayload = {
     payload?: {
         type?: string;
         event?: {
+            screen?: {
+                ui_tree?: string;
+            };
             [key: string]: unknown;
         };
     }
@@ -37,33 +40,62 @@ const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
   const eventType = payload?.payload?.type ?? 'unknown';
   const eventData = payload?.payload?.event ?? {};
 
-  let summary = `Type: ${eventType}`;
+  let summary: React.ReactNode = <span>Type: {eventType}</span>;
   switch (eventType) {
     case 'keyboard':
-      summary = `Keyboard: ${eventData.keys as string}`;
+      const keyboardEvent = eventData.keyboard as { key_code: number, keys?: string, is_key_down?: boolean };
+      const key = keyboardEvent?.keys;
+      const keyCode = keyboardEvent?.key_code;
+      const keyState = keyboardEvent?.is_key_down ? '(down)' : '(up)';
+
+      if (key) {
+        const keyName = key.length > 1 ? key.replace(/([A-Z])/g, ' $1').trim() : key;
+        summary = <span><b>Keyboard:</b> {keyName} {keyState}</span>;
+      } else if (keyCode) {
+        const char = String.fromCharCode(keyCode);
+        summary = <span><b>Keyboard:</b> {char} {keyState}</span>;
+      } else {
+        summary = <span><b>Keyboard:</b> Unknown key</span>;
+      }
       break;
     case 'mouse':
-      summary = `Mouse: ${eventData.button as string} click at (${eventData.x as number}, ${eventData.y as number})`;
+      const mouseEvent = eventData.mouse as { button?: string, metadata?: { ui_element?: { application?: string } }, event_type?: string };
+      const button = mouseEvent?.button || 'click';
+      const eventType = mouseEvent?.event_type ? `(${mouseEvent.event_type.toLowerCase()})` : '';
+      const appName = mouseEvent?.metadata?.ui_element?.application || eventData.app_name as string || 'Unknown App';
+      const elementName = eventData.element_name as string;
+      if (elementName) {
+        summary = <span><b>Mouse:</b> {button} {eventType} on &quot;{elementName}&quot; in {appName}</span>;
+      } else {
+        summary = <span><b>Mouse:</b> {button} {eventType} in {appName}</span>;
+      }
       break;
     case 'application_switch':
-      summary = `App Switch: ${eventData.app_name as string}`;
+      summary = <span><b>App Switch:</b> {eventData.app_name as string}</span>;
       break;
     case 'browser_tab_navigation':
-      summary = `Browser Nav: ${eventData.url as string}`;
+      summary = <span><b>Browser Nav:</b> {eventData.url as string}</span>;
       break;
     case 'text_input_completed':
-      summary = `Text Input: "${eventData.text as string}" in ${eventData.app_name as string}`;
+      summary = <span><b>Text Input:</b> &quot;{eventData.text as string}&quot; in {eventData.app_name as string}</span>;
       break;
     case 'ui_tree':
-      summary = `UI Tree captured for ${eventData.app_name as string}`;
+      try {
+        const uiTree = JSON.parse(eventData.screen?.ui_tree as string);
+        summary = <span><b>UI Tree captured for</b> {uiTree.attributes?.name || eventData.app_name as string}</span>;
+      } catch {
+        summary = <span><b>UI Tree captured for</b> {eventData.app_name as string}</span>;
+      }
       break;
     case 'screenshot_diff':
-      summary = `Screenshot Diff`;
+      const before = eventData.before_timestamp ? new Date(eventData.before_timestamp as string).toLocaleTimeString() : 'N/A';
+      const after = eventData.after_timestamp ? new Date(eventData.after_timestamp as string).toLocaleTimeString() : 'N/A';
+      summary = <span><b>Screenshot Diff:</b> {before} vs {after}</span>;
       break;
   }
 
   return (
-    <div className="text-sm font-medium truncate pr-4" title={summary}>
+    <div className="text-sm font-medium truncate pr-4" title={typeof summary === 'string' ? summary : undefined}>
       {summary}
     </div>
   );
