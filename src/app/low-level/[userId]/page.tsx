@@ -10,6 +10,18 @@ import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 
+// New Clock component
+const Clock = () => {
+    const [time, setTime] = useState(new Date());
+
+    useEffect(() => {
+        const timerId = setInterval(() => setTime(new Date()), 1000);
+        return () => clearInterval(timerId);
+    }, []);
+
+    return <div className="text-sm text-gray-500 font-mono">{time.toUTCString()}</div>;
+};
+
 export default function LowLevelViewerPage({ params }: { params: Promise<{ userId: string }> }) {
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
   const [sessionCount, setSessionCount] = useState<number>(0);
@@ -82,29 +94,32 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
 
   return (
     <div className="container mx-auto py-4 font-mono">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-            <h1 className="text-2xl font-bold">Low-Level Event Inspector</h1>
-            <p className="text-sm text-gray-500">User ID: {userId}</p>
-        </div>
-        <div className="flex items-center gap-2">
-            <Input 
-                type="text"
-                placeholder="Search events..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-64"
-            />
-            <Button variant="outline" onClick={fetchRawEvents}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-            </Button>
-            <Link href="/admin">
-                <Button variant="outline">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Admin
+      <div className="sticky top-0 z-10 bg-white dark:bg-black py-4 border-b mb-4">
+        <div className="container mx-auto flex justify-between items-center">
+            <div>
+                <h1 className="text-2xl font-bold">Low-Level Event Inspector</h1>
+                <p className="text-sm text-gray-500">User ID: {userId}</p>
+            </div>
+            <div className="flex items-center gap-2">
+                <Clock />
+                <Input 
+                    type="text"
+                    placeholder="Search events..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-64"
+                />
+                <Button variant="outline" onClick={fetchRawEvents}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
                 </Button>
-            </Link>
+                <Link href="/admin">
+                    <Button variant="outline">
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Back to Admin
+                    </Button>
+                </Link>
+            </div>
         </div>
       </div>
 
