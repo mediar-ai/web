@@ -31,7 +31,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 
 type Message = {
     id: string;
@@ -73,7 +74,13 @@ type FetchedEventEntry = {
     generated_output: string;
 }
 
-type SynthesisStep = 'idle' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'synthesizing' | 'done';
+type SynthesisStep = 'idle' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'synthesizing' | 'done' | 'refining';
+
+type WorkflowContext = {
+  user_job_role: string;
+  project_name: string;
+  project_goal: string;
+};
 
 const EditableListItem = ({ item, onChange, onRemove, onEnter, onBackspaceEmpty, itemRef }: { 
     item: string, 
@@ -232,6 +239,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         businessLogic: true,
     });
     const [conversationId, setConversationId] = useState<string | null>(null);
+    const [workflowContext, setWorkflowContext] = useState<WorkflowContext | null>(null);
+    const [editableContext, setEditableContext] = useState<WorkflowContext | null>(null);
     
     // Refs for chat scroll containers
     const fullscreenChatRef = useRef<HTMLDivElement>(null);
@@ -475,8 +484,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     const startWorkflowIdentification = async () => {
         setIsLoading(true);
         setSynthesisStep('identifying');
+        setMessages(prev => [...prev, { id: 'ai-thinking-bubble', sender: 'ai-thinking', text: 'Analyzing events...' }]);
 
-        // 1. Fetch all annotated events from the previous tab's data source
         const eventDataResponse = await fetch(`/api/get-dataset-entries?userId=${userId}&datasetType=workflow_event_feedback`);
         const analysisResponse = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
 
@@ -506,26 +515,34 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             return;
         }
         
-        // Storing combinedEvents in state to be used by subsequent steps
         setCombinedEvents(combinedEvents);
+        setMessages(prev => prev.filter(m => m.id !== 'ai-thinking-bubble'));
+        setMessages(prev => [...prev, { 
+            id: 'refining-analysis', 
+            sender: 'ai', 
+            text: "I've analyzed the events. Now, I'll perform a deeper analysis to understand the context and refine the workflow list." 
+        }]);
+        setSynthesisStep('refining');
         
-        const response = await fetch('/api/identify-workflows', {
+        const response = await fetch('/api/initiate-workflow-analysis', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: selectedModel, context: { events: combinedEvents } }),
+            body: JSON.stringify({ events: combinedEvents }),
         });
 
         if (response.ok) {
             const result = await response.json();
-            setIdentifiedWorkflowNames(result.workflow_names || []);
+            setWorkflowContext(result.workflowContext);
+            setIdentifiedWorkflowNames(result.workflowNames || []);
+            
             setMessages(prev => [...prev, { 
                 id: 'workflow-list', 
                 sender: 'ai', 
-                text: "I've identified the following potential workflows. You can edit the names, remove unwanted workflows, or add new ones:"
+                text: "Here is the refined list of workflows based on my analysis. You can edit them below."
             }]);
             setSynthesisStep('workflow_editing');
         } else {
-            setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: "Sorry, I couldn't identify any distinct workflows from the provided events." }]);
+            setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: "Sorry, I encountered an error during the deep analysis." }]);
             setSynthesisStep('idle');
         }
         setIsLoading(false);
@@ -742,6 +759,26 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         setActiveWorkflowIndex(0);
     };
 
+    // When workflowContext is loaded or changed, update the editable version
+    useEffect(() => {
+        if (workflowContext) {
+            setEditableContext(workflowContext);
+        }
+    }, [workflowContext]);
+
+    const handleContextChange = (field: keyof WorkflowContext, value: string) => {
+        if (editableContext) {
+            setEditableContext({ ...editableContext, [field]: value });
+        }
+    };
+
+    const handleContextSave = () => {
+        // Here you would typically save the context to the database.
+        // For now, we'll just update the main context state.
+        setWorkflowContext(editableContext);
+        console.log('Saved context:', editableContext);
+    };
+
     if (view === 'initial' || view === 'chat_fullscreen') {
         const isChatMode = view === 'chat_fullscreen';
         return (
@@ -789,6 +826,31 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                         </div>
                     </CardHeader>
                     <CardContent className="flex-grow overflow-y-auto p-4 space-y-4" ref={fullscreenChatRef}>
+                        {view === 'initial' && workflowContext && editableContext && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Workflow Context Analysis</CardTitle>
+                                    <CardDescription>The AI has analyzed your activities. You can review and edit this context.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="flex items-center gap-4">
+                                        <Label htmlFor="jobRole" className="w-24 text-right">Your Job Role</Label>
+                                        <Input id="jobRole" value={editableContext.user_job_role} onChange={(e) => handleContextChange('user_job_role', e.target.value)} />
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <Label htmlFor="projectName" className="w-24 text-right">Project Name</Label>
+                                        <Input id="projectName" value={editableContext.project_name} onChange={(e) => handleContextChange('project_name', e.target.value)} />
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <Label htmlFor="projectGoal" className="w-24 text-right">Project Goal</Label>
+                                        <Input id="projectGoal" value={editableContext.project_goal} onChange={(e) => handleContextChange('project_goal', e.target.value)} />
+                                    </div>
+                                </CardContent>
+                                <CardFooter>
+                                    <Button onClick={handleContextSave}>Save Context</Button>
+                                </CardFooter>
+                            </Card>
+                        )}
                         {Array.isArray(messages) && messages.map((message) => (
                             <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
                                 <div className={`p-4 rounded-lg max-w-[80%] ${

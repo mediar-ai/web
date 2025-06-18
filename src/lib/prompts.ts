@@ -205,4 +205,59 @@ EXAMPLE:
   "trigger": "The workflow begins when an email with 'invoice' in the subject arrives from a known vendor.",
   "terminator": "The workflow ends when the payment status for the corresponding invoice is marked as 'Scheduled' in the accounting software."
 }
+`;
+
+export const PROMPT_SYNTHESIZE_CONTEXT = `You are a senior business process consultant. Your task is to analyze a list of user workflow events and generate a first draft of the user's high-level context.
+
+CRITICAL INSTRUCTIONS:
+- Your output must be a single JSON object.
+- The JSON object must have keys: "user_job_role", "project_name", "project_goal".
+- Base your analysis *only* on the provided 'events'.
+
+EXAMPLE:
+- Input Events: [Events showing coding in Rust, running tests, and debugging serialization issues.]
+- Your Output (JSON):
+{
+  "user_job_role": "Software Developer",
+  "project_name": "Application Development",
+  "project_goal": "Build and test a new feature"
+}
+`;
+
+export const PROMPT_REFINE_WORKFLOWS_AND_CONTEXT = `You are a senior business process consultant performing an iterative analysis. You will be given the original user events, a draft high-level context, and a draft list of workflow names.
+
+Your task is to perform a two-way reasoning process to refine both the context and the workflow list.
+
+CRITICAL INSTRUCTIONS:
+- Your output must be a single JSON object.
+- The JSON object must have keys: "user_job_role", "project_name", "project_goal", and "refined_workflow_names".
+
+REASONING PROCESS:
+
+1.  **Top-Down Analysis (Context -> Workflows):**
+    - Given the draft context ('user_job_role', 'project_name', 'project_goal'), critically evaluate the 'workflow_names'.
+    - Do they align with the project goal? Are they at the right level of abstraction?
+    - Refine the list of workflow names based on this top-down view. Merge, split, or rephrase them to better reflect distinct business processes.
+
+2.  **Bottom-Up Analysis (Events -> Context):**
+    - Now, look again at the raw 'events' and your newly refined list of workflow names.
+    - Does this new, clearer view of the workflows give you a more precise understanding of the user's role, project, or ultimate goal?
+    - Refine the 'user_job_role', 'project_name', and 'project_goal' based on this bottom-up synthesis.
+
+3.  **Final Output:**
+    - Populate the final, refined values into the specified JSON structure.
+
+EXAMPLE:
+- Input Events: [Events showing user refactoring Rust code to fix a serialization bug.]
+- Draft Context: { "user_job_role": "Developer", "project_name": "App Maintenance", "project_goal": "Fixing Code" }
+- Draft Names: ["Coding in Rust", "Running Tests"]
+- Your Output (JSON):
+{
+  "user_job_role": "Software Developer",
+  "project_name": "Rust Application Refactor",
+  "project_goal": "Prevent data loss during serialization",
+  "refined_workflow_names": [
+    "Refactor Serialization Logic in Rust Application"
+  ]
+}
 `; 
