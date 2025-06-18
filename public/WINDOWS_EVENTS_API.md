@@ -66,8 +66,8 @@ This path is used to get a detailed analysis of a visual change between two scre
 
 - **`payload.type`**: `screenshot_diff`
 - **`payload.event` object**: Must contain a `screenshot_diff` object with the following fields:
-  - `before`: The base64 data URL for the "before" image.
-  - `after`: The base64 data URL for the "after" image.
+  - `before`: The base64 data URL for the "before" image. Use `null` if not available (not empty string).
+  - `after`: The base64 data URL for the "after" image. Use `null` if not available (not empty string).
   - `before_timestamp`: The ISO 8601 timestamp of when the "before" image was captured.
   - `after_timestamp`: The ISO 8601 timestamp of when the "after" image was captured.
 
@@ -118,6 +118,25 @@ This is the fallback for discrete, simple actions that do not have a full UI tre
   }
 }
 ```
+
+---
+
+## Important Notes
+
+### Screenshot Data Handling
+
+When sending screenshot data in the `screenshot_diff` event:
+- For missing screenshots, use `null` instead of empty strings (`""`)
+- The server will normalize empty strings to `null` for backward compatibility
+- Both `before` and `after` screenshots are required for a standard diff operation
+- If only the `after` screenshot is provided (first screenshot case), it will be processed as an initial dump
+
+### Error Responses
+
+If the request contains invalid screenshot data, the server will return a `400` error with debug information including:
+- Whether each screenshot field is present
+- The data types of the screenshot fields
+- The lengths of the screenshot data
 
 ---
 
