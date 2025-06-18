@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from '@/components/ui/textarea';
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Paperclip, Send, PlusCircle, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
