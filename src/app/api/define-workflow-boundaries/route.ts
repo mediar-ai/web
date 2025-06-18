@@ -51,12 +51,12 @@ export async function POST(req: NextRequest) {
   try {
     const { model: modelName, context } = await req.json();
 
-    if (!modelName || !context || !context.events) {
+    if (!modelName || !context || !context.events || !context.workflows) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
     // Handle both single workflow (legacy) and multiple workflows
-    const workflowNames = context.workflow_names || [context.target_workflow_name];
+    const workflowNames = context.workflows.map((w: { workflow_name: string }) => w.workflow_name);
     
     if (!workflowNames || workflowNames.length === 0) {
       return NextResponse.json({ error: 'No workflow names provided' }, { status: 400 });
