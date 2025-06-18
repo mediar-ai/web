@@ -9,8 +9,8 @@ import {
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
 
 // Helper function to call the generative model and parse the JSON response
-async function callGenerativeModel(prompt: string, context: object) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro-latest' });
+async function callGenerativeModel(prompt: string, context: object, modelName: string) {
+  const model = genAI.getGenerativeModel({ model: modelName });
   const fullPrompt = `${prompt}\n\nContext:\n${JSON.stringify(context, null, 2)}`;
   
   try {
@@ -31,14 +31,18 @@ async function callGenerativeModel(prompt: string, context: object) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { events } = await req.json();
+    const { events, model } = await req.json();
+
+    if (!model) {
+      return NextResponse.json({ error: 'Missing required "model" parameter' }, { status: 400 });
+    }
 
     // Step 1: Initial Workflow Identification
-    const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, { events });
+    const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, { events }, model);
     let workflowNames = initialIdentification.workflow_names || [];
 
     // Step 2: Initial Context Synthesis (Bottom-Up)
-    let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, { events });
+    let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, { events }, model);
 
     // Step 3: Iterative Refinement Loop (2 cycles)
     for (let i = 0; i < 2; i++) {
@@ -46,7 +50,7 @@ export async function POST(req: NextRequest) {
         events,
         workflow_context: workflowContext,
         workflow_names: workflowNames,
-      });
+      }, model);
 
       workflowContext = {
         user_job_role: refinementResult.user_job_role,

@@ -31,7 +31,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 
 type Message = {
@@ -484,16 +484,21 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     const startWorkflowIdentification = async () => {
         setIsLoading(true);
         setSynthesisStep('identifying');
-        setMessages(prev => [...prev, { id: 'ai-thinking-bubble', sender: 'ai-thinking', text: 'Analyzing events...' }]);
+        // Replace initial message with a loading indicator
+        setMessages([{ 
+            id: 'ai-thinking-bubble', 
+            sender: 'ai-thinking', 
+            text: 'Analyzing events, synthesizing context, and refining workflows... This may take a moment.' 
+        }]);
 
         const eventDataResponse = await fetch(`/api/get-dataset-entries?userId=${userId}&datasetType=workflow_event_feedback`);
         const analysisResponse = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
 
         if (!eventDataResponse.ok || !analysisResponse.ok) {
-            console.error("Failed to fetch necessary data");
-            setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: "Sorry, I couldn't fetch the necessary data to begin analysis." }]);
-            setIsLoading(false);
+            // ... error handling
+            setMessages([{ id: Date.now().toString(), sender: 'ai', text: "Sorry, I couldn't fetch the necessary event data to start the analysis." }]);
             setSynthesisStep('idle');
+            setIsLoading(false);
             return;
         }
         
@@ -509,25 +514,19 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         }).filter((e: CombinedEvent) => e.generated_output);
 
         if (combinedEvents.length === 0) {
-            setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: "There are no annotated events to analyze. Please go to the 'Labeling' tab and generate some event summaries first." }]);
-            setIsLoading(false);
+            // ... error handling
+            setMessages([{ id: Date.now().toString(), sender: 'ai', text: "There are no annotated events to analyze. Please complete the 'Labeling' step first." }]);
             setSynthesisStep('idle');
+            setIsLoading(false);
             return;
         }
         
         setCombinedEvents(combinedEvents);
-        setMessages(prev => prev.filter(m => m.id !== 'ai-thinking-bubble'));
-        setMessages(prev => [...prev, { 
-            id: 'refining-analysis', 
-            sender: 'ai', 
-            text: "I've analyzed the events. Now, I'll perform a deeper analysis to understand the context and refine the workflow list." 
-        }]);
-        setSynthesisStep('refining');
         
         const response = await fetch('/api/initiate-workflow-analysis', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ events: combinedEvents }),
+            body: JSON.stringify({ events: combinedEvents, model: selectedModel }),
         });
 
         if (response.ok) {
@@ -535,10 +534,11 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             setWorkflowContext(result.workflowContext);
             setIdentifiedWorkflowNames(result.workflowNames || []);
             
-            setMessages(prev => [...prev, { 
+            // Replace loading message with the final result message
+            setMessages([{ 
                 id: 'workflow-list', 
                 sender: 'ai', 
-                text: "Here is the refined list of workflows based on my analysis. You can edit them below."
+                text: "Here is my analysis. You can edit the context and workflow list below."
             }]);
             setSynthesisStep('workflow_editing');
         } else {
@@ -826,13 +826,13 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                         </div>
                     </CardHeader>
                     <CardContent className="flex-grow overflow-y-auto p-4 space-y-4" ref={fullscreenChatRef}>
-                        {view === 'initial' && workflowContext && editableContext && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Workflow Context Analysis</CardTitle>
-                                    <CardDescription>The AI has analyzed your activities. You can review and edit this context.</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
+                        {workflowContext && editableContext && (
+                            <div className="p-4 border rounded-lg bg-muted/50">
+                                <h3 className="text-lg font-semibold mb-2">Workflow Context Analysis</h3>
+                                <p className="text-sm text-muted-foreground mb-4">
+                                    The AI has analyzed your activities. You can review and edit this context.
+                                </p>
+                                <div className="space-y-4">
                                     <div className="flex items-center gap-4">
                                         <Label htmlFor="jobRole" className="w-24 text-right">Your Job Role</Label>
                                         <Input id="jobRole" value={editableContext.user_job_role} onChange={(e) => handleContextChange('user_job_role', e.target.value)} />
@@ -841,15 +841,20 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                         <Label htmlFor="projectName" className="w-24 text-right">Project Name</Label>
                                         <Input id="projectName" value={editableContext.project_name} onChange={(e) => handleContextChange('project_name', e.target.value)} />
                                     </div>
-                                    <div className="flex items-center gap-4">
-                                        <Label htmlFor="projectGoal" className="w-24 text-right">Project Goal</Label>
-                                        <Input id="projectGoal" value={editableContext.project_goal} onChange={(e) => handleContextChange('project_goal', e.target.value)} />
+                                    <div className="flex items-start gap-4">
+                                        <Label htmlFor="projectGoal" className="w-24 text-right pt-2">Project Goal</Label>
+                                        <Textarea 
+                                            id="projectGoal" 
+                                            value={editableContext.project_goal} 
+                                            onChange={(e) => handleContextChange('project_goal', e.target.value)}
+                                            className="min-h-[80px] px-3 py-1"
+                                        />
                                     </div>
-                                </CardContent>
-                                <CardFooter>
+                                </div>
+                                <div className="mt-4 flex justify-end">
                                     <Button onClick={handleContextSave}>Save Context</Button>
-                                </CardFooter>
-                            </Card>
+                                </div>
+                            </div>
                         )}
                         {Array.isArray(messages) && messages.map((message) => (
                             <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
