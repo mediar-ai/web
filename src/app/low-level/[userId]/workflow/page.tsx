@@ -646,16 +646,41 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                     // Filter out conversation entries - only show actual workflows
                     const actualWorkflows = data.data.filter((wf: { title: string }) => wf.title !== '__CONVERSATION__');
                     setWorkflows(actualWorkflows);
+                    
+                    // Also load conversation history to maintain sidebar chat
+                    const conversationWorkflow = data.data.find((wf: WorkflowDataObject) => wf.title === '__CONVERSATION__');
+                    if (conversationWorkflow && conversationWorkflow.chat_history) {
+                        const chatHistory = conversationWorkflow.chat_history;
+                        
+                        // Only update messages if we don't already have them (to avoid overwriting current conversation)
+                        if (messages.length <= 1) { // Only initial message or empty
+                            const loadedMessages = Array.isArray(chatHistory.messages) ? chatHistory.messages : [];
+                            if (loadedMessages.length > 0) {
+                                setMessages(loadedMessages);
+                            }
+                        }
+                        
+                        // Always update other conversation state
+                        setSynthesisStep(chatHistory.synthesis_step || 'done'); // Set to 'done' since workflows exist
+                        setIdentifiedWorkflowNames(chatHistory.identified_workflow_names || []);
+                        setConversationId(conversationWorkflow.id);
+
+                        if (chatHistory.workflow_context) {
+                            setWorkflowContext(chatHistory.workflow_context);
+                            setEditableContext(chatHistory.workflow_context);
+                        }
+                    }
+                    
                     if (actualWorkflows.length > 0) {
                         setView('canvas');
                     }
                 }
             }
-                    } catch {
-            } finally {
-                setIsLoading(false);
-            }
-    }, [userId]);
+        } catch {
+        } finally {
+            setIsLoading(false);
+        }
+    }, [userId, messages.length]);
     
     useEffect(() => {
         fetchWorkflows();
