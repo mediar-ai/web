@@ -481,12 +481,12 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     }));
   };
   
-  const handleSaveOutput = (analysisId: string) => {
+  const handleSaveOutput = useCallback((analysisId: string) => {
       const eventData = workflowEvents[analysisId];
       if(eventData) {
           saveEventAndFeedback(analysisId, eventData.generated_output, eventData.feedback, eventData.feedback_reason);
       }
-  };
+  }, [workflowEvents, saveEventAndFeedback]);
 
   const columns = useMemo<ColumnDef<TableData>[]>(
     () => [
