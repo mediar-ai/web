@@ -13,6 +13,82 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
+// Flexible screenshot discovery function
+function findScreenshotsInPayload(payload: Record<string, unknown>): { before: string | null; after: string | null; discoveryLog: string[] } {
+  const screenshots: Array<{ path: string; data: string; key: string; size: number }> = [];
+  const log: string[] = [];
+  
+  function searchObject(obj: Record<string, unknown>, path = ''): void {
+    if (!obj || typeof obj !== 'object') return;
+    
+    for (const [key, value] of Object.entries(obj)) {
+      const currentPath = path ? `${path}.${key}` : key;
+      
+      if (typeof value === 'string' && value.startsWith('data:image/') && value.length > 100) {
+        screenshots.push({
+          path: currentPath,
+          data: value,
+          key: key.toLowerCase(),
+          size: value.length
+        });
+        log.push(`Found screenshot at ${currentPath} (${value.length} bytes)`);
+      } else if (typeof value === 'object' && value !== null) {
+        searchObject(value as Record<string, unknown>, currentPath);
+      }
+    }
+  }
+  
+  searchObject(payload);
+  log.push(`Total screenshots found: ${screenshots.length}`);
+  
+  if (screenshots.length === 0) {
+    return { before: null, after: null, discoveryLog: log };
+  }
+  
+  // Classify screenshots as before/after
+  let beforeScreenshot: string | null = null;
+  let afterScreenshot: string | null = null;
+  
+  if (screenshots.length === 1) {
+    // Single screenshot - treat as "after" (initial screenshot case)
+    afterScreenshot = screenshots[0].data;
+    log.push(`Single screenshot found, treating as 'after': ${screenshots[0].path}`);
+  } else {
+    // Multiple screenshots - try to identify before/after
+    const beforeCandidates = screenshots.filter(s => 
+      s.key.includes('before') || s.key.includes('prev') || s.key.includes('old') || 
+      s.key.includes('1') || s.key.includes('first') || s.key.includes('initial')
+    );
+    
+    const afterCandidates = screenshots.filter(s => 
+      s.key.includes('after') || s.key.includes('next') || s.key.includes('current') || 
+      s.key.includes('new') || s.key.includes('2') || s.key.includes('second') || s.key.includes('latest')
+    );
+    
+    if (beforeCandidates.length > 0) {
+      beforeScreenshot = beforeCandidates[0].data;
+      log.push(`Before screenshot identified: ${beforeCandidates[0].path}`);
+    }
+    
+    if (afterCandidates.length > 0) {
+      afterScreenshot = afterCandidates[0].data;
+      log.push(`After screenshot identified: ${afterCandidates[0].path}`);
+    }
+    
+    // Fallback: if we couldn't classify, use first two screenshots
+    if (!beforeScreenshot && !afterScreenshot && screenshots.length >= 2) {
+      beforeScreenshot = screenshots[0].data;
+      afterScreenshot = screenshots[1].data;
+      log.push(`Fallback: Using first two screenshots - before: ${screenshots[0].path}, after: ${screenshots[1].path}`);
+    } else if (!afterScreenshot && screenshots.length >= 1) {
+      afterScreenshot = screenshots[0].data;
+      log.push(`Fallback: Using first screenshot as 'after': ${screenshots[0].path}`);
+    }
+  }
+  
+  return { before: beforeScreenshot, after: afterScreenshot, discoveryLog: log };
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -57,12 +133,29 @@ export async function POST(request: Request) {
 
       case 'screenshot_diff':
         console.log('[INGEST] Processing screenshot_diff...');
-        const screenshot_before = payload.event?.screenshot_diff?.before;
-        const screenshot_after = payload.event?.screenshot_diff?.after;
+        let screenshot_before = payload.event?.screenshot_diff?.before;
+        let screenshot_after = payload.event?.screenshot_diff?.after;
 
         // Normalize empty strings to null to handle client-side inconsistencies
-        const normalizedScreenshotBefore = normalizeScreenshotData(screenshot_before);
-        const normalizedScreenshotAfter = normalizeScreenshotData(screenshot_after);
+        let normalizedScreenshotBefore = normalizeScreenshotData(screenshot_before);
+        let normalizedScreenshotAfter = normalizeScreenshotData(screenshot_after);
+        
+        // If primary method didn't find valid screenshots, try flexible discovery
+        if (!normalizedScreenshotBefore && !normalizedScreenshotAfter) {
+          console.log('[INGEST] Primary screenshot discovery failed, trying flexible search...');
+          const { before, after, discoveryLog } = findScreenshotsInPayload(payload);
+          
+          // Log the discovery process
+          discoveryLog.forEach(logEntry => console.log(`[FLEXIBLE_DISCOVERY] ${logEntry}`));
+          
+          if (before || after) {
+            console.log('[INGEST] Flexible discovery found screenshots, using those instead');
+            screenshot_before = before;
+            screenshot_after = after;
+            normalizedScreenshotBefore = normalizeScreenshotData(before);
+            normalizedScreenshotAfter = normalizeScreenshotData(after);
+          }
+        }
 
         // Handle the edge case where the first screenshot is sent as a diff
         if (normalizedScreenshotAfter && !normalizedScreenshotBefore) {
