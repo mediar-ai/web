@@ -775,18 +775,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         setSynthesisStep('defining_boundaries');
         
         try {
-            // Create a mapping from original AI workflow names to user-approved names
-            const workflowNameMapping: Record<string, string> = {};
-            
-            // Get the original workflow names from the events to create mapping
-            const originalWorkflowNames = Array.from(new Set(combinedEvents.map(e => e.analysis.workflow)));
-            
-            // Create mapping (if user didn't change names, they'll map to themselves)
-            originalWorkflowNames.forEach((original, index) => {
-                const userApproved = approvedWorkflows[index] || original;
-                workflowNameMapping[original] = userApproved;
-            });
-
             // Define boundaries for ALL workflows in a single call
             const boundariesResponse = await fetch('/api/define-workflow-boundaries', {
                 method: 'POST',
@@ -795,8 +783,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                     model: selectedModel, 
                     context: { 
                         events: combinedEvents,
-                        workflow_names: approvedWorkflows, // All approved workflow names
-                        workflow_mapping: workflowNameMapping // Original -> User-approved mapping
+                        workflow_names: approvedWorkflows // All approved workflow names
                     } 
                 }),
             });
@@ -807,36 +794,48 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             
             const boundaries = await boundariesResponse.json();
 
+            // Set boundaries in state and show boundary editing step
+            setWorkflowBoundaries(boundaries);
+            setSynthesisStep('boundaries_editing');
+            
+            setMessages(prev => [...prev, { 
+                id: Date.now().toString(), 
+                sender: 'ai', 
+                text: "I've defined boundaries for your workflows. Please review and approve them above, or make any changes before proceeding to synthesis."
+            }]);
+            
+        } catch {
+            setMessages(prev => [...prev, { 
+                id: Date.now().toString(), 
+                sender: 'ai', 
+                text: "Sorry, something went wrong while processing the workflows. Please try again."
+            }]);
+            setSynthesisStep('idle');
+        }
+        
+        setIsLoading(false);
+    };
+
+    // Separate function for synthesis after boundaries are approved
+    const proceedToSynthesis = async (approvedBoundaries: WorkflowBoundaries) => {
+        setIsLoading(true);
+        setSynthesisStep('synthesizing');
+        
+        try {
             // Prepare all workflows for batch synthesis
             const workflowsForSynthesis = [];
             
-            for (const userWorkflowName of approvedWorkflows) {
+            for (const userWorkflowName of identifiedWorkflowNames) {
                 if (!userWorkflowName.trim()) continue;
                 
-                // Find the original workflow name that maps to this user-approved name
-                const originalWorkflowName = Object.keys(workflowNameMapping).find(
-                    key => workflowNameMapping[key] === userWorkflowName
-                );
+                console.log(`Processing ${userWorkflowName}: using all ${combinedEvents.length} combined events`);
                 
-                // Filter events using the ORIGINAL workflow name from analysis
-                const relevantEvents = originalWorkflowName 
-                    ? combinedEvents.filter(e => e.analysis.workflow === originalWorkflowName)
-                    : combinedEvents; // Fallback to all events if no mapping found
-                
-                console.log(`Processing ${userWorkflowName}: found ${relevantEvents.length} relevant events`);
-                
-                // Only proceed if we have events
-                if (relevantEvents.length === 0) {
-                    console.warn(`No events found for workflow: ${userWorkflowName} (original: ${originalWorkflowName})`);
-                    continue;
-                }
-                
-                // Add to batch synthesis
+                // Add to batch synthesis - pass ALL events, let AI decide relevance
                 workflowsForSynthesis.push({
                     name: userWorkflowName, // Use user-approved name
-                    trigger: boundaries[userWorkflowName]?.trigger || boundaries.trigger,
-                    terminator: boundaries[userWorkflowName]?.terminator || boundaries.terminator,
-                    events: relevantEvents
+                    trigger: approvedBoundaries[userWorkflowName]?.trigger,
+                    terminator: approvedBoundaries[userWorkflowName]?.terminator,
+                    events: combinedEvents // Pass ALL events - AI will determine relevance
                 });
             }
             
@@ -1337,6 +1336,21 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                         workflows={identifiedWorkflowNames}
                                         onWorkflowsChange={setIdentifiedWorkflowNames}
                                         onApprove={() => processAllWorkflows(identifiedWorkflowNames)}
+                                        isProcessing={isLoading}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Show workflow boundaries when they need approval */}
+                        {synthesisStep === 'boundaries_editing' && Object.keys(workflowBoundaries).length > 0 && (
+                            <div className="flex items-start gap-3">
+                                <div className="p-4 rounded-lg max-w-[80%] bg-background border shadow-sm">
+                                    <p className="text-sm mb-4">Here are the workflow boundaries I defined:</p>
+                                    <EditableWorkflowBoundaries
+                                        boundaries={workflowBoundaries}
+                                        onBoundariesChange={setWorkflowBoundaries}
+                                        onApprove={() => proceedToSynthesis(workflowBoundaries)}
                                         isProcessing={isLoading}
                                     />
                                 </div>
