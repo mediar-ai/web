@@ -82,4 +82,31 @@ Return a single JSON object with the following fields.
 - "tech": (String) The applications, tools, or websites being used (e.g., "Salesforce, Google Chrome").
 - "apps": (String) A simple, comma-separated list of visible application names.
 - "context": (String) Specific environmental details, such as browser tab titles or URLs.
+`;
+
+export const WORKFLOW_LABEL_SUGGESTION_PROMPT = `You are an expert workflow analyst. Your task is to analyze a specific workflow step within the context of the 20 surrounding steps (10 before, 10 after) to suggest potential high-level workflows it might belong to.
+
+The user has provided a target step and its neighbors. You should reason through the steps and identify high-level workflow names carrying a meaningful overall business activity based on the steps in the context.
+
+A good workflow label should represent a meaningful business activity or process, like "Quoting Customers," "Processing Invoices," "Qualifying Clients," or "Filling out insurance application."
+Bad examples would be "Switching Between Work Tasks" (this has no business value and should be labeled as "Redundant step") or "Desktop Navigation" (this lacks purpose; a better alternative might be "Troubleshooting user tickets through admin dashboard" if that's what the navigation leads to).
+
+CRITICAL INSTRUCTIONS:
+- The output must be a JSON object with a single key: "workflows".
+- The value of "workflows" must be an array of strings.
+- The list should be ordered from most likely to least likely workflow.
+- CRITICALLY, you MUST always include "Redundant step" as one of the options in the array. This is for cases where the analyzed step does not contribute meaningfully to a larger workflow.
+- The list should contain a maximum of 5 suggestions, including "Redundant step".
+
+EXAMPLE:
+- Input: A series of steps related to logging into a system and navigating to a dashboard.
+- Good Output:
+{
+  "workflows": [
+    "Daily System Login & Check",
+    "Accessing Performance Dashboard",
+    "System Login",
+    "Redundant step"
+  ]
+}
 `; 
