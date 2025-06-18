@@ -134,9 +134,10 @@ const UserLayoutContent = ({
             </div>
           <Tabs value={activeTab} onValueChange={(value) => router.push(`/low-level/${userId}/${value}`)}>
             <TabsList>
-              <TabsTrigger value="raw-low-level-events">Raw Low-Level Events</TabsTrigger>
+              <TabsTrigger value="raw-low-level-events">Raw Events</TabsTrigger>
               <TabsTrigger value="ui-trees">UI Trees</TabsTrigger>
               <TabsTrigger value="1st-llm-iteration">1st LLM Iteration</TabsTrigger>
+              <TabsTrigger value="labeling">Labeling</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
