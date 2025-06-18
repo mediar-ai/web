@@ -63,22 +63,42 @@ export async function POST(request: Request) {
         // Handle the edge case where the first screenshot is sent as a diff
         if (screenshot_after && !screenshot_before) {
             console.log('[INGEST] Handling initial screenshot as a meaningful_event...');
-            // This is the first screenshot, treat it like an initial dump for analysis
-            const dumpStream = await performInitialFrameDump(screenshot_after);
-            // We need to read the stream to get the string content
-            const reader = dumpStream.getReader();
-            const decoder = new TextDecoder();
-            let dumpText = '';
-            let done = false;
-            while (!done) {
-                const { value, done: readerDone } = await reader.read();
-                done = readerDone;
-                if (value) {
-                    dumpText += decoder.decode(value, { stream: true });
-                }
+            
+            // LOG THE ACTUAL DATA SIZE AND FORMAT
+            console.log('[DEBUG] Screenshot data size:', screenshot_after.length);
+            console.log('[DEBUG] Screenshot prefix:', screenshot_after.substring(0, 50));
+            
+            // Check size first (1MB limit)
+            if (screenshot_after.length > 1000000) {
+                console.log('[INGEST] Screenshot too large, skipping AI analysis');
+                analysisResult = "Large initial screenshot captured (AI analysis skipped due to size)";
+                activityType = 'initial_dump';
+                break;
             }
-            analysisResult = dumpText;
-            activityType = 'initial_dump';
+            
+            try {
+                // This is the first screenshot, treat it like an initial dump for analysis
+                const dumpStream = await performInitialFrameDump(screenshot_after);
+                // We need to read the stream to get the string content
+                const reader = dumpStream.getReader();
+                const decoder = new TextDecoder();
+                let dumpText = '';
+                let done = false;
+                while (!done) {
+                    const { value, done: readerDone } = await reader.read();
+                    done = readerDone;
+                    if (value) {
+                        dumpText += decoder.decode(value, { stream: true });
+                    }
+                }
+                analysisResult = dumpText;
+                activityType = 'initial_dump';
+            } catch (error) {
+                console.error('[ERROR] performInitialFrameDump failed:', error);
+                // Handle the error gracefully instead of crashing
+                analysisResult = "Initial screenshot captured (AI analysis failed: " + (error instanceof Error ? error.message : 'Unknown error') + ")";
+                activityType = 'initial_dump';
+            }
             break; // Exit the switch, fall through to the generic saver
         }
 
@@ -158,15 +178,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, message: 'Data ingested' });
 
   } catch (error) {
-    let errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    // Check if it's a Google AI error and customize the message to be cleaner
-    if (errorMessage.includes('GoogleGenerativeAI Error')) {
-      const specificError = errorMessage.split('Base64 decoding failed')[0] || 'AI analysis failed';
-      errorMessage = `[INGEST] ${specificError.trim()}`;
-      console.error(errorMessage); // Log the clean message
-    } else {
-      console.error('[INGEST] Error processing request:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    const statusCode = 500;
+    
+    // Check if it's a Google AI error and provide more specific error information
+    if (errorMessage.includes('GoogleGenerativeAI Error') || errorMessage.includes('Base64 decoding failed')) {
+      console.error('[ERROR] AI analysis failed:', error);
+      return NextResponse.json({ 
+        error: 'AI analysis failed', 
+        details: errorMessage,
+        type: 'ai_analysis_error'
+      }, { status: 500 });
     }
-    return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });
+    
+    // Check for initial frame dump specific errors
+    if (errorMessage.includes('Malformed base64 image data')) {
+      console.error('[ERROR] Image format error:', error);
+      return NextResponse.json({ 
+        error: 'Invalid image format', 
+        details: errorMessage,
+        type: 'image_format_error'
+      }, { status: 400 });
+    }
+    
+    // Check for upload errors
+    if (errorMessage.includes('upload') || errorMessage.includes('storage')) {
+      console.error('[ERROR] Storage error:', error);
+      return NextResponse.json({ 
+        error: 'Storage operation failed', 
+        details: errorMessage,
+        type: 'storage_error'
+      }, { status: 500 });
+    }
+    
+    // Generic error handling
+    console.error('[INGEST] Error processing request:', error);
+    return NextResponse.json({ 
+      error: 'Failed to process request', 
+      details: errorMessage,
+      type: 'generic_error'
+    }, { status: statusCode });
   }
 }
