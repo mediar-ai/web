@@ -11,31 +11,61 @@ export async function POST(req: NextRequest) {
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
   
-  const { userId, datasetType, data, notes } = await req.json();
+  const { 
+    userId, 
+    datasetType, 
+    low_level_workflow_analysis_id,
+    generated_output,
+    feedback,
+    feedback_reason
+  } = await req.json();
 
-  if (!userId || !datasetType || !data) {
-    return NextResponse.json({ error: 'Missing required parameters: userId, datasetType, and data' }, { status: 400 });
+  if (!userId || !datasetType || !low_level_workflow_analysis_id) {
+    return NextResponse.json({ error: 'Missing required parameters: userId, datasetType, and low_level_workflow_analysis_id' }, { status: 400 });
   }
 
   try {
-    const { data: insertedData, error } = await supabase
+    // Upsert logic: Check if a record for this analysisId and datasetType already exists
+    const { data: existing, error: selectError } = await supabase
       .from('low_level_datasets')
-      .insert([
-        {
-          user_id: userId,
-          dataset_type: datasetType,
-          data: data,
-          notes: notes,
-        },
-      ])
-      .select()
+      .select('id')
+      .eq('low_level_workflow_analysis_id', low_level_workflow_analysis_id)
+      .eq('dataset_type', datasetType)
       .single();
 
-    if (error) {
-      throw error;
+    if (selectError && selectError.code !== 'PGRST116') { // Ignore 'No rows found' error
+        throw selectError;
     }
 
-    return NextResponse.json({ success: true, data: insertedData });
+    const upsertData = {
+        user_id: userId,
+        dataset_type: datasetType,
+        low_level_workflow_analysis_id: low_level_workflow_analysis_id,
+        generated_output: generated_output,
+        feedback: feedback,
+        feedback_reason: feedback_reason,
+    };
+
+    if (existing) {
+        // Update
+        const { data, error } = await supabase
+            .from('low_level_datasets')
+            .update(upsertData)
+            .eq('id', existing.id)
+            .select()
+            .single();
+        if (error) throw error;
+        return NextResponse.json({ success: true, data });
+    } else {
+        // Insert
+        const { data, error } = await supabase
+            .from('low_level_datasets')
+            .insert(upsertData)
+            .select()
+            .single();
+        if (error) throw error;
+        return NextResponse.json({ success: true, data });
+    }
 
   } catch (error) {
     console.error('Error saving dataset entry:', error);

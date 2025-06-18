@@ -1,28 +1,32 @@
 'use client';
 
 import React from 'react';
-import { Skeleton } from '@/components/ui/skeleton';
 
 interface ScreenshotViewProps {
-  dataUrl: string | null | undefined;
+  dataUrl: string | null;
+  onWheel?: (e: React.WheelEvent<HTMLDivElement>) => void;
 }
 
-const ScreenshotView: React.FC<ScreenshotViewProps> = ({ dataUrl }) => {
-  if (dataUrl === undefined) {
-    return <Skeleton className="w-full h-64" />;
-  }
-
+const ScreenshotView: React.FC<ScreenshotViewProps> = ({ dataUrl, onWheel }) => {
   if (!dataUrl) {
     return (
-      <div className="flex items-center justify-center w-full h-64 border rounded-md bg-gray-50 dark:bg-gray-800">
-        <span className="text-gray-500">No screenshot available.</span>
+      <div className="w-full h-[700px] bg-muted flex items-center justify-center text-muted-foreground rounded-lg">
+        No screenshot available for this step.
       </div>
-    );
+    )
   }
 
   return (
-    <div className="p-2 border rounded-md">
-      <img src={dataUrl} alt="Screenshot" className="max-w-full h-auto rounded-md" />
+    <div 
+        className="w-full h-[700px] overflow-hidden bg-muted rounded-lg flex items-center justify-center"
+        onWheel={onWheel}
+    >
+      <img 
+        src={dataUrl} 
+        alt="Workflow Step Screenshot" 
+        className="max-h-full max-w-none" 
+        style={{ objectFit: 'contain' }}
+      />
     </div>
   );
 };

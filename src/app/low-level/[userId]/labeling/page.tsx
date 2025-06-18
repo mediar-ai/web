@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, use } from 'react';
+import { useState, useMemo, useEffect, useCallback, use, createRef, RefObject, useRef } from 'react';
 import {
   Table,
   TableBody,
@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { ArrowUpDown, WrapText, Text } from 'lucide-react';
+import { ArrowUpDown } from 'lucide-react';
 import {
   ColumnDef,
   flexRender,
@@ -23,8 +23,7 @@ import {
 } from '@tanstack/react-table';
 import { useUser } from '@/context/UserContext';
 import type { LowLevelEvent } from '@/types';
-import { RefreshCw, ThumbsUp, ThumbsDown } from 'lucide-react';
-import { Checkbox } from '@/components/ui/checkbox';
+import { RefreshCw, ThumbsUp, ThumbsDown, AlertCircle } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +46,31 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import UITreeTimeline from '@/components/low-level/UITreeTimeline';
+import ScreenshotView from '@/components/low-level/ScreenshotView';
+import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
+import { DateRange } from 'react-day-picker';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 type WorkflowStepAnalysis = {
   id: string; 
@@ -73,22 +97,20 @@ type TableData = {
   userSelection: string[];
 };
 
-type FetchedLabelData = {
-    low_level_workflow_analysis_id: number;
-    suggested_labels: string[] | null;
-    selected_labels: string[] | null;
+type FetchedEventData = {
+    low_level_workflow_analysis_id: string;
+    generated_output: string;
+    feedback: 'good' | 'bad' | 'irrelevant' | null;
+    feedback_reason: string | null;
 }
 
-type IndividualFeedback = {
-    analysisId: string;
-    suggestion: string;
-    feedback: 'good' | 'bad';
+type EventFeedbackData = {
+    generated_output: string;
+    feedback: 'good' | 'bad' | 'irrelevant' | null;
+    feedback_reason: string | null;
 }
 
-type SavedFeedbackData = {
-    feedback: 'good' | 'bad';
-    reason: string;
-}
+type ProcessingMode = 'unprocessed' | 'all' | 'range';
 
 export default function LabelingPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = use(params);
@@ -99,21 +121,33 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   const [error, setError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [isWrapped, setIsWrapped] = useState(true);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
-  const [userSelections, setUserSelections] = useState<Record<string, string[]>>({});
-  const [potentialWorkflows, setPotentialWorkflows] = useState<Record<string, string[]>>({});
+  const [userSelections, ] = useState<Record<string, string[]>>({});
   const [isProcessingLabels, setIsProcessingLabels] = useState(false);
   const [processingRowId, setProcessingRowId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
+  const [selectedEvent, setSelectedEvent] = useState<LowLevelEvent | null>(null);
 
-  // -- Feedback state --
+  // -- New state for event generation and feedback --
+  const [workflowEvents, setWorkflowEvents] = useState<Record<string, EventFeedbackData>>({});
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
-  const [feedbackType, setFeedbackType] = useState<'good' | 'bad' | null>(null);
   const [feedbackReason, setFeedbackReason] = useState('');
-  const [currentFeedback, setCurrentFeedback] = useState<IndividualFeedback | null>(null);
-  const [savedFeedback, setSavedFeedback] = useState<Record<string, SavedFeedbackData>>({}); // Key: analysisId-suggestion
+  const [currentFeedbackTarget, setCurrentFeedbackTarget] = useState<{analysisId: string, feedback: 'good' | 'bad' | 'irrelevant'} | null>(null);
+
+  // -- New state for advanced batch processing --
+  const [processingMode, setProcessingMode] = useState<ProcessingMode>('unprocessed');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [isOptionsModalOpen, setIsOptionsModalOpen] = useState(false);
+
+  // -- New state for table row refs --
+  const [rowRefs, setRowRefs] = useState<Record<string, RefObject<HTMLTableRowElement>>>({});
+
+  // -- New state for collapsing screenshot --
+  const [isScreenshotCollapsed, setIsScreenshotCollapsed] = useState(false);
+  const [isHoveringScreenshot, setIsHoveringScreenshot] = useState(false);
+  const originalSelectedEvent = useMemo(() => selectedEvent, [selectedEvent]);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setUserId(userId);
@@ -146,62 +180,49 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     }
   }, [userId]);
 
-  const fetchLabelingData = useCallback(async () => {
+  const fetchEventData = useCallback(async () => {
     if (!userId) return;
     try {
-        const response = await fetch(`/api/get-workflow-labels?userId=${userId}`);
-        if (!response.ok) throw new Error('Failed to fetch labeling data');
-        const data = await response.json();
-        
-        const selections: Record<string, string[]> = {};
-        const suggestions: Record<string, string[]> = {};
-
-        data.labels.forEach((label: FetchedLabelData) => {
-            const analysisId = String(label.low_level_workflow_analysis_id);
-            if (label.selected_labels) {
-                selections[analysisId] = label.selected_labels;
-            }
-            if (label.suggested_labels) {
-                suggestions[analysisId] = label.suggested_labels;
-            }
-        });
-
-        setUserSelections(selections);
-        setPotentialWorkflows(suggestions);
-
-        // Fetch feedback data
-        const feedbackResponse = await fetch(`/api/get-dataset-entries?userId=${userId}&datasetType=workflow_label_feedback`);
-        if (!feedbackResponse.ok) throw new Error('Failed to fetch feedback data');
-        const feedbackEntries = await feedbackResponse.json();
-        
-        const feedbackMap: Record<string, SavedFeedbackData> = {};
-        feedbackEntries.entries.forEach((entry: { data: { analysisId: string, suggestion: string, feedback: 'good'|'bad', reason: string } }) => {
-            const key = `${entry.data.analysisId}-${entry.data.suggestion}`;
-            feedbackMap[key] = { feedback: entry.data.feedback, reason: entry.data.reason };
-        });
-        setSavedFeedback(feedbackMap);
-
+      const response = await fetch(`/api/get-dataset-entries?userId=${userId}&datasetType=workflow_event_feedback`);
+      if (!response.ok) throw new Error('Failed to fetch event feedback data');
+      const data = await response.json();
+      
+      const eventMap: Record<string, EventFeedbackData> = {};
+      data.entries.forEach((entry: FetchedEventData) => {
+          const analysisId = String(entry.low_level_workflow_analysis_id);
+          eventMap[analysisId] = {
+              generated_output: entry.generated_output,
+              feedback: entry.feedback,
+              feedback_reason: entry.feedback_reason
+          };
+      });
+      setWorkflowEvents(eventMap);
     } catch (err) {
-        console.error("Failed to fetch labeling data:", err);
+      console.error("Failed to fetch event data:", err);
     }
   }, [userId]);
 
   useEffect(() => {
-    // When the component mounts, fetch all necessary data
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       const [events, analyses] = await Promise.all([
         fetchAllEvents(),
         fetchAllWorkflowAnalyses(),
-        fetchLabelingData(),
+        fetchEventData(),
       ]);
-      setAllEvents(events || []);
+      const sortedEvents = events?.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) || [];
+      setAllEvents(sortedEvents);
       setAllWorkflowAnalyses(analyses || []);
+      
+      const uiTrees = sortedEvents.filter((e: LowLevelEvent) => e.payload.payload?.type === 'ui_tree');
+      if (uiTrees.length > 0) {
+        setSelectedEvent(uiTrees[uiTrees.length - 1]);
+      }
       setLoading(false);
     };
     fetchData();
-  }, [fetchAllEvents, fetchAllWorkflowAnalyses, fetchLabelingData]);
+  }, [fetchAllEvents, fetchAllWorkflowAnalyses, fetchEventData]);
   
   const tableData = useMemo<TableData[]>(() => {
     if (loading || allEvents.length === 0 || allWorkflowAnalyses.length === 0) {
@@ -255,24 +276,47 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     }, []);
     
     return data.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-
   }, [allWorkflowAnalyses, allEvents, loading, userSelections]);
 
-  const saveLabels = useCallback(async (analysisId: string, suggestions: string[], selections: string[]) => {
-      try {
-          await fetch('/api/save-workflow-labels', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  userId: userId,
-                  analysisId: analysisId,
-                  suggestedLabels: suggestions,
-                  selectedLabels: selections,
-              }),
-          });
-      } catch (error) {
-          console.error("Failed to save labels:", error);
-      }
+  useEffect(() => {
+    setRowRefs(prevRefs =>
+      tableData.reduce((acc, value) => {
+        acc[value.id] = prevRefs[value.id] || createRef();
+        return acc;
+      }, {} as Record<string, RefObject<HTMLTableRowElement>>)
+    );
+  }, [tableData]);
+
+  useEffect(() => {
+    if (selectedEvent) {
+        const analysis = allWorkflowAnalyses.find(a => Math.abs(new Date(a.client_timestamp).getTime() - new Date(selectedEvent.created_at).getTime()) < 1000);
+        if (analysis && rowRefs[analysis.id]) {
+            rowRefs[analysis.id].current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'end',
+            });
+        }
+    }
+  }, [selectedEvent, allWorkflowAnalyses, rowRefs]);
+
+  const saveEventAndFeedback = useCallback(async (
+      analysisId: string, 
+      generated_output: string, 
+      feedback: 'good' | 'bad' | 'irrelevant' | null,
+      feedback_reason: string | null
+    ) => {
+    await fetch('/api/save-dataset-entry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            userId,
+            datasetType: 'workflow_event_feedback',
+            low_level_workflow_analysis_id: analysisId,
+            generated_output,
+            feedback,
+            feedback_reason,
+        }),
+    });
   }, [userId]);
 
   const handleProcessSingleRow = useCallback(async (targetRow: TableData) => {
@@ -289,7 +333,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     const neighborAnalyses = tableData.slice(startIndex, endIndex).filter(row => row.id !== targetRow.id);
 
     try {
-        const response = await fetch('/api/suggest-workflow-labels', {
+        const response = await fetch('/api/generate-workflow-event', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -303,30 +347,49 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
 
         if (response.ok) {
             const result = await response.json();
-            const suggestions = result.workflows || [];
-            setPotentialWorkflows(prev => ({ ...prev, [targetRow.id]: suggestions }));
-            saveLabels(targetRow.id, suggestions, userSelections[targetRow.id] || []);
+            const summary = result.event_summary || '';
+            setWorkflowEvents(prev => ({ ...prev, [targetRow.id]: { generated_output: summary, feedback: null, feedback_reason: null } }));
+            saveEventAndFeedback(targetRow.id, summary, null, null);
         }
     } catch (error) {
-        console.error(`Failed to process labels for row ${targetRow.id}:`, error);
+        console.error(`Failed to process event for row ${targetRow.id}:`, error);
     } finally {
         setProcessingRowId(null);
     }
-  }, [tableData, selectedModel, saveLabels, userSelections]);
+  }, [tableData, selectedModel, saveEventAndFeedback]);
+
+  const rowsToProcess = useMemo(() => {
+    switch(processingMode) {
+      case 'all':
+        return tableData;
+      case 'range':
+        if (!dateRange?.from || !dateRange?.to) return [];
+        return tableData.filter(row => {
+          const rowDate = new Date(row.timestamp);
+          return rowDate >= dateRange.from! && rowDate <= dateRange.to!;
+        });
+      case 'unprocessed':
+      default:
+        return tableData.filter(row => !workflowEvents[row.id]?.generated_output);
+    }
+  }, [processingMode, tableData, dateRange, workflowEvents]);
 
   const handleProcessWorkflowLabels = async () => {
+    setIsOptionsModalOpen(false);
     setIsProcessingLabels(true);
-    const rowsToProcess = tableData.filter(row => !potentialWorkflows[row.id] || potentialWorkflows[row.id].length === 0);
 
     for (let i = 0; i < rowsToProcess.length; i++) {
         const targetRow = rowsToProcess[i];
+        
+        if(workflowEvents[targetRow.id]?.generated_output) continue;
+
         const originalIndex = tableData.findIndex(row => String(row.id) === String(targetRow.id));
         const startIndex = Math.max(0, originalIndex - 10);
         const endIndex = Math.min(tableData.length, originalIndex + 11);
         const neighborAnalyses = tableData.slice(startIndex, endIndex).filter(row => row.id !== targetRow.id);
 
         try {
-            const response = await fetch('/api/suggest-workflow-labels', {
+            const response = await fetch('/api/generate-workflow-event', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -340,18 +403,18 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
 
             if (response.ok) {
                 const result = await response.json();
-                const suggestions = result.workflows || [];
-                setPotentialWorkflows(prev => ({ ...prev, [targetRow.id]: suggestions }));
-                // Save new suggestions to the DB
-                saveLabels(targetRow.id, suggestions, userSelections[targetRow.id] || []);
+                const summary = result.event_summary || '';
+                
+                setWorkflowEvents(prev => ({ ...prev, [targetRow.id]: { generated_output: summary, feedback: null, feedback_reason: null } }));
+                await saveEventAndFeedback(targetRow.id, summary, null, null);
             }
         } catch (error) {
-            console.error(`Failed to process labels for row ${targetRow.id}:`, error);
+            console.error(`Failed to process event for row ${targetRow.id}:`, error);
         }
     }
     setIsProcessingLabels(false);
   };
-  
+
   const filteredData = useMemo(() => {
     let searchableData = [...tableData];
     if (searchTerm) {
@@ -366,27 +429,63 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   }, [tableData, searchTerm]);
   
   const handleSaveFeedback = async () => {
-    if (!currentFeedback) return;
+    if (!currentFeedbackTarget) return;
+    const { analysisId, feedback } = currentFeedbackTarget;
+    const eventData = workflowEvents[analysisId];
 
-    await fetch('/api/save-dataset-entry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            userId,
-            datasetType: 'workflow_label_feedback',
-            data: { ...currentFeedback, reason: feedbackReason },
-            notes: `Feedback on suggestion: "${currentFeedback.suggestion}"`,
-        }),
-    });
-    
-    const feedbackKey = `${currentFeedback.analysisId}-${currentFeedback.suggestion}`;
-    setSavedFeedback(prev => ({ ...prev, [feedbackKey]: { feedback: currentFeedback.feedback, reason: feedbackReason } }));
+    setWorkflowEvents(prev => ({ ...prev, [analysisId]: { ...eventData, feedback, feedback_reason: feedbackReason } }));
+    saveEventAndFeedback(analysisId, eventData.generated_output, feedback, feedbackReason);
 
     // Reset feedback state
     setIsFeedbackModalOpen(false);
     setFeedbackReason('');
-    setCurrentFeedback(null);
-    setFeedbackType(null);
+    setCurrentFeedbackTarget(null);
+  };
+
+  const uiTreeEvents = useMemo(() => {
+    return allEvents.filter(e => e.payload.payload?.type === 'ui_tree');
+  }, [allEvents]);
+
+  const selectedAnalysis = useMemo(() => {
+      if (!selectedEvent || !allWorkflowAnalyses) return null;
+      const eventTime = new Date(selectedEvent.created_at).getTime();
+      return allWorkflowAnalyses.find(a => Math.abs(new Date(a.client_timestamp).getTime() - eventTime) < 1000) || null;
+  }, [selectedEvent, allWorkflowAnalyses]);
+
+  const previousUiTreeEvent = useMemo(() => {
+    if (!selectedEvent || uiTreeEvents.length < 2) return null;
+    const currentIndex = uiTreeEvents.findIndex(e => e.id === selectedEvent.id);
+    return currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
+  }, [selectedEvent, uiTreeEvents]);
+
+  const relevantScreenshotDiff = useMemo(() => {
+    if (!previousUiTreeEvent || !selectedEvent) return null;
+    const prevTimestamp = new Date(previousUiTreeEvent.created_at).getTime();
+    const currentTimestamp = new Date(selectedEvent.created_at).getTime();
+    return allEvents.find(event => {
+      if (event.payload.payload?.type !== 'screenshot_diff') return false;
+      const diffTimestamp = new Date(event.created_at).getTime();
+      return diffTimestamp > prevTimestamp && diffTimestamp < currentTimestamp;
+      });
+  }, [allEvents, previousUiTreeEvent, selectedEvent]);
+  
+  const beforeScreenshotDataUrl = relevantScreenshotDiff?.payload.payload?.event.screenshot_diff?.before || null;
+
+  const handleOutputChange = (analysisId: string, newOutput: string) => {
+    setWorkflowEvents(prev => ({
+        ...prev,
+        [analysisId]: {
+            ...prev[analysisId],
+            generated_output: newOutput,
+        }
+    }));
+  };
+  
+  const handleSaveOutput = (analysisId: string) => {
+      const eventData = workflowEvents[analysisId];
+      if(eventData) {
+          saveEventAndFeedback(analysisId, eventData.generated_output, eventData.feedback, eventData.feedback_reason);
+      }
   };
 
   const columns = useMemo<ColumnDef<TableData>[]>(
@@ -451,95 +550,55 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
       },
       {
         accessorKey: 'userSelection',
-        header: () => <div className="whitespace-normal break-words">Workflow Label (to select)</div>,
+        header: () => <div className="whitespace-normal break-words">Workflow Event (to annotate)</div>,
         cell: ({ row }) => {
             const analysisId = row.original.id;
-            const suggestions = potentialWorkflows[analysisId] || [];
-            const selections = userSelections[analysisId] || [];
+            const eventData = workflowEvents[analysisId];
 
-            if (suggestions.length === 0 && !isProcessingLabels && processingRowId !== analysisId) {
-                return null;
-            }
-
-            const handleFeedbackClick = (type: 'good' | 'bad', suggestion: string) => {
-                setCurrentFeedback({ analysisId, suggestion, feedback: type });
-                setFeedbackType(type);
+            const handleFeedbackClick = (feedbackType: 'good' | 'bad' | 'irrelevant') => {
+                setCurrentFeedbackTarget({ analysisId, feedback: feedbackType });
                 setIsFeedbackModalOpen(true);
             };
 
-            const handleSelectionChange = (workflow: string) => {
-                const newSelections = selections.includes(workflow)
-                    ? selections.filter(s => s !== workflow)
-                    : [...selections, workflow];
-                setUserSelections(prev => ({ ...prev, [analysisId]: newSelections }));
-                saveLabels(analysisId, suggestions, newSelections);
-            };
-
             return (
-                <div className="space-y-2">
-                    {suggestions.map((workflow) => {
-                        const feedbackKey = `${analysisId}-${workflow}`;
-                        const existingFeedback = savedFeedback[feedbackKey];
-                        const isGood = existingFeedback?.feedback === 'good';
-                        const isBad = existingFeedback?.feedback === 'bad';
-
-                        return (
-                            <div key={workflow} className="flex items-center justify-between space-x-2">
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id={`${analysisId}-${workflow}`}
-                                        checked={selections.includes(workflow)}
-                                        onCheckedChange={() => handleSelectionChange(workflow)}
-                                    />
-                                    <label
-                                        htmlFor={`${analysisId}-${workflow}`}
-                                        className="text-sm font-medium leading-none"
-                                    >
-                                        {workflow}
-                                    </label>
-                                </div>
-                                <div className="flex items-center">
-                                    <TooltipProvider>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button 
-                                                    variant={isGood ? 'default' : 'ghost'} 
-                                                    size="icon" 
-                                                    className="h-6 w-6" 
-                                                    onClick={() => handleFeedbackClick('good', workflow)}
-                                                    disabled={isBad}
-                                                >
-                                                    <ThumbsUp className={`h-4 w-4 ${isGood ? 'text-white' : ''}`} />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            {existingFeedback && <TooltipContent>{existingFeedback.reason}</TooltipContent>}
-                                        </Tooltip>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button 
-                                                    variant={isBad ? 'default' : 'ghost'} 
-                                                    size="icon" 
-                                                    className="h-6 w-6" 
-                                                    onClick={() => handleFeedbackClick('bad', workflow)}
-                                                    disabled={isGood}
-                                                >
-                                                    <ThumbsDown className={`h-4 w-4 ${isBad ? 'text-white' : ''}`} />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            {existingFeedback && <TooltipContent>{existingFeedback.reason}</TooltipContent>}
-                                        </Tooltip>
-                                    </TooltipProvider>
-                                </div>
+                <div>
+                    {eventData?.generated_output ? (
+                        <div className="flex flex-col h-full justify-between">
+                            <Textarea
+                                value={eventData.generated_output}
+                                onChange={(e) => handleOutputChange(analysisId, e.target.value)}
+                                onBlur={() => handleSaveOutput(analysisId)}
+                                className="text-sm border-0 focus-visible:ring-1 p-0 h-auto resize-none"
+                                rows={3}
+                            />
+                            <div className="flex items-center justify-end space-x-1 mt-2">
+                                <TooltipProvider>
+                                    <Tooltip><TooltipTrigger asChild>
+                                        <Button variant={eventData.feedback === 'good' ? 'default' : 'ghost'} size="icon" className="h-6 w-6" onClick={() => handleFeedbackClick('good')} disabled={eventData.feedback === 'bad' || eventData.feedback === 'irrelevant'}>
+                                            <ThumbsUp className={`h-4 w-4 ${eventData.feedback === 'good' ? 'text-white' : ''}`} />
+                                        </Button>
+                                    </TooltipTrigger><TooltipContent>Good</TooltipContent></Tooltip>
+                                    <Tooltip><TooltipTrigger asChild>
+                                        <Button variant={eventData.feedback === 'irrelevant' ? 'default' : 'ghost'} size="icon" className="h-6 w-6" onClick={() => handleFeedbackClick('irrelevant')} disabled={eventData.feedback === 'good' || eventData.feedback === 'bad'}>
+                                            <AlertCircle className={`h-4 w-4 ${eventData.feedback === 'irrelevant' ? 'text-white' : ''}`} />
+                                        </Button>
+                                    </TooltipTrigger><TooltipContent>Irrelevant</TooltipContent></Tooltip>
+                                    <Tooltip><TooltipTrigger asChild>
+                                        <Button variant={eventData.feedback === 'bad' ? 'default' : 'ghost'} size="icon" className="h-6 w-6" onClick={() => handleFeedbackClick('bad')} disabled={eventData.feedback === 'good' || eventData.feedback === 'irrelevant'}>
+                                            <ThumbsDown className={`h-4 w-4 ${eventData.feedback === 'bad' ? 'text-white' : ''}`} />
+                                        </Button>
+                                    </TooltipTrigger><TooltipContent>Bad</TooltipContent></Tooltip>
+                                </TooltipProvider>
                             </div>
-                        )
-                    })}
+                        </div>
+                    ) : null}
                 </div>
             )
         },
         size: 200,
       },
     ],
-    [potentialWorkflows, userSelections, handleProcessSingleRow, saveLabels, savedFeedback]
+    [workflowEvents, handleProcessSingleRow, isProcessingLabels, processingRowId, handleSaveOutput]
   );
 
   const table = useReactTable({
@@ -556,75 +615,229 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     columnResizeMode: 'onChange',
   });
 
+  const handleProcessSelectedEvent = useCallback(() => {
+    if (!selectedAnalysis) return;
+    const targetRow = tableData.find(row => row.id === selectedAnalysis.id);
+    if (targetRow) {
+        handleProcessSingleRow(targetRow);
+    }
+  }, [selectedAnalysis, tableData, handleProcessSingleRow]);
+
+  const handleFeedbackForSelectedEvent = (feedbackType: 'good' | 'bad' | 'irrelevant') => {
+    if (!selectedAnalysis) return;
+    setCurrentFeedbackTarget({ analysisId: selectedAnalysis.id, feedback: feedbackType });
+    setIsFeedbackModalOpen(true);
+  };
+
+  const handleDeleteAllEvents = async () => {
+    try {
+        await fetch('/api/delete-dataset-entries', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: userId,
+                datasetType: 'workflow_event_feedback',
+            }),
+        });
+        // Clear local state to reflect deletion
+        setWorkflowEvents({});
+    } catch (error) {
+        console.error("Failed to delete all events:", error);
+    }
+  };
+
+  const handleScreenshotWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (isScreenshotCollapsed || uiTreeEvents.length === 0) return;
+
+    // Use horizontal scroll delta
+    const scrollAmount = e.deltaX;
+    
+    const currentIndex = selectedEvent ? uiTreeEvents.findIndex(event => event.id === selectedEvent.id) : -1;
+    if (currentIndex === -1) return;
+
+    let newIndex = currentIndex;
+    if (scrollAmount > 5) { // Threshold to prevent minor jitters
+        newIndex = Math.min(uiTreeEvents.length - 1, currentIndex + 1);
+    } else if (scrollAmount < -5) {
+        newIndex = Math.max(0, currentIndex - 1);
+    }
+
+    if (newIndex !== currentIndex) {
+        setSelectedEvent(uiTreeEvents[newIndex]);
+    }
+
+    // Debounce the return to original selection
+    if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+    }
+    scrollTimeoutRef.current = setTimeout(() => {
+        setSelectedEvent(originalSelectedEvent);
+    }, 1500); // Return to original after 1.5 seconds of inactivity
+  };
+
+  useEffect(() => {
+    if (isHoveringScreenshot) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = ''; // Cleanup on unmount
+    }
+  }, [isHoveringScreenshot]);
+
   if (error) {
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
   }
-  
+
   return (
     <>
-      <div className="">
-        <div className="flex items-center justify-end mb-4 space-x-2">
-          <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                      {selectedModel}
-                  </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                  <DropdownMenuRadioGroup
-                      value={selectedModel}
-                      onValueChange={setSelectedModel}
-                  >
-                      <DropdownMenuRadioItem value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="gemini-2.5-pro-preview-06-05">gemini-2.5-pro-preview-06-05</DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-          </DropdownMenu>
-          <Button variant="outline" onClick={handleProcessWorkflowLabels} disabled={isProcessingLabels}>
-              {isProcessingLabels ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
-              {isProcessingLabels ? 'Processing...' : 'Re-process workflow labels'}
-          </Button>
-          <div className="flex items-center space-x-2">
-              <Input
-                  placeholder="Search..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="max-w-sm"
-              />
-              <Button variant="outline" onClick={() => setIsWrapped(!isWrapped)}>
-                  {isWrapped ? <Text className="h-4 w-4 mr-2" /> : <WrapText className="h-4 w-4 mr-2" />}
-                  {isWrapped ? 'Unwrap Content' : 'Wrap Content'}
-              </Button>
-          </div>
-        </div>
-        <div className="border rounded-lg">
-          <Table className="w-full">
-            <TableHeader>
-              {table.getHeaderGroups().map(headerGroup => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map(header => (
-                    <TableHead 
-                      key={header.id} 
-                      style={{ width: header.getSize() }}
-                      className="relative pr-4"
+      <div 
+        className="sticky top-16 bg-background z-10 border-b pb-4"
+        onMouseEnter={() => setIsHoveringScreenshot(true)}
+        onMouseLeave={() => setIsHoveringScreenshot(false)}
+      >
+        {loading ? (
+            <div className="py-4 px-2 h-[220px] flex items-center justify-center"><Skeleton className="h-full w-full" /></div>
+        ) : (
+            <>
+                <div className="relative">
+                    {!isScreenshotCollapsed && <ScreenshotView dataUrl={beforeScreenshotDataUrl} onWheel={handleScreenshotWheelScroll} />}
+                    <Button 
+                        variant="outline" 
+                        size="icon" 
+                        className="absolute top-2 right-2 h-8 w-8 rounded-full bg-background shadow-lg"
+                        onClick={() => setIsScreenshotCollapsed(!isScreenshotCollapsed)}
                     >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                      <div
-                        onMouseDown={header.getResizeHandler()}
-                        onTouchStart={header.getResizeHandler()}
-                        className={`resizer ${header.column.getIsResizing() ? 'isResizing' : ''}`}
-                      />
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
+                        {isScreenshotCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+                    </Button>
+                </div>
+                {selectedAnalysis && (
+                    <Card className="my-4">
+                        <CardContent className="p-1 flex items-center justify-between">
+                            {workflowEvents[selectedAnalysis.id] ? (
+                                <Textarea
+                                    value={workflowEvents[selectedAnalysis.id].generated_output}
+                                    onChange={(e) => handleOutputChange(selectedAnalysis.id, e.target.value)}
+                                    onBlur={() => handleSaveOutput(selectedAnalysis.id)}
+                                    className="text-xl font-semibold border-0 focus-visible:ring-1 flex-grow p-0 h-14 resize-none"
+                                    rows={2}
+                                />
+                            ) : (
+                                <p className="text-xl font-semibold text-muted-foreground flex-grow h-14">No event summary generated.</p>
+                            )}
+                            <div className="flex items-center space-x-2">
+                                <TooltipProvider>
+                                    <Tooltip><TooltipTrigger asChild>
+                                        <Button variant={workflowEvents[selectedAnalysis.id]?.feedback === 'good' ? 'default' : 'ghost'} size="icon" className="h-8 w-8" onClick={() => handleFeedbackForSelectedEvent('good')} disabled={workflowEvents[selectedAnalysis.id]?.feedback === 'bad' || workflowEvents[selectedAnalysis.id]?.feedback === 'irrelevant'}>
+                                            <ThumbsUp className={`h-5 w-5 ${workflowEvents[selectedAnalysis.id]?.feedback === 'good' ? 'text-white' : ''}`} />
+                                        </Button>
+                                    </TooltipTrigger><TooltipContent>Good</TooltipContent></Tooltip>
+                                    <Tooltip><TooltipTrigger asChild>
+                                        <Button variant={workflowEvents[selectedAnalysis.id]?.feedback === 'irrelevant' ? 'default' : 'ghost'} size="icon" className="h-8 w-8" onClick={() => handleFeedbackForSelectedEvent('irrelevant')} disabled={workflowEvents[selectedAnalysis.id]?.feedback === 'good' || workflowEvents[selectedAnalysis.id]?.feedback === 'bad'}>
+                                            <AlertCircle className={`h-5 w-5 ${workflowEvents[selectedAnalysis.id]?.feedback === 'irrelevant' ? 'text-white' : ''}`} />
+                                        </Button>
+                                    </TooltipTrigger><TooltipContent>Irrelevant</TooltipContent></Tooltip>
+                                    <Tooltip><TooltipTrigger asChild>
+                                        <Button variant={workflowEvents[selectedAnalysis.id]?.feedback === 'bad' ? 'default' : 'ghost'} size="icon" className="h-8 w-8" onClick={() => handleFeedbackForSelectedEvent('bad')} disabled={workflowEvents[selectedAnalysis.id]?.feedback === 'good' || workflowEvents[selectedAnalysis.id]?.feedback === 'irrelevant'}>
+                                            <ThumbsDown className={`h-5 w-5 ${workflowEvents[selectedAnalysis.id]?.feedback === 'bad' ? 'text-white' : ''}`} />
+                                        </Button>
+                                    </TooltipTrigger><TooltipContent>Bad</TooltipContent></Tooltip>
+                                </TooltipProvider>
+                                <div className="border-l h-6 mx-2" />
+                                <Button variant="outline" size="sm" onClick={handleProcessSelectedEvent} disabled={processingRowId === selectedAnalysis.id}>
+                                    <RefreshCw className={`h-4 w-4 mr-2 ${processingRowId === selectedAnalysis.id ? 'animate-spin' : ''}`} />
+                                    Re-process
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+                <UITreeTimeline
+                    uiTreeEvents={uiTreeEvents}
+                    selectedEvent={selectedEvent}
+                    onEventSelect={setSelectedEvent}
+                />
+            </>
+        )}
+      </div>
+      <div className="mt-4">
+        <div className="flex items-center justify-end mb-4 space-x-2">
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                        {selectedModel}
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <DropdownMenuRadioGroup
+                        value={selectedModel}
+                        onValueChange={setSelectedModel}
+                    >
+                        <DropdownMenuRadioItem value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="gemini-2.5-pro-preview-06-05">gemini-2.5-pro-preview-06-05</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="outline" onClick={() => setIsOptionsModalOpen(true)} disabled={isProcessingLabels}>
+                {isProcessingLabels ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                {isProcessingLabels ? `Processing ${rowsToProcess.length}...` : 'Generate All Events'}
+            </Button>
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive">Delete All Events</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete all
+                            generated workflow event summaries and their feedback for this user.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteAllEvents}>Continue</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        <div className="flex items-center space-x-2">
+            <Input
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-sm"
+            />
+        </div>
+      </div>
+      <div className="border rounded-lg">
+          <Table className="w-full">
+          <TableHeader>
+                {table.getHeaderGroups().map(headerGroup => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map(header => (
+                      <TableHead 
+                        key={header.id} 
+                        style={{ width: header.getSize() }}
+                        className="relative pr-4"
+                      >
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                        <div
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          className={`resizer ${header.column.getIsResizing() ? 'isResizing' : ''}`}
+                        />
+              </TableHead>
+                    ))}
+            </TableRow>
+                ))}
+          </TableHeader>
+          <TableBody>
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-24 text-center">
@@ -632,22 +845,24 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                       <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
                       <span>Loading data...</span>
                     </div>
-                  </TableCell>
+                </TableCell>
                 </TableRow>
               ) : table.getRowModel().rows?.length ? (
                 table.getRowModel().rows.map(row => (
                   <TableRow
                     key={row.id}
+                    ref={rowRefs[row.original.id]}
                     data-state={row.getIsSelected() && "selected"}
+                    className={selectedAnalysis?.id === row.original.id ? 'bg-muted/50' : ''}
                   >
                     {row.getVisibleCells().map(cell => (
                       <TableCell 
                         key={cell.id} 
                         style={{ width: cell.column.getSize() }}
-                        className={!isWrapped ? 'truncate' : 'whitespace-normal break-words'}
+                        className="whitespace-normal break-words"
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
+                </TableCell>
                     ))}
                   </TableRow>
                 ))
@@ -655,13 +870,51 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-24 text-center">
                     No results.
-                  </TableCell>
-                </TableRow>
+                </TableCell>
+              </TableRow>
               )}
-            </TableBody>
-          </Table>
-        </div>
+          </TableBody>
+        </Table>
       </div>
+    </div>
+
+      <Dialog open={isOptionsModalOpen} onOpenChange={setIsOptionsModalOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Processing Options</DialogTitle>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+                <div className="flex items-center space-x-2">
+                    <label className="w-24">Mode:</label>
+                    <Select value={processingMode} onValueChange={(value) => setProcessingMode(value as ProcessingMode)}>
+                        <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="unprocessed">Process Unprocessed</SelectItem>
+                            <SelectItem value="all">Reprocess All</SelectItem>
+                            <SelectItem value="range">Process by Date</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                {processingMode === 'range' && (
+                    <div className="flex items-center space-x-2">
+                        <label className="w-24">Date Range:</label>
+                        <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+                    </div>
+                )}
+            </div>
+            <DialogFooter>
+                <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button onClick={handleProcessWorkflowLabels} disabled={rowsToProcess.length === 0}>
+                    Generate {rowsToProcess.length} Events
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isFeedbackModalOpen} onOpenChange={setIsFeedbackModalOpen}>
         <DialogContent>
             <DialogHeader>
@@ -669,14 +922,14 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             </DialogHeader>
             <div className="py-4">
                 <label htmlFor="feedback-reason" className="text-sm font-medium">
-                    Why is this a {feedbackType} set of suggestions? (Optional)
+                    Why is this a {currentFeedbackTarget?.feedback === 'good' ? 'good' : currentFeedbackTarget?.feedback === 'bad' ? 'bad' : 'irrelevant'} event? (Optional)
                 </label>
                 <Textarea 
                     id="feedback-reason"
                     value={feedbackReason}
                     onChange={(e) => setFeedbackReason(e.target.value)}
                     className="mt-2"
-                    placeholder="e.g., The suggestions are too generic, The top suggestion was perfect..."
+                    placeholder="e.g., The event was not relevant to the workflow, The event was perfectly relevant..."
                 />
             </div>
             <DialogFooter>

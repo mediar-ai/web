@@ -34,7 +34,13 @@ EXAMPLES:
 
 ❌ Bad: "User clicked button"
 ✅ Good: "User clicked 'Submit Payment' button to complete $299 order"
+
+A good workflow event should represent a meaningful business activity or process, like "Quoting Customers," "Processing Invoices," "Qualifying Clients," or "Filling out insurance application."
+Bad examples would be "Switching Between Work Tasks" (this has no business value and should be labeled as "Redundant step") or "Desktop Navigation" (this lacks purpose; a better alternative might be "Troubleshooting user tickets through admin dashboard" if that's what the navigation leads to).
+
+
 FOCUS ON THE LATEST ACTIVITY:
+- PRIORITY is what user did on their computer, not what happened
 - Complete messages/content (never truncate)
 - Recipient/sender names when available
 - Specific document/file names opened/created
@@ -44,7 +50,7 @@ FOCUS ON THE LATEST ACTIVITY:
 - Chat participants and full message content
 - Completed transactions or submissions
 
-Analyze the activity sequence for context, then create ONE clear, complete event summary that captures what the user accomplished in the LATEST activity only.`;
+Analyze the activity sequence for context, then create ONE clear, complete event summary (18 words or less) that captures what the user accomplished in the LATEST activity only.`;
 
 export const UI_TREE_ANALYSIS_PROMPT = `Analyze the provided UI tree, which represents the full accessibility tree of an application screen. Your goal is to provide a comprehensive, human-readable summary of the user's current view.
 

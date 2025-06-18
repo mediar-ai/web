@@ -130,3 +130,12 @@
 .resizer.isResizing {
   @apply bg-blue-500 opacity-50;
 }
+
+html {
+  scroll-padding-top: 5rem; /* Adjust this value as needed */
+}
+
+body {
+  @apply bg-background text-foreground;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
