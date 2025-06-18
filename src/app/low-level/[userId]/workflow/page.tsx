@@ -45,7 +45,7 @@ type Message = {
 
 type CanvasContent = {
     id: number;
-    title: string;
+    title: string | null;
     inputs: string[];
     outputs: string[];
     steps: string[];
@@ -876,7 +876,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         if (!userId || synthesizedWorkflows.length === 0) return;
     
         const recordsToInsert = synthesizedWorkflows.map(workflow => ({
-            title: workflow.name,
+            title: workflow.name || 'Untitled Workflow',
             inputs: workflow.inputs,
             outputs: workflow.outputs,
             steps: workflow.steps,
@@ -1474,7 +1474,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                     <TooltipTrigger asChild>
                                         <div className="relative group">
                                             <TabsTrigger value={String(index)} className="pr-8">
-                                                {wf.title.length > 20 ? `${wf.title.substring(0, 20)}...` : wf.title}
+                                                {(wf.title || '').length > 20 ? `${(wf.title || '').substring(0, 20)}...` : (wf.title || 'Untitled')}
                                             </TabsTrigger>
                                             <AlertDialog>
                                                 <AlertDialogTrigger asChild>
@@ -1496,7 +1496,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                         </div>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        <p>{wf.title}</p>
+                                        <p>{wf.title || 'Untitled'}</p>
                                     </TooltipContent>
                                 </Tooltip>
                             ))}
@@ -1519,7 +1519,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                         <div className="border border-t-0 rounded-lg rounded-tl-none p-4 bg-background flex-grow overflow-y-auto">
                             <div className="flex items-center mb-4">
                                <Textarea 
-                                    value={activeContent.title}
+                                    value={activeContent.title || 'Untitled Workflow'}
                                     onChange={(e) => handleTitleChange(e.target.value)}
                                     className="text-2xl font-bold border-0 p-0 h-auto focus-visible:ring-0 resize-none"
                                 />
