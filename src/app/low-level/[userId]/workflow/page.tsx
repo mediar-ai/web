@@ -1029,14 +1029,11 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
 
     const handleContextChange = (field: keyof WorkflowContext, value: string) => {
         if (editableContext) {
-            setEditableContext({ ...editableContext, [field]: value });
+            const updatedContext = { ...editableContext, [field]: value };
+            setEditableContext(updatedContext);
+            // Auto-save immediately when field changes
+            setWorkflowContext(updatedContext);
         }
-    };
-
-    const handleContextSave = () => {
-        // Here you would typically save the context to the database.
-        // For now, we'll just update the main context state.
-        setWorkflowContext(editableContext);
     };
 
     const resetConversation = async () => {
@@ -1317,9 +1314,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                                     className="min-h-[80px] px-3 py-1"
                                                 />
                                             </div>
-                                        </div>
-                                        <div className="mt-4 flex justify-end">
-                                            <Button onClick={handleContextSave}>Save Context</Button>
                                         </div>
                                     </div>
                                 )}
