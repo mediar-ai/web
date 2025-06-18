@@ -939,7 +939,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 });
                 
                 if (response.ok) {
-                    const result = await response.json();
+                const result = await response.json();
                     setIdentifiedWorkflowNames(result.workflows || []);
                     setMessages(prev => [...prev, { 
                         id: Date.now().toString(), 
