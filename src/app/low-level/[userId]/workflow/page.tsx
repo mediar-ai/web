@@ -106,6 +106,7 @@ type WorkflowDataObject = {
         synthesis_step: SynthesisStep;
         identified_workflow_names: string[];
         workflow_context: WorkflowContext;
+        workflow_boundaries?: WorkflowBoundaries;
     }
 }
 
@@ -150,28 +151,19 @@ const EditableWorkflowList = ({ workflows, onWorkflowsChange, onApprove, isProce
     onApprove: () => void;
     isProcessing: boolean;
 }) => {
-    const [localWorkflows, setLocalWorkflows] = useState(workflows);
-
-    useEffect(() => {
-        setLocalWorkflows(workflows);
-    }, [workflows]);
-
     const handleWorkflowChange = (index: number, value: string) => {
-        const updated = [...localWorkflows];
+        const updated = [...workflows];
         updated[index] = value;
-        setLocalWorkflows(updated);
         onWorkflowsChange(updated);
     };
 
     const handleRemoveWorkflow = (index: number) => {
-        const updated = localWorkflows.filter((_, i) => i !== index);
-        setLocalWorkflows(updated);
+        const updated = workflows.filter((_, i) => i !== index);
         onWorkflowsChange(updated);
     };
 
     const handleAddWorkflow = () => {
-        const updated = [...localWorkflows, ''];
-        setLocalWorkflows(updated);
+        const updated = [...workflows, ''];
         onWorkflowsChange(updated);
     };
 
@@ -182,7 +174,7 @@ const EditableWorkflowList = ({ workflows, onWorkflowsChange, onApprove, isProce
                 Edit workflow names below:
             </div>
             <div className="space-y-2">
-                {localWorkflows.map((workflow, index) => (
+                {workflows.map((workflow, index) => (
                     <div key={index} className="flex items-center gap-2">
                         <span className="text-sm text-muted-foreground w-6">{index + 1}.</span>
                         <Input
@@ -214,11 +206,11 @@ const EditableWorkflowList = ({ workflows, onWorkflowsChange, onApprove, isProce
                 </Button>
                 <Button
                     onClick={onApprove}
-                    disabled={isProcessing || localWorkflows.filter(w => w.trim()).length === 0}
+                    disabled={isProcessing || workflows.filter(w => w.trim()).length === 0}
                     className="flex items-center gap-2"
                 >
                     {isProcessing && <RefreshCw className="h-4 w-4 animate-spin" />}
-                    {isProcessing ? 'Processing...' : 'Approve & Generate Workflows'}
+                    {isProcessing ? 'Processing...' : 'Approve & Generate Boundaries'}
                 </Button>
             </div>
         </div>
@@ -352,7 +344,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [synthesisStep, setSynthesisStep] = useState<SynthesisStep>('idle');
     const [identifiedWorkflowNames, setIdentifiedWorkflowNames] = useState<string[]>([]);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [workflowBoundaries, setWorkflowBoundaries] = useState<WorkflowBoundaries>({});
     const [combinedEvents, setCombinedEvents] = useState<CombinedEvent[]>([]);
     const [collapsedSections, setCollapsedSections] = useState({
@@ -407,7 +398,13 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         return () => clearTimeout(timeoutId);
     }, [messages, scrollToBottom]);
 
-    const saveConversation = useCallback(async (messagesToSave: Message[], step: SynthesisStep, workflowNames: string[], context: WorkflowContext | null) => {
+    const saveConversation = useCallback(async (
+        messagesToSave: Message[], 
+        step: SynthesisStep, 
+        workflowNames: string[], 
+        context: WorkflowContext | null,
+        boundaries: WorkflowBoundaries | null
+    ) => {
         if (!userId) return;
 
         const conversationData = {
@@ -415,6 +412,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             synthesis_step: step,
             identified_workflow_names: workflowNames,
             workflow_context: context,
+            workflow_boundaries: boundaries,
         };
 
         const method = conversationId ? 'PUT' : 'POST';
@@ -462,8 +460,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                     }
                 }
             } else {
+                console.error("Failed to save conversation:", response.status, await response.text());
             }
-        } catch {
+        } catch (error) {
+            console.error("Error saving conversation:", error);
         }
     }, [userId, conversationId]);
 
@@ -493,10 +493,15 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                             setWorkflowContext(chatHistory.workflow_context);
                             setEditableContext(chatHistory.workflow_context);
                         }
+                        
+                        if (chatHistory.workflow_boundaries) {
+                            setWorkflowBoundaries(chatHistory.workflow_boundaries);
+                        }
                     }
                 }
             }
-        } catch {
+        } catch (error) {
+            console.error("Error loading saved conversation:", error);
         } finally {
             setIsConversationLoaded(true);
         }
@@ -603,7 +608,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 combined.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
                 setCombinedEvents(combined);
-            } catch {
+            } catch (error) {
+                console.error("Error fetching events:", error);
             } finally {
                 setIsFetchingEvents(false);
             }
@@ -640,47 +646,32 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         setIsLoading(true);
         try {
             const response = await fetch(`/api/workflows?userId=${userId}`);
-            if(response.ok) {
-                const data = await response.json();
-                if (data.data && data.data.length > 0) {
-                    // Filter out conversation entries - only show actual workflows
-                    const actualWorkflows = data.data.filter((wf: { title: string }) => wf.title !== '__CONVERSATION__');
-                    setWorkflows(actualWorkflows);
-                    
-                    // Also load conversation history to maintain sidebar chat
-                    const conversationWorkflow = data.data.find((wf: WorkflowDataObject) => wf.title === '__CONVERSATION__');
-                    if (conversationWorkflow && conversationWorkflow.chat_history) {
-                        const chatHistory = conversationWorkflow.chat_history;
-                        
-                        // Only update messages if we don't already have them (to avoid overwriting current conversation)
-                        if (messages.length <= 1) { // Only initial message or empty
-                            const loadedMessages = Array.isArray(chatHistory.messages) ? chatHistory.messages : [];
-                            if (loadedMessages.length > 0) {
-                                setMessages(loadedMessages);
-                            }
-                        }
-                        
-                        // Always update other conversation state
-                        setSynthesisStep(chatHistory.synthesis_step || 'done'); // Set to 'done' since workflows exist
-                        setIdentifiedWorkflowNames(chatHistory.identified_workflow_names || []);
-                        setConversationId(conversationWorkflow.id);
+            if (response.ok) {
+                const result = await response.json();
+                const conversation = result.data.find((d: WorkflowDataObject) => d.title === '__CONVERSATION__');
+                const regularWorkflows = result.data.filter((d: WorkflowDataObject) => d.title !== '__CONVERSATION__');
+                
+                setWorkflows(regularWorkflows);
 
-                        if (chatHistory.workflow_context) {
-                            setWorkflowContext(chatHistory.workflow_context);
-                            setEditableContext(chatHistory.workflow_context);
-                        }
+                if (conversation && conversation.chat_history) {
+                    setMessages(conversation.chat_history.messages || [{ id: '1', sender: 'ai', text: 'Welcome back!'}]);
+                    setSynthesisStep(conversation.chat_history.synthesis_step || 'idle');
+                    setIdentifiedWorkflowNames(conversation.chat_history.identified_workflow_names || []);
+                     if (conversation.chat_history.workflow_context) {
+                        setWorkflowContext(conversation.chat_history.workflow_context);
+                        setEditableContext(conversation.chat_history.workflow_context);
                     }
-                    
-                    if (actualWorkflows.length > 0) {
-                        setView('canvas');
+                    if (conversation.chat_history.workflow_boundaries) {
+                        setWorkflowBoundaries(conversation.chat_history.workflow_boundaries);
                     }
                 }
             }
-        } catch {
+        } catch (error) {
+            console.error("Failed to fetch workflows", error);
         } finally {
             setIsLoading(false);
         }
-    }, [userId, messages.length]);
+    }, [userId]);
     
     useEffect(() => {
         fetchWorkflows();
@@ -776,16 +767,20 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             setEditableContext(finalData.workflowContext || defaultContext);
             setSynthesisStep('identifying');
 
-            saveConversation(
+            await saveConversation(
                 newMessages, 
                 'identifying',
                 finalData.workflowNames || [],
-                finalData.workflowContext || defaultContext
+                finalData.workflowContext || defaultContext,
+                null
             );
 
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-            setMessages(prev => [...prev.filter(m => m.id !== 'analyzing'), { id: 'error', sender: 'ai', text: `An error occurred: ${errorMessage}` }]);
+            console.error("Error during workflow identification:", error);
+            const errorId = `error-${Date.now()}`;
+            const errorMessage: Message = { id: errorId, sender: 'ai', text: "Sorry, I encountered an error. Please try again." };
+            setMessages(prev => [...prev.slice(0, -1), errorMessage]);
+            await saveConversation(messages, 'idle', [], workflowContext, workflowBoundaries);
         } finally {
             if (timerRef.current) {
                 clearInterval(timerRef.current);
@@ -796,134 +791,97 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     };
 
     const processAllWorkflows = async (approvedWorkflows: string[]) => {
-        setIsLoading(true);
         setSynthesisStep('defining_boundaries');
-        
-        try {
-            // Define boundaries for ALL workflows in a single call
-            const boundariesResponse = await fetch('/api/define-workflow-boundaries', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    model: selectedModel, 
-                    context: { 
-                        events: combinedEvents,
-                        workflow_names: approvedWorkflows // All approved workflow names
-                    } 
-                }),
-            });
-            
-            if (!boundariesResponse.ok) {
-                throw new Error('Failed to define workflow boundaries');
-            }
-            
-            const boundaries = await boundariesResponse.json();
-            
-            // Debug: Log the boundaries to understand the structure
-            console.log('Received boundaries:', boundaries);
-            console.log('Boundaries keys:', Object.keys(boundaries));
-            console.log('Boundaries length:', Object.keys(boundaries).length);
+        const thinkingId = `ai-thinking-${Date.now()}`;
+        const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
+        setMessages(updatedMessages);
+        await saveConversation(updatedMessages, 'defining_boundaries', approvedWorkflows, workflowContext, workflowBoundaries);
 
+        try {
+            const response = await fetch('/api/define-workflow-boundaries', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: selectedModel,
+                    context: {
+                        workflows: approvedWorkflows.map(name => ({ workflow_name: name })),
+                        events: combinedEvents,
+                        userContext: workflowContext,
+                    }
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to define workflow boundaries');
+            
+            const boundaries = await response.json();
+            
             // Set boundaries in state and show boundary editing step
             setWorkflowBoundaries(boundaries);
             setSynthesisStep('boundaries_editing');
             
-            setMessages(prev => [...prev, { 
+            const boundariesMessage: Message = { 
                 id: Date.now().toString(), 
                 sender: 'ai', 
                 text: "I've defined boundaries for your workflows. Please review and approve them above, or make any changes before proceeding to synthesis."
-            }]);
+            };
+            setMessages(prev => [...prev.slice(0, -1), boundariesMessage]);
             
-        } catch {
-            setMessages(prev => [...prev, { 
-                id: Date.now().toString(), 
-                sender: 'ai', 
-                text: "Sorry, something went wrong while processing the workflows. Please try again."
-            }]);
-            setSynthesisStep('idle');
+            await saveConversation(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, boundaries);
+
+        } catch (error) {
+            console.error("Error defining workflow boundaries:", error);
+            const errorId = `error-${Date.now()}`;
+            const errorMessage: Message = { id: errorId, sender: 'ai', text: "Sorry, an error occurred while defining boundaries. Please try again." };
+            setMessages(prev => [...prev.slice(0, -1), errorMessage]);
+            await saveConversation(messages.slice(0,-1), 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries);
         }
-        
-        setIsLoading(false);
     };
 
-    // Separate function for synthesis after boundaries are approved
     const proceedToSynthesis = async (approvedBoundaries: WorkflowBoundaries) => {
-        setIsLoading(true);
         setSynthesisStep('synthesizing');
-        
+        const thinkingId = `ai-thinking-${Date.now()}`;
+        const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
+        setMessages(updatedMessages);
+        await saveConversation(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries);
+
         try {
-            // Prepare all workflows for batch synthesis
-            const workflowsForSynthesis = [];
-            
-            for (const userWorkflowName of identifiedWorkflowNames) {
-                if (!userWorkflowName.trim()) continue;
+            const response = await fetch('/api/synthesize-workflow', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: selectedModel,
+                    context: { 
+                        workflows: identifiedWorkflowNames.map(name => ({
+                            name,
+                            trigger: approvedBoundaries[name]?.trigger,
+                            terminator: approvedBoundaries[name]?.terminator,
+                            events: combinedEvents // Pass ALL events - AI will determine relevance
+                        }))
+                    }
+                }),
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+                const synthesizedWorkflows = result.workflows || [];
                 
-                console.log(`Processing ${userWorkflowName}: using all ${combinedEvents.length} combined events`);
-                
-                // Add to batch synthesis - pass ALL events, let AI decide relevance
-                workflowsForSynthesis.push({
-                    name: userWorkflowName, // Use user-approved name
-                    trigger: approvedBoundaries[userWorkflowName]?.trigger,
-                    terminator: approvedBoundaries[userWorkflowName]?.terminator,
-                    events: combinedEvents // Pass ALL events - AI will determine relevance
-                });
-            }
-            
-            // Synthesize all workflows in a single API call
-            let workflowResults = [];
-            if (workflowsForSynthesis.length > 0) {
-                const synthesisResponse = await fetch('/api/synthesize-workflow', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: selectedModel,
-                        context: { 
-                            workflows: workflowsForSynthesis
-                        }
-                    }),
-                });
-                
-                if (synthesisResponse.ok) {
-                    const result = await synthesisResponse.json();
-                    workflowResults = result.workflows || [];
-                }
-            }
-            
-            if (workflowResults.length > 0) {
-                // Save all workflows
-                await fetch('/api/workflows', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, workflows: workflowResults }),
-                });
-                
-                // Fetch and display workflows
-                await fetchWorkflows();
+                // Final state update
+                setWorkflows(synthesizedWorkflows);
+                setView('canvas');
                 setSynthesisStep('done');
-                
-                setMessages(prev => [...prev, { 
-                    id: Date.now().toString(), 
-                    sender: 'ai', 
-                    text: `Great! I've successfully generated ${workflowResults.length} workflow(s). You can now see them in the canvas and edit them as needed.`
-                }]);
-            } else {
-                setMessages(prev => [...prev, { 
-                    id: Date.now().toString(), 
-                    sender: 'ai', 
-                    text: "I wasn't able to generate any workflows from the selected names. Please try again or check if you have sufficient annotated events."
-                }]);
-                setSynthesisStep('idle');
+                const synthesizedMessage: Message = {id: Date.now().toString(), sender: 'ai', text: "Workflows have been synthesized. You can now view and refine them in the Canvas tab."};
+                await saveConversation(updatedMessages.slice(0,-1).concat([synthesizedMessage]), 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries);
+
+        } else {
+                throw new Error('Failed to synthesize workflows');
             }
-        } catch {
-            setMessages(prev => [...prev, { 
-                id: Date.now().toString(), 
-                sender: 'ai', 
-                text: "Sorry, something went wrong while processing the workflows. Please try again."
-            }]);
-            setSynthesisStep('idle');
+        } catch (error) {
+            console.error("Error during workflow synthesis:", error);
+            const errorId = `error-${Date.now()}`;
+            const errorMessage: Message = { id: errorId, sender: 'ai', text: "Sorry, I encountered an error during synthesis. Please try again." };
+            setMessages(prev => [...prev.slice(0, -1), errorMessage]);
+            await saveConversation(messages, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries);
         }
-        
-        setIsLoading(false);
     };
 
     const handleSendMessage = async () => {
@@ -940,8 +898,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 const response = await fetch('/api/edit-workflow-list', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        model: selectedModel, 
+                    body: JSON.stringify({
+                        model: selectedModel,
                         instruction,
                         current_workflows: identifiedWorkflowNames
                     }),
@@ -955,12 +913,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                         sender: 'ai', 
                         text: "I've updated the workflow list based on your instruction. Please review the changes above."
                     }]);
-                } else {
-                    setMessages(prev => [...prev, { 
-                        id: Date.now().toString(), 
-                        sender: 'ai', 
-                        text: "I couldn't process that instruction. Please try rephrasing or use the edit interface above."
-                    }]);
+            } else {
+                    throw new Error('Failed to update workflow list');
                 }
             } else {
                 // Future: Handle other conversational edits when in canvas mode
@@ -1046,8 +1000,15 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
 
     const handleDeleteWorkflow = async (workflowId: number) => {
         await fetch(`/api/workflows/${workflowId}`, { method: 'DELETE' });
-        setWorkflows(prev => prev.filter(wf => wf.id !== workflowId));
+        const remainingWorkflows = workflows.filter(wf => wf.id !== workflowId);
+        setWorkflows(remainingWorkflows);
         setActiveWorkflowIndex(0);
+        
+        // This is tricky - what conversation to load now?
+        // For now, let's just clear messages, but ideally we'd have a 'main' conversation context
+        const newMessage: Message = {id: '1', sender: 'ai', text: 'Workflow deleted. Select another workflow or go to Capture tab.'};
+        setMessages([newMessage]);
+        await saveConversation([], 'idle', [], null, {});
     };
 
     // When workflowContext is loaded or changed, update the editable version
@@ -1094,13 +1055,13 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 await fetch(`/api/workflows/${conversationId}`, { method: 'DELETE' });
                 
                 // Create a new initial conversation entry
-                await saveConversation(initialMessages, 'idle', [], emptyContext);
+                await saveConversation(initialMessages, 'idle', [], emptyContext, null);
 
             } catch {
             }
         } else {
             // If there was no conversationId, we might still need to ensure the initial state is saved
-            await saveConversation(initialMessages, 'idle', [], emptyContext);
+            await saveConversation(initialMessages, 'idle', [], emptyContext, null);
         }
         
         // This resets the conversationId to null after deletion and before a new one is created
@@ -1201,8 +1162,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
 
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = setTimeout(() => {
-            if (synthesisStep !== 'idle' || messages.length > 1) {
-                saveConversation(messages, synthesisStep, identifiedWorkflowNames, workflowContext);
+            if (synthesisStep !== 'idle' || messages.length > 1 || Object.keys(workflowBoundaries).length > 0) {
+                saveConversation(messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries);
             }
         }, 1000); // 1-second debounce
 
@@ -1211,7 +1172,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 clearTimeout(saveTimeoutRef.current);
             }
         };
-    }, [messages, synthesisStep, identifiedWorkflowNames, workflowContext, saveConversation, isConversationLoaded]);
+    }, [messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries, saveConversation, isConversationLoaded]);
 
     if (view === 'initial' || view === 'chat_fullscreen') {
         const isChatMode = view === 'chat_fullscreen';
@@ -1250,7 +1211,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                         >
                                             <RotateCcw className="h-4 w-4" />
                                             Reset
-                                        </Button>
+                            </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>
                                         <p>Start over with a fresh conversation</p>
@@ -1302,7 +1263,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                     )}
                                     {message.id === 'workflow-list' && identifiedWorkflowNames.length > 0 && (
                                         <EditableWorkflowList
-                                            key={identifiedWorkflowNames.join('-')}
                                             workflows={identifiedWorkflowNames}
                                             onWorkflowsChange={setIdentifiedWorkflowNames}
                                             onApprove={() => processAllWorkflows(identifiedWorkflowNames)}
@@ -1356,7 +1316,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                 <div className="p-4 rounded-lg max-w-[80%] bg-background border shadow-sm">
                                     <p className="text-sm mb-4">Here are the workflows I identified:</p>
                                     <EditableWorkflowList
-                                        key={identifiedWorkflowNames.join('-')}
                                         workflows={identifiedWorkflowNames}
                                         onWorkflowsChange={setIdentifiedWorkflowNames}
                                         onApprove={() => processAllWorkflows(identifiedWorkflowNames)}
@@ -1367,10 +1326,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                         )}
                         
                         {/* Show workflow boundaries when they need approval */}
-                        {(() => {
-                            console.log('Render check - synthesisStep:', synthesisStep, 'workflowBoundaries keys:', Object.keys(workflowBoundaries), 'length:', Object.keys(workflowBoundaries).length);
-                            return null;
-                        })()}
                         {synthesisStep === 'boundaries_editing' && Object.keys(workflowBoundaries).length > 0 && (
                             <div className="flex items-start gap-3">
                                 <div className="p-4 rounded-lg max-w-[80%] bg-background border shadow-sm">
@@ -1461,7 +1416,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>
-                    </div>
+                </div>
                 </div>
                 <div className="flex-grow p-4 space-y-2 overflow-y-auto" ref={sidebarChatRef}>
                     {Array.isArray(messages) && messages.map((message) => (
@@ -1559,24 +1514,24 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                     </h3>
                                     {!collapsedSections.inputs && (
                                         <>
-                                            <ul className="list-disc list-outside pl-5">
-                                                {(activeContent.inputs || []).map((item, index) => {
-                                                    const fieldKey = `${activeWorkflowIndex}-inputs`;
-                                                    const itemRef = itemRefs[fieldKey]?.[index];
-                                                    return (
-                                                        <li key={index}>
-                                                            <EditableListItem 
-                                                                item={item} 
-                                                                itemRef={itemRef}
-                                                                onChange={(v) => handleListChange('inputs', index, v)} 
-                                                                onRemove={() => handleRemoveItem('inputs', index)}
-                                                                onEnter={() => handleAddItem('inputs', index)}
-                                                                onBackspaceEmpty={() => handleRemoveItem('inputs', index)}
-                                                            />
-                                                        </li>
-                                                    )
-                                                })}
-                                            </ul>
+                                    <ul className="list-disc list-outside pl-5">
+                                        {(activeContent.inputs || []).map((item, index) => {
+                                            const fieldKey = `${activeWorkflowIndex}-inputs`;
+                                            const itemRef = itemRefs[fieldKey]?.[index];
+                                            return (
+                                                <li key={index}>
+                                                    <EditableListItem 
+                                                        item={item} 
+                                                        itemRef={itemRef}
+                                                        onChange={(v) => handleListChange('inputs', index, v)} 
+                                                        onRemove={() => handleRemoveItem('inputs', index)}
+                                                        onEnter={() => handleAddItem('inputs', index)}
+                                                        onBackspaceEmpty={() => handleRemoveItem('inputs', index)}
+                                                    />
+                                                </li>
+                                            )
+                                        })}
+                                    </ul>
                                             <Button variant="ghost" size="sm" onClick={() => handleAddItem('inputs', (activeContent.inputs || []).length - 1)} className="text-muted-foreground -ml-2"><PlusCircle className="h-4 w-4 mr-2" />Add Input</Button>
                                         </>
                                     )}
@@ -1588,24 +1543,24 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                     </h3>
                                     {!collapsedSections.outputs && (
                                         <>
-                                            <ul className="list-disc list-outside pl-5">
-                                                {(activeContent.outputs || []).map((item, index) => {
-                                                    const fieldKey = `${activeWorkflowIndex}-outputs`;
-                                                    const itemRef = itemRefs[fieldKey]?.[index];
-                                                    return (
-                                                        <li key={index}>
-                                                            <EditableListItem 
-                                                                item={item} 
-                                                                itemRef={itemRef}
-                                                                onChange={(v) => handleListChange('outputs', index, v)} 
-                                                                onRemove={() => handleRemoveItem('outputs', index)}
-                                                                onEnter={() => handleAddItem('outputs', index)}
-                                                                onBackspaceEmpty={() => handleRemoveItem('outputs', index)}
-                                                            />
-                                                        </li>
-                                                    )
-                                                })}
-                                            </ul>
+                                    <ul className="list-disc list-outside pl-5">
+                                        {(activeContent.outputs || []).map((item, index) => {
+                                            const fieldKey = `${activeWorkflowIndex}-outputs`;
+                                            const itemRef = itemRefs[fieldKey]?.[index];
+                                            return (
+                                                <li key={index}>
+                                                    <EditableListItem 
+                                                        item={item} 
+                                                        itemRef={itemRef}
+                                                        onChange={(v) => handleListChange('outputs', index, v)} 
+                                                        onRemove={() => handleRemoveItem('outputs', index)}
+                                                        onEnter={() => handleAddItem('outputs', index)}
+                                                        onBackspaceEmpty={() => handleRemoveItem('outputs', index)}
+                                                    />
+                                                </li>
+                                            )
+                                        })}
+                                    </ul>
                                             <Button variant="ghost" size="sm" onClick={() => handleAddItem('outputs', (activeContent.outputs || []).length - 1)} className="text-muted-foreground -ml-2"><PlusCircle className="h-4 w-4 mr-2" />Add Output</Button>
                                         </>
                                     )}
@@ -1617,24 +1572,24 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                     </h3>
                                     {!collapsedSections.steps && (
                                         <>
-                                            <ol className="list-decimal list-outside pl-5">
-                                                {(activeContent.steps || []).map((item, index) => {
-                                                    const fieldKey = `${activeWorkflowIndex}-steps`;
-                                                    const itemRef = itemRefs[fieldKey]?.[index];
-                                                    return (
-                                                        <li key={index}>
-                                                            <EditableListItem 
-                                                                item={item} 
-                                                                itemRef={itemRef}
-                                                                onChange={(v) => handleListChange('steps', index, v)} 
-                                                                onRemove={() => handleRemoveItem('steps', index)}
-                                                                onEnter={() => handleAddItem('steps', index)}
-                                                                onBackspaceEmpty={() => handleRemoveItem('steps', index)}
-                                                            />
-                                                        </li>
-                                                    )
-                                                })}
-                                            </ol>
+                                    <ol className="list-decimal list-outside pl-5">
+                                        {(activeContent.steps || []).map((item, index) => {
+                                            const fieldKey = `${activeWorkflowIndex}-steps`;
+                                            const itemRef = itemRefs[fieldKey]?.[index];
+                                            return (
+                                                <li key={index}>
+                                                    <EditableListItem 
+                                                        item={item} 
+                                                        itemRef={itemRef}
+                                                        onChange={(v) => handleListChange('steps', index, v)} 
+                                                        onRemove={() => handleRemoveItem('steps', index)}
+                                                        onEnter={() => handleAddItem('steps', index)}
+                                                        onBackspaceEmpty={() => handleRemoveItem('steps', index)}
+                                                    />
+                                                </li>
+                                            )
+                                        })}
+                                    </ol>
                                             <Button variant="ghost" size="sm" onClick={() => handleAddItem('steps', (activeContent.steps || []).length - 1)} className="text-muted-foreground -ml-2"><PlusCircle className="h-4 w-4 mr-2" />Add Step</Button>
                                         </>
                                     )}
@@ -1646,30 +1601,30 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                     </h3>
                                     {!collapsedSections.businessLogic && (
                                         <>
-                                            <ul className="list-disc list-outside pl-5">
-                                                {(activeContent.businessLogic || []).map((item, index) => {
-                                                    const fieldKey = `${activeWorkflowIndex}-businessLogic`;
-                                                    const itemRef = itemRefs[fieldKey]?.[index];
-                                                    return (
-                                                        <li key={index}>
-                                                            <EditableListItem 
-                                                                item={item} 
-                                                                itemRef={itemRef}
-                                                                onChange={(v) => handleListChange('businessLogic', index, v)} 
-                                                                onRemove={() => handleRemoveItem('businessLogic', index)}
-                                                                onEnter={() => handleAddItem('businessLogic', index)}
-                                                                onBackspaceEmpty={() => handleRemoveItem('businessLogic', index)}
-                                                            />
-                                                        </li>
-                                                    )
-                                                })}
-                                            </ul>
+                                    <ul className="list-disc list-outside pl-5">
+                                        {(activeContent.businessLogic || []).map((item, index) => {
+                                            const fieldKey = `${activeWorkflowIndex}-businessLogic`;
+                                            const itemRef = itemRefs[fieldKey]?.[index];
+                                            return (
+                                                <li key={index}>
+                                                    <EditableListItem 
+                                                        item={item} 
+                                                        itemRef={itemRef}
+                                                        onChange={(v) => handleListChange('businessLogic', index, v)} 
+                                                        onRemove={() => handleRemoveItem('businessLogic', index)}
+                                                        onEnter={() => handleAddItem('businessLogic', index)}
+                                                        onBackspaceEmpty={() => handleRemoveItem('businessLogic', index)}
+                                                    />
+                                                </li>
+                                            )
+                                        })}
+                                    </ul>
                                             <Button variant="ghost" size="sm" onClick={() => handleAddItem('businessLogic', (activeContent.businessLogic || []).length - 1)} className="text-muted-foreground -ml-2"><PlusCircle className="h-4 w-4 mr-2" />Add Item</Button>
                                         </>
                                     )}
                                 </div>
                             </div>
-                       </div>
+                        </div>
                     )}
                 </Tabs>
             </main>
