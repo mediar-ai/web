@@ -53,6 +53,14 @@ type CanvasContent = {
     chat_history: Message[];
 }
 
+type SynthesizedWorkflow = {
+    name: string;
+    inputs: string[];
+    outputs: string[];
+    steps: string[];
+    businessLogic: string[];
+}
+
 type WorkflowStepAnalysis = {
     id: string; 
     workflow: string;
@@ -837,8 +845,9 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             const result = await response.json();
                 const synthesizedWorkflows = result.workflows || [];
                 
+                await saveSynthesizedWorkflows(synthesizedWorkflows);
+
                 // Final state update
-                setWorkflows(synthesizedWorkflows);
                 setView('canvas');
                 setSynthesisStep('done');
                 const synthesizedMessage: Message = {id: Date.now().toString(), sender: 'ai', text: "Workflows have been synthesized. You can now view and refine them in the Canvas tab."};
@@ -853,6 +862,36 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             const errorMessage: Message = { id: errorId, sender: 'ai', text: "Sorry, I encountered an error during synthesis. Please try again." };
             setMessages(prev => [...prev.slice(0, -1), errorMessage]);
             await saveSynthesisSession(messages, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries);
+        }
+    };
+
+    const saveSynthesizedWorkflows = async (synthesizedWorkflows: SynthesizedWorkflow[]) => {
+        if (!userId) return;
+    
+        try {
+            for (const workflow of synthesizedWorkflows) {
+                const payload = {
+                    user_id: userId,
+                    title: workflow.name,
+                    inputs: workflow.inputs,
+                    outputs: workflow.outputs,
+                    steps: workflow.steps,
+                    business_logic: workflow.businessLogic,
+                    chat_history: [{id: '1', sender: 'ai', text: 'Workflow synthesized.'}],
+                    synthesis_session_id: synthesisSessionId,
+                };
+    
+                await fetch('/api/workflows', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }
+            // After saving, refresh the workflows from the database
+            await fetchWorkflows();
+        } catch (error) {
+            console.error("Error saving synthesized workflows:", error);
+            // Optionally, show an error message to the user
         }
     };
 
