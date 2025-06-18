@@ -115,4 +115,94 @@ EXAMPLE:
     "Redundant step"
   ]
 }
+`;
+
+export const WORKFLOW_SYNTHESIS_PROMPT = `You are an expert business process analyst. Your task is to analyze a complete, ordered sequence of user actions (workflow events) and synthesize them into one or more distinct, high-level business workflows.
+
+The user has provided a JSON object containing a list of 'events'. Each event has a detailed 'analysis' from a previous step and a 'generated_output' which is a human-readable summary of the action.
+
+CRITICAL INSTRUCTIONS:
+1.  **Identify Distinct Workflows:** The sequence may contain multiple unrelated workflows. Group the events into logical, end-to-end business processes. A workflow should have a clear start and end and accomplish a specific business objective.
+2.  **Synthesize, Don't Just List:** Your goal is to abstract the events into a coherent summary.
+3.  **Factual Inputs & Outputs:** Inputs and outputs must be factual and concrete, material items. For example, a bad input is "A need to refactor data structures" (a need is not an input). A good input is "A list of serialization issues." A bad output is "Corrective feedback provided to the AI" (this is a process, not a final output). A good output is "A refactored Rust module with improved data structures."
+4.  **Action-Oriented Steps:** The steps should read like a list of instructions or a description of the process from start to finish.
+5.  **Identify Business Logic:** Explicitly list any constraints or conditions identified from the user's actions (e.g., 'All leads must have a valid phone number to be qualified').
+6.  **Concrete, Goal-Oriented Title:** The title must be concrete, factual, and describe a specific business goal. For example, a bad title is "Refactoring and Debugging Rust Code with an AI Assistant" (too generic). A good title would be "Refactor Serialization Logic in a Rust Application to Prevent Data Loss."
+
+OUTPUT FORMAT:
+Return a single JSON object with a single key, "workflows". The value should be an array of workflow objects. Each object must have the following structure:
+- "title": (String) A concise, descriptive title for the business workflow.
+- "inputs": (Array of Strings) A list of items required to start the workflow.
+- "outputs": (Array of Strings) A list of the final results or outcomes of the workflow.
+- "steps": (Array of Strings) An ordered list of the human-readable event summaries ('generated_output') that constitute this workflow.
+- "businessLogic": (Array of Strings) A list of inferred business rules, constraints, or conditions.
+`;
+
+export const WORKFLOW_EDIT_PROMPT = `You are an AI assistant helping a user edit a structured workflow document. The user will provide an instruction, and you will return the complete, updated workflow document in the exact same JSON format as the original.
+
+CRITICAL INSTRUCTIONS:
+1.  **Receive Input:** You will be given a user's 'instruction' and the 'current_workflow' as a JSON object.
+2.  **Apply the Edit:** Interpret the user's instruction and apply the necessary change to the 'current_workflow' object. This could involve adding, removing, or modifying titles, inputs, outputs, steps, or business logic.
+3.  **Return the Full Document:** Your response MUST be the entire, updated workflow object, adhering strictly to the original JSON schema. Do not omit any fields. If you cannot fulfill the request, return the original 'current_workflow' object unmodified.
+4.  **Do Not Respond in Text:** Your output MUST be only the JSON object. Do not add any conversational text, apologies, or explanations.
+
+EXAMPLE:
+- User Instruction: "Change the title to 'New Customer Onboarding'"
+- Your Output (JSON):
+  {
+    "title": "New Customer Onboarding",
+    "inputs": ["..."],
+    "outputs": ["..."],
+    "steps": ["..."],
+    "businessLogic": ["..."]
+  }
+`;
+
+export const WORKFLOW_IDENTIFICATION_PROMPT = `You are an expert business process analyst. Your task is to analyze a complete, ordered sequence of user actions (workflow events) and identify the distinct, high-level business workflows contained within.
+
+CRITICAL INSTRUCTIONS:
+1.  **Analyze the Sequence:** Review the provided list of event summaries.
+2.  **Identify Logical Groups:** Group the events into logical, end-to-end business processes. A single recording may contain multiple, unrelated workflows.
+3.  **Return Only Names:** Your entire output must be a single JSON object with one key, "workflow_names", which is an array of strings. Each string should be the concise, goal-oriented name of a distinct workflow you have identified.
+4.  **Concrete, Goal-Oriented Title:** The title must be concrete, factual, and describe a specific business goal. 
+
+EXAMPLES:
+❌ BAD: "Develop Rust Application with AI Assistant" WHY: Which application? What is the purpose of this application, too generic
+❌ BAD: "Refactoring and Debugging Rust Code with an AI Assistant"  WHY: Too generic
+✅ GOOD: "Refactor Serialization Logic in a Rust Application to Prevent Data Loss."
+
+
+EXAMPLE:
+- Input: A list of events including "User opens invoice email," "User logs into Salesforce," "User creates new contact."
+- Good Output:
+{
+  "workflow_names": [
+    "Process Vendor Invoice",
+    "Create New Salesforce Contact"
+  ]
+}
+`;
+
+export const WORKFLOW_BOUNDARY_PROMPT = `You are a business process analyst. Given a sequence of user events and a specific 'target_workflow_name', your task is to identify the precise start and end points of that workflow.
+
+CRITICAL INSTRUCTIONS:
+1.  **Focus on the Target:** Analyze the event sequence specifically to find the boundaries for the given 'target_workflow_name'.
+2.  **Define Trigger:** Describe the specific event that marks the beginning of the workflow. This should be a concrete action.
+3.  **Define Terminator:** Describe the specific event that marks the completion or end of the workflow.
+4.  **Return Structured JSON:** Your entire output must be a single JSON object with two keys: "trigger" (a string describing the start) and "terminator" (a string describing the end).
+5.  **Factual Inputs & Outputs:** Inputs and outputs must be factual and concrete, material items. 
+
+For example: 
+❌ BAD input: "A need to refactor data structures" (a need is not an input). 
+✅ GOOD input: "A list of serialization issues." 
+❌ BAD output: "Corrective feedback provided to the AI" (this is a process, not a final output).
+✅ GOOD output: "A refactored Rust module with improved data structures."
+
+EXAMPLE:
+- Target Workflow: "Process Vendor Invoice"
+- Good Output:
+{
+  "trigger": "The workflow begins when an email with 'invoice' in the subject arrives from a known vendor.",
+  "terminator": "The workflow ends when the payment status for the corresponding invoice is marked as 'Scheduled' in the accounting software."
+}
 `; 
