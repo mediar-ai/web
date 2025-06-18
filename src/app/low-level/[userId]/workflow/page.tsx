@@ -818,6 +818,11 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             }
             
             const boundaries = await boundariesResponse.json();
+            
+            // Debug: Log the boundaries to understand the structure
+            console.log('Received boundaries:', boundaries);
+            console.log('Boundaries keys:', Object.keys(boundaries));
+            console.log('Boundaries length:', Object.keys(boundaries).length);
 
             // Set boundaries in state and show boundary editing step
             setWorkflowBoundaries(boundaries);
@@ -1362,6 +1367,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                         )}
                         
                         {/* Show workflow boundaries when they need approval */}
+                        {(() => {
+                            console.log('Render check - synthesisStep:', synthesisStep, 'workflowBoundaries keys:', Object.keys(workflowBoundaries), 'length:', Object.keys(workflowBoundaries).length);
+                            return null;
+                        })()}
                         {synthesisStep === 'boundaries_editing' && Object.keys(workflowBoundaries).length > 0 && (
                             <div className="flex items-start gap-3">
                                 <div className="p-4 rounded-lg max-w-[80%] bg-background border shadow-sm">
