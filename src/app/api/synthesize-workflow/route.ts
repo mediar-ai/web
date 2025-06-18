@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Schema, SchemaType } from '@google/generative-ai';
 import { WORKFLOW_SYNTHESIS_PROMPT } from '@/lib/prompts';
 
+interface WorkflowSynthesisInput {
+  name: string;
+  trigger?: string;
+  terminator?: string;
+  events: unknown[]; // Events can have varying structures
+}
+
+interface WorkflowContext {
+  // Single workflow (legacy)
+  workflow_name?: string;
+  trigger?: string;
+  terminator?: string;
+  events?: unknown[];
+  
+  // Multiple workflows
+  workflows?: WorkflowSynthesisInput[];
+}
+
 const getGenAI = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -40,10 +58,21 @@ const synthesisSchema: Schema = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { model: modelName, context } = await req.json();
+    const { model: modelName, context }: { model: string; context: WorkflowContext } = await req.json();
 
-    if (!modelName || !context || !context.events) {
-      return NextResponse.json({ error: 'Missing required parameters: model and context with events' }, { status: 400 });
+    if (!modelName || !context) {
+      return NextResponse.json({ error: 'Missing required parameters: model and context' }, { status: 400 });
+    }
+
+    // Handle both single workflow (legacy) and multiple workflows
+    const isMultipleWorkflows = context.workflows && Array.isArray(context.workflows);
+    
+    if (!isMultipleWorkflows && (!context.events || !context.workflow_name)) {
+      return NextResponse.json({ error: 'Missing required parameters for single workflow: events and workflow_name' }, { status: 400 });
+    }
+
+    if (isMultipleWorkflows && (!context.workflows || !context.workflows.length)) {
+      return NextResponse.json({ error: 'No workflows provided for synthesis' }, { status: 400 });
     }
 
     const genAI = getGenAI();
@@ -56,15 +85,39 @@ export async function POST(req: NextRequest) {
       safetySettings,
     });
     
-    const result = await model.generateContent({
-      contents: [{ 
-        role: "user", 
-        parts: [
-          { text: WORKFLOW_SYNTHESIS_PROMPT }, 
-          { text: `\n\nWORKFLOW NAME: ${context.workflow_name || 'Unnamed Workflow'}\nTRIGGER: ${context.trigger || 'Not specified'}\nTERMINATOR: ${context.terminator || 'Not specified'}\n\nEVENTS CONTEXT:\n${JSON.stringify(context.events, null, 2)}` }
-        ] 
-      }],
-    });
+    let prompt: string;
+    
+    if (isMultipleWorkflows && context.workflows) {
+      // Multiple workflows synthesis
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const workflowDetails = context.workflows!.map((workflow: WorkflowSynthesisInput) => {
+        return `WORKFLOW: ${workflow.name}
+TRIGGER: ${workflow.trigger || 'Not specified'}
+TERMINATOR: ${workflow.terminator || 'Not specified'}
+EVENTS: ${JSON.stringify(workflow.events, null, 2)}`;
+      }).join('\n\n---\n\n');
+      
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const workflowNames = context.workflows!.map((w: WorkflowSynthesisInput) => w.name).join(', ');
+      
+      prompt = `${WORKFLOW_SYNTHESIS_PROMPT}
+
+IMPORTANT: You must synthesize workflows for EXACTLY these workflow names (do not change or create new names): ${workflowNames}
+
+${workflowDetails}`;
+    } else {
+      // Single workflow synthesis (legacy support)
+      prompt = `${WORKFLOW_SYNTHESIS_PROMPT}
+
+IMPORTANT: You must synthesize a workflow with EXACTLY this name (do not change it): ${context.workflow_name}
+
+WORKFLOW: ${context.workflow_name}
+TRIGGER: ${context.trigger || 'Not specified'}
+TERMINATOR: ${context.terminator || 'Not specified'}
+EVENTS: ${JSON.stringify(context.events, null, 2)}`;
+    }
+    
+    const result = await model.generateContent(prompt);
 
     const response = result.response;
     if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {

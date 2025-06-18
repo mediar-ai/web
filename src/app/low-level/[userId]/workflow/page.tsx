@@ -807,8 +807,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             
             const boundaries = await boundariesResponse.json();
 
-            // Process each workflow: synthesize using correct event filtering
-            const workflowResults = [];
+            // Prepare all workflows for batch synthesis
+            const workflowsForSynthesis = [];
             
             for (const userWorkflowName of approvedWorkflows) {
                 if (!userWorkflowName.trim()) continue;
@@ -831,24 +831,32 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                     continue;
                 }
                 
-                // Synthesize the workflow using the user-approved name but filtered events
+                // Add to batch synthesis
+                workflowsForSynthesis.push({
+                    name: userWorkflowName, // Use user-approved name
+                    trigger: boundaries[userWorkflowName]?.trigger || boundaries.trigger,
+                    terminator: boundaries[userWorkflowName]?.terminator || boundaries.terminator,
+                    events: relevantEvents
+                });
+            }
+            
+            // Synthesize all workflows in a single API call
+            let workflowResults = [];
+            if (workflowsForSynthesis.length > 0) {
                 const synthesisResponse = await fetch('/api/synthesize-workflow', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         model: selectedModel,
                         context: { 
-                            events: relevantEvents,
-                            workflow_name: userWorkflowName, // Use user-approved name
-                            trigger: boundaries[userWorkflowName]?.trigger || boundaries.trigger,
-                            terminator: boundaries[userWorkflowName]?.terminator || boundaries.terminator
+                            workflows: workflowsForSynthesis
                         }
                     }),
                 });
                 
                 if (synthesisResponse.ok) {
                     const result = await synthesisResponse.json();
-                    workflowResults.push(...(result.workflows || []));
+                    workflowResults = result.workflows || [];
                 }
             }
             

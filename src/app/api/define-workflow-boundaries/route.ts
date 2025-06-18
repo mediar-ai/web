@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Schema, SchemaType } from '@google/generative-ai';
 import { WORKFLOW_BOUNDARY_PROMPT } from '@/lib/prompts';
 
+// Removed unused interface - boundaries are handled as Record<string, {trigger: string, terminator: string}>
+
 const getGenAI = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -14,14 +16,35 @@ const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThresho
     // ... (safety settings are standard) ...
 ];
 
-// Define a flexible schema for boundary responses
+// Define a proper schema with array structure instead of dynamic keys
 const boundarySchema: Schema = {
     type: SchemaType.OBJECT,
     description: "Boundaries for multiple workflows",
     properties: {
-        // We'll let the AI dynamically create workflow name keys
-        // The schema will be validated at runtime
-    }
+        workflows: {
+            type: SchemaType.ARRAY,
+            description: "Array of workflow boundary definitions",
+            items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    workflow_name: {
+                        type: SchemaType.STRING,
+                        description: "The name of the workflow"
+                    },
+                    trigger: {
+                        type: SchemaType.STRING,
+                        description: "The trigger condition that starts this workflow"
+                    },
+                    terminator: {
+                        type: SchemaType.STRING,
+                        description: "The condition that ends this workflow"
+                    }
+                },
+                required: ["workflow_name", "trigger", "terminator"]
+            }
+        }
+    },
+    required: ["workflows"]
 };
 
 export async function POST(req: NextRequest) {
@@ -52,15 +75,35 @@ export async function POST(req: NextRequest) {
     const workflowList = workflowNames.map((name: string) => `- "${name}"`).join('\n');
     const mappingInfo = context.workflow_mapping ? `\n\nWorkflow Name Mapping (Original AI → User Approved):\n${JSON.stringify(context.workflow_mapping, null, 2)}` : '';
     
-    const prompt = `${WORKFLOW_BOUNDARY_PROMPT}\n\nWorkflows to Define Boundaries For:\n${workflowList}${mappingInfo}\n\nEvents Context:\n${JSON.stringify(context.events, null, 2)}`;
+    const prompt = `${WORKFLOW_BOUNDARY_PROMPT}
+
+IMPORTANT: You must define boundaries for EXACTLY these workflow names (do not change or create new names):
+${workflowList}${mappingInfo}
+
+Events Context:
+${JSON.stringify(context.events, null, 2)}`;
 
     const result = await model.generateContent(prompt);
 
     const response = result.response;
     if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        const boundaries = JSON.parse(response.candidates[0].content.parts[0].text);
+        const rawResponse = JSON.parse(response.candidates[0].content.parts[0].text);
         
-        // Return the boundaries directly  
+        // Convert array format to object format expected by the frontend
+        const boundaries: Record<string, {trigger: string, terminator: string}> = {};
+        
+        if (rawResponse.workflows && Array.isArray(rawResponse.workflows)) {
+            rawResponse.workflows.forEach((workflow: {workflow_name?: string, trigger?: string, terminator?: string}) => {
+                if (workflow.workflow_name && workflow.trigger && workflow.terminator) {
+                    boundaries[workflow.workflow_name] = {
+                        trigger: workflow.trigger,
+                        terminator: workflow.terminator
+                    };
+                }
+            });
+        }
+        
+        // Return the boundaries in the expected object format
         return NextResponse.json(boundaries);
     }
     
