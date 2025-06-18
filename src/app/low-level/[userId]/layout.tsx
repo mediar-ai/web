@@ -138,6 +138,7 @@ const UserLayoutContent = ({
               <TabsTrigger value="ui-trees">UI Trees</TabsTrigger>
               <TabsTrigger value="1st-llm-iteration">1st LLM Iteration</TabsTrigger>
               <TabsTrigger value="labeling">Labeling</TabsTrigger>
+              <TabsTrigger value="workflow">Workflow</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
