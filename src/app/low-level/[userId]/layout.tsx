@@ -80,7 +80,7 @@ const UserLayoutContent = ({
       <div className="sticky top-0 z-10 bg-background container mx-auto gap-2 py-5 border-b">
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center">
                 <Button variant="ghost" size="icon" onClick={() => router.push('/admin')}>
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
