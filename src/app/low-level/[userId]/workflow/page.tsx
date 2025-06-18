@@ -457,7 +457,14 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                     }
                 }
             } else {
-                console.error("Failed to save synthesis session:", response.status, await response.text());
+                const errorText = await response.text();
+                if (response.status === 404 && synthesisSessionId) {
+                    // Session was deleted, clear the ID so next save will create a new one
+                    console.log(`Synthesis session ${synthesisSessionId} was deleted, creating new session on next save`);
+                    setSynthesisSessionId(null);
+                } else {
+                    console.error("Failed to save synthesis session:", response.status, errorText);
+                }
             }
         } catch (error) {
             console.error("Error saving synthesis session:", error);

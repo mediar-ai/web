@@ -32,7 +32,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ sess
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return NextResponse.json({ 
+          error: 'Synthesis session not found', 
+          message: `Session ${sessionId} has been deleted or does not exist` 
+        }, { status: 404 });
+      }
+      throw error;
+    }
 
     return NextResponse.json({ success: true, data });
 
