@@ -1290,7 +1290,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                 }`}>
                                     <p className="text-sm whitespace-pre-wrap">{message.text}</p>
                                     {message.id === 'init' && (
-                                        <Button onClick={startWorkflowIdentification} disabled={isLoading || isAiThinking || combinedEvents.length === 0 || isFetchingEvents}>
+                                        <Button onClick={startWorkflowIdentification} disabled={isLoading || isAiThinking || combinedEvents.length === 0 || isFetchingEvents} className="mt-4">
                                             {(isLoading || isAiThinking || isFetchingEvents) && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
                                             { isFetchingEvents ? "Loading Events..." : (isAnalyzingEvents ? "Analyzing..." : "Analyze Events") }
                                         </Button>
