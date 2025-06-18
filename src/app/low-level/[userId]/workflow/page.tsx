@@ -110,6 +110,18 @@ type WorkflowDataObject = {
     }
 }
 
+type SynthesisSession = {
+    id: number;
+    user_id: string;
+    session_state: {
+        messages: Message[];
+        synthesis_step: SynthesisStep;
+        identified_workflow_names: string[];
+        workflow_context: WorkflowContext;
+        workflow_boundaries?: WorkflowBoundaries;
+    }
+}
+
 const EditableListItem = ({ item, onChange, onRemove, onEnter, onBackspaceEmpty, itemRef }: { 
     item: string, 
     onChange: (value: string) => void, 
@@ -352,7 +364,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         steps: true,
         businessLogic: true,
     });
-    const [conversationId, setConversationId] = useState<string | null>(null);
+    const [synthesisSessionId, setSynthesisSessionId] = useState<string | null>(null);
     const [workflowContext, setWorkflowContext] = useState<WorkflowContext>({
         user_job_role: '',
         project_name: '',
@@ -398,7 +410,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         return () => clearTimeout(timeoutId);
     }, [messages, scrollToBottom]);
 
-    const saveConversation = useCallback(async (
+    const saveSynthesisSession = useCallback(async (
         messagesToSave: Message[], 
         step: SynthesisStep, 
         workflowNames: string[], 
@@ -407,7 +419,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     ) => {
         if (!userId) return;
 
-        const conversationData = {
+        const sessionState = {
             messages: messagesToSave,
             synthesis_step: step,
             identified_workflow_names: workflowNames,
@@ -415,34 +427,12 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             workflow_boundaries: boundaries,
         };
 
-        const method = conversationId ? 'PUT' : 'POST';
-        const url = conversationId ? `/api/workflows/${conversationId}` : '/api/workflows';
+        const method = synthesisSessionId ? 'PUT' : 'POST';
+        const url = synthesisSessionId ? `/api/synthesis-sessions/${synthesisSessionId}` : '/api/synthesis-sessions';
         
-        let body;
-        if (method === 'PUT') {
-            body = JSON.stringify({
-                title: '__CONVERSATION__',
-                chat_history: conversationData,
-                // Ensure all fields expected by the PUT endpoint are present
-                inputs: [],
-                outputs: [],
-                steps: [],
-                business_logic: []
-            });
-        } else { // POST
-            body = JSON.stringify({
-                userId: userId,
-                workflows: [{ // The API expects an array of workflows
-                    title: '__CONVERSATION__',
-                    chat_history: conversationData,
-                    // Add other fields with default empty values to match DB schema
-                    inputs: [],
-                    outputs: [],
-                    steps: [],
-                    business_logic: []
-                }]
-            });
-        }
+        const body = synthesisSessionId 
+            ? JSON.stringify({ session_state: sessionState })
+            : JSON.stringify({ userId: userId, session_state: sessionState });
 
         try {
             const response = await fetch(url, {
@@ -453,55 +443,52 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
 
             if (response.ok) {
                 const result = await response.json();
-                if (!conversationId) {
-                    // When creating, the response contains the new record in a 'data' array
-                    if (result.data && result.data.length > 0) {
-                        setConversationId(result.data[0].id);
+                if (!synthesisSessionId) {
+                    if (result.data) {
+                        setSynthesisSessionId(result.data.id);
                     }
                 }
             } else {
-                console.error("Failed to save conversation:", response.status, await response.text());
+                console.error("Failed to save synthesis session:", response.status, await response.text());
             }
         } catch (error) {
-            console.error("Error saving conversation:", error);
+            console.error("Error saving synthesis session:", error);
         }
-    }, [userId, conversationId]);
+    }, [userId, synthesisSessionId]);
 
-    const loadSavedConversation = useCallback(async () => {
+    const loadSynthesisSession = useCallback(async () => {
         if (!userId) return;
         
         try {
-            const response = await fetch(`/api/workflows?userId=${userId}`);
+            const response = await fetch(`/api/synthesis-sessions?userId=${userId}`);
             if (response.ok) {
-                const workflowsResponse = await response.json();
-                if (workflowsResponse.data) {
-                    const conversationWorkflow = workflowsResponse.data.find((wf: WorkflowDataObject) => wf.title === '__CONVERSATION__');
-                    
-                    if (conversationWorkflow && conversationWorkflow.chat_history) {
-                        const chatHistory = conversationWorkflow.chat_history;
-                        
-                        const loadedMessages = Array.isArray(chatHistory.messages) ? chatHistory.messages : [];
-                        
-                        if (loadedMessages.length > 0) {
-                            setMessages(loadedMessages);
-                        }
-                        setSynthesisStep(chatHistory.synthesis_step || 'idle');
-                        setIdentifiedWorkflowNames(chatHistory.identified_workflow_names || []);
-                        setConversationId(conversationWorkflow.id);
+                const result = await response.json();
+                const session: SynthesisSession = result.data;
 
-                        if (chatHistory.workflow_context) {
-                            setWorkflowContext(chatHistory.workflow_context);
-                            setEditableContext(chatHistory.workflow_context);
-                        }
-                        
-                        if (chatHistory.workflow_boundaries) {
-                            setWorkflowBoundaries(chatHistory.workflow_boundaries);
-                        }
+                if (session && session.session_state) {
+                    const { session_state } = session;
+                    
+                    const loadedMessages = Array.isArray(session_state.messages) ? session_state.messages : [];
+                    
+                    if (loadedMessages.length > 0) {
+                        setMessages(loadedMessages);
+                    }
+                    setSynthesisStep(session_state.synthesis_step || 'idle');
+                    setIdentifiedWorkflowNames(session_state.identified_workflow_names || []);
+                    setSynthesisSessionId(session.id.toString());
+
+                    if (session_state.workflow_context) {
+                        setWorkflowContext(session_state.workflow_context);
+                        setEditableContext(session_state.workflow_context);
+                    }
+                    
+                    if (session_state.workflow_boundaries) {
+                        setWorkflowBoundaries(session_state.workflow_boundaries);
                     }
                 }
             }
         } catch (error) {
-            console.error("Error loading saved conversation:", error);
+            console.error("Error loading synthesis session:", error);
         } finally {
             setIsConversationLoaded(true);
         }
@@ -509,7 +496,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
 
     useEffect(() => {
         setUserId(userId);
-        loadSavedConversation();
+        loadSynthesisSession();
 
         const fetchEvents = async () => {
             setIsFetchingEvents(true);
@@ -616,7 +603,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         };
 
         fetchEvents();
-    }, [userId, setUserId, loadSavedConversation]);
+    }, [userId, setUserId, loadSynthesisSession]);
 
     useEffect(() => {
         // Create refs for all editable items
@@ -648,23 +635,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             const response = await fetch(`/api/workflows?userId=${userId}`);
             if (response.ok) {
                 const result = await response.json();
-                const conversation = result.data.find((d: WorkflowDataObject) => d.title === '__CONVERSATION__');
                 const regularWorkflows = result.data.filter((d: WorkflowDataObject) => d.title !== '__CONVERSATION__');
-                
                 setWorkflows(regularWorkflows);
-
-                if (conversation && conversation.chat_history) {
-                    setMessages(conversation.chat_history.messages || [{ id: '1', sender: 'ai', text: 'Welcome back!'}]);
-                    setSynthesisStep(conversation.chat_history.synthesis_step || 'idle');
-                    setIdentifiedWorkflowNames(conversation.chat_history.identified_workflow_names || []);
-                     if (conversation.chat_history.workflow_context) {
-                        setWorkflowContext(conversation.chat_history.workflow_context);
-                        setEditableContext(conversation.chat_history.workflow_context);
-                    }
-                    if (conversation.chat_history.workflow_boundaries) {
-                        setWorkflowBoundaries(conversation.chat_history.workflow_boundaries);
-                    }
-                }
             }
         } catch (error) {
             console.error("Failed to fetch workflows", error);
@@ -767,7 +739,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             setEditableContext(finalData.workflowContext || defaultContext);
             setSynthesisStep('identifying');
 
-            await saveConversation(
+            await saveSynthesisSession(
                 newMessages, 
                 'identifying',
                 finalData.workflowNames || [],
@@ -780,7 +752,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             const errorId = `error-${Date.now()}`;
             const errorMessage: Message = { id: errorId, sender: 'ai', text: "Sorry, I encountered an error. Please try again." };
             setMessages(prev => [...prev.slice(0, -1), errorMessage]);
-            await saveConversation(messages, 'idle', [], workflowContext, workflowBoundaries);
+            await saveSynthesisSession(messages, 'idle', [], workflowContext, workflowBoundaries);
         } finally {
             if (timerRef.current) {
                 clearInterval(timerRef.current);
@@ -795,7 +767,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         const thinkingId = `ai-thinking-${Date.now()}`;
         const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
         setMessages(updatedMessages);
-        await saveConversation(updatedMessages, 'defining_boundaries', approvedWorkflows, workflowContext, workflowBoundaries);
+        await saveSynthesisSession(updatedMessages, 'defining_boundaries', approvedWorkflows, workflowContext, workflowBoundaries);
 
         try {
             const response = await fetch('/api/define-workflow-boundaries', {
@@ -826,14 +798,14 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             };
             setMessages(prev => [...prev.slice(0, -1), boundariesMessage]);
             
-            await saveConversation(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, boundaries);
+            await saveSynthesisSession(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, boundaries);
 
         } catch (error) {
             console.error("Error defining workflow boundaries:", error);
             const errorId = `error-${Date.now()}`;
             const errorMessage: Message = { id: errorId, sender: 'ai', text: "Sorry, an error occurred while defining boundaries. Please try again." };
             setMessages(prev => [...prev.slice(0, -1), errorMessage]);
-            await saveConversation(messages.slice(0,-1), 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries);
+            await saveSynthesisSession(messages.slice(0,-1), 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries);
         }
     };
 
@@ -842,7 +814,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         const thinkingId = `ai-thinking-${Date.now()}`;
         const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
         setMessages(updatedMessages);
-        await saveConversation(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries);
+        await saveSynthesisSession(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries);
 
         try {
             const response = await fetch('/api/synthesize-workflow', {
@@ -870,7 +842,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 setView('canvas');
                 setSynthesisStep('done');
                 const synthesizedMessage: Message = {id: Date.now().toString(), sender: 'ai', text: "Workflows have been synthesized. You can now view and refine them in the Canvas tab."};
-                await saveConversation(updatedMessages.slice(0,-1).concat([synthesizedMessage]), 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries);
+                await saveSynthesisSession(updatedMessages.slice(0,-1).concat([synthesizedMessage]), 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries);
 
         } else {
                 throw new Error('Failed to synthesize workflows');
@@ -880,7 +852,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             const errorId = `error-${Date.now()}`;
             const errorMessage: Message = { id: errorId, sender: 'ai', text: "Sorry, I encountered an error during synthesis. Please try again." };
             setMessages(prev => [...prev.slice(0, -1), errorMessage]);
-            await saveConversation(messages, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries);
+            await saveSynthesisSession(messages, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries);
         }
     };
 
@@ -1008,7 +980,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         // For now, let's just clear messages, but ideally we'd have a 'main' conversation context
         const newMessage: Message = {id: '1', sender: 'ai', text: 'Workflow deleted. Select another workflow or go to Capture tab.'};
         setMessages([newMessage]);
-        await saveConversation([], 'idle', [], null, {});
+        await saveSynthesisSession([], 'idle', [], null, {});
     };
 
     // When workflowContext is loaded or changed, update the editable version
@@ -1049,23 +1021,23 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         setEditableContext(emptyContext);
         setWorkflowBoundaries({});
 
-        if (conversationId) {
+        if (synthesisSessionId) {
             try {
-                // Delete the main conversation entry
-                await fetch(`/api/workflows/${conversationId}`, { method: 'DELETE' });
+                // Delete the main synthesis session entry
+                await fetch(`/api/synthesis-sessions/${synthesisSessionId}`, { method: 'DELETE' });
                 
-                // Create a new initial conversation entry
-                await saveConversation(initialMessages, 'idle', [], emptyContext, null);
+                // Create a new initial synthesis session
+                await saveSynthesisSession(initialMessages, 'idle', [], emptyContext, null);
 
             } catch {
             }
         } else {
             // If there was no conversationId, we might still need to ensure the initial state is saved
-            await saveConversation(initialMessages, 'idle', [], emptyContext, null);
+            await saveSynthesisSession(initialMessages, 'idle', [], emptyContext, null);
         }
         
         // This resets the conversationId to null after deletion and before a new one is created
-        setConversationId(null);
+        setSynthesisSessionId(null);
         
         // Refetch workflows to clear out any old ones that were on the canvas
         const res = await fetch(`/api/workflows?userId=${userId}`);
@@ -1117,7 +1089,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             setWorkflowContext(emptyContext);
             setEditableContext(emptyContext);
             setWorkflowBoundaries({});
-            setConversationId(null);
+            setSynthesisSessionId(null);
             setView('initial');
             
         } catch (error) {
@@ -1140,7 +1112,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             setWorkflowContext(emptyContext);
             setEditableContext(emptyContext);
             setWorkflowBoundaries({});
-            setConversationId(null);
+            setSynthesisSessionId(null);
             setView('initial');
         } finally {
             setIsAiThinking(false);
@@ -1163,7 +1135,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = setTimeout(() => {
             if (synthesisStep !== 'idle' || messages.length > 1 || Object.keys(workflowBoundaries).length > 0) {
-                saveConversation(messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries);
+                saveSynthesisSession(messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries);
             }
         }, 1000); // 1-second debounce
 
@@ -1172,7 +1144,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 clearTimeout(saveTimeoutRef.current);
             }
         };
-    }, [messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries, saveConversation, isConversationLoaded]);
+    }, [messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries, saveSynthesisSession, isConversationLoaded]);
 
     if (view === 'initial' || view === 'chat_fullscreen') {
         const isChatMode = view === 'chat_fullscreen';
@@ -1231,15 +1203,15 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                 </AlertDialogTrigger>
                                 <AlertDialogContent>
                                     <AlertDialogHeader>
-                                        <AlertDialogTitle>Delete All Workflows</AlertDialogTitle>
+                                        <AlertDialogTitle>Delete All Workflows & Session</AlertDialogTitle>
                                         <AlertDialogDescription>
-                                            This will permanently delete ALL workflows for this user, including conversation data and generated workflows. This action cannot be undone.
+                                            This will permanently delete the current synthesis session and ALL associated workflows for this user. This action cannot be undone.
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                                         <AlertDialogAction onClick={deleteAllWorkflows}>
-                                            Delete All Workflows
+                                            Delete All Workflows & Session
                                         </AlertDialogAction>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>
@@ -1403,15 +1375,15 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
-                                    <AlertDialogTitle>Delete All Workflows</AlertDialogTitle>
+                                    <AlertDialogTitle>Delete All Workflows & Session</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                        This will permanently delete ALL workflows for this user, including conversation data and generated workflows. This action cannot be undone.
+                                        This will permanently delete the current synthesis session and ALL associated workflows for this user. This action cannot be undone.
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                                     <AlertDialogAction onClick={deleteAllWorkflows}>
-                                        Delete All Workflows
+                                        Delete All Workflows & Session
                                     </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
