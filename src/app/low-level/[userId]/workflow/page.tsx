@@ -146,11 +146,9 @@ export default function WorkflowPage() {
                 <div className="flex-grow p-4 space-y-4 overflow-y-auto">
                     {messages.map((message) => (
                         <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
-                             {message.sender === 'ai' && <Avatar className="h-8 w-8"><AvatarFallback>AI</AvatarFallback></Avatar>}
                             <div className={`p-3 rounded-lg max-w-[80%] ${message.sender === 'ai' ? 'bg-background border' : 'bg-primary text-primary-foreground'}`}>
                                 <p className="text-sm">{message.text}</p>
                             </div>
-                             {message.sender === 'user' && <Avatar className="h-8 w-8"><AvatarFallback>You</AvatarFallback></Avatar>}
                         </div>
                     ))}
                 </div>
