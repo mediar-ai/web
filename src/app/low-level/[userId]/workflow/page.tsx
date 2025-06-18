@@ -118,6 +118,16 @@ type WorkflowDataObject = {
     }
 }
 
+type DatabaseWorkflow = {
+    id: number;
+    title: string | null;
+    inputs: string[];
+    outputs: string[];
+    steps: string[];
+    business_logic: string[];
+    chat_history: Message[];
+}
+
 type SynthesisSession = {
     id: number;
     user_id: string;
@@ -650,7 +660,12 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             const response = await fetch(`/api/workflows?userId=${userId}`);
             if (response.ok) {
                 const result = await response.json();
-                const regularWorkflows = result.data.filter((d: WorkflowDataObject) => d.title !== '__CONVERSATION__');
+                const regularWorkflows = result.data
+                    .filter((d: DatabaseWorkflow) => d.title !== '__CONVERSATION__')
+                    .map((workflow: DatabaseWorkflow) => ({
+                        ...workflow,
+                        businessLogic: workflow.business_logic || []
+                    }));
                 setWorkflows(regularWorkflows);
             }
         } catch (error) {
