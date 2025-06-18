@@ -1,3 +1,4 @@
+// This is a test comment to see if the file can be edited.
 'use client';
 
 import { useState, useEffect, use, createRef, useCallback, useRef } from 'react';
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
 
 type Message = {
     id: string;
@@ -69,9 +71,9 @@ type CombinedEvent = {
     generated_output: string | null;
 }
 
-type FetchedEventEntry = {
-    low_level_workflow_analysis_id: string;
-    generated_output: string;
+type FinalAnalysisData = {
+    workflowNames?: string[];
+    workflowContext?: WorkflowContext;
 }
 
 type SynthesisStep = 'idle' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'synthesizing' | 'done' | 'refining';
@@ -81,6 +83,17 @@ type WorkflowContext = {
   project_name: string;
   project_goal: string;
 };
+
+type WorkflowDataObject = {
+    id: number;
+    title: string;
+    chat_history: {
+        messages: Message[];
+        synthesis_step: SynthesisStep;
+        identified_workflow_names: string[];
+        workflow_context: WorkflowContext;
+    }
+}
 
 const EditableListItem = ({ item, onChange, onRemove, onEnter, onBackspaceEmpty, itemRef }: { 
     item: string, 
@@ -210,6 +223,21 @@ const AiThinkingBubble = () => (
     </div>
 );
 
+const AnalysisProgressBubble = ({ status, progress, elapsedTime }: { status: string, progress: number, elapsedTime: number }) => (
+    <div className="flex items-start gap-3 w-full">
+        <div className="p-4 rounded-lg bg-background border w-full max-w-2xl">
+            <div className="flex items-center gap-3">
+                <RefreshCw className="h-5 w-5 text-primary animate-spin" />
+                <div className="flex-1">
+                    <p className="font-medium text-sm text-foreground">{status}</p>
+                    <p className="text-xs text-muted-foreground">Elapsed time: {elapsedTime.toFixed(1)}s</p>
+                </div>
+            </div>
+            <Progress value={progress} className="mt-3 h-2" />
+        </div>
+    </div>
+);
+
 export default function WorkflowPage({ params }: { params: Promise<{ userId: string }> }) {
     const { userId } = use(params);
     const { setUserId } = useUser();
@@ -241,6 +269,13 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     const [conversationId, setConversationId] = useState<string | null>(null);
     const [workflowContext, setWorkflowContext] = useState<WorkflowContext | null>(null);
     const [editableContext, setEditableContext] = useState<WorkflowContext | null>(null);
+    const [isAnalyzingEvents, setIsAnalyzingEvents] = useState(false);
+    const [analysisStatus, setAnalysisStatus] = useState("");
+    const [analysisProgress, setAnalysisProgress] = useState(0);
+    const [elapsedTime, setElapsedTime] = useState(0);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const [isFetchingEvents, setIsFetchingEvents] = useState(true);
+    const [isConversationLoaded, setIsConversationLoaded] = useState(false);
     
     // Refs for chat scroll containers
     const fullscreenChatRef = useRef<HTMLDivElement>(null);
@@ -269,167 +304,130 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         return () => clearTimeout(timeoutId);
     }, [messages, scrollToBottom]);
 
-    // Save conversation function that works with workflows endpoint
-    const saveConversation = async (messagesToSave: Message[], step: SynthesisStep, workflowNames: string[]) => {
+    const saveConversation = useCallback(async (messagesToSave: Message[], step: SynthesisStep, workflowNames: string[], context: WorkflowContext | null) => {
         if (!userId) return;
+
+        const conversationData = {
+            messages: messagesToSave,
+            synthesis_step: step,
+            identified_workflow_names: workflowNames,
+            workflow_context: context,
+        };
+
+        const method = conversationId ? 'PUT' : 'POST';
+        const url = conversationId ? `/api/workflows/${conversationId}` : '/api/workflows';
         
-        try {
-            const conversationData = {
-                user_id: userId,
+        let body;
+        if (method === 'PUT') {
+            body = JSON.stringify({
                 title: '__CONVERSATION__',
-                chat_history: {
-                    messages: messagesToSave,
-                    synthesis_step: step,
-                    identified_workflow_names: workflowNames,
-                    timestamp: new Date().toISOString()
-                },
+                chat_history: conversationData,
+                // Ensure all fields expected by the PUT endpoint are present
                 inputs: [],
                 outputs: [],
                 steps: [],
                 business_logic: []
-            };
+            });
+        } else { // POST
+            body = JSON.stringify({
+                userId: userId,
+                workflows: [{ // The API expects an array of workflows
+                    title: '__CONVERSATION__',
+                    chat_history: conversationData,
+                    // Add other fields with default empty values to match DB schema
+                    inputs: [],
+                    outputs: [],
+                    steps: [],
+                    business_logic: []
+                }]
+            });
+        }
 
-            if (conversationId) {
-                // Update existing conversation
-                await fetch(`/api/workflows/${conversationId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(conversationData)
-                });
-            } else {
-                // Create new conversation
-                const response = await fetch('/api/workflows', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        userId,
-                        workflows: [conversationData]
-                    })
-                });
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    if (result.data && result.data[0]) {
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: body
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (!conversationId) {
+                    // When creating, the response contains the new record in a 'data' array
+                    if (result.data && result.data.length > 0) {
                         setConversationId(result.data[0].id);
                     }
                 }
+            } else {
             }
-        } catch (error) {
-            console.error('Failed to save conversation:', error);
+        } catch {
         }
-    };
+    }, [userId, conversationId]);
 
-    // Auto-save conversation whenever messages change
-    useEffect(() => {
-        if (messages.length > 1) { // Don't save just the initial message
-            const timeoutId = setTimeout(() => {
-                saveConversation(messages, synthesisStep, identifiedWorkflowNames);
-            }, 2000); // Debounce saves by 2 seconds
-
-            return () => clearTimeout(timeoutId);
-        }
-    }, [messages, saveConversation]);
-
-    const resetConversation = async () => {
-        // Reset all state
-        setMessages([
-            { 
-                id: 'init', 
-                sender: 'ai', 
-                text: "Hi! I can help you synthesize workflows from raw user events. I'll analyze your recorded events and help identify distinct workflows.\n\nClick the button below to begin:"
-            }
-        ]);
-        setSynthesisStep('idle');
-        setIdentifiedWorkflowNames([]);
-        setCombinedEvents([]);
-        setIsLoading(false);
-        setIsAiThinking(false);
-        setUserInput('');
-        setConversationId(null);
-
-        // Delete conversation from backend using workflows endpoint
-        if (conversationId) {
-            try {
-                await fetch(`/api/workflows/${conversationId}`, {
-                    method: 'DELETE'
-                });
-            } catch (error) {
-                console.error('Failed to delete conversation:', error);
-            }
-        }
-    };
-
-    useEffect(() => {
-        setUserId(userId);
-    }, [userId, setUserId]);
-
-    // Load saved conversation on mount
-    useEffect(() => {
-        const loadSavedConversation = async () => {
-            if (!userId) return;
-            
-            try {
-                // Use the existing workflows endpoint which returns all workflows including conversations
-                const response = await fetch(`/api/workflows?userId=${userId}`);
-                if (response.ok) {
-                    const workflowsResponse = await response.json();
-                    console.log('Loaded workflows data:', workflowsResponse);
+    const loadSavedConversation = useCallback(async () => {
+        if (!userId) return;
+        
+        try {
+            const response = await fetch(`/api/workflows?userId=${userId}`);
+            if (response.ok) {
+                const workflowsResponse = await response.json();
+                if (workflowsResponse.data) {
+                    const conversationWorkflow = workflowsResponse.data.find((wf: WorkflowDataObject) => wf.title === '__CONVERSATION__');
                     
-                    if (workflowsResponse.data) {
-                        // Find conversation entry (workflow with title '__CONVERSATION__')
-                        const conversationWorkflow = workflowsResponse.data.find((wf: { title: string; id: number; chat_history?: { messages?: Message[]; synthesis_step?: string; identified_workflow_names?: string[] } }) => wf.title === '__CONVERSATION__');
-                        console.log('Found conversation workflow:', conversationWorkflow);
+                    if (conversationWorkflow && conversationWorkflow.chat_history) {
+                        const chatHistory = conversationWorkflow.chat_history;
                         
-                        if (conversationWorkflow && conversationWorkflow.chat_history) {
-                            const chatHistory = conversationWorkflow.chat_history;
-                            console.log('Chat history structure:', chatHistory);
-                            
-                            // Ensure messages is always an array
-                            const loadedMessages = Array.isArray(chatHistory.messages) ? chatHistory.messages : 
-                                                   Array.isArray(chatHistory) ? chatHistory : [];
-                            console.log('Loaded messages:', loadedMessages);
-                            console.log('Loaded messages type:', typeof loadedMessages, 'isArray:', Array.isArray(loadedMessages));
-                            
-                            // Restore conversation state with validation
-                            if (Array.isArray(loadedMessages)) {
-                                setMessages(loadedMessages);
-                            } else {
-                                console.error('Loaded messages is not an array:', loadedMessages);
-                                setMessages([
-                                    { 
-                                        id: 'init', 
-                                        sender: 'ai', 
-                                        text: "Hi! I can help you synthesize workflows from raw user events. I'll analyze your recorded events and help identify distinct workflows.\n\nClick the button below to begin:"
-                                    }
-                                ]);
-                            }
-                            setSynthesisStep(chatHistory.synthesis_step || 'idle');
-                            setIdentifiedWorkflowNames(chatHistory.identified_workflow_names || []);
-                            setConversationId(conversationWorkflow.id);
-                            
-                            // If we have identified workflows but no canvas workflows, stay in chat mode
-                            const actualWorkflows = workflowsResponse.data.filter((wf: { title: string }) => wf.title !== '__CONVERSATION__');
-                            if (chatHistory.identified_workflow_names?.length > 0 && actualWorkflows.length === 0) {
-                                setView('initial');
-                            }
+                        const loadedMessages = Array.isArray(chatHistory.messages) ? chatHistory.messages : [];
+                        
+                        if (loadedMessages.length > 0) {
+                            setMessages(loadedMessages);
+                        }
+                        setSynthesisStep(chatHistory.synthesis_step || 'idle');
+                        setIdentifiedWorkflowNames(chatHistory.identified_workflow_names || []);
+                        setConversationId(conversationWorkflow.id);
+
+                        if (chatHistory.workflow_context) {
+                            setWorkflowContext(chatHistory.workflow_context);
+                            setEditableContext(chatHistory.workflow_context);
                         }
                     }
                 }
-            } catch (error) {
-                console.error('Failed to load saved conversation:', error);
-                // If loading fails, start fresh - don't break the app
-                setMessages([
-                    { 
-                        id: 'init', 
-                        sender: 'ai', 
-                        text: "Hi! I can help you synthesize workflows from raw user events. I'll analyze your recorded events and help identify distinct workflows.\n\nClick the button below to begin:"
-                    }
-                ]);
+            }
+        } catch {
+        } finally {
+            setIsConversationLoaded(true);
+        }
+    }, [userId]);
+
+    useEffect(() => {
+        setUserId(userId);
+        loadSavedConversation();
+
+        const fetchEvents = async () => {
+            setIsFetchingEvents(true);
+            try {
+                const analysisResponse = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
+                if (!analysisResponse.ok) throw new Error("Failed to fetch llm analyses");
+                const analysisData = await analysisResponse.json();
+                
+                // Assuming analysisData.analyses exists and is an array
+                const analyses: WorkflowStepAnalysis[] = analysisData.analyses || [];
+
+                const combined = analyses.map(analysis => ({
+                    analysis,
+                    // In the future, we might fetch generated_output here if needed
+                    generated_output: "Note: Generated output is not fetched in this view." 
+                }));
+
+                setCombinedEvents(combined);
+            } catch {
+            } finally {
+                setIsFetchingEvents(false);
             }
         };
 
-        loadSavedConversation();
-    }, [userId]);
+        fetchEvents();
+    }, [userId, setUserId, loadSavedConversation]);
 
     useEffect(() => {
         // Create refs for all editable items
@@ -470,11 +468,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                     }
                 }
             }
-        } catch (error) {
-            console.error("Failed to fetch workflows", error);
-        } finally {
-            setIsLoading(false);
-        }
+                    } catch {
+            } finally {
+                setIsLoading(false);
+            }
     }, [userId]);
     
     useEffect(() => {
@@ -482,70 +479,111 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     }, [fetchWorkflows]);
 
     const startWorkflowIdentification = async () => {
-        setIsLoading(true);
-        setSynthesisStep('identifying');
-        // Replace initial message with a loading indicator
-        setMessages([{ 
-            id: 'ai-thinking-bubble', 
-            sender: 'ai-thinking', 
-            text: 'Analyzing events, synthesizing context, and refining workflows... This may take a moment.' 
+        setIsAnalyzingEvents(true);
+        setAnalysisStatus("Starting analysis...");
+        setAnalysisProgress(0);
+        setElapsedTime(0);
+        setIsAiThinking(true);
+
+        // Start timer
+        timerRef.current = setInterval(() => {
+            setElapsedTime(prevTime => prevTime + 0.1);
+        }, 100);
+
+        setMessages([{
+            id: 'analyzing',
+            sender: 'ai-thinking',
+            text: 'Analyzing events...'
         }]);
 
-        const eventDataResponse = await fetch(`/api/get-dataset-entries?userId=${userId}&datasetType=workflow_event_feedback`);
-        const analysisResponse = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
+        try {
+            const response = await fetch('/api/initiate-workflow-analysis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ events: combinedEvents, model: selectedModel }),
+            });
 
-        if (!eventDataResponse.ok || !analysisResponse.ok) {
-            // ... error handling
-            setMessages([{ id: Date.now().toString(), sender: 'ai', text: "Sorry, I couldn't fetch the necessary event data to start the analysis." }]);
-            setSynthesisStep('idle');
-            setIsLoading(false);
-            return;
-        }
-        
-        const eventData = await eventDataResponse.json();
-        const analysisData = await analysisResponse.json();
+            if (!response.body) {
+                throw new Error("Response body is null");
+            }
 
-        const combinedEvents: CombinedEvent[] = analysisData.analyses.map((analysis: WorkflowStepAnalysis) => {
-            const eventFeedback = eventData.entries.find((e: FetchedEventEntry) => String(e.low_level_workflow_analysis_id) === String(analysis.id));
-            return {
-                analysis,
-                generated_output: eventFeedback?.generated_output || null
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            const finalData: FinalAnalysisData = {};
+
+            const processChunk = (chunk: string) => {
+                const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
+                for (const line of lines) {
+                    const jsonString = line.substring(5);
+                    try {
+                        const parsed = JSON.parse(jsonString);
+                        if (parsed.status) {
+                            setAnalysisStatus(parsed.status);
+                        }
+                        if (typeof parsed.progress === 'number') {
+                            setAnalysisProgress(parsed.progress);
+                        }
+                        if (parsed.data) {
+                            if (parsed.data.workflowNames) {
+                                finalData.workflowNames = parsed.data.workflowNames;
+                            }
+                            if (parsed.data.workflowContext) {
+                                finalData.workflowContext = parsed.data.workflowContext;
+                            }
+                        }
+                    } catch {
+                    }
+                }
             };
-        }).filter((e: CombinedEvent) => e.generated_output);
-
-        if (combinedEvents.length === 0) {
-            // ... error handling
-            setMessages([{ id: Date.now().toString(), sender: 'ai', text: "There are no annotated events to analyze. Please complete the 'Labeling' step first." }]);
-            setSynthesisStep('idle');
-            setIsLoading(false);
-            return;
-        }
-        
-        setCombinedEvents(combinedEvents);
-        
-        const response = await fetch('/api/initiate-workflow-analysis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ events: combinedEvents, model: selectedModel }),
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            setWorkflowContext(result.workflowContext);
-            setIdentifiedWorkflowNames(result.workflowNames || []);
             
-            // Replace loading message with the final result message
-            setMessages([{ 
-                id: 'workflow-list', 
-                sender: 'ai', 
-                text: "Here is my analysis. You can edit the context and workflow list below."
-            }]);
-            setSynthesisStep('workflow_editing');
-        } else {
-            setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: "Sorry, I encountered an error during the deep analysis." }]);
-            setSynthesisStep('idle');
+            let buffer = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop() || ''; // Keep the last, possibly incomplete, part
+                parts.forEach(processChunk);
+            }
+            processChunk(buffer); // Process any remaining data
+
+            const newMessages: Message[] = [
+                { 
+                    id: 'context-summary', 
+                    sender: 'ai', 
+                    text: `Based on my analysis, here's what I understand about the user's context.`
+                },
+                { 
+                    id: 'workflow-list', 
+                    sender: 'ai', 
+                    text: `I have identified the following potential workflows. You can edit the names below and then approve to generate the full workflow definitions.`
+                }
+            ];
+
+            setMessages(newMessages);
+            setIdentifiedWorkflowNames(finalData.workflowNames || []);
+            setWorkflowContext(finalData.workflowContext || null);
+            setEditableContext(finalData.workflowContext || null);
+            setSynthesisStep('identifying');
+
+            saveConversation(
+                newMessages, 
+                'identifying',
+                finalData.workflowNames || [],
+                finalData.workflowContext || null
+            );
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+            setMessages(prev => [...prev.filter(m => m.id !== 'analyzing'), { id: 'error', sender: 'ai', text: `An error occurred: ${errorMessage}` }]);
+        } finally {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+            }
+            setIsAnalyzingEvents(false);
+            setIsAiThinking(false);
         }
-        setIsLoading(false);
     };
 
     const processAllWorkflows = async (approvedWorkflows: string[]) => {
@@ -622,8 +660,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 }]);
                 setSynthesisStep('idle');
             }
-        } catch (error) {
-            console.error('Error processing workflows:', error);
+        } catch {
             setMessages(prev => [...prev, { 
                 id: Date.now().toString(), 
                 sender: 'ai', 
@@ -776,8 +813,89 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         // Here you would typically save the context to the database.
         // For now, we'll just update the main context state.
         setWorkflowContext(editableContext);
-        console.log('Saved context:', editableContext);
     };
+
+    const resetConversation = async () => {
+        setIsAiThinking(true);
+        
+        const initialMessages: Message[] = [
+            { 
+                id: 'init', 
+                sender: 'ai', 
+                text: "Hi! I can help you synthesize workflows from raw user events. I'll analyze your recorded events and help identify distinct workflows.\n\nClick the button below to begin:"
+            }
+        ];
+        
+        // Immediately clear local state for a snappy UI response
+        setMessages(initialMessages);
+        setWorkflows([]);
+        setActiveWorkflowIndex(0);
+        setSynthesisStep('idle');
+        setIdentifiedWorkflowNames([]);
+        setWorkflowContext(null);
+        setEditableContext(null);
+
+        if (conversationId) {
+            try {
+                // Delete the main conversation entry
+                await fetch(`/api/workflows/${conversationId}`, { method: 'DELETE' });
+                
+                // Create a new initial conversation entry
+                await saveConversation(initialMessages, 'idle', [], null);
+
+            } catch {
+            }
+        } else {
+            // If there was no conversationId, we might still need to ensure the initial state is saved
+            await saveConversation(initialMessages, 'idle', [], null);
+        }
+        
+        // This resets the conversationId to null after deletion and before a new one is created
+        setConversationId(null);
+        
+        // Refetch workflows to clear out any old ones that were on the canvas
+        const res = await fetch(`/api/workflows?userId=${userId}`);
+        if(res.ok){
+            const data = await res.json();
+            const workflowsToDisplay = data.data.filter((wf: WorkflowDataObject) => wf.title !== '__CONVERSATION__');
+            setWorkflows(workflowsToDisplay);
+            if(workflowsToDisplay.length > 0){
+                setView('canvas');
+                setActiveWorkflowIndex(0);
+            } else {
+                setView('initial');
+            }
+        }
+
+        setIsAiThinking(false);
+    };
+
+    // Auto-scroll logic for both chat views
+    useEffect(() => {
+        if (view === 'chat_fullscreen') {
+            scrollToBottom();
+        } else {
+            scrollToBottom();
+        }
+    }, [messages, view]);
+
+    // Auto-save when certain states change, with debouncing
+    useEffect(() => {
+        if (!isConversationLoaded) return; // Don't save until initial load is complete
+
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+            if (synthesisStep !== 'idle' || messages.length > 1) {
+                saveConversation(messages, synthesisStep, identifiedWorkflowNames, workflowContext);
+            }
+        }, 1000); // 1-second debounce
+
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, [messages, synthesisStep, identifiedWorkflowNames, workflowContext, saveConversation, isConversationLoaded]);
 
     if (view === 'initial' || view === 'chat_fullscreen') {
         const isChatMode = view === 'chat_fullscreen';
@@ -865,18 +983,14 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                 }`}>
                                     <p className="text-sm whitespace-pre-wrap">{message.text}</p>
                                     {message.id === 'init' && (
-                                        <Button 
-                                            size="sm" 
-                                            onClick={startWorkflowIdentification} 
-                                            disabled={isLoading}
-                                            className="mt-4"
-                                        >
-                                            {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                            {isLoading ? 'Generating...' : 'Identify Workflows'}
+                                        <Button onClick={startWorkflowIdentification} disabled={isLoading || isAiThinking || combinedEvents.length === 0 || isFetchingEvents}>
+                                            {(isLoading || isAiThinking || isFetchingEvents) && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                                            { isFetchingEvents ? "Loading Events..." : (isAnalyzingEvents ? "Analyzing..." : "Analyze Events") }
                                         </Button>
                                     )}
                                     {message.id === 'workflow-list' && identifiedWorkflowNames.length > 0 && (
                                         <EditableWorkflowList
+                                            key={identifiedWorkflowNames.join('-')}
                                             workflows={identifiedWorkflowNames}
                                             onWorkflowsChange={setIdentifiedWorkflowNames}
                                             onApprove={() => processAllWorkflows(identifiedWorkflowNames)}
@@ -884,9 +998,32 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                         />
                                     )}
                                 </div>
+                                {message.id === 'analyzing' && isAnalyzingEvents && (
+                                    <AnalysisProgressBubble 
+                                        status={analysisStatus}
+                                        progress={analysisProgress}
+                                        elapsedTime={elapsedTime}
+                                    />
+                                )}
+                                {message.sender === 'ai-thinking' && !isAnalyzingEvents && <AiThinkingBubble />}
                             </div>
                         ))}
-                        {isAiThinking && <AiThinkingBubble />}
+                        
+                        {/* Show workflow list when loaded from database - not dependent on specific message */}
+                        {synthesisStep === 'identifying' && identifiedWorkflowNames.length > 0 && !messages.some(m => m.id === 'workflow-list') && (
+                            <div className="flex items-start gap-3">
+                                <div className="p-4 rounded-lg max-w-[80%] bg-background border shadow-sm">
+                                    <p className="text-sm mb-4">Here are the workflows I identified:</p>
+                                    <EditableWorkflowList
+                                        key={identifiedWorkflowNames.join('-')}
+                                        workflows={identifiedWorkflowNames}
+                                        onWorkflowsChange={setIdentifiedWorkflowNames}
+                                        onApprove={() => processAllWorkflows(identifiedWorkflowNames)}
+                                        isProcessing={isLoading}
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                     <CardFooter className="p-4 border-t">
                         <div className="relative w-full">

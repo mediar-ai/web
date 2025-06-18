@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import {
   WORKFLOW_IDENTIFICATION_PROMPT,
@@ -29,47 +29,80 @@ async function callGenerativeModel(prompt: string, context: object, modelName: s
   }
 }
 
+// Helper function to create a JSON string for SSE
+function toSSE(data: object): string {
+  return `data: ${JSON.stringify(data)}\n\n`;
+}
+
 export async function POST(req: NextRequest) {
-  try {
-    const { events, model } = await req.json();
+  const { events, model } = await req.json();
 
-    if (!model) {
-      return NextResponse.json({ error: 'Missing required "model" parameter' }, { status: 400 });
-    }
-
-    // Step 1: Initial Workflow Identification
-    const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, { events }, model);
-    let workflowNames = initialIdentification.workflow_names || [];
-
-    // Step 2: Initial Context Synthesis (Bottom-Up)
-    let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, { events }, model);
-
-    // Step 3: Iterative Refinement Loop (2 cycles)
-    for (let i = 0; i < 2; i++) {
-      const refinementResult = await callGenerativeModel(PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, {
-        events,
-        workflow_context: workflowContext,
-        workflow_names: workflowNames,
-      }, model);
-
-      workflowContext = {
-        user_job_role: refinementResult.user_job_role,
-        project_name: refinementResult.project_name,
-        project_goal: refinementResult.project_goal,
-      };
-      workflowNames = refinementResult.refined_workflow_names;
-    }
-
-    // Step 4: Final Output
-    return NextResponse.json({
-      success: true,
-      workflowContext,
-      workflowNames,
+  if (!model) {
+    return new Response(JSON.stringify({ error: 'Missing required "model" parameter' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
     });
-
-  } catch (error) {
-    console.error('Error in workflow analysis endpoint:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
   }
+
+  // Use a ReadableStream to send events as they happen
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        // Step 1: Initial Workflow Identification
+        controller.enqueue(toSSE({ status: 'Identifying initial workflows...', progress: 25 }));
+        const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, { events }, model);
+        let workflowNames = initialIdentification.workflow_names || [];
+        controller.enqueue(toSSE({ status: 'Initial workflows identified.', progress: 33, data: { workflowNames } }));
+
+
+        // Step 2: Initial Context Synthesis (Bottom-Up)
+        controller.enqueue(toSSE({ status: 'Synthesizing user context...', progress: 50 }));
+        let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, { events }, model);
+        controller.enqueue(toSSE({ status: 'User context synthesized.', progress: 66, data: { workflowContext } }));
+
+        // Step 3: Iterative Refinement Loop
+        controller.enqueue(toSSE({ status: 'Refining workflows with context (2 cycles)...', progress: 75 }));
+        for (let i = 0; i < 2; i++) {
+          const refinementResult = await callGenerativeModel(PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, {
+            events,
+            workflow_context: workflowContext,
+            workflow_names: workflowNames,
+          }, model);
+
+          workflowContext = {
+            user_job_role: refinementResult.user_job_role,
+            project_name: refinementResult.project_name,
+            project_goal: refinementResult.project_goal,
+          };
+          workflowNames = refinementResult.refined_workflow_names;
+          controller.enqueue(toSSE({ status: `Refinement cycle ${i + 1} complete.`, progress: 75 + ((i+1)*10) }));
+        }
+
+        // Step 4: Final Output
+        controller.enqueue(toSSE({
+          status: 'Analysis complete.',
+          progress: 100,
+          data: {
+            workflowContext,
+            workflowNames,
+          }
+        }));
+
+      } catch (error) {
+        console.error('Error in workflow analysis stream:', error);
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+        controller.enqueue(toSSE({ error: 'Internal server error', details: errorMessage }));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 } 
