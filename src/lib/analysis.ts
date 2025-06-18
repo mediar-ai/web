@@ -225,6 +225,24 @@ export async function performInitialFrameDump(
     });
 }
 
+/**
+ * Normalizes screenshot data by converting empty strings to null
+ * and validating data URL format
+ */
+export function normalizeScreenshotData(screenshotData: string | null | undefined): string | null {
+    if (!screenshotData || screenshotData === "") {
+        return null;
+    }
+    
+    // Validate basic data URL format
+    if (!screenshotData.includes('data:') || !screenshotData.includes(';base64,')) {
+        console.warn('[normalizeScreenshotData] Invalid data URL format:', screenshotData.substring(0, 50));
+        return null;
+    }
+    
+    return screenshotData;
+}
+
 export async function analyzeTextEvent(text: string, prompt: string): Promise<string> {
     const genAI = getGenAI();
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });

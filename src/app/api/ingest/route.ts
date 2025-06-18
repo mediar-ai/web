@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { analyzeTextEvent, analyzeUIDiff, performInitialFrameDump } from '@/lib/analysis';
+import { analyzeTextEvent, analyzeUIDiff, performInitialFrameDump, normalizeScreenshotData } from '@/lib/analysis';
 import { EVENTS_PROMPT, UI_TREE_ANALYSIS_PROMPT } from '@/lib/prompts';
 import { uploadImage } from '@/lib/storage';
 
@@ -60,16 +60,20 @@ export async function POST(request: Request) {
         const screenshot_before = payload.event?.screenshot_diff?.before;
         const screenshot_after = payload.event?.screenshot_diff?.after;
 
+        // Normalize empty strings to null to handle client-side inconsistencies
+        const normalizedScreenshotBefore = normalizeScreenshotData(screenshot_before);
+        const normalizedScreenshotAfter = normalizeScreenshotData(screenshot_after);
+
         // Handle the edge case where the first screenshot is sent as a diff
-        if (screenshot_after && !screenshot_before) {
+        if (normalizedScreenshotAfter && !normalizedScreenshotBefore) {
             console.log('[INGEST] Handling initial screenshot as a meaningful_event...');
             
             // LOG THE ACTUAL DATA SIZE AND FORMAT
-            console.log('[DEBUG] Screenshot data size:', screenshot_after.length);
-            console.log('[DEBUG] Screenshot prefix:', screenshot_after.substring(0, 50));
+            console.log('[DEBUG] Screenshot data size:', normalizedScreenshotAfter.length);
+            console.log('[DEBUG] Screenshot prefix:', normalizedScreenshotAfter.substring(0, 50));
             
             // Check size first (1MB limit)
-            if (screenshot_after.length > 1000000) {
+            if (normalizedScreenshotAfter.length > 1000000) {
                 console.log('[INGEST] Screenshot too large, skipping AI analysis');
                 analysisResult = "Large initial screenshot captured (AI analysis skipped due to size)";
                 activityType = 'initial_dump';
@@ -78,7 +82,7 @@ export async function POST(request: Request) {
             
             try {
                 // This is the first screenshot, treat it like an initial dump for analysis
-                const dumpStream = await performInitialFrameDump(screenshot_after);
+                const dumpStream = await performInitialFrameDump(normalizedScreenshotAfter);
                 // We need to read the stream to get the string content
                 const reader = dumpStream.getReader();
                 const decoder = new TextDecoder();
@@ -102,8 +106,20 @@ export async function POST(request: Request) {
             break; // Exit the switch, fall through to the generic saver
         }
 
-        if (!screenshot_before || !screenshot_after) {
-            return NextResponse.json({ error: 'screenshot_before and screenshot_after are required for a standard screenshot_diff' }, { status: 400 });
+        if (!normalizedScreenshotBefore || !normalizedScreenshotAfter) {
+            console.log('[INGEST] Missing screenshots - before:', !!normalizedScreenshotBefore, 'after:', !!normalizedScreenshotAfter);
+            console.log('[INGEST] Original values - before type:', typeof screenshot_before, 'after type:', typeof screenshot_after);
+            return NextResponse.json({ 
+                error: 'screenshot_before and screenshot_after are required for a standard screenshot_diff',
+                debug: {
+                    before_present: !!normalizedScreenshotBefore,
+                    after_present: !!normalizedScreenshotAfter,
+                    before_type: typeof screenshot_before,
+                    after_type: typeof screenshot_after,
+                    before_length: screenshot_before?.length || 0,
+                    after_length: screenshot_after?.length || 0
+                }
+            }, { status: 400 });
         }
         
         // 1. Generate IDs for the screenshots
@@ -114,8 +130,8 @@ export async function POST(request: Request) {
 
         // 2. Upload images to Supabase Storage
         try {
-            await uploadImage(screenshot_before, `${user_id}/${session_id}/screenshots/${image1_id}.jpeg`);
-            await uploadImage(screenshot_after, `${user_id}/${session_id}/screenshots/${image2_id}.jpeg`);
+            await uploadImage(normalizedScreenshotBefore, `${user_id}/${session_id}/screenshots/${image1_id}.jpeg`);
+            await uploadImage(normalizedScreenshotAfter, `${user_id}/${session_id}/screenshots/${image2_id}.jpeg`);
             console.log(`[INGEST] Successfully uploaded screenshots for diff: ${sequenceId}`);
         } catch (uploadError) {
             console.error('[INGEST] Screenshot upload failed:', uploadError);
@@ -123,7 +139,7 @@ export async function POST(request: Request) {
         }
         
         // 3. Perform the analysis
-        const diffResult = await analyzeUIDiff(screenshot_before, screenshot_after, "");
+        const diffResult = await analyzeUIDiff(normalizedScreenshotBefore, normalizedScreenshotAfter, "");
         
         // 4. Prepare the results to be saved by the final, generic handler
         analysisResult = {
