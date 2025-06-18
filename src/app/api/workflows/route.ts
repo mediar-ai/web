@@ -19,13 +19,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const recordsToInsert = workflows.map(wf => ({
-        user_id: userId,
-        title: wf.title,
-        inputs: wf.inputs,
-        outputs: wf.outputs,
-        steps: wf.steps,
-        business_logic: wf.businessLogic,
-        chat_history: wf.chat_history || [],
+      ...wf,
+      user_id: userId,
     }));
 
     const { data, error } = await supabase

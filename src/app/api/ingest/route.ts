@@ -57,7 +57,8 @@ export async function POST(request: Request) {
 
       case 'screenshot_diff':
         console.log('[INGEST] Processing screenshot_diff...');
-        const { screenshot_before, screenshot_after } = payload.event || {};
+        const screenshot_before = payload.event?.screenshot_diff?.before;
+        const screenshot_after = payload.event?.screenshot_diff?.after;
 
         // Handle the edge case where the first screenshot is sent as a diff
         if (screenshot_after && !screenshot_before) {
