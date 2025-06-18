@@ -1132,6 +1132,17 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             
             console.log('All workflows deleted successfully');
             
+            // Also delete the synthesis session if it exists
+            if (synthesisSessionId) {
+                try {
+                    await fetch(`/api/synthesis-sessions/${synthesisSessionId}`, { method: 'DELETE' });
+                    console.log('Synthesis session deleted successfully');
+                } catch (sessionError) {
+                    console.error('Error deleting synthesis session:', sessionError);
+                    // Don't fail the whole operation if session deletion fails
+                }
+            }
+            
             // Reset to completely clean state
             const initialMessages: Message[] = [
                 { 
