@@ -745,7 +745,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             const defaultContext = { user_job_role: '', project_name: '', project_goal: '' };
             setWorkflowContext(finalData.workflowContext || defaultContext);
             setEditableContext(finalData.workflowContext || defaultContext);
-            setSynthesisStep('identifying');
+        setSynthesisStep('identifying');
 
             await saveSynthesisSession(
                 newMessages, 
@@ -826,8 +826,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
 
         try {
             const response = await fetch('/api/synthesize-workflow', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: selectedModel,
                     context: { 
@@ -866,32 +866,32 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     };
 
     const saveSynthesizedWorkflows = async (synthesizedWorkflows: SynthesizedWorkflow[]) => {
-        if (!userId) return;
+        if (!userId || synthesizedWorkflows.length === 0) return;
+    
+        const recordsToInsert = synthesizedWorkflows.map(workflow => ({
+            title: workflow.name,
+            inputs: workflow.inputs,
+            outputs: workflow.outputs,
+            steps: workflow.steps,
+            business_logic: workflow.businessLogic,
+            chat_history: [{id: '1', sender: 'ai', text: 'Workflow synthesized.'}],
+            synthesis_session_id: synthesisSessionId,
+        }));
     
         try {
-            for (const workflow of synthesizedWorkflows) {
-                const payload = {
-                    user_id: userId,
-                    title: workflow.name,
-                    inputs: workflow.inputs,
-                    outputs: workflow.outputs,
-                    steps: workflow.steps,
-                    business_logic: workflow.businessLogic,
-                    chat_history: [{id: '1', sender: 'ai', text: 'Workflow synthesized.'}],
-                    synthesis_session_id: synthesisSessionId,
-                };
-    
-                await fetch('/api/workflows', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-            }
+            await fetch('/api/workflows', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: userId,
+                    workflows: recordsToInsert
+                })
+            });
+            
             // After saving, refresh the workflows from the database
             await fetchWorkflows();
         } catch (error) {
             console.error("Error saving synthesized workflows:", error);
-            // Optionally, show an error message to the user
         }
     };
 
