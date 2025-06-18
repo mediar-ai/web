@@ -143,7 +143,7 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
   }
 
   return (
-    <div className="w-full flex flex-col gap-2 py-4 px-2">
+    <div className='w-full flex flex-col py-2 px-1'>
       <div
         ref={sliderRef}
         onClick={(e) => {

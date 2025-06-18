@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data, error } = await supabase
       .from('low_level_datasets')
-      .select('data, notes')
+      .select('low_level_workflow_analysis_id, generated_output, feedback, feedback_reason')
       .eq('user_id', userId)
       .eq('dataset_type', datasetType);
 
