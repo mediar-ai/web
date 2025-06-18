@@ -54,7 +54,7 @@ type CanvasContent = {
 }
 
 type SynthesizedWorkflow = {
-    name: string;
+    title: string;
     inputs: string[];
     outputs: string[];
     steps: string[];
@@ -891,7 +891,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         if (!userId || synthesizedWorkflows.length === 0) return;
     
         const recordsToInsert = synthesizedWorkflows.map(workflow => ({
-            title: workflow.name || 'Untitled Workflow',
+            title: workflow.title || 'Untitled Workflow',
             inputs: workflow.inputs,
             outputs: workflow.outputs,
             steps: workflow.steps,
