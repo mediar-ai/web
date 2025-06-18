@@ -1121,6 +1121,12 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         setIsAiThinking(true);
         
         try {
+            // Clear any pending auto-save timeout to prevent it from saving old state
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+                saveTimeoutRef.current = null;
+            }
+            
             // Delete ALL workflows for this user
             const response = await fetch(`/api/workflows/delete-all?userId=${userId}`, { 
                 method: 'DELETE' 
@@ -1166,6 +1172,13 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             
         } catch (error) {
             console.error('Error deleting all workflows:', error);
+            
+            // Clear any pending auto-save timeout here too
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+                saveTimeoutRef.current = null;
+            }
+            
             // Still reset local state even if API call failed
             const initialMessages: Message[] = [
                 { 
