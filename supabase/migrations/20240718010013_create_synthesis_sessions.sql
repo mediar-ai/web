@@ -1,6 +1,6 @@
 CREATE TABLE public.synthesis_sessions (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID NOT NULL,
     session_state JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
