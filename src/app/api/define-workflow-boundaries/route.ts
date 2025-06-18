@@ -73,12 +73,11 @@ export async function POST(req: NextRequest) {
     });
     
     const workflowList = workflowNames.map((name: string) => `- "${name}"`).join('\n');
-    const mappingInfo = context.workflow_mapping ? `\n\nWorkflow Name Mapping (Original AI → User Approved):\n${JSON.stringify(context.workflow_mapping, null, 2)}` : '';
     
     const prompt = `${WORKFLOW_BOUNDARY_PROMPT}
 
 IMPORTANT: You must define boundaries for EXACTLY these workflow names (do not change or create new names):
-${workflowList}${mappingInfo}
+${workflowList}
 
 Events Context:
 ${JSON.stringify(context.events, null, 2)}`;
