@@ -1291,40 +1291,40 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                     />
                                 )}
                                 {message.sender === 'ai-thinking' && !isAnalyzingEvents && <AiThinkingBubble />}
+                                
+                                {/* Show workflow context analysis right after context-summary message */}
+                                {message.id === 'context-summary' && workflowContext && editableContext && (workflowContext.user_job_role || workflowContext.project_name || workflowContext.project_goal) && (
+                                    <div className="p-4 border rounded-lg bg-muted/50 mt-2">
+                                        <h3 className="text-lg font-semibold mb-2">Workflow Context Analysis</h3>
+                                        <p className="text-sm text-muted-foreground mb-4">
+                                            The AI has analyzed your activities. You can review and edit this context.
+                                        </p>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center gap-4">
+                                                <Label htmlFor="jobRole" className="w-24 text-right">Your Job Role</Label>
+                                                <Input id="jobRole" value={editableContext.user_job_role} onChange={(e) => handleContextChange('user_job_role', e.target.value)} />
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                                <Label htmlFor="projectName" className="w-24 text-right">Project Name</Label>
+                                                <Input id="projectName" value={editableContext.project_name} onChange={(e) => handleContextChange('project_name', e.target.value)} />
+                                            </div>
+                                            <div className="flex items-start gap-4">
+                                                <Label htmlFor="projectGoal" className="w-24 text-right pt-2">Project Goal</Label>
+                                                <Textarea 
+                                                    id="projectGoal" 
+                                                    value={editableContext.project_goal} 
+                                                    onChange={(e) => handleContextChange('project_goal', e.target.value)}
+                                                    className="min-h-[80px] px-3 py-1"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 flex justify-end">
+                                            <Button onClick={handleContextSave}>Save Context</Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ))}
-                        
-                        {/* Show workflow context analysis after AI message, only if there's actual data */}
-                        {workflowContext && editableContext && (workflowContext.user_job_role || workflowContext.project_name || workflowContext.project_goal) && (
-                            <div className="p-4 border rounded-lg bg-muted/50">
-                                <h3 className="text-lg font-semibold mb-2">Workflow Context Analysis</h3>
-                                <p className="text-sm text-muted-foreground mb-4">
-                                    The AI has analyzed your activities. You can review and edit this context.
-                                </p>
-                                <div className="space-y-4">
-                                    <div className="flex items-center gap-4">
-                                        <Label htmlFor="jobRole" className="w-24 text-right">Your Job Role</Label>
-                                        <Input id="jobRole" value={editableContext.user_job_role} onChange={(e) => handleContextChange('user_job_role', e.target.value)} />
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <Label htmlFor="projectName" className="w-24 text-right">Project Name</Label>
-                                        <Input id="projectName" value={editableContext.project_name} onChange={(e) => handleContextChange('project_name', e.target.value)} />
-                                    </div>
-                                    <div className="flex items-start gap-4">
-                                        <Label htmlFor="projectGoal" className="w-24 text-right pt-2">Project Goal</Label>
-                                        <Textarea 
-                                            id="projectGoal" 
-                                            value={editableContext.project_goal} 
-                                            onChange={(e) => handleContextChange('project_goal', e.target.value)}
-                                            className="min-h-[80px] px-3 py-1"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="mt-4 flex justify-end">
-                                    <Button onClick={handleContextSave}>Save Context</Button>
-                                </div>
-                            </div>
-                        )}
                         
                         {/* Show workflow list when loaded from database - not dependent on specific message */}
                         {synthesisStep === 'identifying' && identifiedWorkflowNames.length > 0 && !messages.some(m => m.id === 'workflow-list') && (
