@@ -57,7 +57,13 @@ export async function POST(req: NextRequest) {
     });
     
     const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: WORKFLOW_SYNTHESIS_PROMPT }, { text: `\n\nEVENTS CONTEXT:\n${JSON.stringify(context.events, null, 2)}` }] }],
+      contents: [{ 
+        role: "user", 
+        parts: [
+          { text: WORKFLOW_SYNTHESIS_PROMPT }, 
+          { text: `\n\nWORKFLOW NAME: ${context.workflow_name || 'Unnamed Workflow'}\nTRIGGER: ${context.trigger || 'Not specified'}\nTERMINATOR: ${context.terminator || 'Not specified'}\n\nEVENTS CONTEXT:\n${JSON.stringify(context.events, null, 2)}` }
+        ] 
+      }],
     });
 
     const response = result.response;

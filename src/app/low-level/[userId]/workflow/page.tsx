@@ -5,7 +5,7 @@ import { useState, useEffect, use, createRef, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from '@/components/ui/textarea';
-import { Paperclip, Send, PlusCircle, Trash2, RefreshCw, X, ChevronRight, ChevronDown, Edit3, RotateCcw } from "lucide-react"
+import { Paperclip, Send, PlusCircle, Trash2, RefreshCw, X, ChevronRight, ChevronDown, Edit3, RotateCcw, Edit2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
@@ -35,6 +35,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
+import type { LowLevelEvent } from '@/types';
 
 type Message = {
     id: string;
@@ -69,6 +70,12 @@ type WorkflowStepAnalysis = {
 type CombinedEvent = {
     analysis: WorkflowStepAnalysis;
     generated_output: string | null;
+    feedback: 'good' | 'bad' | 'irrelevant' | null;
+    contextSummary: {
+        windowTitle: string;
+        eventCount: number;
+    };
+    timestamp: Date;
 }
 
 type FinalAnalysisData = {
@@ -76,13 +83,20 @@ type FinalAnalysisData = {
     workflowContext?: WorkflowContext;
 }
 
-type SynthesisStep = 'idle' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'synthesizing' | 'done' | 'refining';
+type SynthesisStep = 'idle' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_editing' | 'synthesizing' | 'done' | 'refining';
 
 type WorkflowContext = {
   user_job_role: string;
   project_name: string;
   project_goal: string;
 };
+
+type WorkflowBoundary = {
+  trigger: string;
+  terminator: string;
+};
+
+type WorkflowBoundaries = Record<string, WorkflowBoundary>;
 
 type WorkflowDataObject = {
     id: number;
@@ -238,6 +252,85 @@ const AnalysisProgressBubble = ({ status, progress, elapsedTime }: { status: str
     </div>
 );
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const EditableWorkflowBoundaries = ({ boundaries, onBoundariesChange, onApprove, isProcessing }: {
+    boundaries: WorkflowBoundaries;
+    onBoundariesChange: (boundaries: WorkflowBoundaries) => void;
+    onApprove: () => void;
+    isProcessing: boolean;
+}) => {
+    const handleBoundaryChange = (workflowName: string, field: 'trigger' | 'terminator', value: string) => {
+        const newBoundaries = {
+            ...boundaries,
+            [workflowName]: {
+                ...boundaries[workflowName],
+                [field]: value
+            }
+        };
+        onBoundariesChange(newBoundaries);
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                <Edit2 className="h-4 w-4" />
+                <span>Review and edit workflow boundaries below:</span>
+            </div>
+            
+            <div className="space-y-6">
+                {Object.entries(boundaries).map(([workflowName, boundary]) => (
+                    <Card key={workflowName} className="p-4">
+                        <h4 className="font-medium mb-3">{workflowName}</h4>
+                        <div className="space-y-3">
+                            <div>
+                                <Label htmlFor={`trigger-${workflowName}`} className="text-sm font-medium">
+                                    Trigger (How this workflow starts)
+                                </Label>
+                                <Textarea
+                                    id={`trigger-${workflowName}`}
+                                    value={boundary.trigger}
+                                    onChange={(e) => handleBoundaryChange(workflowName, 'trigger', e.target.value)}
+                                    className="mt-1"
+                                    rows={2}
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor={`terminator-${workflowName}`} className="text-sm font-medium">
+                                    Terminator (How this workflow ends)
+                                </Label>
+                                <Textarea
+                                    id={`terminator-${workflowName}`}
+                                    value={boundary.terminator}
+                                    onChange={(e) => handleBoundaryChange(workflowName, 'terminator', e.target.value)}
+                                    className="mt-1"
+                                    rows={2}
+                                />
+                            </div>
+                        </div>
+                    </Card>
+                ))}
+            </div>
+            
+            <div className="flex justify-center">
+                <Button 
+                    onClick={onApprove}
+                    disabled={isProcessing}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                    {isProcessing ? (
+                        <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Synthesizing...
+                        </>
+                    ) : (
+                        'Approve & Synthesize Workflows'
+                    )}
+                </Button>
+            </div>
+        </div>
+    );
+};
+
 export default function WorkflowPage({ params }: { params: Promise<{ userId: string }> }) {
     const { userId } = use(params);
     const { setUserId } = useUser();
@@ -259,6 +352,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [synthesisStep, setSynthesisStep] = useState<SynthesisStep>('idle');
     const [identifiedWorkflowNames, setIdentifiedWorkflowNames] = useState<string[]>([]);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [workflowBoundaries, setWorkflowBoundaries] = useState<WorkflowBoundaries>({});
     const [combinedEvents, setCombinedEvents] = useState<CombinedEvent[]>([]);
     const [collapsedSections, setCollapsedSections] = useState({
         inputs: true,
@@ -267,8 +362,16 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         businessLogic: true,
     });
     const [conversationId, setConversationId] = useState<string | null>(null);
-    const [workflowContext, setWorkflowContext] = useState<WorkflowContext | null>(null);
-    const [editableContext, setEditableContext] = useState<WorkflowContext | null>(null);
+    const [workflowContext, setWorkflowContext] = useState<WorkflowContext>({
+        user_job_role: '',
+        project_name: '',
+        project_goal: ''
+    });
+    const [editableContext, setEditableContext] = useState<WorkflowContext>({
+        user_job_role: '',
+        project_name: '',
+        project_goal: ''
+    });
     const [isAnalyzingEvents, setIsAnalyzingEvents] = useState(false);
     const [analysisStatus, setAnalysisStatus] = useState("");
     const [analysisProgress, setAnalysisProgress] = useState(0);
@@ -406,18 +509,98 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         const fetchEvents = async () => {
             setIsFetchingEvents(true);
             try {
+                // Fetch workflow analyses
                 const analysisResponse = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
                 if (!analysisResponse.ok) throw new Error("Failed to fetch llm analyses");
                 const analysisData = await analysisResponse.json();
-                
-                // Assuming analysisData.analyses exists and is an array
                 const analyses: WorkflowStepAnalysis[] = analysisData.analyses || [];
 
-                const combined = analyses.map(analysis => ({
-                    analysis,
-                    // In the future, we might fetch generated_output here if needed
-                    generated_output: "Note: Generated output is not fetched in this view." 
-                }));
+                // Fetch user annotation data (like labeling tab does)
+                const eventDataResponse = await fetch(`/api/get-dataset-entries?userId=${userId}&datasetType=workflow_event_feedback`);
+                const eventDataMap: Record<string, { generated_output: string; feedback: 'good' | 'bad' | 'irrelevant' | null; feedback_reason: string | null }> = {};
+                
+                if (eventDataResponse.ok) {
+                    const eventData = await eventDataResponse.json();
+                    eventData.entries.forEach((entry: { low_level_workflow_analysis_id: string; generated_output: string; feedback: 'good' | 'bad' | 'irrelevant' | null; feedback_reason: string | null }) => {
+                        const analysisId = String(entry.low_level_workflow_analysis_id);
+                        eventDataMap[analysisId] = {
+                            generated_output: entry.generated_output,
+                            feedback: entry.feedback,
+                            feedback_reason: entry.feedback_reason
+                        };
+                    });
+                }
+
+                // Fetch low-level events for context (like labeling tab does)
+                const eventsResponse = await fetch(`/api/low-level/${userId}`);
+                let allEvents: LowLevelEvent[] = [];
+                if (eventsResponse.ok) {
+                    const eventsData = await eventsResponse.json();
+                    allEvents = eventsData.events?.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) || [];
+                }
+
+                const uiTreeEvents = allEvents.filter(e => e.payload.payload?.type === 'ui_tree');
+
+                const getEventTitle = (event: LowLevelEvent) => {
+                    const payload = event.payload as { payload?: { event?: { app_name?: string, screen?: { ui_tree?: string } } } };
+                    const appName = payload?.payload?.event?.app_name || 'Unknown App';
+                    const uiTree = payload?.payload?.event?.screen?.ui_tree;
+                    if (uiTree) {
+                        try {
+                            const parsedTree = JSON.parse(uiTree);
+                            return parsedTree.attributes?.name || appName;
+                        } catch {
+                            return appName;
+                        }
+                    }
+                    return appName;
+                };
+
+                // Create enhanced combined events (like labeling tab does)
+                const combined: CombinedEvent[] = analyses.reduce<CombinedEvent[]>((acc, analysis) => {
+                    const eventTime = new Date(analysis.client_timestamp).getTime();
+                    const currentUiTreeEvent = uiTreeEvents.find(e => Math.abs(new Date(e.created_at).getTime() - eventTime) < 1000);
+                    
+                    let contextSummary = { windowTitle: 'Unknown', eventCount: 0 };
+                    
+                    if (currentUiTreeEvent) {
+                        const currentIndex = uiTreeEvents.findIndex(e => e.id === currentUiTreeEvent.id);
+                        const previousUiTreeEvent = currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
+
+                        const eventsBetween = previousUiTreeEvent ? allEvents.filter(event => {
+                            const eventTimestamp = new Date(event.created_at).getTime();
+                            const prevTimestamp = new Date(previousUiTreeEvent!.created_at).getTime();
+                            const isRelevant = event.payload.payload?.type !== 'ui_tree' && event.payload.payload?.type !== 'screenshot_diff';
+                            return isRelevant && eventTimestamp > prevTimestamp && eventTimestamp < eventTime;
+                        }) : [];
+
+                        contextSummary = {
+                            windowTitle: getEventTitle(currentUiTreeEvent),
+                            eventCount: eventsBetween.length
+                        };
+                    }
+
+                    const userAnnotation = eventDataMap[analysis.id];
+                    
+                    // Only include events that are not marked as 'bad' or 'irrelevant'
+                    // This filters for quality like we discussed
+                    if (userAnnotation && (userAnnotation.feedback === 'bad' || userAnnotation.feedback === 'irrelevant')) {
+                        return acc;
+                    }
+
+                    acc.push({
+                        analysis,
+                        generated_output: userAnnotation?.generated_output || null,
+                        feedback: userAnnotation?.feedback || null,
+                        contextSummary,
+                        timestamp: new Date(analysis.client_timestamp)
+                    });
+                    
+                    return acc;
+                }, []);
+
+                // Sort by timestamp descending (like labeling tab does)
+                combined.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
                 setCombinedEvents(combined);
             } catch {
@@ -563,15 +746,16 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
 
             setMessages(newMessages);
             setIdentifiedWorkflowNames(finalData.workflowNames || []);
-            setWorkflowContext(finalData.workflowContext || null);
-            setEditableContext(finalData.workflowContext || null);
+            const defaultContext = { user_job_role: '', project_name: '', project_goal: '' };
+            setWorkflowContext(finalData.workflowContext || defaultContext);
+            setEditableContext(finalData.workflowContext || defaultContext);
             setSynthesisStep('identifying');
 
             saveConversation(
                 newMessages, 
                 'identifying',
                 finalData.workflowNames || [],
-                finalData.workflowContext || null
+                finalData.workflowContext || defaultContext
             );
 
         } catch (error) {
@@ -591,40 +775,73 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         setSynthesisStep('defining_boundaries');
         
         try {
-            // Process each workflow: define boundaries then synthesize
+            // Create a mapping from original AI workflow names to user-approved names
+            const workflowNameMapping: Record<string, string> = {};
+            
+            // Get the original workflow names from the events to create mapping
+            const originalWorkflowNames = Array.from(new Set(combinedEvents.map(e => e.analysis.workflow)));
+            
+            // Create mapping (if user didn't change names, they'll map to themselves)
+            originalWorkflowNames.forEach((original, index) => {
+                const userApproved = approvedWorkflows[index] || original;
+                workflowNameMapping[original] = userApproved;
+            });
+
+            // Define boundaries for ALL workflows in a single call
+            const boundariesResponse = await fetch('/api/define-workflow-boundaries', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    model: selectedModel, 
+                    context: { 
+                        events: combinedEvents,
+                        workflow_names: approvedWorkflows, // All approved workflow names
+                        workflow_mapping: workflowNameMapping // Original -> User-approved mapping
+                    } 
+                }),
+            });
+            
+            if (!boundariesResponse.ok) {
+                throw new Error('Failed to define workflow boundaries');
+            }
+            
+            const boundaries = await boundariesResponse.json();
+
+            // Process each workflow: synthesize using correct event filtering
             const workflowResults = [];
             
-            for (const workflowName of approvedWorkflows) {
-                if (!workflowName.trim()) continue;
+            for (const userWorkflowName of approvedWorkflows) {
+                if (!userWorkflowName.trim()) continue;
                 
-                // Define boundaries for this workflow
-                const boundariesResponse = await fetch('/api/define-workflow-boundaries', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        model: selectedModel, 
-                        context: { 
-                            events: combinedEvents, 
-                            target_workflow_name: workflowName
-                        } 
-                    }),
-                });
+                // Find the original workflow name that maps to this user-approved name
+                const originalWorkflowName = Object.keys(workflowNameMapping).find(
+                    key => workflowNameMapping[key] === userWorkflowName
+                );
                 
-                if (!boundariesResponse.ok) continue;
+                // Filter events using the ORIGINAL workflow name from analysis
+                const relevantEvents = originalWorkflowName 
+                    ? combinedEvents.filter(e => e.analysis.workflow === originalWorkflowName)
+                    : combinedEvents; // Fallback to all events if no mapping found
                 
-                const boundaries = await boundariesResponse.json();
+                console.log(`Processing ${userWorkflowName}: found ${relevantEvents.length} relevant events`);
                 
-                // Synthesize the workflow
+                // Only proceed if we have events
+                if (relevantEvents.length === 0) {
+                    console.warn(`No events found for workflow: ${userWorkflowName} (original: ${originalWorkflowName})`);
+                    continue;
+                }
+                
+                // Synthesize the workflow using the user-approved name but filtered events
                 const synthesisResponse = await fetch('/api/synthesize-workflow', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         model: selectedModel,
                         context: { 
-                            events: combinedEvents.filter(e => e.analysis.workflow === workflowName),
-                            workflow_name: workflowName,
-                            trigger: boundaries.trigger,
-                            terminator: boundaries.terminator
+                            events: relevantEvents,
+                            workflow_name: userWorkflowName, // Use user-approved name
+                            trigger: boundaries[userWorkflowName]?.trigger || boundaries.trigger,
+                            terminator: boundaries[userWorkflowName]?.terminator || boundaries.terminator
                         }
                     }),
                 });
@@ -832,8 +1049,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         setActiveWorkflowIndex(0);
         setSynthesisStep('idle');
         setIdentifiedWorkflowNames([]);
-        setWorkflowContext(null);
-        setEditableContext(null);
+        const emptyContext = { user_job_role: '', project_name: '', project_goal: '' };
+        setWorkflowContext(emptyContext);
+        setEditableContext(emptyContext);
+        setWorkflowBoundaries({});
 
         if (conversationId) {
             try {
@@ -841,13 +1060,13 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 await fetch(`/api/workflows/${conversationId}`, { method: 'DELETE' });
                 
                 // Create a new initial conversation entry
-                await saveConversation(initialMessages, 'idle', [], null);
+                await saveConversation(initialMessages, 'idle', [], emptyContext);
 
             } catch {
             }
         } else {
             // If there was no conversationId, we might still need to ensure the initial state is saved
-            await saveConversation(initialMessages, 'idle', [], null);
+            await saveConversation(initialMessages, 'idle', [], emptyContext);
         }
         
         // This resets the conversationId to null after deletion and before a new one is created
@@ -868,6 +1087,69 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         }
 
         setIsAiThinking(false);
+    };
+
+    const deleteAllWorkflows = async () => {
+        setIsAiThinking(true);
+        
+        try {
+            // Delete ALL workflows for this user
+            const response = await fetch(`/api/workflows/delete-all?userId=${userId}`, { 
+                method: 'DELETE' 
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to delete workflows: ${response.statusText}`);
+            }
+            
+            console.log('All workflows deleted successfully');
+            
+            // Reset to completely clean state
+            const initialMessages: Message[] = [
+                { 
+                    id: 'init', 
+                    sender: 'ai', 
+                    text: "Hi! I can help you synthesize workflows from raw user events. I'll analyze your recorded events and help identify distinct workflows.\n\nClick the button below to begin:"
+                }
+            ];
+            
+            setMessages(initialMessages);
+            setWorkflows([]);
+            setActiveWorkflowIndex(0);
+            setSynthesisStep('idle');
+            setIdentifiedWorkflowNames([]);
+            const emptyContext = { user_job_role: '', project_name: '', project_goal: '' };
+            setWorkflowContext(emptyContext);
+            setEditableContext(emptyContext);
+            setWorkflowBoundaries({});
+            setConversationId(null);
+            setView('initial');
+            
+        } catch (error) {
+            console.error('Error deleting all workflows:', error);
+            // Still reset local state even if API call failed
+            const initialMessages: Message[] = [
+                { 
+                    id: 'init', 
+                    sender: 'ai', 
+                    text: "Hi! I can help you synthesize workflows from raw user events. I'll analyze your recorded events and help identify distinct workflows.\n\nClick the button below to begin:"
+                }
+            ];
+            
+            setMessages(initialMessages);
+            setWorkflows([]);
+            setActiveWorkflowIndex(0);
+            setSynthesisStep('idle');
+            setIdentifiedWorkflowNames([]);
+            const emptyContext = { user_job_role: '', project_name: '', project_goal: '' };
+            setWorkflowContext(emptyContext);
+            setEditableContext(emptyContext);
+            setWorkflowBoundaries({});
+            setConversationId(null);
+            setView('initial');
+        } finally {
+            setIsAiThinking(false);
+        }
     };
 
     // Auto-scroll logic for both chat views
@@ -922,7 +1204,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                             </DropdownMenu>
                         </div>
                         <CardTitle className="text-center flex-grow">AI Assistant</CardTitle>
-                        <div className="w-64 flex justify-end">
+                        <div className="w-64 flex justify-end gap-2 pr-4">
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -941,39 +1223,35 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button 
+                                        variant="destructive" 
+                                        size="sm"
+                                        className="flex items-center gap-2"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                        Delete All
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete All Workflows</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            This will permanently delete ALL workflows for this user, including conversation data and generated workflows. This action cannot be undone.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={deleteAllWorkflows}>
+                                            Delete All Workflows
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
                         </div>
                     </CardHeader>
                     <CardContent className="flex-grow overflow-y-auto p-4 space-y-4" ref={fullscreenChatRef}>
-                        {workflowContext && editableContext && (
-                            <div className="p-4 border rounded-lg bg-muted/50">
-                                <h3 className="text-lg font-semibold mb-2">Workflow Context Analysis</h3>
-                                <p className="text-sm text-muted-foreground mb-4">
-                                    The AI has analyzed your activities. You can review and edit this context.
-                                </p>
-                                <div className="space-y-4">
-                                    <div className="flex items-center gap-4">
-                                        <Label htmlFor="jobRole" className="w-24 text-right">Your Job Role</Label>
-                                        <Input id="jobRole" value={editableContext.user_job_role} onChange={(e) => handleContextChange('user_job_role', e.target.value)} />
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <Label htmlFor="projectName" className="w-24 text-right">Project Name</Label>
-                                        <Input id="projectName" value={editableContext.project_name} onChange={(e) => handleContextChange('project_name', e.target.value)} />
-                                    </div>
-                                    <div className="flex items-start gap-4">
-                                        <Label htmlFor="projectGoal" className="w-24 text-right pt-2">Project Goal</Label>
-                                        <Textarea 
-                                            id="projectGoal" 
-                                            value={editableContext.project_goal} 
-                                            onChange={(e) => handleContextChange('project_goal', e.target.value)}
-                                            className="min-h-[80px] px-3 py-1"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="mt-4 flex justify-end">
-                                    <Button onClick={handleContextSave}>Save Context</Button>
-                                </div>
-                            </div>
-                        )}
                         {Array.isArray(messages) && messages.map((message) => (
                             <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
                                 <div className={`p-4 rounded-lg max-w-[80%] ${
@@ -1008,6 +1286,38 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                                 {message.sender === 'ai-thinking' && !isAnalyzingEvents && <AiThinkingBubble />}
                             </div>
                         ))}
+                        
+                        {/* Show workflow context analysis after AI message, only if there's actual data */}
+                        {workflowContext && editableContext && (workflowContext.user_job_role || workflowContext.project_name || workflowContext.project_goal) && (
+                            <div className="p-4 border rounded-lg bg-muted/50">
+                                <h3 className="text-lg font-semibold mb-2">Workflow Context Analysis</h3>
+                                <p className="text-sm text-muted-foreground mb-4">
+                                    The AI has analyzed your activities. You can review and edit this context.
+                                </p>
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-4">
+                                        <Label htmlFor="jobRole" className="w-24 text-right">Your Job Role</Label>
+                                        <Input id="jobRole" value={editableContext.user_job_role} onChange={(e) => handleContextChange('user_job_role', e.target.value)} />
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <Label htmlFor="projectName" className="w-24 text-right">Project Name</Label>
+                                        <Input id="projectName" value={editableContext.project_name} onChange={(e) => handleContextChange('project_name', e.target.value)} />
+                                    </div>
+                                    <div className="flex items-start gap-4">
+                                        <Label htmlFor="projectGoal" className="w-24 text-right pt-2">Project Goal</Label>
+                                        <Textarea 
+                                            id="projectGoal" 
+                                            value={editableContext.project_goal} 
+                                            onChange={(e) => handleContextChange('project_goal', e.target.value)}
+                                            className="min-h-[80px] px-3 py-1"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="mt-4 flex justify-end">
+                                    <Button onClick={handleContextSave}>Save Context</Button>
+                                </div>
+                            </div>
+                        )}
                         
                         {/* Show workflow list when loaded from database - not dependent on specific message */}
                         {synthesisStep === 'identifying' && identifiedWorkflowNames.length > 0 && !messages.some(m => m.id === 'workflow-list') && (
@@ -1056,24 +1366,52 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             <aside className="col-span-1 flex flex-col h-[calc(100vh-10rem)] bg-muted/40 border rounded-lg">
                 <div className="p-4 border-b flex items-center justify-between">
                     <h3 className="text-base font-semibold">AI Assistant</h3>
-                    <TooltipProvider>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
+                    <div className="flex gap-2">
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        onClick={resetConversation}
+                                        className="flex items-center gap-1"
+                                    >
+                                        <RotateCcw className="h-3 w-3" />
+                                        Reset
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>Start over with a fresh conversation</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
                                 <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    onClick={resetConversation}
+                                    variant="destructive" 
+                                    size="sm"
                                     className="flex items-center gap-1"
                                 >
-                                    <RotateCcw className="h-3 w-3" />
-                                    Reset
+                                    <Trash2 className="h-3 w-3" />
+                                    Delete All
                                 </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>Start over with a fresh conversation</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete All Workflows</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will permanently delete ALL workflows for this user, including conversation data and generated workflows. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={deleteAllWorkflows}>
+                                        Delete All Workflows
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
                 </div>
                 <div className="flex-grow p-4 space-y-2 overflow-y-auto" ref={sidebarChatRef}>
                     {Array.isArray(messages) && messages.map((message) => (
