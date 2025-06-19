@@ -128,7 +128,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
   const [isProcessing, setIsProcessing] = useState(false);
   const [analysisOutput, setAnalysisOutput] = useState<AnalysisOutput>(null);
-  const [previousAnalyses, setPreviousAnalyses] = useState<PreviousAnalysis[]>([]);
   const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [currentBatchStep, setCurrentBatchStep] = useState(0);
@@ -273,7 +272,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       const data = await response.json();
       const analyses: WorkflowStepAnalysis[] = data.analyses || [];
       setAllWorkflowAnalyses(analyses);
-      setPreviousAnalyses(analyses.slice(-3)); // Keep track of the last 3 for context
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -318,7 +316,28 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
   }, [uiTreeEvents, selectedEvent]);
 
-
+  const previousAnalyses = useMemo(() => {
+    if (!selectedEvent || !allWorkflowAnalyses.length) {
+      return [];
+    }
+  
+    // Find the index of the currently selected event in the sorted list of all UI tree events.
+    const currentIndex = uiTreeEvents.findIndex(event => event.id === selectedEvent.id);
+    if (currentIndex <= 0) {
+      return [];
+    }
+  
+    // Get the timestamps of the three UI tree events that precede the current one.
+    const precedingEvents = uiTreeEvents.slice(Math.max(0, currentIndex - 3), currentIndex);
+    const precedingTimestamps = new Set(precedingEvents.map(e => getEventTimestamp(e)));
+  
+    // Filter all existing analyses to find the ones that match these preceding timestamps.
+    const relevantAnalyses = allWorkflowAnalyses
+      .filter(analysis => precedingTimestamps.has(analysis.client_timestamp))
+      .sort((a, b) => new Date(b.client_timestamp).getTime() - new Date(a.client_timestamp).getTime()); // Sort descending
+  
+    return relevantAnalyses;
+  }, [selectedEvent, allWorkflowAnalyses, uiTreeEvents]);
 
   // Find which UI tree events have not been processed yet
   const unprocessedUiTreeEvents = useMemo(() => {
@@ -365,10 +384,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       return eventTime > prevTimestamp && eventTime < currentTimestamp;
     });
   }, [allEvents, previousUiTreeEvent, selectedEvent]);
-
-
-
-
 
   const handleReprocess = async () => {
     if (!rawLlmInputForDisplay) {
@@ -421,7 +436,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       setIsProcessing(false);
     }
   };
-
 
   const processedStepsCount = useMemo(() => {
     if (!allWorkflowAnalyses.length || !uiTreeEvents.length) return 0;
@@ -667,8 +681,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     setCurrentBatchStep(0);
     setTotalBatchSteps(0);
   };
-
-
 
   if (error) {
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
