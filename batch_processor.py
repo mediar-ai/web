@@ -5,11 +5,107 @@ import os
 
 # Define the Modal "App" which is the main app object.
 # This is the entrypoint for all Modal functions.
-app = modal.App("session-event-aggregator")
+app = modal.App("session-event-aggregator-v2")
 
 # Define the container image for our functions.
 # We need to install libraries to connect to Postgres and to create a web endpoint.
-app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "fastapi")
+app.image = modal.Image.debian_slim().pip_install("psycopg2-binary")
+
+# This is the new, comprehensive aggregation query.
+# It recalculates all stats from the source-of-truth tables on every run.
+NEW_AGGREGATION_SQL = """
+DO $$
+BEGIN
+    -- This temporary table will hold the new, correct stats for each session.
+    CREATE TEMP TABLE temp_session_stats AS
+    WITH session_base AS (
+        -- Get all unique session IDs from the events table
+        SELECT DISTINCT session_id, user_id
+        FROM low_level_events
+        WHERE session_id IS NOT NULL
+    ),
+    analysis_stats AS (
+        -- Calculate stats based on workflow analyses
+        SELECT
+            session_id,
+            COUNT(*) as total_analyses,
+            COUNT(DISTINCT workflow) as distinct_workflows
+        FROM low_level_workflow_analyses
+        GROUP BY session_id
+    ),
+    label_stats AS (
+        -- Calculate stats based on the low_level_datasets table
+        SELECT
+            llwa.session_id,
+            COUNT(lld.id) as total_labels,
+            COUNT(lld.id) FILTER (WHERE lld.feedback IS NOT NULL) as human_labels
+        FROM low_level_datasets lld
+        JOIN low_level_workflow_analyses llwa ON lld.low_level_workflow_analysis_id = llwa.id
+        GROUP BY llwa.session_id
+    ),
+    event_timing_stats AS (
+        -- Get the first and last event timestamps for duration calculation
+        SELECT
+            session_id,
+            MIN(created_at) as first_event_timestamp,
+            MAX(created_at) as last_event_timestamp,
+            COUNT(*) as total_event_count
+        FROM low_level_events
+        GROUP BY session_id
+    )
+    -- Final combined stats per session
+    SELECT
+        sb.session_id,
+        sb.user_id,
+        ets.total_event_count,
+        COALESCE(als.total_analyses, 0) as total_workflow_analyses,
+        COALESCE(als.distinct_workflows, 0) as distinct_workflows_created,
+        COALESCE(ls.total_labels, 0) as total_labeled_steps,
+        COALESCE(ls.human_labels, 0) as human_labeled_steps,
+        ets.first_event_timestamp,
+        ets.last_event_timestamp
+    FROM session_base sb
+    LEFT JOIN analysis_stats als ON sb.session_id = als.session_id
+    LEFT JOIN label_stats ls ON sb.session_id = ls.session_id
+    JOIN event_timing_stats ets ON sb.session_id = ets.session_id;
+
+    -- Now, update the main session_metadata table from our temp table.
+    -- This is an "upsert" operation.
+    INSERT INTO public.session_metadata (
+        session_id, user_id, event_count, processed_event_count, 
+        total_workflow_analyses, distinct_workflows_created, total_labeled_steps, human_labeled_steps,
+        first_event_timestamp, last_event_timestamp, duration_seconds, session_type
+    )
+    SELECT
+        tss.session_id,
+        tss.user_id,
+        tss.total_event_count,
+        tss.total_workflow_analyses, -- processed_event_count is now the same as total_workflow_analyses
+        tss.total_workflow_analyses,
+        tss.distinct_workflows_created,
+        tss.total_labeled_steps,
+        tss.human_labeled_steps,
+        tss.first_event_timestamp,
+        tss.last_event_timestamp,
+        EXTRACT(EPOCH FROM (tss.last_event_timestamp - tss.first_event_timestamp)),
+        'low-level' -- Hardcoded for now as this script only handles low-level
+    FROM temp_session_stats tss
+    ON CONFLICT (session_id) DO UPDATE SET
+        user_id = EXCLUDED.user_id,
+        event_count = EXCLUDED.event_count,
+        processed_event_count = EXCLUDED.processed_event_count,
+        total_workflow_analyses = EXCLUDED.total_workflow_analyses,
+        distinct_workflows_created = EXCLUDED.distinct_workflows_created,
+        total_labeled_steps = EXCLUDED.total_labeled_steps,
+        human_labeled_steps = EXCLUDED.human_labeled_steps,
+        first_event_timestamp = EXCLUDED.first_event_timestamp,
+        last_event_timestamp = EXCLUDED.last_event_timestamp,
+        duration_seconds = EXCLUDED.duration_seconds;
+
+    DROP TABLE temp_session_stats;
+END;
+$$;
+"""
 
 # Define a function that runs on a schedule.
 # This function is the core of our solution.
@@ -20,11 +116,11 @@ app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "fastapi")
     # with a key "SUPABASE_CONN_STRING".
     secrets=[modal.Secret.from_name("supabase-secret")],
     
-    # Set the schedule to run every 1 second.
-    schedule=modal.Period(seconds=1),
+    # Set the schedule to run every 5 minutes.
+    schedule=modal.Period(minutes=5),
     
     # Allow this function to run for a while if needed.
-    timeout=60
+    timeout=120
 )
 def aggregate_and_update_sessions():
     """
@@ -33,104 +129,20 @@ def aggregate_and_update_sessions():
     2. Updates the session_metadata table with the new counts.
     3. Marks the events as "counted" so they are not processed again.
     """
-    print("Running scheduled aggregation...")
+    print("Running scheduled aggregation v2...")
     
     try:
         # Connect to the database using the connection string from the secret.
         conn = psycopg2.connect(os.environ["SUPABASE_CONN_STRING"])
         cur = conn.cursor()
 
-        # We will use the same robust SQL logic we developed earlier.
-        # This can be moved to a separate .sql file for cleanliness in a real app.
-        sql_query = """
-        DO $$
-        BEGIN
-            -- Step 1: Aggregate all uncounted events from both tables into a temporary table
-            CREATE TEMP TABLE temp_new_counts AS
-            WITH all_new_events AS (
-                SELECT
-                    session_id,
-                    user_id,
-                    'low-level' as session_type, -- Standardized type
-                    created_at AS event_timestamp,
-                    1 as processed_event_increment -- Low-level events are always "processed"
-                FROM public.low_level_events
-                WHERE is_counted = false AND session_id IS NOT NULL
-                UNION ALL
-                SELECT
-                    session_id,
-                    user_id,
-                    COALESCE(source, 'web') as session_type, -- Use the source column, default to 'web'
-                    client_timestamp AS event_timestamp,
-                    CASE WHEN item_type = 'activity_item' THEN 1 ELSE 0 END as processed_event_increment
-                FROM public.user_activity_data
-                WHERE is_counted = false AND session_id IS NOT NULL
-            ),
-            new_events_with_rn AS (
-                SELECT
-                    *,
-                    ROW_NUMBER() OVER(PARTITION BY session_id ORDER BY event_timestamp ASC) as rn
-                FROM all_new_events
-            )
-            SELECT
-                session_id,
-                -- Get user_id and session_type from the first event in the batch for this session
-                (SELECT user_id FROM new_events_with_rn WHERE rn = 1 AND session_id = ne.session_id LIMIT 1) as user_id,
-                (SELECT session_type FROM new_events_with_rn WHERE rn = 1 AND session_id = ne.session_id LIMIT 1) as session_type,
-                MIN(event_timestamp) as first_event_timestamp,
-                MAX(event_timestamp) as last_event_timestamp,
-                COUNT(*) as new_event_count,
-                SUM(processed_event_increment) as new_processed_event_count
-            FROM new_events_with_rn ne
-            GROUP BY session_id;
-
-            -- If there's nothing to update, exit early.
-            IF NOT EXISTS (SELECT 1 FROM temp_new_counts) THEN
-                DROP TABLE temp_new_counts;
-                RETURN;
-            END IF;
-
-            -- Step 2: Update the session_metadata table from the temporary table
-            UPDATE session_metadata sm
-            SET
-                event_count = sm.event_count + tnc.new_event_count,
-                processed_event_count = COALESCE(sm.processed_event_count, 0) + tnc.new_processed_event_count,
-                last_event_timestamp = tnc.last_event_timestamp,
-                duration_seconds = EXTRACT(EPOCH FROM (tnc.last_event_timestamp - sm.first_event_timestamp))
-            FROM temp_new_counts tnc
-            WHERE sm.session_id = tnc.session_id;
-
-            -- Step 3: Insert new sessions if they don't exist in session_metadata
-            INSERT INTO public.session_metadata (session_id, user_id, session_type, event_count, processed_event_count, first_event_timestamp, last_event_timestamp, duration_seconds)
-            SELECT
-                session_id,
-                user_id,
-                session_type,
-                new_event_count,
-                new_processed_event_count,
-                first_event_timestamp,
-                last_event_timestamp,
-                EXTRACT(EPOCH FROM (last_event_timestamp - first_event_timestamp))
-            FROM temp_new_counts
-            WHERE session_id NOT IN (SELECT session_id FROM public.session_metadata);
-
-            -- Step 4: Mark the events we just counted as "done"
-            UPDATE public.low_level_events SET is_counted = true WHERE is_counted = false;
-            UPDATE public.user_activity_data SET is_counted = true WHERE is_counted = false;
-
-            -- Step 5: Clean up the temporary table
-            DROP TABLE temp_new_counts;
-        END;
-        $$;
-        """
-        
-        cur.execute(sql_query)
+        cur.execute(NEW_AGGREGATION_SQL)
         conn.commit()
         
-        print("Aggregation successful.")
+        print("Aggregation v2 successful.")
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred in v2 aggregation: {e}")
         # In a production environment, you would add more robust error handling,
         # perhaps sending a notification to an observability platform.
     finally:

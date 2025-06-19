@@ -26,6 +26,7 @@ import ScreenshotView from "@/components/low-level/ScreenshotView";
 import DiffView from "@/components/low-level/DiffView";
 import { useUser } from "@/context/UserContext";
 import { RefreshCw, Expand, Minimize2, PlusSquare, MinusSquare, ChevronsDown, ChevronsUp } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -45,26 +46,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Progress } from "@/components/ui/progress";
-
-type AnalysisOutput = {
-  workflow: string;
-  step: string;
-  description: string;
-  facts: string;
-  logic: string;
-  tech: string;
-  apps: string;
-  context: string;
-} | null;
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type ContextForAnalysis = {
   screenshotBefore?: string | null;
@@ -79,7 +63,7 @@ type ContextForAnalysis = {
 };
 
 type WorkflowStepAnalysis = {
-  id: string;
+  id: string; // Corresponds to the database primary key
   workflow: string;
   step: string;
   description: string;
@@ -115,8 +99,7 @@ type StepsPageEventPayload = {
 
 const getEventTimestamp = (event: LowLevelEvent): string => {
   const payload = event.payload as StepsPageEventPayload;
-  const rawTimestamp = payload?.payload?.timestamp || event.created_at;
-  return new Date(rawTimestamp).toISOString();
+  return payload?.payload?.timestamp || event.created_at;
 };
 
 const EventSummary = ({ event }: { event: LowLevelEvent }) => {
@@ -139,24 +122,23 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [accordionSelection, setAccordionSelection] = useState<'expand' | 'collapse' | null>(null);
   const [contextGroupSelection, setContextGroupSelection] = useState<'expand' | 'collapse' | null>(null);
   const [detailSelection, setDetailSelection] = useState<'expand' | 'collapse' | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isModalButtonLoading, setIsModalButtonLoading] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [totalEventCount, setTotalEventCount] = useState(0);
-  const [totalUiTreeCount, setTotalUiTreeCount] = useState(0);
-  const [showLoadModal, setShowLoadModal] = useState(false);
-  const [loadAmount, setLoadAmount] = useState('1000');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [analysisOutput, setAnalysisOutput] = useState<AnalysisOutput>(null);
   const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
-  const [currentBatchStep, setCurrentBatchStep] = useState(0);
-  const [totalBatchSteps, setTotalBatchSteps] = useState(0);
+  const [pendingJobCount, setPendingJobCount] = useState(0);
   const [rawLlmInputForDisplay, setRawLlmInputForDisplay] = useState<string | null>(null);
-
-  const [contextConfig] = useState({
+  const [totalEventCount, setTotalEventCount] = useState<number>(0);
+  const [totalStepsCount, setTotalStepsCount] = useState<number>(0);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isLoadMoreModalOpen, setIsLoadMoreModalOpen] = useState(false);
+  const [loadAmount, setLoadAmount] = useState('1000');
+  
+  // State to control which context elements are included
+  const [contextConfig, ] = useState({
     includeScreenshots: false,
     includePreviousUiTree: false,
     includePreviousWindowTitle: true,
@@ -175,121 +157,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const CONTEXT_GROUP_STORAGE_KEY = useMemo(() => `llm-iteration-context-group-state-${userId}`, [userId]);
   const DETAIL_ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-detail-state-${userId}`, [userId]);
 
-  const fetchAllWorkflowAnalyses = useCallback(async () => {
-    if (!userId) return;
-    try {
-      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
-      if (!response.ok) throw new Error('Failed to fetch workflow analyses');
-      const data = await response.json();
-      const analyses: WorkflowStepAnalysis[] = (data.analyses || []).map((a: WorkflowStepAnalysis) => ({
-        ...a,
-        client_timestamp: new Date(a.client_timestamp).toISOString(),
-      }));
-      setAllWorkflowAnalyses(analyses);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [userId]);
-
-  const loadEventsInChunks = useCallback(async (amountToLoad: number, initialLoad = false) => {
-    if (!userId) return;
-    
-    setIsLoading(true);
-    if (!initialLoad) {
-      setIsModalButtonLoading(true);
-      setShowLoadModal(false);
-    }
-    setLoadingProgress(0);
-
-    const chunkSize = 1000;
-    let loadedEvents: LowLevelEvent[] = [];
-    let offset = 0;
-    const totalToFetch = Math.min(amountToLoad, totalEventCount);
-
-    while (loadedEvents.length < totalToFetch) {
-      const remaining = totalToFetch - loadedEvents.length;
-      const currentChunkSize = Math.min(chunkSize, remaining);
-
-      try {
-        const response = await fetch(`/api/low-level/${userId}?limit=${currentChunkSize}&offset=${offset}`);
-        if (!response.ok) throw new Error(`Network response was not ok (chunk offset: ${offset})`);
-        
-        const data = await response.json();
-        if (data.events.length === 0) {
-            setLoadingProgress(100);
-            break;
-        }
-        
-        const newEvents = data.events;
-        // Ensure uniqueness before updating state
-        setAllEvents(prevEvents => {
-          const all = [...prevEvents, ...newEvents];
-          const uniqueEvents = Array.from(new Map(all.map(event => [event.id, event])).values());
-          return uniqueEvents;
-        });
-
-        loadedEvents = [...loadedEvents, ...newEvents];
-        offset += newEvents.length;
-        setLoadingProgress((loadedEvents.length / totalToFetch) * 100);
-
-        if (!data.hasMore) break;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        break;
-      }
-    }
-    
-    setAllEvents(prev => prev.sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()));
-    setIsLoading(false);
-    setIsModalButtonLoading(false);
-  }, [userId, totalEventCount]);
-
-  useEffect(() => {
-    setUserId(userId);
-
-    const performInitialLoad = async () => {
-      if (!userId) return;
-
-      setIsLoading(true);
-      
-      // Fetch analyses and counts in parallel for speed
-      const [countsResponse] = await Promise.all([
-        fetch(`/api/sessions?userId=${userId}`),
-        fetchAllWorkflowAnalyses()
-      ]);
-
-      if (!countsResponse.ok) {
-        setError('Failed to fetch event counts');
-        setIsLoading(false);
-        return;
-      }
-
-      const countsData = await countsResponse.json();
-      const userData = countsData[userId];
-      
-      if (userData) {
-        const totalEvents = userData.sessions.reduce((sum: number, s: { eventCount: number }) => sum + s.eventCount, 0);
-        setTotalEventCount(totalEvents);
-        setTotalUiTreeCount(userData.totalUiTreeEvents || 0);
-
-        if (totalEvents > 0) {
-          // Now that counts are known, load the first chunk
-          await loadEventsInChunks(Math.min(1000, totalEvents), true);
-           if (totalEvents > 1000) {
-            setShowLoadModal(true);
-          }
-        } else {
-           setIsLoading(false); // No events to load
-        }
-      } else {
-        setIsLoading(false); // No user data
-      }
-    };
-    
-    performInitialLoad();
-
-  }, [userId, setUserId, fetchAllWorkflowAnalyses, loadEventsInChunks]);
-
   useEffect(() => {
     if (userId) {
       const storedState = localStorage.getItem(ACCORDION_STORAGE_KEY);
@@ -298,42 +165,59 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           setOpenAccordionItems(JSON.parse(storedState));
         } catch (e) {
           console.error("Failed to parse accordion state from localStorage", e);
+          setOpenAccordionItems([]);
         }
+      } else {
+        setOpenAccordionItems([]);
       }
+
       const storedGroupState = localStorage.getItem(CONTEXT_GROUP_STORAGE_KEY);
       if (storedGroupState) {
         try {
           setOpenContextGroupItems(JSON.parse(storedGroupState));
         } catch (e) {
           console.error("Failed to parse context group state from localStorage", e);
+          setOpenContextGroupItems([]);
         }
+      } else {
+        setOpenContextGroupItems([]);
       }
+      
       const storedDetailState = localStorage.getItem(DETAIL_ACCORDION_STORAGE_KEY);
       if (storedDetailState) {
         try {
           setOpenDetailItems(JSON.parse(storedDetailState));
         } catch (e) {
           console.error("Failed to parse detail state from localStorage", e);
+          setOpenDetailItems([]);
         }
+      } else {
+        setOpenDetailItems([]);
       }
     }
   }, [userId, ACCORDION_STORAGE_KEY, CONTEXT_GROUP_STORAGE_KEY, DETAIL_ACCORDION_STORAGE_KEY]);
 
   const handleAccordionValueChange = (value: string[]) => {
     setOpenAccordionItems(value);
-    localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(value));
+    if (userId) {
+      localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(value));
+    }
     setAccordionSelection(null);
   };
 
   const handleContextGroupValueChange = (value: string[]) => {
     setOpenContextGroupItems(value);
-    localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify(value));
+    if (userId) {
+      localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify(value));
+    }
     setContextGroupSelection(null);
   };
 
   const handleDetailItemsValueChange = (value: string[]) => {
     setOpenDetailItems(value);
-    localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(value));
+    if (userId) {
+      localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(value));
+    }
     setDetailSelection(null);
   };
 
@@ -365,9 +249,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
   const expandAllDetails = () => {
     const allDetailValues = [
-      "sub-item-1", "sub-item-prev-screenshot-same-window", "sub-item-5",
-      "sub-item-2", "sub-item-prev-window-title", "sub-item-prev-same-window", "sub-item-current-tree", "sub-item-4",
-      "sub-item-3", "sub-item-events-same-window",
+      "sub-item-1", "sub-item-prev-screenshot-same-window", "sub-item-5", // Screenshots
+      "sub-item-2", "sub-item-prev-window-title", "sub-item-prev-same-window", "sub-item-current-tree", "sub-item-4", // UI-Tree
+      "sub-item-3", "sub-item-events-same-window", // Events
     ];
     setOpenDetailItems(allDetailValues);
     localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(allDetailValues));
@@ -379,6 +263,112 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify([]));
   }
 
+  // --- Start of Reactive Data Processing ---
+
+  const fetchAllWorkflowAnalyses = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch workflow analyses');
+      }
+      const data = await response.json();
+      const analyses: WorkflowStepAnalysis[] = data.analyses || [];
+      setAllWorkflowAnalyses(analyses);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    setUserId(userId);
+    const fetchEvents = async () => {
+      if (!userId) return;
+      setLoading(true);
+      try {
+        const response = await fetch(`/api/low-level/${userId}?offset=0`);
+        if (!response.ok) {
+          throw new Error('Network response was not ok when fetching events');
+        }
+        const data = await response.json();
+        const sortedEvents = (data.events || []).sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        setAllEvents(sortedEvents);
+        setHasMore(data.hasMore || false);
+        setOffset(sortedEvents.length);
+        if (data.totalEventCount) {
+          setTotalEventCount(data.totalEventCount);
+        }
+        if (data.totalStepsCount) {
+          setTotalStepsCount(data.totalStepsCount);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (userId) {
+      fetchEvents();
+      fetchAllWorkflowAnalyses();
+    }
+  }, [userId, setUserId, fetchAllWorkflowAnalyses]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch(`/api/users/${userId}/workflow-status`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setPendingJobCount(data.pendingCount || 0);
+        
+        // To avoid re-fetching all analyses, we can just update the count
+        // if it's different from the length of our current analyses array.
+        // A more robust solution might merge new analyses, but this is efficient.
+        if (data.processedCount !== allWorkflowAnalyses.length) {
+            fetchAllWorkflowAnalyses();
+        }
+
+      } catch (e) {
+        console.error("Failed to fetch workflow status", e);
+      }
+    };
+    
+    // Poll immediately and then every 5 seconds
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 5000);
+
+    return () => clearInterval(interval);
+  }, [userId, allWorkflowAnalyses.length, fetchAllWorkflowAnalyses]);
+
+  const loadMoreEvents = async (amount: number) => {
+    if (!hasMore || isLoadingMore || !userId) return;
+    setIsLoadingMore(true);
+    try {
+      const response = await fetch(`/api/low-level/${userId}?offset=${offset}&limit=${amount}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok when fetching more events');
+      }
+      const data = await response.json();
+      const sortedEvents = (data.events || []).sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      
+      setAllEvents(prevEvents => [...prevEvents, ...sortedEvents]);
+      setHasMore(data.hasMore || false);
+      setOffset(prevOffset => prevOffset + sortedEvents.length);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      // We leave isBatchProcessing as true until the first poll confirms jobs are pending.
+      // Or we can set it to false and let the pendingJobCount handle the button state.
+      // Let's do the latter for a more responsive feel.
+      setIsBatchProcessing(false);
+    }
+  };
+
+  // Filter for UI tree events and sort them
   const uiTreeEvents = useMemo(() => {
     return allEvents
       .filter(event => (event.payload as StepsPageEventPayload).payload?.type === 'ui_tree')
@@ -386,53 +376,81 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   }, [allEvents]);
 
   useEffect(() => {
+    // Automatically select the last UI tree event on initial load,
+    // but don't override if a selection has already been made.
     if (uiTreeEvents.length > 0 && !selectedEvent) {
       setSelectedEvent(uiTreeEvents[uiTreeEvents.length - 1]);
     }
   }, [uiTreeEvents, selectedEvent]);
 
   const previousAnalyses = useMemo(() => {
-    if (!selectedEvent || !allWorkflowAnalyses.length) return [];
+    if (!selectedEvent || !allWorkflowAnalyses.length) {
+      return [];
+    }
   
+    // Find the index of the currently selected event in the sorted list of all UI tree events.
     const currentIndex = uiTreeEvents.findIndex(event => event.id === selectedEvent.id);
-    if (currentIndex <= 0) return [];
+    if (currentIndex <= 0) {
+      return [];
+    }
   
+    // Get the timestamps of the three UI tree events that precede the current one.
     const precedingEvents = uiTreeEvents.slice(Math.max(0, currentIndex - 3), currentIndex);
     const precedingTimestamps = new Set(precedingEvents.map(e => getEventTimestamp(e)));
   
-    return allWorkflowAnalyses
+    // Filter all existing analyses to find the ones that match these preceding timestamps.
+    const relevantAnalyses = allWorkflowAnalyses
       .filter(analysis => precedingTimestamps.has(analysis.client_timestamp))
-      .sort((a, b) => new Date(b.client_timestamp).getTime() - new Date(a.client_timestamp).getTime());
+      .sort((a, b) => new Date(b.client_timestamp).getTime() - new Date(a.client_timestamp).getTime()); // Sort descending
+  
+    return relevantAnalyses;
   }, [selectedEvent, allWorkflowAnalyses, uiTreeEvents]);
 
+  // Find which UI tree events have not been processed yet
   const unprocessedUiTreeEvents = useMemo(() => {
-    if (!Array.isArray(allWorkflowAnalyses) || allWorkflowAnalyses.length === 0) return uiTreeEvents;
+    if (!Array.isArray(allWorkflowAnalyses) || allWorkflowAnalyses.length === 0) {
+      return uiTreeEvents;
+    }
     const analyzedTimestamps = new Set(allWorkflowAnalyses.map(a => a.client_timestamp));
     return uiTreeEvents.filter(event => !analyzedTimestamps.has(getEventTimestamp(event)));
   }, [uiTreeEvents, allWorkflowAnalyses]);
 
+  // Find the analysis that corresponds to the currently selected event
   const existingAnalysisForSelectedEvent = useMemo(() => {
     if (!selectedEvent || !allWorkflowAnalyses) return null;
-    const selectedTimestamp = getEventTimestamp(selectedEvent);
-    return allWorkflowAnalyses.find(a => a.client_timestamp === selectedTimestamp) || null;
-  }, [selectedEvent, allWorkflowAnalyses]);
+    
+    // Get the timestamp of the selected event
+    const selectedEventTimestamp = new Date(getEventTimestamp(selectedEvent));
 
+    return allWorkflowAnalyses.find(analysis => {
+      const analysisTimestamp = new Date(analysis.client_timestamp);
+      
+      // Check if they are in the same second. This is more robust
+      // than an exact millisecond match.
+      return Math.floor(analysisTimestamp.getTime() / 1000) === Math.floor(selectedEventTimestamp.getTime() / 1000);
+    }) || null;
+  }, [selectedEvent, allWorkflowAnalyses, uiTreeEvents]);
+
+  // Find the previous UI tree event in the timeline
   const previousUiTreeEvent = useMemo(() => {
     if (!selectedEvent) return null;
     const currentIndex = uiTreeEvents.findIndex(e => e.id === selectedEvent.id);
     return currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
   }, [selectedEvent, uiTreeEvents]);
 
+  // Get the UI tree string from the previous event
   const previousUiTree = useMemo(() => {
     if (!previousUiTreeEvent) return null;
     return (previousUiTreeEvent.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree || null;
   }, [previousUiTreeEvent]);
 
+  // Get the UI tree string from the current event
   const currentUiTree = useMemo(() => {
     if (!selectedEvent) return null;
     return (selectedEvent.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree || null;
   }, [selectedEvent]);
 
+  // Find all events that occurred between the previous and current UI tree events
   const eventsBetweenByTimestamp = useMemo(() => {
     if (!previousUiTreeEvent || !selectedEvent) return [];
     const prevTimestamp = new Date(getEventTimestamp(previousUiTreeEvent)).getTime();
@@ -442,48 +460,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       return eventTime > prevTimestamp && eventTime < currentTimestamp;
     });
   }, [allEvents, previousUiTreeEvent, selectedEvent]);
-
-  const handleReprocess = async () => {
-    if (!rawLlmInputForDisplay) {
-      alert("Cannot re-process: Raw LLM input is not available.");
-      return;
-    }
-
-    setIsProcessing(true);
-    setAnalysisOutput(null);
-    setError(null);
-
-    try {
-      const payload = JSON.parse(rawLlmInputForDisplay);
-      const response = await fetch('/api/process-workflow-step', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to process workflow step');
-      }
-
-      const result = await response.json();
-      setAnalysisOutput(result);
-
-      if (selectedEvent) {
-        await fetch('/api/save-llm-analysis', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...result, userId, client_timestamp: getEventTimestamp(selectedEvent) }),
-        });
-        await fetchAllWorkflowAnalyses();
-      }
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const processedStepsCount = useMemo(() => {
     if (!allWorkflowAnalyses.length || !uiTreeEvents.length) return 0;
@@ -563,8 +539,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const beforeScreenshotTimestampSameWindow = useMemo(() => relevantScreenshotDiffSameWindow?.payload.payload?.event?.screenshot_diff?.before_timestamp || null, [relevantScreenshotDiffSameWindow]);
 
   const llmContext = useMemo((): ContextForAnalysis => {
-    if (!selectedEvent) return {};
+    if (!selectedEvent) {
+      return {};
+    }
+
     const context: ContextForAnalysis = {};
+
     if (contextConfig.includeScreenshots) {
       context.screenshotAfter = afterScreenshotDataUrl;
       context.screenshotBefore = beforeScreenshotDataUrlSameWindow;
@@ -576,172 +556,111 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       context.currentUiTree_structure = "The UI tree is a simplified representation of the accessibility tree. Each line has the format: 'LineNumber. RomanNumeralIndentation. [Role] 'Name' {Attributes}'.";
       context.currentUiTree = generateSimplifiedUiTreeString(currentUiTree);
     }
+    
     if (contextConfig.includeEventsSincePreviousUiTree && eventsBetweenByTimestamp.length > 0) {
       context.eventsSincePreviousUiTreeByTimestamp = eventsBetweenByTimestamp.map(event => generateEventSummaryString(event));
     }
+
     if (contextConfig.includeEventsSinceSameWindowUiTree && eventsBetweenSameWindow.length > 0) {
       context.eventsSincePreviousUiTreeBySameWindow = eventsBetweenSameWindow.map(event => generateEventSummaryString(event));
     }
+
     if (contextConfig.includePreviousAnalyses && previousAnalyses.length > 0) {
       context.previousAnalyses = previousAnalyses.slice(0, 3);
     }
+
     return context;
-  }, [selectedEvent, previousUiTree, currentUiTree, afterScreenshotDataUrl, beforeScreenshotDataUrlSameWindow, eventsBetweenByTimestamp, eventsBetweenSameWindow, previousAnalyses, contextConfig]);
+  }, [
+    selectedEvent,
+    previousUiTree,
+    currentUiTree,
+    beforeScreenshotDataUrlSameWindow,
+    afterScreenshotDataUrl,
+    eventsBetweenByTimestamp,
+    eventsBetweenSameWindow,
+    previousAnalyses,
+    contextConfig,
+  ]);
 
   useEffect(() => {
+    // Automatically update the raw JSON preview whenever the context or model changes.
     if (selectedEvent && Object.keys(llmContext).length > 0) {
-      const llmApiPayload = { prompt: WORKFLOW_STEP_ANALYSIS_PROMPT, model: selectedModel, context: llmContext };
+      const llmApiPayload = {
+        prompt: WORKFLOW_STEP_ANALYSIS_PROMPT,
+        model: selectedModel,
+        context: llmContext,
+      };
       setRawLlmInputForDisplay(JSON.stringify(llmApiPayload, null, 2));
     } else {
       setRawLlmInputForDisplay(null);
     }
   }, [llmContext, selectedModel, selectedEvent]);
 
+  // --- End of Reactive Data Processing ---
+
   const handleProcessAllRemaining = async () => {
-    setIsBatchProcessing(true);
-    setTotalBatchSteps(unprocessedUiTreeEvents.length);
-    setCurrentBatchStep(0);
-    let recentAnalyses: PreviousAnalysis[] = [...previousAnalyses];
-    for (let i = 0; i < unprocessedUiTreeEvents.length; i++) {
-      const eventToProcess = unprocessedUiTreeEvents[i];
-      setCurrentBatchStep(i + 1);
-      const currentIndex = uiTreeEvents.findIndex(e => e.id === eventToProcess.id);
-      const prevEvent = currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
-      const context: ContextForAnalysis = {};
-      const prevUiTreeString = prevEvent ? (prevEvent.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree : null;
-      if (contextConfig.includePreviousUiTree && prevUiTreeString) {
-        context.previousUiTree = generateSimplifiedUiTreeString(prevUiTreeString);
-      }
-      if (contextConfig.includeCurrentUiTree) {
-        const currentUiTreeString = (eventToProcess.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree;
-        context.currentUiTree = generateSimplifiedUiTreeString(currentUiTreeString);
-      }
-      if (contextConfig.includePreviousAnalyses && recentAnalyses.length > 0) {
-        context.previousAnalyses = recentAnalyses;
-      }
-      const prevEventTimestamp = prevEvent ? new Date(getEventTimestamp(prevEvent)).getTime() : 0;
-      const currentEventTimestamp = new Date(getEventTimestamp(eventToProcess)).getTime();
-      const relevantRawEvents = allEvents.filter(e => {
-        const eventTime = new Date(getEventTimestamp(e)).getTime();
-        return eventTime > prevEventTimestamp && eventTime <= currentEventTimestamp;
-      });
-      if (relevantRawEvents.length > 0) {
-        const summarizedEvents = relevantRawEvents.map(event => generateEventSummaryString(event));
-        if (contextConfig.includeEventsSincePreviousUiTree) {
-          context.eventsSincePreviousUiTreeByTimestamp = summarizedEvents;
-        }
-        if (contextConfig.includeEventsSinceSameWindowUiTree) {
-          context.eventsSincePreviousUiTreeBySameWindow = summarizedEvents;
-        }
-      }
-      try {
-        const processResponse = await fetch('/api/process-workflow-step', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: WORKFLOW_STEP_ANALYSIS_PROMPT, model: selectedModel, context }),
-        });
-        if (!processResponse.ok) throw new Error(`API error for step ${i + 1}: ${processResponse.statusText}`);
-        const result = await processResponse.json();
-        if (result.analysis) {
-          const sessionId = localStorage.getItem('app_session_id') || 'unknown-session';
-          const clientTimestamp = getEventTimestamp(eventToProcess);
-          await fetch('/api/save-llm-analysis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, sessionId, analysis: result.analysis, clientTimestamp }),
-          });
-          const newAnalysis: PreviousAnalysis = {
-            id: `batch-${Date.now()}`,
-            ...result.analysis,
-            client_timestamp: clientTimestamp,
-            created_at: new Date().toISOString()
-          };
-          recentAnalyses = [newAnalysis, ...recentAnalyses].slice(0, 3);
-          setAllWorkflowAnalyses(prev => [...prev, newAnalysis]);
-        }
-      } catch (err) {
-        console.error(`Failed to process step ${i + 1}`, err);
-      }
+    if (!userId) {
+      alert("User ID is not available.");
+      return;
     }
-    setIsBatchProcessing(false);
-    setCurrentBatchStep(0);
-    setTotalBatchSteps(0);
+    // Optimistic UI Update: Immediately disable the button and show processing state.
+    setIsBatchProcessing(true); 
+    
+    try {
+      const response = await fetch('/api/initiate-workflow-analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (response.status !== 202) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to start batch processing.');
+      }
+      console.log("Backend processing initiated. Polling will handle further UI updates.");
+      // Note: We do NOT set isBatchProcessing to false here.
+      // The polling mechanism is now responsible for the button's state via pendingJobCount.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      // Rollback the optimistic update on failure.
+      setIsBatchProcessing(false); 
+    }
+  };
+
+  const handleLoadMoreRequest = () => {
+    let amount = parseInt(loadAmount, 10);
+    // In case of 'all', we'll need a different strategy, for now, let's use a very large number
+    // This should be coordinated with a backend change that can handle large limit requests.
+    if (loadAmount === 'all') {
+      amount = totalEventCount - allEvents.length; 
+    }
+    loadMoreEvents(amount);
+    setIsLoadMoreModalOpen(false);
   };
 
   if (error) {
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
   }
 
-  if (isLoading && totalEventCount === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center pt-16">
-        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground mt-4">Loading Initial Data...</p>
-      </div>
-    );
-  }
-  
-  if (totalEventCount > 0 && allEvents.length === 0 && !isLoading) {
-      return (
-        <div className="p-4 text-center">
-          <p>No events loaded.</p>
-          <p className="text-sm text-muted-foreground">Click the button below to start loading.</p>
-          <Button onClick={() => loadEventsInChunks(Math.min(1000, totalEventCount))} className="mt-4">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Load Initial Events
-          </Button>
-        </div>
-      );
+  if (!loading && allEvents.length === 0) {
+    return <div className="p-4">No events found for this user.</div>;
   }
 
   return (
     <div className="p-4">
-      <Dialog open={showLoadModal} onOpenChange={setShowLoadModal}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Load More User Events</DialogTitle>
-            <DialogDescription>
-              Showing the latest <strong>{allEvents.length.toLocaleString()}</strong> events. We found <strong>{totalEventCount.toLocaleString()}</strong> total events, including <strong>{totalUiTreeCount.toLocaleString()}</strong> key steps. Would you like to load more?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <Select value={loadAmount} onValueChange={setLoadAmount}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select amount to load" />
-              </SelectTrigger>
-              <SelectContent>
-                {[...Array(Math.min(10, Math.ceil(totalEventCount / 1000) - 1))].map((_, i) => (
-                  <SelectItem key={i} value={String((i + 2) * 1000)}>Load {(i + 2) * 1000} most recent events</SelectItem>
-                ))}
-                <SelectItem value={String(totalEventCount)}>Load All ({totalEventCount.toLocaleString()}) events</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => loadEventsInChunks(parseInt(loadAmount, 10), false)} disabled={isModalButtonLoading}>
-              {isModalButtonLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
-              Load Events
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <div className="sticky top-28 bg-background z-10 border-b">
-        {isLoading ? (
-          <div className="py-4 px-2 h-[124px] flex flex-col items-center justify-center space-y-2">
-            <p className="text-sm text-muted-foreground">Loading events... {Math.round(loadingProgress)}%</p>
-            <Progress value={loadingProgress} className="w-full" />
+        {loading ? (
+          <div className="py-4 px-2 h-[124px] flex items-center">
+            <Skeleton className="h-14 w-full" />
           </div>
-        ) : allEvents.length > 0 ? (
+        ) : (
           <UITreeTimeline
             uiTreeEvents={uiTreeEvents}
             selectedEvent={selectedEvent}
             onEventSelect={setSelectedEvent}
           />
-        ) : (
-          <div className="p-4 text-center text-muted-foreground h-[124px] flex items-center justify-center">
-            {totalEventCount === 0 && !isLoading ? 'No events found for this user.' : ''}
-          </div>
         )}
       </div>
       <Card className="my-4">
@@ -749,23 +668,29 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           <span className="font-semibold text-base">Summary:</span>
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">Total Events:</span>
-            <span className="font-semibold">{totalEventCount.toLocaleString()}</span>
+            <span className="font-semibold">{totalEventCount} (loaded {allEvents.length})</span>
           </div>
           <div className="flex items-center space-x-1.5">
-            <span className="text-muted-foreground">Total Steps:</span>
-            <span className="font-semibold">{uiTreeEvents.length.toLocaleString()}</span>
+            <span className="text-muted-foreground">UI Steps:</span>
+            <span className="font-semibold">{uiTreeEvents.length} / {totalStepsCount}</span>
           </div>
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">Processed:</span>
             <span className="font-semibold">{processedStepsCount}</span>
           </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="text-muted-foreground">Remaining:</span>
-            <span className="font-semibold">{unprocessedUiTreeEvents.length.toLocaleString()}</span>
-          </div>
           <div className="flex-grow" />
-          <Button variant="outline" size="sm" onClick={handleProcessAllRemaining} disabled={isBatchProcessing || unprocessedUiTreeEvents.length === 0}>
-            {isBatchProcessing ? `Processing ${currentBatchStep}/${totalBatchSteps}...` : 'Process all remaining Steps'}
+          {hasMore && (
+            <Button variant="outline" size="sm" onClick={() => setIsLoadMoreModalOpen(true)} disabled={isLoadingMore}>
+              {isLoadingMore ? 'Loading...' : 'Load More'}
+            </Button>
+          )}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleProcessAllRemaining} 
+            disabled={isBatchProcessing || pendingJobCount > 0 || unprocessedUiTreeEvents.length === 0}
+          >
+            {pendingJobCount > 0 ? `Processing ${processedStepsCount}/${totalStepsCount}...` : 'Process all remaining Steps'}
           </Button>
         </CardContent>
       </Card>
@@ -833,7 +758,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           </div>
         </TooltipProvider>
       </div>
-      {allEvents.length > 0 ? (
+      {loading ? (
+        <div className="flex flex-col items-center justify-center pt-16">
+          <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground mt-4">Loading Events...</p>
+        </div>
+      ) : (
         <Accordion 
           type="multiple" 
           className="w-full" 
@@ -1095,7 +1025,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
           <AccordionItem value="item-raw-llm-input">
             <div className="flex items-center">
-              <div className="w-12 flex justify-center"></div>
+              {/* Checkbox removed as per user request */}
+              <div className="w-12 flex justify-center"></div> {/* Maintain spacing if needed, or remove entirely if trigger should align left */} 
               <AccordionTrigger className="flex-1 italic">Full Raw LLM Input Context</AccordionTrigger>
             </div>
             <AccordionContent>
@@ -1117,9 +1048,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
               <AccordionTrigger className="flex-grow-0 pr-2">
                 <div className="flex items-center gap-2">
                   <span>Output</span>
-                  {isProcessing ? (
-                    <Badge variant="outline">Processing...</Badge>
-                  ) : existingAnalysisForSelectedEvent ? (
+                  {existingAnalysisForSelectedEvent ? (
                     <Badge variant="secondary">Processed</Badge>
                   ) : (
                     <Badge variant="destructive">Not Processed</Badge>
@@ -1148,28 +1077,10 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                     </DropdownMenuRadioGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button variant="outline" size="sm" onClick={handleReprocess} disabled={isProcessing || !selectedEvent}>
-                  {isProcessing ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Re-process"}
-                </Button>
               </div>
             </div>
             <AccordionContent>
-              {isProcessing ? (
-                <div className="flex items-center justify-center p-8">
-                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : analysisOutput ? (
-                <div className="space-y-2 p-2 text-sm">
-                  <p><strong>Workflow:</strong> {analysisOutput.workflow}</p>
-                  <p><strong>Step:</strong> {analysisOutput.step}</p>
-                  <p><strong>Description:</strong> {analysisOutput.description}</p>
-                  <p><strong>Facts:</strong> {analysisOutput.facts}</p>
-                  <p><strong>Logic:</strong> {analysisOutput.logic}</p>
-                  <p><strong>Tech:</strong> {analysisOutput.tech}</p>
-                  <p><strong>Apps:</strong> {analysisOutput.apps}</p>
-                  <p><strong>Context:</strong> {analysisOutput.context}</p>
-                </div>
-              ) : existingAnalysisForSelectedEvent ? (
+              {existingAnalysisForSelectedEvent ? (
                 <div className="space-y-2 p-2 text-sm">
                   <p><strong>Workflow:</strong> {existingAnalysisForSelectedEvent.workflow}</p>
                   <p><strong>Step:</strong> {existingAnalysisForSelectedEvent.step}</p>
@@ -1182,13 +1093,52 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                 </div>
               ) : (
                 <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
-                  Click &rdquo;Re-process&rdquo; to generate the workflow step analysis.
+                  No analysis available for this step. It may still be in the processing queue.
                 </div>
               )}
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-      ) : null}
+      )}
+
+      {isLoadingMore && (
+        <div className="flex items-center justify-center py-8">
+          <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+          <p className="ml-4 text-muted-foreground">Loading more events...</p>
+        </div>
+      )}
+
+      <Dialog open={isLoadMoreModalOpen} onOpenChange={setIsLoadMoreModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Load More Events</DialogTitle>
+            <DialogDescription>
+              Select how many more events you would like to load into the timeline.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="load-amount" className="text-right">
+                Amount
+              </Label>
+              <Select value={loadAmount} onValueChange={setLoadAmount}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select amount" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1000">1,000</SelectItem>
+                  <SelectItem value="5000">5,000</SelectItem>
+                  <SelectItem value="10000">10,000</SelectItem>
+                  <SelectItem value="all">All Remaining</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="submit" onClick={handleLoadMoreRequest}>Load Events</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

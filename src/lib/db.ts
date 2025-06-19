@@ -17,6 +17,10 @@ export interface Session {
   processed_event_count: number;
   status: 'live' | 'offline';
   duration_seconds: number | null;
+  total_workflow_analyses?: number;
+  distinct_workflows_created?: number;
+  total_labeled_steps?: number;
+  human_labeled_steps?: number;
 }
 
 export interface UserSessionData {

@@ -175,10 +175,13 @@ export default function AdminPage() {
               Type
             </th>
             <th scope="col" className="px-1 py-2">
-              Total
+              Events
             </th>
             <th scope="col" className="px-1 py-2">
-              Processed
+              Workflows
+            </th>
+            <th scope="col" className="px-1 py-2">
+              Labeled
             </th>
             <th scope="col" className="px-1 py-2">
               Duration
@@ -208,7 +211,10 @@ export default function AdminPage() {
             .map(([userId, userData]) => {
               const liveSessions = userData.sessions.filter(s => s.status === 'live').length;
               const totalEvents = userData.sessions.reduce((sum, s) => sum + s.eventCount, 0);
-              const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
+              const totalWorkflowAnalyses = userData.sessions.reduce((sum, s) => sum + (s.total_workflow_analyses || 0), 0);
+              const distinctWorkflowsCreated = userData.sessions.reduce((sum, s) => sum + (s.distinct_workflows_created || 0), 0);
+              const totalLabeledSteps = userData.sessions.reduce((sum, s) => sum + (s.total_labeled_steps || 0), 0);
+              const humanLabeledSteps = userData.sessions.reduce((sum, s) => sum + (s.human_labeled_steps || 0), 0);
               const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
               const mostRecentSession = userData.sessions.sort((a, b) => 
                 new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -287,7 +293,10 @@ export default function AdminPage() {
                       {totalEvents}
                     </td>
                     <td className="px-1 py-1">
-                      {totalProcessedEvents}
+                      {totalWorkflowAnalyses} ({distinctWorkflowsCreated})
+                    </td>
+                    <td className="px-1 py-1">
+                      {totalLabeledSteps} ({humanLabeledSteps})
                     </td>
                     <td className="px-1 py-1">
                       {formatDuration(totalDuration)}
@@ -319,7 +328,8 @@ export default function AdminPage() {
                               <th scope="col" className="px-1 py-1">Session ID</th>
                               <th scope="col" className="px-1 py-1">Type</th>
                               <th scope="col" className="px-1 py-1">Events</th>
-                              <th scope="col" className="px-1 py-1">Processed</th>
+                              <th scope="col" className="px-1 py-1">Workflows</th>
+                              <th scope="col" className="px-1 py-1">Labeled</th>
                               <th scope="col" className="px-1 py-1">Duration</th>
                               <th scope="col" className="px-1 py-1">Status</th>
                               <th scope="col" className="px-1 py-1">Last Active</th>
@@ -334,7 +344,8 @@ export default function AdminPage() {
                                 <td className="px-1 py-1 font-mono text-xs">{truncateId(session.id)}</td>
                                 <td className="px-1 py-1 font-semibold">{session.type}</td>
                                 <td className="px-1 py-1">{session.eventCount}</td>
-                                <td className="px-1 py-1">{session.processed_event_count || 0}</td>
+                                <td className="px-1 py-1">{session.total_workflow_analyses || 0} ({session.distinct_workflows_created || 0})</td>
+                                <td className="px-1 py-1">{session.total_labeled_steps || 0} ({session.human_labeled_steps || 0})</td>
                                 <td className="px-1 py-1">{formatDuration(session.duration_seconds)}</td>
                                 <td className="px-1 py-1">
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${

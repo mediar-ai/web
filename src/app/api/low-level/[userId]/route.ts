@@ -1,6 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
+// Copying type from frontend for consistency. In a refactor, move to a shared types file.
+interface LowLevelEvent {
+  id: number;
+  session_id: string;
+  user_id: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+  is_counted?: boolean;
+  source?: string;
+}
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -19,8 +30,9 @@ export async function GET(
   const { userId } = await params;
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
-  const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 1000;
-  const offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0;
+  const requestedLimit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 1000;
+  let offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0;
+  const SUPABASE_MAX_LIMIT = 1000;
 
   if (!userId) {
     return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
@@ -38,16 +50,34 @@ export async function GET(
       query = query.eq('session_id', sessionId);
     }
 
-    // Fast database ordering by created_at DESC (which now contains actual event timestamps)
-    query = query
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    // --- New Looping Logic ---
+    let allFetchedEvents: LowLevelEvent[] = [];
+    let hasMoreData = true;
+    let remainingLimit = requestedLimit;
 
-    const { data: events, error: eventsError } = await query;
+    while (hasMoreData && remainingLimit > 0) {
+      const currentLimit = Math.min(remainingLimit, SUPABASE_MAX_LIMIT);
+      
+      const { data: events, error: eventsError } = await query
+        .order('created_at', { ascending: false })
+        .range(offset, offset + currentLimit - 1);
+        
+      if (eventsError) {
+        console.error('[API/low-level] Error fetching raw events:', eventsError);
+        throw eventsError;
+      }
 
-    if (eventsError) {
-      console.error('[API/low-level] Error fetching raw events:', eventsError);
-      throw eventsError;
+      if (events && events.length > 0) {
+        allFetchedEvents = allFetchedEvents.concat(events);
+        offset += events.length;
+        remainingLimit -= events.length;
+      } else {
+        hasMoreData = false;
+      }
+      
+      if (events.length < currentLimit) {
+        hasMoreData = false;
+      }
     }
 
     // Only fetch session count if no specific session is requested
@@ -63,12 +93,39 @@ export async function GET(
       sessionCountData = countData || 0;
     }
 
+    // --- New: Get the total event count for the user ---
+    const { data: totalCountData, error: totalCountError } = await supabaseAdmin
+      .from('session_metadata')
+      .select('event_count')
+      .eq('user_id', userId);
+
+    if (totalCountError) {
+      console.error('[API/low-level] Error fetching total event count:', totalCountError);
+      throw totalCountError;
+    }
+    
+    const totalEventCount = totalCountData?.reduce((sum, row) => sum + (row.event_count || 0), 0) || 0;
+
+    // --- New: Get the total number of UI tree events (steps) ---
+    const { count: totalStepsCount, error: stepsCountError } = await supabaseAdmin
+      .from('low_level_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('payload->payload->>type', 'ui_tree');
+
+    if (stepsCountError) {
+      console.error('[API/low-level] Error fetching total steps count:', stepsCountError);
+      throw stepsCountError;
+    }
+
     return NextResponse.json({
-        events: events || [],
+        events: allFetchedEvents,
+        totalEventCount,
+        totalStepsCount,
         sessionCount: sessionCountData,
-        hasMore: events?.length === limit,
+        hasMore: hasMoreData,
         offset: offset,
-        limit: limit
+        limit: requestedLimit
     });
 
   } catch (err) {

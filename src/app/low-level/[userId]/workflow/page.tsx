@@ -375,7 +375,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 className="flex justify-between items-center cursor-pointer"
                                 onClick={() => setIsStepperCollapsed(!isStepperCollapsed)}
                             >
-                                <h2 className="text-xl font-semibold">Workflow Setup (3 Steps Completed)</h2>
+                                <h2 className="text-xl font-semibold">Workflow Setup</h2>
                                 <Button variant="ghost" size="sm">
                                     {isStepperCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
                                 </Button>
@@ -424,7 +424,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 </Tooltip>
                             </TooltipProvider>
                         </div>
-                        <div className="flex-grow p-4 space-y-4 overflow-y-auto bg-muted/30">
+                        <div className="flex flex-col flex-grow p-4 space-y-4 overflow-y-auto bg-muted/30">
                         {/* Messages Area */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
                                 {Array.isArray(messages) && messages.map((message) => (

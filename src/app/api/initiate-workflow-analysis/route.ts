@@ -1,110 +1,136 @@
-import { NextRequest } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import {
-  WORKFLOW_IDENTIFICATION_PROMPT,
-  PROMPT_SYNTHESIZE_CONTEXT,
-  PROMPT_REFINE_WORKFLOWS_AND_CONTEXT,
-} from '@/lib/prompts';
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { LowLevelEvent } from '@/types';
+import { generateSimplifiedUiTreeString } from '@/lib/uiTreeUtils';
+import { generateEventSummaryString } from '@/lib/eventSummarizer';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
+type ContextForAnalysis = {
+    previousUiTree?: string | null;
+    currentUiTree?: string | null;
+    currentUiTree_structure?: string;
+    eventsSincePreviousUiTreeByTimestamp?: string[];
+};
 
-// Helper function to call the generative model and parse the JSON response
-async function callGenerativeModel(prompt: string, context: object, modelName: string) {
-  const model = genAI.getGenerativeModel({ model: modelName });
-  const fullPrompt = `${prompt}\n\nContext:\n${JSON.stringify(context, null, 2)}`;
-  
-  try {
-    const result = await model.generateContent(fullPrompt);
-    const response = await result.response;
-    const text = response.text();
-    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-    if (jsonMatch && jsonMatch[1]) {
-      return JSON.parse(jsonMatch[1]);
+const getEventTimestamp = (event: LowLevelEvent): string => {
+  const payload = event.payload as { payload?: { timestamp?: string } };
+  return payload?.payload?.timestamp || event.created_at;
+};
+
+async function runAnalysis(userId: string) {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY!
+    );
+
+    // 1. Get all unprocessed events using our reliable SQL function
+    const { data: unprocessedEvents, error: rpcError } = await supabase
+        .rpc('get_unprocessed_ui_tree_events', { p_user_id: userId });
+
+    if (rpcError) {
+        console.error("Error fetching unprocessed events:", rpcError);
+        throw new Error(`Failed to fetch unprocessed events: ${rpcError.message}`);
     }
-    // Fallback for when the model doesn't use markdown
-    return JSON.parse(text);
-  } catch (error) {
-    console.error('Error in callGenerativeModel:', error);
-    throw new Error('Failed to parse generative model response');
-  }
-}
+    
+    const unprocessedTypedEvents = (unprocessedEvents || []) as LowLevelEvent[];
 
-// Helper function to create a JSON string for SSE
-function toSSE(data: object): string {
-  return `data: ${JSON.stringify(data)}\n\n`;
+    if (unprocessedTypedEvents.length === 0) {
+        console.log(`[initiate-workflow-analysis] No unprocessed steps found for userId ${userId}.`);
+        return;
+    }
+
+    console.log(`[initiate-workflow-analysis] Found ${unprocessedTypedEvents.length} unprocessed steps for userId ${userId}. Enqueuing jobs...`);
+
+    // We still need all events to build context
+    const { data: allEventsData, error: eventsError } = await supabase
+        .from('low_level_events')
+        .select('id, user_id, session_id, created_at, payload')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
+
+    if (eventsError) throw new Error(`Failed to fetch all events for context: ${eventsError.message}`);
+    const allEvents: LowLevelEvent[] = allEventsData || [];
+    const uiTreeEvents: LowLevelEvent[] = allEvents.filter(e => (e.payload as { payload?: { type?: string } })?.payload?.type === 'ui_tree');
+
+    // 2. Create a job for each unprocessed event
+    const jobs = unprocessedTypedEvents.map((eventToProcess: LowLevelEvent) => {
+        const context: ContextForAnalysis = {};
+        
+        const currentIndex = uiTreeEvents.findIndex(e => e.id === eventToProcess.id);
+        const prevEvent = currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
+
+        const prevUiTreeString = prevEvent ? (prevEvent.payload as { payload?: { event?: { screen?: { ui_tree?: string } } } })?.payload?.event?.screen?.ui_tree : null;
+        if (prevUiTreeString) {
+            context.previousUiTree = generateSimplifiedUiTreeString(prevUiTreeString);
+        }
+
+        const currentUiTreeString = (eventToProcess.payload as { payload?: { event?: { screen?: { ui_tree?: string } } } })?.payload?.event?.screen?.ui_tree;
+        if (currentUiTreeString) {
+            context.currentUiTree_structure = "The UI tree is a simplified representation of the accessibility tree...";
+            context.currentUiTree = generateSimplifiedUiTreeString(currentUiTreeString || "");
+        }
+        
+        const prevEventTimestamp = prevEvent ? new Date(getEventTimestamp(prevEvent)).getTime() : 0;
+        const currentEventTimestamp = new Date(getEventTimestamp(eventToProcess)).getTime();
+        
+        const relevantRawEvents = allEvents.filter((e: LowLevelEvent) => {
+            const eventTime = new Date(getEventTimestamp(e)).getTime();
+            return eventTime > prevEventTimestamp && eventTime < currentEventTimestamp;
+        });
+
+        if (relevantRawEvents.length > 0) {
+            context.eventsSincePreviousUiTreeByTimestamp = relevantRawEvents.map((e: LowLevelEvent) => generateEventSummaryString(e));
+        }
+        
+        return {
+            user_id: userId,
+            event_id: eventToProcess.id,
+            payload: {
+                context,
+                event: {
+                    session_id: eventToProcess.session_id,
+                    created_at: eventToProcess.created_at,
+                }
+            }
+        };
+    });
+
+    const { error: insertError } = await supabase.from('workflow_analysis_jobs').insert(jobs);
+
+    if (insertError) {
+        console.error("Error inserting jobs:", insertError);
+        throw new Error(`Failed to enqueue jobs: ${insertError.message}`);
+    }
+
+    // 3. Trigger a single worker to start the sequential processing chain.
+    const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+    const triggerUrl = `${host}/api/process-workflow-job`;
+    
+    console.log(`[initiate-workflow-analysis] Triggering a single worker at ${triggerUrl} to start the chain.`);
+    
+    // Fire and forget. We don't need to wait for the whole chain to complete.
+    fetch(triggerUrl, { method: 'POST' })
+        .catch(e => console.error("Error triggering worker:", e));
+
+    console.log(`[initiate-workflow-analysis] Enqueued ${jobs.length} jobs and started the processing chain.`);
 }
 
 export async function POST(req: NextRequest) {
-  const { events, model } = await req.json();
+    try {
+        const { userId } = await req.json();
 
-  if (!model) {
-    return new Response(JSON.stringify({ error: 'Missing required "model" parameter' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  // Use a ReadableStream to send events as they happen
-  const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        // Step 1: Initial Workflow Identification
-        controller.enqueue(toSSE({ status: 'Identifying initial workflows...', progress: 25 }));
-        const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, { events }, model);
-        let workflowNames = initialIdentification.workflow_names || [];
-        controller.enqueue(toSSE({ status: 'Initial workflows identified.', progress: 33, data: { workflowNames } }));
-
-
-        // Step 2: Initial Context Synthesis (Bottom-Up)
-        controller.enqueue(toSSE({ status: 'Synthesizing user context...', progress: 50 }));
-        let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, { events }, model);
-        controller.enqueue(toSSE({ status: 'User context synthesized.', progress: 66, data: { workflowContext } }));
-
-        // Step 3: Iterative Refinement Loop
-        controller.enqueue(toSSE({ status: 'Refining workflows with context (2 cycles)...', progress: 75 }));
-        for (let i = 0; i < 2; i++) {
-          const refinementResult = await callGenerativeModel(PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, {
-            events,
-            workflow_context: workflowContext,
-            workflow_names: workflowNames,
-          }, model);
-
-          workflowContext = {
-            user_job_role: refinementResult.user_job_role,
-            project_name: refinementResult.project_name,
-            user_goal_from_recordings: refinementResult.user_goal_from_recordings,
-            overall_project_goal: refinementResult.overall_project_goal,
-            overall_project_description: refinementResult.overall_project_description,
-          };
-          workflowNames = refinementResult.refined_workflow_names;
-          controller.enqueue(toSSE({ status: `Refinement cycle ${i + 1} complete.`, progress: 75 + ((i+1)*10) }));
+        if (!userId) {
+            return NextResponse.json({ error: 'userId is required' }, { status: 400 });
         }
 
-        // Step 4: Final Output
-        controller.enqueue(toSSE({
-          status: 'Analysis complete.',
-          progress: 100,
-          data: {
-            workflowContext,
-            workflowNames,
-          }
-        }));
+        runAnalysis(userId).catch(err => {
+            console.error(`[initiate-workflow-analysis] Uncaught exception in background job for userId ${userId}:`, err);
+        });
 
-      } catch (error) {
-        console.error('Error in workflow analysis stream:', error);
+        return NextResponse.json({ message: 'Workflow analysis initiated.' }, { status: 202 });
+
+    } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-        controller.enqueue(toSSE({ error: 'Internal server error', details: errorMessage }));
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    },
-  });
+        console.error('[initiate-workflow-analysis] API Route Error:', errorMessage);
+        return NextResponse.json({ error: 'Failed to initiate workflow analysis.' }, { status: 500 });
+    }
 } 
