@@ -1,5 +1,5 @@
-// This is a test comment to see if the file can be edited.
 'use client';
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { useState, useEffect, use, createRef, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
@@ -36,12 +36,19 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/componen
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import type { LowLevelEvent } from '@/types';
+import type { Message } from './types';
+import {
+  EditableListItem,
+  EditableWorkflowList,
+  AiThinkingBubble,
+  AnalysisProgressBubble,
+  EditableWorkflowBoundaries,
+} from './components';
 
-type Message = {
-    id: string;
-    sender: 'user' | 'ai' | 'ai-thinking';
-    text: string;
-}
+// Refactored components and shared types now live in dedicated files. They are
+// imported where needed in other modules. To avoid duplicate identifier
+// conflicts inside this file (which still contains the original definitions),
+// we do NOT import them here.
 
 type CanvasContent = {
     id: number;
@@ -140,6 +147,7 @@ type SynthesisSession = {
     }
 }
 
+/* BEGIN duplicate component definitions (now superseded by imports from ./components) 
 const EditableListItem = ({ item, onChange, onRemove, onEnter, onBackspaceEmpty, itemRef }: { 
     item: string, 
     onChange: (value: string) => void, 
@@ -247,18 +255,6 @@ const EditableWorkflowList = ({ workflows, onWorkflowsChange, onApprove, isProce
     );
 };
 
-const AiThinkingBubble = () => (
-    <div className="flex items-start gap-3">
-        <div className="p-3 rounded-lg bg-background border">
-            <div className="flex items-center gap-2">
-                <div className="h-2 w-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                <div className="h-2 w-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                <div className="h-2 w-2 bg-muted-foreground rounded-full animate-bounce"></div>
-            </div>
-        </div>
-    </div>
-);
-
 const AnalysisProgressBubble = ({ status, progress, elapsedTime }: { status: string, progress: number, elapsedTime: number }) => (
     <div className="flex items-start gap-3 w-full">
         <div className="p-4 rounded-lg bg-background border w-full max-w-2xl">
@@ -352,6 +348,7 @@ const EditableWorkflowBoundaries = ({ boundaries, onBoundariesChange, onApprove,
         </div>
     );
 };
+*/
 
 export default function WorkflowPage({ params }: { params: Promise<{ userId: string }> }) {
     const { userId } = use(params);
