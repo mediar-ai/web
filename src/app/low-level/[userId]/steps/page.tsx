@@ -107,7 +107,7 @@ const EventSummary = ({ event }: { event: LowLevelEvent }) => {
   const summary = generateEventSummaryString(event);
   return (
     <div className="text-sm font-medium pr-4" title={typeof summary === 'string' ? summary : undefined}>
-      {summary} <span className="text-muted-foreground text-xs">{new Date(getEventTimestamp(event)).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })}</span>
+      {summary}
     </div>
   );
 };
@@ -309,6 +309,16 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       .filter(event => (event.payload as StepsPageEventPayload).payload?.type === 'ui_tree')
       .sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime());
   }, [allEvents]);
+
+  useEffect(() => {
+    // Automatically select the last UI tree event on initial load,
+    // but don't override if a selection has already been made.
+    if (uiTreeEvents.length > 0 && !selectedEvent) {
+      setSelectedEvent(uiTreeEvents[uiTreeEvents.length - 1]);
+    }
+  }, [uiTreeEvents, selectedEvent]);
+
+
 
   // Find which UI tree events have not been processed yet
   const unprocessedUiTreeEvents = useMemo(() => {
@@ -1022,7 +1032,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                     <p><strong>Tech:</strong> {analysis.tech}</p>
                     <p><strong>Apps:</strong> {analysis.apps}</p>
                     <p><strong>Context:</strong> {analysis.context}</p>
-                    <p className="text-muted-foreground mt-1">{new Date(analysis.created_at).toLocaleString()}</p>
+                    <p className="text-muted-foreground">Timestamp: {new Date(analysis.client_timestamp).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })}</p>
                   </div>
                 ))
               ) : (

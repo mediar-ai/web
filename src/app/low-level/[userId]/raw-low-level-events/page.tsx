@@ -390,7 +390,6 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
             >
               <div className="text-sm font-medium pr-4 whitespace-normal">{generateEventSummaryString(event, { truncate: false })}</div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs text-gray-500">{new Date(event.created_at).toISOString()}</span>
                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </div>
             </CardHeader>
