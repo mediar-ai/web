@@ -194,10 +194,24 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   const formatPeriod = (start: string, end: string) => {
     const startDate = new Date(start);
     const endDate = new Date(end);
-    const startLocaleDate = startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const endLocaleDate = endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const startLocaleTime = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const endLocaleTime = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const startLocaleDate = startDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const endLocaleDate = endDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const startLocaleTime = startDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    const endLocaleTime = endDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
 
     if (startLocaleDate === endLocaleDate) {
         return `${startLocaleDate}, ${startLocaleTime} - ${endLocaleTime}`;
@@ -285,7 +299,12 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
                                         handleEventSelection(event, eventGroup);
                                     }}
                                 >
-                                    {new Date(event.created_at).toLocaleTimeString()}
+                                  <div className="flex-none text-sm text-gray-500">
+                                    {new Date(event.created_at).toLocaleTimeString('en-US', {
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                    })}
+                                  </div>
                                 </Button>
                             ))}
                         </div>
