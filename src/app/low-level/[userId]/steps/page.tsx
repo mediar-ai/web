@@ -190,16 +190,19 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
   }, [userId]);
 
-  const loadEventsInChunks = useCallback(async (amountToLoad: number) => {
+  const loadEventsInChunks = useCallback(async (amountToLoad: number, initialLoad = false) => {
     if (!userId) return;
-    setIsLoading(true);
-    setShowLoadModal(false);
-    setAllEvents([]);
-    setLoadingProgress(0);
-
+    
+    if (!initialLoad) {
+      setIsLoading(true);
+      setShowLoadModal(false);
+      setAllEvents([]);
+      setLoadingProgress(0);
+    }
+    
     const chunkSize = 1000;
-    let loadedEvents: LowLevelEvent[] = [];
-    let offset = 0;
+    let loadedEvents = initialLoad ? [...allEvents] : [];
+    let offset = initialLoad ? allEvents.length : 0;
     const totalToFetch = Math.min(amountToLoad, totalEventCount);
 
     while (loadedEvents.length < totalToFetch) {
@@ -230,7 +233,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     
     setAllEvents(prev => prev.sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()));
     setIsLoading(false);
-  }, [userId, totalEventCount]);
+  }, [userId, totalEventCount, allEvents]);
 
   const fetchEventCounts = useCallback(async () => {
     if (!userId) return;
@@ -241,21 +244,22 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       const data = await response.json();
       setTotalEventCount(data.totalEvents);
       setTotalUiTreeCount(data.totalUiTreeEvents);
-      if (data.totalEvents > 0) {
+      if (data.totalEvents > 1000) {
         setShowLoadModal(true);
       }
-      setIsLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setIsLoading(false);
     }
   }, [userId]);
 
   useEffect(() => {
     setUserId(userId);
+    loadEventsInChunks(1000, true);
     fetchEventCounts();
     fetchAllWorkflowAnalyses();
-  }, [userId, setUserId, fetchAllWorkflowAnalyses, fetchEventCounts]);
+  }, [userId, setUserId]);
 
   useEffect(() => {
     if (userId) {
@@ -666,10 +670,10 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       <Dialog open={showLoadModal} onOpenChange={setShowLoadModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Load User Events</DialogTitle>
+            <DialogTitle>Load More User Events</DialogTitle>
             <DialogDescription>
-              We found <strong>{totalEventCount.toLocaleString()}</strong> total events, including <strong>{totalUiTreeCount.toLocaleString()}</strong> key steps.
-              Select how many of the most recent events you&apos;d like to load.
+              Showing the latest <strong>{allEvents.length.toLocaleString()}</strong> events. We found <strong>{totalEventCount.toLocaleString()}</strong> total events, including <strong>{totalUiTreeCount.toLocaleString()}</strong> key steps.
+              Would you like to load more?
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -679,14 +683,14 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
               </SelectTrigger>
               <SelectContent>
                 {[...Array(Math.min(10, Math.ceil(totalEventCount / 1000)))].map((_, i) => (
-                  <SelectItem key={i} value={String((i + 1) * 1000)}>Load {(i + 1) * 1000} events</SelectItem>
+                  <SelectItem key={i} value={String((i + 1) * 1000)}>Load {(i + 1) * 1000} most recent events</SelectItem>
                 ))}
                 <SelectItem value={String(totalEventCount)}>Load All ({totalEventCount.toLocaleString()}) events</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <DialogFooter>
-            <Button onClick={() => loadEventsInChunks(parseInt(loadAmount, 10))}>Start Loading</Button>
+            <Button onClick={() => loadEventsInChunks(parseInt(loadAmount, 10))}>Load Events</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

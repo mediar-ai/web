@@ -234,26 +234,50 @@ const StepperItem = memo(({
                                         </div>
                                     </div>
                                 )}
-                                
-                                {id === 'select-workflows' && (
+                                {id === 'define-context' && (
                                     <div className={completed ? 'opacity-60 pointer-events-none' : ''}>
-                                        <EditableWorkflowList workflows={logic.identifiedWorkflowNames} onWorkflowsChange={logic.setIdentifiedWorkflowNames} />
-                                    </div>
-                                )}
-                                
-                                {id === 'define-boundaries' && (
-                                    <div className={completed && !active ? 'opacity-60 pointer-events-none' : ''}>
-                                        <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
-                                        {['boundaries_editing', 'synthesizing'].includes(synthesisStep) && (
+                                        <ContextEditor 
+                                            editableContext={logic.editableContext} 
+                                            onContextChange={logic.handleContextChange} 
+                                            draftWorkflowNames={logic.draftWorkflowNames} 
+                                            onDraftWorkflowNamesChange={logic.setDraftWorkflowNames} 
+                                            disabled={completed && !active}
+                                        />
+                                        {synthesisStep === 'context_editing' && (
                                             <div className="mt-4 flex justify-end">
-                                                <Button onClick={logic.confirmBoundaries} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'} className="mt-4">
-                                                  Confirm Boundaries & Proceed
+                                                <Button onClick={logic.refineAndIdentifyWorkflows} disabled={isLoading} className="mt-4">
+                                                    Refine & Identify Workflows
                                                 </Button>
                                             </div>
                                         )}
                                     </div>
                                 )}
-                                
+                                {id === 'select-workflows' && (
+                                     <div className={completed ? 'opacity-60 pointer-events-none' : ''}>
+                                         <EditableWorkflowList workflows={logic.identifiedWorkflowNames} onWorkflowsChange={logic.setIdentifiedWorkflowNames} />
+                                         {synthesisStep === 'workflow_editing' && (
+                                            <div className="mt-4 flex justify-end">
+                                                <Button onClick={() => logic.processAllWorkflows(logic.identifiedWorkflowNames)} disabled={isLoading} className="mt-4">
+                                                    Define Workflow Boundaries
+                                                </Button>
+                                            </div>
+                                        )}
+                                     </div>
+                                )}
+                                {id === 'define-boundaries' && (
+                                     <div className={completed && !active ? 'opacity-60 pointer-events-none' : ''}>
+                                         <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
+                                        {/* Button for Step 3: Define Boundaries */}
+                                        {logic.synthesisStep === 'boundaries_editing' && (
+                                             <div className="mt-4 flex justify-end">
+                                                <Button onClick={logic.confirmBoundaries} disabled={logic.isLoading} className="mt-4">
+                                                  Confirm Boundaries & Proceed
+                                                </Button>
+                                             </div>
+                                        )}
+                                     </div>
+                                )}
+                                {/* Content for Step 4: Synthesize Workflows */}
                                 {id === 'synthesize-workflows' && (
                                   <Card>
                                     <CardContent className="pt-6">
