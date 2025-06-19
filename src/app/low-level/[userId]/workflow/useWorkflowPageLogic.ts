@@ -232,10 +232,14 @@ export function useWorkflowPageLogic(userId: string) {
   }, [workflows]);
 
   useEffect(() => {
-    if(workflows[activeWorkflowIndex]) {
-      setMessages(workflows[activeWorkflowIndex].chat_history || [{ id: '1', sender: 'ai', text: "I've identified this workflow. How can I help you refine it?" }]);
+    // Only update messages from a specific workflow's history if synthesis is complete
+    // and the user is presumably browsing through the finalized workflows.
+    if (synthesisStep === 'done' && workflows[activeWorkflowIndex]) {
+      setMessages(workflows[activeWorkflowIndex].chat_history || [{ id: 'workflow-chat-default', sender: 'ai', text: "This workflow is complete. Displaying its chat history if available, or you can start a new discussion about it." }]);
     }
-  }, [activeWorkflowIndex, workflows]);
+    // If synthesisStep is not 'done', messages are managed by the synthesis process itself 
+    // (e.g., loadSynthesisSession, handleSendMessage) and should not be overwritten by the generic workflows list loading.
+  }, [activeWorkflowIndex, workflows, synthesisStep]);
 
   const activeContent = workflows[activeWorkflowIndex];
 
