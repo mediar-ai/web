@@ -422,7 +422,134 @@ export function useWorkflowPageLogic(userId: string) {
   }
 };
 
-// ... (rest of the code remains the same)
+  const confirmBoundaries = async () => {
+    setSynthesisStep('boundaries_defined');
+    await saveSynthesisSession(
+      messages,
+      'boundaries_defined',
+      identifiedWorkflowNames,
+      workflowContext,
+      workflowBoundaries,
+      draftWorkflowNames
+    );
+  };
+
+  const proceedToSynthesis = async (approvedWorkflows: string[]) => {
+    setSynthesisStep('synthesizing');
+    const thinkingId = `ai-thinking-${Date.now()}`;
+    const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
+    setMessages(updatedMessages);
+    await saveSynthesisSession(updatedMessages, 'synthesizing', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
+
+    try {
+      const response = await fetch('/api/synthesize-all-workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModel,
+          context: {
+            userContext: workflowContext,
+            boundaries: workflowBoundaries, // Use the state variable workflowBoundaries
+            workflow_names: approvedWorkflows // Pass the approved workflow names
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`Failed to synthesize workflows: ${await response.text()}`);
+
+      const synthesizedData = await response.json();
+      const newWorkflows = synthesizedData.workflows.map((wf: SynthesizedWorkflow, index: number) => ({
+        id: Date.now() + index, // Temporary ID generation
+        ...wf,
+        chat_history: [] // Initialize with empty chat history
+      }));
+
+      setWorkflows(newWorkflows);
+      setSynthesisStep('done');
+      setActiveWorkflowIndex(0); // Set to the first synthesized workflow
+      
+      const finalMessages = updatedMessages.filter(m => m.id !== thinkingId);
+      setMessages([...finalMessages, { id: `synthesis-complete-${Date.now()}`, sender: 'ai', text: "Workflows synthesized successfully! You can now review them."}]);
+      
+      await saveSynthesisSession(messages, 'done', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
+      await fetchWorkflows(true); // Refresh workflows from DB, skip loading state
+
+    } catch (error) {
+      console.error('Error synthesizing workflows:', error);
+      const finalMessages = updatedMessages.filter(m => m.id !== thinkingId);
+      setMessages([...finalMessages, {id: 'error-synthesis', sender: 'ai', text: `An error occurred during synthesis: ${error instanceof Error ? error.message : String(error)}`}]);
+      setSynthesisStep('boundaries_defined'); // Revert to boundaries defined or a suitable error step
+    }
+  };
+
+
+
+  // Placeholder functions - implement logic as needed
+  const handleSendMessage = async (messageToSend?: string) => {
+    console.warn('handleSendMessage not implemented', { messageToSend });
+    // Basic AI thinking simulation for chat
+    const textToSend = messageToSend || userInput;
+    if (!textToSend.trim()) return;
+    const newUserMessage: Message = { id: `user-${Date.now()}`, sender: 'user', text: textToSend };
+    setMessages(prevMessages => [...prevMessages, newUserMessage]);
+    setUserInput('');
+    setIsAiThinking(true);
+    // Simulate AI response after a delay
+    setTimeout(() => {
+      setMessages(prevMessages => [...prevMessages, { id: `ai-${Date.now()}`, sender: 'ai', text: 'Placeholder AI response.'}]);
+      setIsAiThinking(false);
+    }, 1000);
+  };
+
+  const handleListChange = (index: number, field: keyof SynthesizedWorkflow, value: string) => {
+    console.warn('handleListChange not implemented', { index, field, value });
+  };
+
+  const handleAddItem = (workflowId: number) => {
+    console.warn('handleAddItem not implemented', { workflowId });
+  };
+
+  const handleRemoveItem = (workflowId: number, stepIndex: number) => {
+    console.warn('handleRemoveItem not implemented', { workflowId, stepIndex });
+  };
+
+  const handleTitleChange = (workflowId: number, newTitle: string) => {
+    console.warn('handleTitleChange not implemented', { workflowId, newTitle });
+  };
+
+  const handleDeleteWorkflow = (workflowId: number) => {
+    console.warn('handleDeleteWorkflow not implemented', { workflowId });
+  };
+
+  const handleContextChange = (newContext: Partial<WorkflowContext>) => {
+    console.warn('handleContextChange not implemented', newContext);
+    setEditableContext(prev => ({ ...prev, ...newContext }));
+  };
+
+  const resetConversation = async () => {
+    console.warn('resetConversation not implemented');
+    setMessages([]);
+    setSynthesisStep('initial' as SynthesisStep);
+    setWorkflows([]);
+    setIdentifiedWorkflowNames([]);
+    setWorkflowBoundaries({});
+    const defaultWorkflowContext: WorkflowContext = {
+      user_job_role: '',
+      project_name: '',
+      user_goal_from_recordings: '',
+      overall_project_goal: '',
+      overall_project_description: '',
+    };
+    setWorkflowContext(defaultWorkflowContext);
+    setEditableContext(defaultWorkflowContext);
+    // Potentially clear other relevant states
+  };
+
+  const deleteAllWorkflows = async () => {
+    console.warn('deleteAllWorkflows not implemented');
+    setWorkflows([]);
+    // Call API to delete from backend if necessary
+  };
 
 return {
   view, setView, workflows, setWorkflows, activeWorkflowIndex, setActiveWorkflowIndex,
@@ -440,3 +567,4 @@ return {
   handleAddItem, handleRemoveItem, handleTitleChange, handleDeleteWorkflow,
   handleContextChange, resetConversation, deleteAllWorkflows, activeContent,
 } as const;
+}
