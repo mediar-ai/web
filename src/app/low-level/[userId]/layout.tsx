@@ -76,7 +76,7 @@ const UserLayoutContent = ({
   const activeTab = pathname.split('/').pop();
 
   return (
-    <div className="w-full max-w-7xl px-4">
+    <div className="flex flex-col h-screen">
       <div className="sticky top-0 z-10 bg-background container mx-auto gap-2 py-5 border-b">
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
@@ -136,14 +136,14 @@ const UserLayoutContent = ({
             <TabsList>
               <TabsTrigger value="raw-low-level-events">Raw Events</TabsTrigger>
               <TabsTrigger value="ui-trees">UI Trees</TabsTrigger>
-              <TabsTrigger value="1st-llm-iteration">1st LLM Iteration</TabsTrigger>
+              <TabsTrigger value="steps">Steps</TabsTrigger>
               <TabsTrigger value="labeling">Labeling</TabsTrigger>
               <TabsTrigger value="workflow">Workflow</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
       </div>
-      <main className="container mx-auto mt-4">{children}</main>
+      <main className="container mx-auto flex-grow flex flex-col">{children}</main>
     </div>
   );
 }

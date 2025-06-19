@@ -112,6 +112,24 @@ type EventFeedbackData = {
 
 type ProcessingMode = 'unprocessed' | 'all' | 'range';
 
+interface GenericEvent {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
+}
+
+type LabelingPageEventPayload = {
+  payload?: {
+    timestamp?: string;
+    type?: string;
+    event?: GenericEvent;
+  }
+}
+
+const getEventTimestamp = (event: LowLevelEvent): string => {
+  const payload = event.payload as LabelingPageEventPayload;
+  return payload?.payload?.timestamp || event.created_at;
+};
+
 export default function LabelingPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = use(params);
   const { setUserId } = useUser();
@@ -159,7 +177,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
       const response = await fetch(`/api/low-level/${userId}`);
       if (!response.ok) throw new Error('Failed to fetch events');
       const data = await response.json();
-      return data.events.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      return data.events.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime());
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
@@ -211,7 +229,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
         fetchAllWorkflowAnalyses(),
         fetchEventData(),
       ]);
-      const sortedEvents = events?.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) || [];
+      const sortedEvents = events?.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()) || [];
       setAllEvents(sortedEvents);
       setAllWorkflowAnalyses(analyses || []);
       
@@ -248,15 +266,15 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
 
     const data = allWorkflowAnalyses.reduce<TableData[]>((acc, analysis) => {
       const eventTime = new Date(analysis.client_timestamp).getTime();
-      const currentUiTreeEvent = uiTreeEvents.find(e => Math.abs(new Date(e.created_at).getTime() - eventTime) < 1000);
+      const currentUiTreeEvent = uiTreeEvents.find(e => Math.abs(new Date(getEventTimestamp(e)).getTime() - eventTime) < 1000);
 
       if (currentUiTreeEvent) {
         const currentIndex = uiTreeEvents.findIndex(e => e.id === currentUiTreeEvent.id);
         const previousUiTreeEvent = currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
 
         const eventsBetween = previousUiTreeEvent ? allEvents.filter(event => {
-          const eventTimestamp = new Date(event.created_at).getTime();
-          const prevTimestamp = new Date(previousUiTreeEvent!.created_at).getTime();
+          const eventTimestamp = new Date(getEventTimestamp(event)).getTime();
+          const prevTimestamp = new Date(getEventTimestamp(previousUiTreeEvent!)).getTime();
           const isRelevant = event.payload.payload?.type !== 'ui_tree' && event.payload.payload?.type !== 'screenshot_diff';
           return isRelevant && eventTimestamp > prevTimestamp && eventTimestamp < eventTime;
         }) : [];
@@ -289,7 +307,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
 
   useEffect(() => {
     if (selectedEvent) {
-        const analysis = allWorkflowAnalyses.find(a => Math.abs(new Date(a.client_timestamp).getTime() - new Date(selectedEvent.created_at).getTime()) < 1000);
+        const analysis = allWorkflowAnalyses.find(a => Math.abs(new Date(a.client_timestamp).getTime() - new Date(getEventTimestamp(selectedEvent)).getTime()) < 1000);
         if (analysis && rowRefs[analysis.id]) {
             rowRefs[analysis.id].current?.scrollIntoView({
                 behavior: 'smooth',
@@ -503,26 +521,28 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
         ),
         accessorFn: row => row.timestamp,
         cell: ({ row }) => {
-          const { timestamp, contextSummary, id } = row.original;
-          const isProcessing = processingRowId === id;
+          const { timestamp, contextSummary } = row.original;
           return (
-            <div className="flex flex-col h-full">
-                <div className="flex-grow">
-                    <div className="font-medium">{(timestamp).toLocaleString()}</div>
-                    <div className="text-sm text-muted-foreground">
-                        <strong>{contextSummary.windowTitle}</strong> ({contextSummary.eventCount} events)
-                    </div>
+            <div className="flex flex-col h-full justify-between">
+              <div>
+                <div className="font-medium">{new Date(timestamp).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })}</div>
+                <div className="text-sm text-muted-foreground">
+                  <strong>{contextSummary.windowTitle}</strong> ({contextSummary.eventCount} events)
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleProcessSingleRow(row.original)}
-                    disabled={isProcessingLabels || isProcessing}
-                    className="mt-2 w-full"
-                >
-                    {isProcessing ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
-                    {isProcessing ? 'Processing...' : 'Re-process'}
-                </Button>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleProcessSingleRow(row.original)}
+                disabled={isProcessingLabels || !!processingRowId}
+                className="mt-2 w-full"
+              >
+                {processingRowId === row.original.id ? (
+                  <><RefreshCw className="h-4 w-4 animate-spin mr-2" />Processing...</>
+                ) : (
+                  'Re-process'
+                )}
+              </Button>
             </div>
           );
         },
@@ -762,54 +782,59 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
         )}
       </div>
       <div className="mt-4">
-        <div className="flex items-center justify-end mb-4 space-x-2">
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline">
-                        {selectedModel}
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <DropdownMenuRadioGroup
-                        value={selectedModel}
-                        onValueChange={setSelectedModel}
-                    >
-                        <DropdownMenuRadioItem value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="gemini-2.5-pro-preview-06-05">gemini-2.5-pro-preview-06-05</DropdownMenuRadioItem>
-                    </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant="outline" onClick={() => setIsOptionsModalOpen(true)} disabled={isProcessingLabels}>
-                {isProcessingLabels ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
-                {isProcessingLabels ? `Processing ${rowsToProcess.length}...` : 'Generate All Events'}
-            </Button>
-            <AlertDialog>
-                <AlertDialogTrigger asChild>
-                    <Button variant="destructive">Delete All Events</Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete all
-                            generated workflow event summaries and their feedback for this user.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteAllEvents}>Continue</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-        <div className="flex items-center space-x-2">
-            <Input
-                placeholder="Search..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="max-w-sm"
-            />
+        <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline">
+                            {selectedModel}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                        <DropdownMenuRadioGroup
+                            value={selectedModel}
+                            onValueChange={setSelectedModel}
+                        >
+                            <DropdownMenuRadioItem value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="gemini-2.5-pro-preview-06-05">gemini-2.5-pro-preview-06-05</DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="outline" onClick={() => setIsOptionsModalOpen(true)} disabled={isProcessingLabels}>
+                    {isProcessingLabels ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                    {isProcessingLabels ? `Processing ${rowsToProcess.length}...` : 'Generate All Events'}
+                </Button>
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="destructive">Delete All Events</Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete all
+                                generated workflow event summaries and their feedback for this user.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteAllEvents}>Continue</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </div>
+            <div className="flex items-center space-x-4">
+                <div className="text-sm text-muted-foreground">
+                    Total Steps: {tableData.length}
+                </div>
+                <Input
+                    placeholder="Search..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="max-w-sm"
+                />
+            </div>
         </div>
-      </div>
       <div className="border rounded-lg">
           <Table className="w-full">
           <TableHeader>

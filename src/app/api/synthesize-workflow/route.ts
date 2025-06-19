@@ -18,6 +18,7 @@ interface WorkflowContext {
   
   // Multiple workflows
   workflows?: WorkflowSynthesisInput[];
+  workflowContext?: unknown; // Added to accept the new context
 }
 
 const getGenAI = () => {
@@ -104,12 +105,18 @@ EVENTS: ${JSON.stringify(workflow.events, null, 2)}`;
 
 IMPORTANT: You must synthesize workflows for EXACTLY these workflow names (do not change or create new names): ${workflowNames}
 
+User's High-Level Context:
+${JSON.stringify(context.workflowContext, null, 2)}
+
 ${workflowDetails}`;
     } else {
       // Single workflow synthesis (legacy support)
       prompt = `${WORKFLOW_SYNTHESIS_PROMPT}
 
 IMPORTANT: You must synthesize a workflow with EXACTLY this name (do not change it): ${context.workflow_name}
+
+User's High-Level Context:
+${JSON.stringify(context.workflowContext, null, 2)}
 
 WORKFLOW: ${context.workflow_name}
 TRIGGER: ${context.trigger || 'Not specified'}

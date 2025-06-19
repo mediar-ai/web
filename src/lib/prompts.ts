@@ -71,7 +71,7 @@ export const WORKFLOW_STEP_ANALYSIS_PROMPT = `You are an expert workflow analyst
 
 The user has provided the following context, based on their screen, UI structure, and recent events:
 - Screenshots (before and after an action)
-- UI Trees (the accessibility tree before and after an action)
+- UI Trees (the accessibility tree before and after an action). In these trees, Roman numerals (I, II, III, etc.) at the beginning of a line indicate the hierarchical depth of the UI element.
 - A stream of low-level events (mouse clicks, keystrokes, etc.)
 - The three most recent workflow steps that were previously analyzed.
 
@@ -211,16 +211,19 @@ export const PROMPT_SYNTHESIZE_CONTEXT = `You are a senior business process cons
 
 CRITICAL INSTRUCTIONS:
 - Your output must be a single JSON object.
-- The JSON object must have keys: "user_job_role", "project_name", "project_goal".
-- Base your analysis *only* on the provided 'events'.
+- The JSON object must have keys: "user_job_role", "project_name", "user_goal_from_recordings", "overall_project_goal", "overall_project_description".
+- Base "user_job_role", "project_name", and "user_goal_from_recordings" *only* on the provided 'events'.
+- For "overall_project_goal" and "overall_project_description", you must infer the high-level, long-term purpose. Think about the company, the larger project, and what the user is trying to achieve beyond the scope of the immediate recordings.
 
 EXAMPLE:
-- Input Events: [Events showing coding in Rust, running tests, and debugging serialization issues.]
+- Input Events: [Events showing coding in Rust, running tests, and debugging serialization issues for a data pipeline.]
 - Your Output (JSON):
 {
-  "user_job_role": "Software Developer",
-  "project_name": "Application Development",
-  "project_goal": "Build and test a new feature"
+  "user_job_role": "Software Engineer",
+  "project_name": "Data Ingestion Service",
+  "user_goal_from_recordings": "Debug and fix a serialization bug in the event_ingestion.rs file.",
+  "overall_project_goal": "Ensure reliable and lossless data processing for the main application.",
+  "overall_project_description": "The user is working on a critical data pipeline responsible for ingesting user events for a large-scale analytics platform. The stability of this service is crucial for business intelligence and product development."
 }
 `;
 
@@ -230,32 +233,34 @@ Your task is to perform a two-way reasoning process to refine both the context a
 
 CRITICAL INSTRUCTIONS:
 - Your output must be a single JSON object.
-- The JSON object must have keys: "user_job_role", "project_name", "project_goal", and "refined_workflow_names".
+- The JSON object must have keys: "user_job_role", "project_name", "user_goal_from_recordings", "overall_project_goal", "overall_project_description", and "refined_workflow_names".
 
 REASONING PROCESS:
 
 1.  **Top-Down Analysis (Context -> Workflows):**
-    - Given the draft context ('user_job_role', 'project_name', 'project_goal'), critically evaluate the 'workflow_names'.
-    - Do they align with the project goal? Are they at the right level of abstraction?
+    - Given the draft context (especially the 'overall_project_goal' and 'user_goal_from_recordings'), critically evaluate the 'workflow_names'.
+    - Do they align with the project goals? Are they at the right level of abstraction?
     - Refine the list of workflow names based on this top-down view. Merge, split, or rephrase them to better reflect distinct business processes.
 
 2.  **Bottom-Up Analysis (Events -> Context):**
     - Now, look again at the raw 'events' and your newly refined list of workflow names.
-    - Does this new, clearer view of the workflows give you a more precise understanding of the user's role, project, or ultimate goal?
-    - Refine the 'user_job_role', 'project_name', and 'project_goal' based on this bottom-up synthesis.
+    - Does this new, clearer view of the workflows give you a more precise understanding of the user's role, project, or ultimate goals?
+    - Refine all context fields based on this bottom-up synthesis.
 
 3.  **Final Output:**
     - Populate the final, refined values into the specified JSON structure.
 
 EXAMPLE:
 - Input Events: [Events showing user refactoring Rust code to fix a serialization bug.]
-- Draft Context: { "user_job_role": "Developer", "project_name": "App Maintenance", "project_goal": "Fixing Code" }
+- Draft Context: { "user_job_role": "Developer", "project_name": "App Maintenance", "user_goal_from_recordings": "Fixing Code", "overall_project_goal": "Improve App Stability", "overall_project_description": "General maintenance on the main app." }
 - Draft Names: ["Coding in Rust", "Running Tests"]
 - Your Output (JSON):
 {
   "user_job_role": "Software Developer",
-  "project_name": "Rust Application Refactor",
-  "project_goal": "Prevent data loss during serialization",
+  "project_name": "Rust Data Pipeline",
+  "user_goal_from_recordings": "Prevent data loss during event serialization",
+  "overall_project_goal": "Ensure 100% data integrity for the analytics platform.",
+  "overall_project_description": "The user is improving the core data ingestion service to prevent critical data loss, which affects downstream business intelligence.",
   "refined_workflow_names": [
     "Refactor Serialization Logic in Rust Application"
   ]

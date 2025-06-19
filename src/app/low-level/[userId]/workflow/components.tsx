@@ -64,16 +64,14 @@ export const EditableListItem = ({
 // ----------------------------------------------------------------------------------
 // EditableWorkflowList
 // ----------------------------------------------------------------------------------
-export const EditableWorkflowList = ({
-  workflows,
-  onWorkflowsChange,
-  onApprove,
-  isProcessing,
-}: {
+interface EditableWorkflowListProps {
   workflows: string[];
   onWorkflowsChange: (workflows: string[]) => void;
-  onApprove: () => void;
-  isProcessing: boolean;
+}
+
+export const EditableWorkflowList: React.FC<EditableWorkflowListProps> = ({
+  workflows,
+  onWorkflowsChange,
 }) => {
   const handleWorkflowChange = (index: number, value: string) => {
     const updated = [...workflows];
@@ -118,7 +116,7 @@ export const EditableWorkflowList = ({
           </div>
         ))}
       </div>
-      <div className="flex justify-between items-center pt-2">
+      <div className="flex justify-start items-center pt-2">
         <Button
           variant="outline"
           size="sm"
@@ -127,16 +125,6 @@ export const EditableWorkflowList = ({
         >
           <PlusCircle className="h-4 w-4" />
           Add Workflow
-        </Button>
-        <Button
-          onClick={onApprove}
-          disabled={
-            isProcessing || workflows.filter((w) => w.trim()).length === 0
-          }
-          className="flex items-center gap-2"
-        >
-          {isProcessing && <RefreshCw className="h-4 w-4 animate-spin" />}
-          {isProcessing ? 'Processing...' : 'Approve & Generate Boundaries'}
         </Button>
       </div>
     </div>
@@ -189,31 +177,43 @@ export const AnalysisProgressBubble = ({
 // ----------------------------------------------------------------------------------
 // EditableWorkflowBoundaries
 // ----------------------------------------------------------------------------------
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const EditableWorkflowBoundaries = ({
   boundaries,
   onBoundariesChange,
-  onApprove,
-  isProcessing,
 }: {
   boundaries: WorkflowBoundaries;
   onBoundariesChange: (boundaries: WorkflowBoundaries) => void;
-  onApprove: () => void;
-  isProcessing: boolean;
 }) => {
+  // Maintain a local copy so typing does not trigger a full re-render that steals focus
+  const [localBoundaries, setLocalBoundaries] = React.useState<WorkflowBoundaries>(boundaries);
+
+  // Keep local state in sync when parent updates (e.g. after auto-fill from backend)
+  React.useEffect(() => {
+    setLocalBoundaries(boundaries);
+  }, [boundaries]);
+
+  // Debounce updates to parent to avoid excessive renders
+  const debounceRef = React.useRef<NodeJS.Timeout | null>(null);
+
   const handleBoundaryChange = (
     workflowName: string,
     field: 'trigger' | 'terminator',
     value: string,
   ) => {
-    const newBoundaries = {
-      ...boundaries,
+    const updated = {
+      ...localBoundaries,
       [workflowName]: {
-        ...boundaries[workflowName],
+        ...localBoundaries[workflowName],
         [field]: value,
       },
-    };
-    onBoundariesChange(newBoundaries);
+    } as WorkflowBoundaries;
+
+    setLocalBoundaries(updated);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      onBoundariesChange(updated);
+    }, 300);
   };
 
   return (
@@ -224,7 +224,8 @@ export const EditableWorkflowBoundaries = ({
       </div>
 
       <div className="space-y-6">
-        {Object.entries(boundaries).map(([workflowName, boundary]) => (
+        {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
+        {Object.entries(boundaries).map(([workflowName, _]) => (
           <Card key={workflowName} className="p-4">
             <h4 className="font-medium mb-3">{workflowName}</h4>
             <div className="space-y-3">
@@ -237,7 +238,7 @@ export const EditableWorkflowBoundaries = ({
                 </Label>
                 <Textarea
                   id={`trigger-${workflowName}`}
-                  value={boundary.trigger}
+                  value={localBoundaries[workflowName]?.trigger || ''}
                   onChange={(e) =>
                     handleBoundaryChange(workflowName, 'trigger', e.target.value)
                   }
@@ -254,7 +255,7 @@ export const EditableWorkflowBoundaries = ({
                 </Label>
                 <Textarea
                   id={`terminator-${workflowName}`}
-                  value={boundary.terminator}
+                  value={localBoundaries[workflowName]?.terminator || ''}
                   onChange={(e) =>
                     handleBoundaryChange(workflowName, 'terminator', e.target.value)
                   }
@@ -267,22 +268,7 @@ export const EditableWorkflowBoundaries = ({
         ))}
       </div>
 
-      <div className="flex justify-center">
-        <Button
-          onClick={onApprove}
-          disabled={isProcessing}
-          className="bg-green-600 hover:bg-green-700 text-white"
-        >
-          {isProcessing ? (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              Synthesizing...
-            </>
-          ) : (
-            'Approve & Synthesize Workflows'
-          )}
-        </Button>
-      </div>
+
     </div>
   );
 }; 

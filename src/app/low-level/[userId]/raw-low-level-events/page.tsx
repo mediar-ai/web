@@ -5,6 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { generateEventSummaryString } from '@/lib/eventSummarizer';
 import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -22,92 +23,7 @@ const Clock = () => {
     return <div className="text-sm text-gray-500 font-mono w-48 text-right">{time ? `UTC: ${time.toUTCString()}` : ''}</div>;
 };
 
-type EventPayload = {
-    payload?: {
-        type?: string;
-        event?: {
-            screen?: {
-                ui_tree?: string;
-            };
-            screenshot_diff?: {
-                before_timestamp?: string;
-                after_timestamp?: string;
-            };
-            [key: string]: unknown;
-        };
-    }
-};
 
-const ConciseEventView = ({ event }: { event: LowLevelEvent }) => {
-  const payload = event.payload as EventPayload;
-  const eventType = payload?.payload?.type ?? 'unknown';
-  const eventData = payload?.payload?.event ?? {};
-
-  let summary: React.ReactNode = <span>Type: {eventType}</span>;
-  switch (eventType) {
-    case 'keyboard':
-      const keyboardEvent = eventData.keyboard as { key_code: number, keys?: string, is_key_down?: boolean };
-      const key = keyboardEvent?.keys;
-      const keyCode = keyboardEvent?.key_code;
-      const keyState = keyboardEvent?.is_key_down ? '(down)' : '(up)';
-
-      if (key) {
-        const keyName = key.length > 1 ? key.replace(/([A-Z])/g, ' $1').trim() : key;
-        summary = <span><b>Keyboard:</b> {keyName} {keyState}</span>;
-      } else if (keyCode) {
-        const char = String.fromCharCode(keyCode);
-        summary = <span><b>Keyboard:</b> {char} {keyState}</span>;
-      } else {
-        summary = <span><b>Keyboard:</b> Unknown key</span>;
-      }
-      break;
-    case 'mouse':
-      const mouseEvent = eventData.mouse as { button?: string, metadata?: { ui_element?: { application?: string, id?: string, name?: string, role?: string } }, event_type?: string };
-      const button = mouseEvent?.button || 'click';
-      const eventTypeStr = mouseEvent?.event_type ? `(${mouseEvent.event_type.toLowerCase()})` : '';
-      const appName = mouseEvent?.metadata?.ui_element?.application || eventData.app_name as string || 'Unknown App';
-      const elementName = mouseEvent?.metadata?.ui_element?.name || '<NO NAME>';
-      const elementRole = mouseEvent?.metadata?.ui_element?.role || '';
-      
-      const truncatedName = elementName.length > 20 ? `${elementName.substring(0, 20)}...` : elementName;
-
-      if (elementName) {
-        summary = <span title={elementName}><b>Mouse:</b> {button} {eventTypeStr} on {elementRole && <b>{elementRole.toUpperCase()}</b>} &quot;{truncatedName}&quot; in {appName}</span>;
-      } else {
-        summary = <span><b>Mouse:</b> {button} {eventTypeStr} in {appName}</span>;
-      }
-      break;
-    case 'application_switch':
-      summary = <span><b>App Switch:</b> {eventData.app_name as string}</span>;
-      break;
-    case 'browser_tab_navigation':
-      summary = <span><b>Browser Nav:</b> {eventData.url as string}</span>;
-      break;
-    case 'text_input_completed':
-      summary = <span><b>Text Input:</b> &quot;{eventData.text as string}&quot; in {eventData.app_name as string}</span>;
-      break;
-    case 'ui_tree':
-      try {
-        const uiTree = JSON.parse(eventData.screen?.ui_tree as string);
-        summary = <span><b>UI Tree captured for</b> {uiTree.attributes?.name || eventData.app_name as string}</span>;
-      } catch {
-        summary = <span><b>UI Tree captured for</b> {eventData.app_name as string}</span>;
-      }
-      break;
-    case 'screenshot_diff':
-      const diffData = eventData.screenshot_diff;
-      const before = diffData?.before_timestamp ? new Date(diffData.before_timestamp as string).toLocaleTimeString() : 'N/A';
-      const after = diffData?.after_timestamp ? new Date(diffData.after_timestamp as string).toLocaleTimeString() : 'N/A';
-      summary = <span><b>Screenshot Diff:</b> {before} vs {after}</span>;
-      break;
-  }
-
-  return (
-    <div className="text-sm font-medium truncate pr-4" title={typeof summary === 'string' ? summary : undefined}>
-      {summary}
-    </div>
-  );
-};
 
 export default function RawLowLevelEventsPage({ params }: { params: Promise<{ userId: string }> }) {
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
@@ -472,7 +388,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
               className="p-2 bg-gray-50 border-b flex flex-row justify-between items-center cursor-pointer"
               onClick={() => toggleEventExpansion(event.id)}
             >
-              <ConciseEventView event={event} />
+              <div className="text-sm font-medium pr-4 whitespace-normal">{generateEventSummaryString(event, { truncate: false })}</div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <span className="text-xs text-gray-500">{new Date(event.created_at).toISOString()}</span>
                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

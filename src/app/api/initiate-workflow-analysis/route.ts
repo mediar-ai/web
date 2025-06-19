@@ -72,7 +72,9 @@ export async function POST(req: NextRequest) {
           workflowContext = {
             user_job_role: refinementResult.user_job_role,
             project_name: refinementResult.project_name,
-            project_goal: refinementResult.project_goal,
+            user_goal_from_recordings: refinementResult.user_goal_from_recordings,
+            overall_project_goal: refinementResult.overall_project_goal,
+            overall_project_description: refinementResult.overall_project_description,
           };
           workflowNames = refinementResult.refined_workflow_names;
           controller.enqueue(toSSE({ status: `Refinement cycle ${i + 1} complete.`, progress: 75 + ((i+1)*10) }));
