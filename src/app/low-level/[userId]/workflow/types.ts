@@ -55,7 +55,7 @@ export type FinalAnalysisData = {
     workflowContext?: WorkflowContext;
 };
 
-export type SynthesisStep = 'idle' | 'context_editing' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_editing' | 'synthesizing' | 'done' | 'refining';
+export type SynthesisStep = 'idle' | 'context_editing' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_editing' | 'boundaries_defined' | 'synthesizing' | 'done' | 'refining';
 
 export type WorkflowContext = {
     user_job_role: string;
