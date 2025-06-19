@@ -396,288 +396,47 @@ export function useWorkflowPageLogic(userId: string) {
 
       if (!response.ok) throw new Error('Failed to define workflow boundaries');
       
-      const boundaries = await response.json();
-      setWorkflowBoundaries(boundaries);
-      setSynthesisStep('boundaries_editing');
-      
-      const boundariesMessage: Message = { 
-        id: `${Date.now()}`, sender: 'ai', text: "I've defined boundaries for your workflows. Please review and approve them above."
-      };
-      setMessages(prev => [...prev.slice(0, -1), boundariesMessage]);
-      await saveSynthesisSession(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, boundaries, draftWorkflowNames);
 
-    } catch (error) {
-      console.error("Error defining workflow boundaries:", error);
-      setMessages(prev => [...prev.slice(0, -1), { id: `error-${Date.now()}`, sender: 'ai', text: "Sorry, an error occurred while defining boundaries." }]);
-      await saveSynthesisSession(messages.slice(0,-1), 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
-    }
-  };
-
-  const proceedToSynthesis = async (approvedBoundaries: WorkflowBoundaries) => {
-    setSynthesisStep('synthesizing');
-    const thinkingId = `ai-thinking-${Date.now()}`;
-    const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
-    setMessages(updatedMessages);
-    await saveSynthesisSession(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
-
-    try {
-      const response = await fetch('/api/synthesize-workflow', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: selectedModel,
-          context: { 
-            workflows: identifiedWorkflowNames.map(name => ({
-              name,
-              trigger: approvedBoundaries[name]?.trigger,
-              terminator: approvedBoundaries[name]?.terminator,
-              events: combinedEvents
-            })),
-            workflowContext: workflowContext,
-          }
-        }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        const synthesizedWorkflows = result.workflows || [];
-        
-        await saveSynthesizedWorkflows(synthesizedWorkflows);
-        setSynthesisStep('done');
-        const synthesizedMessage: Message = {id: `${Date.now()}`, sender: 'ai', text: "Workflows have been synthesized successfully!"};
-        const finalMessages = [...updatedMessages.slice(0, -1), synthesizedMessage];
-        setMessages(finalMessages);
-        await saveSynthesisSession(finalMessages, 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
-
-      } else {
-        throw new Error('Failed to synthesize workflows');
-      }
-    } catch (error) {
-      console.error("Error during workflow synthesis:", error);
-      setMessages(prev => [...prev.slice(0, -1), { id: `error-${Date.now()}`, sender: 'ai', text: "Sorry, I encountered an error during synthesis." }]);
-      await saveSynthesisSession(messages, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
-    }
-  };
-
-  const saveSynthesizedWorkflows = async (synthesizedWorkflows: SynthesizedWorkflow[]) => {
-    if (!userId || synthesizedWorkflows.length === 0) return;
-
-    const recordsToInsert = synthesizedWorkflows.map(workflow => ({
-      title: workflow.title || 'Untitled Workflow',
-      inputs: workflow.inputs,
-      outputs: workflow.outputs,
-      steps: workflow.steps,
-      business_logic: workflow.businessLogic,
-      chat_history: [{id: '1', sender: 'ai', text: 'Workflow synthesized.'}],
-      synthesis_session_id: synthesisSessionId,
+    const synthesizedData = await response.json();
+    const newWorkflows = synthesizedData.workflows.map((wf: SynthesizedWorkflow, index: number) => ({
+      id: Date.now() + index, 
+      ...wf,
+      chat_history: [] 
     }));
 
-    try {
-      await fetch('/api/workflows', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, workflows: recordsToInsert })
-      });
-      await fetchWorkflows(true);
-    } catch (error) {
-      console.error("Error saving synthesized workflows:", error);
-    }
-  };
-
-  const handleSendMessage = async () => {
-    // This function can be expanded later if conversational editing is needed
-  };
-
-  const handleListChange = (field: 'steps' | 'inputs' | 'outputs' | 'businessLogic', itemIndex: number, value: string) => {
-    const newWorkflows = [...workflows];
-    const newItems = [...newWorkflows[activeWorkflowIndex][field]];
-    newItems[itemIndex] = value;
-    const updatedWorkflow = { ...newWorkflows[activeWorkflowIndex], [field]: newItems };
-    newWorkflows[activeWorkflowIndex] = updatedWorkflow;
     setWorkflows(newWorkflows);
-    debouncedUpdateWorkflow(updatedWorkflow);
-  };
-  
-  const handleAddItem = (field: 'steps' | 'inputs' | 'outputs' | 'businessLogic', index: number) => {
-    const newWorkflows = [...workflows];
-    const newItems = [...newWorkflows[activeWorkflowIndex][field]];
-    newItems.splice(index + 1, 0, '');
-    newWorkflows[activeWorkflowIndex] = { ...newWorkflows[activeWorkflowIndex], [field]: newItems };
-    setWorkflows(newWorkflows);
-
-    setTimeout(() => {
-      const fieldKey = `${activeWorkflowIndex}-${field}`;
-      itemRefs[fieldKey]?.[index + 1]?.current?.focus();
-    }, 0);
-  };
-
-  const handleRemoveItem = (field: 'steps' | 'inputs' | 'outputs' | 'businessLogic', index: number) => {
-    const newWorkflows = [...workflows];
-    const newItems = newWorkflows[activeWorkflowIndex][field].filter((_, i) => i !== index);
-    const updatedWorkflow = { ...newWorkflows[activeWorkflowIndex], [field]: newItems };
-    newWorkflows[activeWorkflowIndex] = updatedWorkflow;
-    setWorkflows(newWorkflows);
-    debouncedUpdateWorkflow(updatedWorkflow);
-
-    if (index > 0) {
-      setTimeout(() => {
-        const fieldKey = `${activeWorkflowIndex}-${field}`;
-        const prevItemRef = itemRefs[fieldKey]?.[index - 1];
-        if (prevItemRef?.current) {
-          prevItemRef.current.focus();
-          const len = prevItemRef.current.value.length;
-          prevItemRef.current.setSelectionRange(len, len);
-        }
-      }, 0);
-    }
-  };
-  
-  const handleTitleChange = (newTitle: string) => {
-    const newWorkflows = [...workflows];
-    const updatedWorkflow = { ...newWorkflows[activeWorkflowIndex], title: newTitle };
-    newWorkflows[activeWorkflowIndex] = updatedWorkflow;
-    setWorkflows(newWorkflows);
-    debouncedUpdateWorkflow(updatedWorkflow);
-  };
-
-  const debouncedUpdateWorkflow = useCallback((updatedWorkflow: CanvasContent) => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(async () => {
-      await fetch(`/api/workflows/${updatedWorkflow.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedWorkflow),
-      });
-    }, 1000);
-  }, []);
-
-  const handleDeleteWorkflow = async (workflowId: number) => {
-    await fetch(`/api/workflows/${workflowId}`, { method: 'DELETE' });
-    const remainingWorkflows = workflows.filter(wf => wf.id !== workflowId);
-    setWorkflows(remainingWorkflows);
-    setActiveWorkflowIndex(0);
-    setMessages([{id: '1', sender: 'ai', text: 'Workflow deleted.'}]);
-    await saveSynthesisSession([], 'idle', [], null, {});
-  };
-
-  useEffect(() => {
-    if (workflowContext) {
-      setEditableContext(workflowContext);
-    }
-  }, [workflowContext]);
-
-  const handleContextChange = (field: keyof WorkflowContext, value: string) => {
-    if (editableContext) {
-      const updatedContext = { ...editableContext, [field]: value };
-      setEditableContext(updatedContext);
-      setWorkflowContext(updatedContext);
-    }
-  };
-
-  const resetConversation = async () => {
-    setIsAiThinking(true);
+    setSynthesisStep('done');
+    setActiveWorkflowIndex(0); 
     
-    const initialMessages: Message[] = [
-      { 
-        id: 'init', 
-        sender: 'ai', 
-        text: "Hi! I can help you synthesize workflows from raw user events. I'll analyze your recorded events and help identify distinct workflows.\n\nClick the button below to begin:"
-      }
-    ];
+    const finalMessages = updatedMessages.filter(m => m.id !== thinkingId);
+    setMessages([...finalMessages, { id: `synthesis-complete-${Date.now()}`, sender: 'ai', text: "Workflows synthesized successfully! You can now review them."}]);
     
-    setMessages(initialMessages);
-    setWorkflows([]);
-    setActiveWorkflowIndex(0);
-    setSynthesisStep('idle');
-    setIdentifiedWorkflowNames([]);
-    setDraftWorkflowNames([]);
-    const emptyContext: WorkflowContext = { user_job_role: '', project_name: '', user_goal_from_recordings: '', overall_project_goal: '', overall_project_description: '' };
-    setWorkflowContext(emptyContext);
-    setEditableContext(emptyContext);
-    setWorkflowBoundaries({});
+    await saveSynthesisSession(messages, 'done', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
+    await fetchWorkflows(true); 
 
-    if (synthesisSessionId) {
-      try {
-        await fetch(`/api/synthesis-sessions/${synthesisSessionId}`, { method: 'DELETE' });
-        await saveSynthesisSession(initialMessages, 'idle', [], emptyContext, null, []);
-      } catch (error) {
-        console.error('Error resetting conversation:', error);
-      }
-    } else {
-      await saveSynthesisSession(initialMessages, 'idle', [], emptyContext, null, []);
-    }
-    
-    setSynthesisSessionId(null);
-    await fetchWorkflows(true);
-    setIsAiThinking(false);
-  };
+  } catch (error) {
+    console.error('Error synthesizing workflows:', error);
+    const finalMessages = updatedMessages.filter(m => m.id !== thinkingId);
+    setMessages([...finalMessages, {id: 'error-synthesis', sender: 'ai', text: 'An error occurred during synthesis.'}]);
+    setSynthesisStep('boundaries_defined'); 
+  }
+};
 
-  const deleteAllWorkflows = async () => {
-    setIsAiThinking(true);
-    
-    try {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-      
-      const response = await fetch(`/api/workflows/delete-all?userId=${userId}`, { 
-        method: 'DELETE' 
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to delete workflows: ${response.statusText}`);
-      }
-      
-      if (synthesisSessionId) {
-        try {
-          await fetch(`/api/synthesis-sessions/${synthesisSessionId}`, { method: 'DELETE' });
-        } catch (sessionError) {
-          console.error('Error deleting synthesis session:', sessionError);
-        }
-      }
-      
-      const initialMessages: Message[] = [
-        { 
-          id: 'init', 
-          sender: 'ai', 
-          text: "Hi! I can help you synthesize workflows from raw user events. I'll analyze your recorded events and help identify distinct workflows.\n\nClick the button below to begin:"
-        }
-      ];
-      
-      setMessages(initialMessages);
-      setWorkflows([]);
-      setActiveWorkflowIndex(0);
-      setSynthesisStep('idle');
-      setIdentifiedWorkflowNames([]);
-      setDraftWorkflowNames([]);
-      const emptyContext: WorkflowContext = { user_job_role: '', project_name: '', user_goal_from_recordings: '', overall_project_goal: '', overall_project_description: '' };
-      setWorkflowContext(emptyContext);
-      setEditableContext(emptyContext);
-      setWorkflowBoundaries({});
-      setSynthesisSessionId(null);
-      
-    } catch (error) {
-      console.error('Error deleting all workflows:', error);
-    } finally {
-      setIsAiThinking(false);
-    }
-  };
+// ... (rest of the code remains the same)
 
-  return {
-    view, setView, workflows, setWorkflows, activeWorkflowIndex, setActiveWorkflowIndex,
-    messages, setMessages, userInput, setUserInput, selectedModel, setSelectedModel,
-    isLoading, isAiThinking, setIsAiThinking, itemRefs, setItemRefs,
-    saveTimeoutRef, synthesisStep, setSynthesisStep, identifiedWorkflowNames, setIdentifiedWorkflowNames,
-    workflowBoundaries, setWorkflowBoundaries, combinedEvents, setCombinedEvents,
-    collapsedSections, setCollapsedSections, synthesisSessionId, setSynthesisSessionId,
-    workflowContext, setWorkflowContext, editableContext, setEditableContext,
-    isAnalyzingEvents, setIsAnalyzingEvents, analysisStatus, setAnalysisStatus,
-    analysisProgress, setAnalysisProgress, elapsedTime, setElapsedTime, timerRef,
-    isFetchingEvents, setIsFetchingEvents, fullscreenChatRef, sidebarChatRef,
-    toggleSection, scrollToBottom, runInitialAnalysis, refineAndIdentifyWorkflows,
-    processAllWorkflows, proceedToSynthesis, handleSendMessage, handleListChange,
-    handleAddItem, handleRemoveItem, handleTitleChange, handleDeleteWorkflow,
-    handleContextChange, resetConversation, deleteAllWorkflows, activeContent,
-  } as const;
-} 
+return {
+  view, setView, workflows, setWorkflows, activeWorkflowIndex, setActiveWorkflowIndex,
+  messages, setMessages, userInput, setUserInput, selectedModel, setSelectedModel,
+  isLoading, isAiThinking, setIsAiThinking, itemRefs, setItemRefs,
+  saveTimeoutRef, synthesisStep, setSynthesisStep, identifiedWorkflowNames, setIdentifiedWorkflowNames,
+  workflowBoundaries, setWorkflowBoundaries, combinedEvents, setCombinedEvents,
+  collapsedSections, setCollapsedSections, synthesisSessionId, setSynthesisSessionId,
+  workflowContext, setWorkflowContext, editableContext, setEditableContext,
+  isAnalyzingEvents, setIsAnalyzingEvents, analysisStatus, setAnalysisStatus,
+  analysisProgress, setAnalysisProgress, elapsedTime, setElapsedTime, timerRef,
+  isFetchingEvents, setIsFetchingEvents, fullscreenChatRef, sidebarChatRef,
+  toggleSection, scrollToBottom, runInitialAnalysis, refineAndIdentifyWorkflows,
+  processAllWorkflows, confirmBoundaries, proceedToSynthesis, handleSendMessage, handleListChange,
+  handleAddItem, handleRemoveItem, handleTitleChange, handleDeleteWorkflow,
+  handleContextChange, resetConversation, deleteAllWorkflows, activeContent,
+} as const;

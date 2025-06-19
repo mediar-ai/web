@@ -243,7 +243,7 @@ const StepperItem = memo(({
                                             onDraftWorkflowNamesChange={logic.setDraftWorkflowNames} 
                                             disabled={completed && !active}
                                         />
-                                        {synthesisStep === 'context_editing' && (
+                                        {synthesisStep === 'context_editing' && !isAnalyzingEvents && (
                                             <div className="mt-4 flex justify-end">
                                                 <Button onClick={logic.refineAndIdentifyWorkflows} disabled={isLoading} className="mt-4">
                                                     Refine & Identify Workflows
@@ -267,30 +267,28 @@ const StepperItem = memo(({
                                 {id === 'define-boundaries' && (
                                      <div className={completed && !active ? 'opacity-60 pointer-events-none' : ''}>
                                          <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
-                                        {/* Button for Step 3: Define Boundaries */}
                                         {logic.synthesisStep === 'boundaries_editing' && (
                                              <div className="mt-4 flex justify-end">
-                                                <Button onClick={logic.confirmBoundaries} disabled={logic.isLoading} className="mt-4">
+                                                <Button onClick={logic.confirmBoundaries} disabled={isLoading} className="mt-4">
                                                   Confirm Boundaries & Proceed
                                                 </Button>
                                              </div>
                                         )}
                                      </div>
                                 )}
-                                {/* Content for Step 4: Synthesize Workflows */}
                                 {id === 'synthesize-workflows' && (
                                   <Card>
                                     <CardContent className="pt-6">
                                       <p className="text-sm text-muted-foreground mb-4">
                                         All workflow boundaries have been defined. Click the button below to generate the detailed steps for each approved workflow.
                                       </p>
-                                      <Button onClick={logic.proceedToSynthesis} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_defined'} className="w-full">
-                                        {logic.synthesisStep === 'synthesizing' ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Synthesizing...</> : 'Synthesize All Approved Workflows'}
+                                      <Button onClick={() => logic.proceedToSynthesis(logic.identifiedWorkflowNames)} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_defined'} className="w-full">
+                                        {logic.synthesisStep === 'synthesizing' ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Synthesizing...</> : 'Synthesize All Approved Workflows'}
                                       </Button>
                                     </CardContent>
                                   </Card>
                                 )}
-                            </div>
+                              </div>
                         ) : null}
                       </div>
                     )}
@@ -455,6 +453,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                     <StepperItem 
                                         key={step.id} 
                                         {...step}
+                                        number={index + 1} // Added number prop
                                         isLast={index === STEP_DEFINITIONS.length - 1}
                                         logic={logic}
                                     />

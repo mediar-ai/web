@@ -55,6 +55,11 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 
+// Define a minimal session type for the data we expect
+type Session = {
+  eventCount: number;
+};
+
 type AnalysisOutput = {
   workflow: string;
   step: string;
@@ -193,8 +198,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const loadEventsInChunks = useCallback(async (amountToLoad: number, initialLoad = false) => {
     if (!userId) return;
     
+    setIsLoading(true);
+
     if (!initialLoad) {
-      setIsLoading(true);
       setShowLoadModal(false);
       setAllEvents([]);
       setLoadingProgress(0);
@@ -239,13 +245,18 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     if (!userId) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/low-level/${userId}/count`);
+      const response = await fetch(`/api/sessions?userId=${userId}`);
       if (!response.ok) throw new Error('Failed to fetch event counts');
       const data = await response.json();
-      setTotalEventCount(data.totalEvents);
-      setTotalUiTreeCount(data.totalUiTreeEvents);
-      if (data.totalEvents > 1000) {
-        setShowLoadModal(true);
+      
+      const userData = data[userId];
+      if (userData) {
+        const totalEvents = userData.sessions.reduce((sum: number, s: Session) => sum + s.eventCount, 0);
+        setTotalEventCount(totalEvents);
+        setTotalUiTreeCount(userData.totalUiTreeEvents || 0);
+        if (totalEvents > 0) {
+          setShowLoadModal(true);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -259,7 +270,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     loadEventsInChunks(1000, true);
     fetchEventCounts();
     fetchAllWorkflowAnalyses();
-  }, [userId, setUserId]);
+  }, [userId, setUserId, fetchEventCounts, loadEventsInChunks, fetchAllWorkflowAnalyses]);
 
   useEffect(() => {
     if (userId) {
@@ -643,11 +654,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
   }
 
-  if (isLoading && !showLoadModal) {
+  if (isLoading && allEvents.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center pt-16">
         <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground mt-4">Loading Initial Data...</p>
+        <p className="text-muted-foreground mt-4">Loading Initial Events...</p>
       </div>
     );
   }
@@ -672,7 +683,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           <DialogHeader>
             <DialogTitle>Load More User Events</DialogTitle>
             <DialogDescription>
-              Showing the latest <strong>{allEvents.length.toLocaleString()}</strong> events. We found <strong>{totalEventCount.toLocaleString()}</strong> total events, including <strong>{totalUiTreeCount.toLocaleString()}</strong> key steps.
+              Showing the latest 1,000 events. We found <strong>{totalEventCount.toLocaleString()}</strong> total events, including <strong>{totalUiTreeCount.toLocaleString()}</strong> key steps.
               Would you like to load more?
             </DialogDescription>
           </DialogHeader>
@@ -709,7 +720,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           />
         ) : (
           <div className="p-4 text-center text-muted-foreground h-[124px] flex items-center justify-center">
-            {totalEventCount === 0 && !isLoading ? 'No events found for this user.' : ''}
+            {(totalEventCount === 0 && !isLoading) ? 'No events found for this user.' : 'Timeline will appear here after loading.'}
           </div>
         )}
       </div>
