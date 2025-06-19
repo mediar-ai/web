@@ -12,21 +12,42 @@ import DiffView from '@/components/low-level/DiffView';
 import { preprocessTree } from '@/lib/diff';
 import { diffLines } from 'diff';
 
-type UITreeEvent = LowLevelEvent & {
-  payload: {
-    payload?: {
-      event?: {
-        screen?: {
-          ui_tree?: string;
-        };
-        app_name?: string;
+type UITreePayload = {
+  type?: string;
+  event?: {
+    screen?: {
+      ui_tree?: string;
+    };
+    app_name?: string;
+  };
+  payload?: {
+    type?: string;
+    event?: {
+      screen?: {
+        ui_tree?: string;
       };
+      app_name?: string;
     };
   };
 };
 
+type UITreeEvent = LowLevelEvent & {
+  payload: UITreePayload;
+};
+
 type GroupedUITrees = {
   [windowName: string]: UITreeEvent[];
+};
+
+// Helpers to safely access data from different event structures
+const getUITree = (event: LowLevelEvent): string | undefined => {
+  const payload = event.payload as UITreePayload;
+  return payload?.event?.screen?.ui_tree || payload?.payload?.event?.screen?.ui_tree;
+};
+
+const getAppName = (event: LowLevelEvent): string | undefined => {
+  const payload = event.payload as UITreePayload;
+  return payload?.event?.app_name || payload?.payload?.event?.app_name;
 };
 
 export default function UITreesPage({ params }: { params: Promise<{ userId: string }> }) {
@@ -101,8 +122,8 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   };
 
   const getEventTitle = (event: UITreeEvent) => {
-    const appName = event.payload.payload?.event?.app_name || 'Unknown App';
-    const uiTree = event.payload.payload?.event?.screen?.ui_tree;
+    const appName = getAppName(event) || 'Unknown App';
+    const uiTree = getUITree(event);
     if (uiTree) {
       try {
         const parsedTree = JSON.parse(uiTree);
@@ -170,6 +191,21 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
     });
   }, [groupedEvents, sortOrder]);
 
+  const formatPeriod = (start: string, end: string) => {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const startLocaleDate = startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const endLocaleDate = endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const startLocaleTime = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const endLocaleTime = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (startLocaleDate === endLocaleDate) {
+        return `${startLocaleDate}, ${startLocaleTime} - ${endLocaleTime}`;
+    } else {
+        return `${startLocaleDate}, ${startLocaleTime} - ${endLocaleDate}, ${endLocaleTime}`;
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center gap-2 py-2 border-b mb-2">
@@ -209,9 +245,9 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
           const previousEvent = selectedEventIndex > 0 ? eventGroup[selectedEventIndex - 1] : null;
           const nextEvent = selectedEventIndex !== -1 && selectedEventIndex < eventGroup.length - 1 ? eventGroup[selectedEventIndex + 1] : null;
 
-          const currentTree = selectedEvent?.payload.payload?.event?.screen?.ui_tree;
-          const previousTree = previousEvent?.payload.payload?.event?.screen?.ui_tree;
-          const nextTree = nextEvent?.payload.payload?.event?.screen?.ui_tree;
+          const currentTree = selectedEvent ? getUITree(selectedEvent) : undefined;
+          const previousTree = previousEvent ? getUITree(previousEvent) : undefined;
+          const nextTree = nextEvent ? getUITree(nextEvent) : undefined;
 
           return (
             <Card key={windowName}>
@@ -224,7 +260,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
                 </CardTitle>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="text-xs text-gray-500">
-                    {new Date(firstEvent.created_at).toLocaleTimeString()} - {new Date(lastEvent.created_at).toLocaleTimeString()}
+                    {formatPeriod(firstEvent.created_at, lastEvent.created_at)}
                   </span>
                   {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </div>

@@ -27,7 +27,11 @@ export async function GET(
       .from('low_level_events')
       .select('*')
       .eq('user_id', userId)
-      .eq('payload->payload->>type', 'ui_tree')
+      // Fetch events that have a ui_tree at either the new or old path
+      .or(
+        'payload->event->screen->>ui_tree.not.is.null,' +
+        'payload->payload->event->screen->>ui_tree.not.is.null'
+      )
       .order('created_at', { ascending: false });
 
     if (eventsError) {
