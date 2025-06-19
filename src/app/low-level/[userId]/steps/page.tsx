@@ -191,15 +191,16 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
   }, [userId]);
 
-  const loadEventsInChunks = useCallback(async (amountToLoad: number) => {
+  const loadEventsInChunks = useCallback(async (amountToLoad: number, initialLoad = false) => {
     if (!userId) return;
     
     setIsLoading(true);
-    setIsModalButtonLoading(true);
-    setShowLoadModal(false);
-    setAllEvents([]);
+    if (!initialLoad) {
+      setIsModalButtonLoading(true);
+      setShowLoadModal(false);
+    }
     setLoadingProgress(0);
-    
+
     const chunkSize = 1000;
     let loadedEvents: LowLevelEvent[] = [];
     let offset = 0;
@@ -218,10 +219,17 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             setLoadingProgress(100);
             break;
         }
+        
+        const newEvents = data.events;
+        // Ensure uniqueness before updating state
+        setAllEvents(prevEvents => {
+          const all = [...prevEvents, ...newEvents];
+          const uniqueEvents = Array.from(new Map(all.map(event => [event.id, event])).values());
+          return uniqueEvents;
+        });
 
-        loadedEvents = [...loadedEvents, ...data.events];
-        setAllEvents(prev => [...prev, ...data.events]);
-        offset += data.events.length;
+        loadedEvents = [...loadedEvents, ...newEvents];
+        offset += newEvents.length;
         setLoadingProgress((loadedEvents.length / totalToFetch) * 100);
 
         if (!data.hasMore) break;
@@ -234,7 +242,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     setAllEvents(prev => prev.sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()));
     setIsLoading(false);
     setIsModalButtonLoading(false);
-  }, [userId, totalEventCount, allEvents]);
+  }, [userId, totalEventCount]);
 
   useEffect(() => {
     setUserId(userId);
@@ -243,9 +251,13 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       if (!userId) return;
 
       setIsLoading(true);
-      await fetchAllWorkflowAnalyses();
       
-      const countsResponse = await fetch(`/api/sessions?userId=${userId}`);
+      // Fetch analyses and counts in parallel for speed
+      const [countsResponse] = await Promise.all([
+        fetch(`/api/sessions?userId=${userId}`),
+        fetchAllWorkflowAnalyses()
+      ]);
+
       if (!countsResponse.ok) {
         setError('Failed to fetch event counts');
         setIsLoading(false);
@@ -261,13 +273,17 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         setTotalUiTreeCount(userData.totalUiTreeEvents || 0);
 
         if (totalEvents > 0) {
-          await loadEventsInChunks(Math.min(1000, totalEvents));
+          // Now that counts are known, load the first chunk
+          await loadEventsInChunks(Math.min(1000, totalEvents), true);
            if (totalEvents > 1000) {
             setShowLoadModal(true);
           }
+        } else {
+           setIsLoading(false); // No events to load
         }
+      } else {
+        setIsLoading(false); // No user data
       }
-      setIsLoading(false);
     };
     
     performInitialLoad();
@@ -660,7 +676,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     return (
       <div className="flex flex-col items-center justify-center pt-16">
         <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground mt-4">Loading Event Data...</p>
+        <p className="text-muted-foreground mt-4">Loading Initial Data...</p>
       </div>
     );
   }
@@ -669,10 +685,10 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       return (
         <div className="p-4 text-center">
           <p>No events loaded.</p>
-          <p className="text-sm text-muted-foreground">Click the button below to fetch event counts and start loading.</p>
-          <Button onClick={() => {}} className="mt-4">
+          <p className="text-sm text-muted-foreground">Click the button below to start loading.</p>
+          <Button onClick={() => loadEventsInChunks(Math.min(1000, totalEventCount))} className="mt-4">
             <RefreshCw className="mr-2 h-4 w-4" />
-            Re-Fetch Event Counts
+            Load Initial Events
           </Button>
         </div>
       );
@@ -702,9 +718,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             </Select>
           </div>
           <DialogFooter>
-            <Button onClick={() => loadEventsInChunks(parseInt(loadAmount, 10))} disabled={isModalButtonLoading}>
+            <Button onClick={() => loadEventsInChunks(parseInt(loadAmount, 10), false)} disabled={isModalButtonLoading}>
               {isModalButtonLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
-              Load More Events
+              Load Events
             </Button>
           </DialogFooter>
         </DialogContent>
