@@ -345,9 +345,13 @@ export default function AdminPage() {
                                 </td>
                                 <td className="px-1 py-1 text-gray-500">{new Date(session.timestamp).toLocaleString()}</td>
                                 <td className="px-1 py-1 text-right">
-                                  <Link href={`/sessions/${session.type.toLowerCase() === 'low-level' ? 'low-level' : 'web'}/${session.id}`}>
-                                    <Button size="sm" variant="outline">Raw JSON</Button>
-                                  </Link>
+                                  {session.type.toLowerCase() === 'low-level' ? (
+                                    <Link href={`/sessions/low-level/${session.id}`}>
+                                      <Button size="sm" variant="outline">Raw JSON</Button>
+                                    </Link>
+                                  ) : (
+                                    <Button size="sm" variant="outline" disabled>Raw JSON</Button>
+                                  )}
                                 </td>
                               </tr>
                             ))}
