@@ -241,35 +241,33 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
     const performInitialLoad = async () => {
       if (!userId) return;
+
       setIsLoading(true);
+      await fetchAllWorkflowAnalyses();
       
       const countsResponse = await fetch(`/api/sessions?userId=${userId}`);
-      if (countsResponse.ok) {
-        const countsData = await countsResponse.json();
-        const userData = countsData[userId];
-        if (userData) {
-          const totalEvents = userData.sessions.reduce((sum: number, s: { eventCount: number }) => sum + s.eventCount, 0);
-          setTotalEventCount(totalEvents);
-          setTotalUiTreeCount(userData.totalUiTreeEvents || 0);
-          
-          if (totalEvents > 0) {
-            await loadEventsInChunks(Math.min(1000, totalEvents));
-            if (totalEvents > 1000) {
-              setShowLoadModal(true);
-            }
-          } else {
-            setIsLoading(false);
-          }
-        } else {
-          setIsLoading(false);
-        }
-      } else {
+      if (!countsResponse.ok) {
         setError('Failed to fetch event counts');
         setIsLoading(false);
+        return;
       }
+
+      const countsData = await countsResponse.json();
+      const userData = countsData[userId];
       
-      // Fetch analyses in parallel
-      fetchAllWorkflowAnalyses();
+      if (userData) {
+        const totalEvents = userData.sessions.reduce((sum: number, s: { eventCount: number }) => sum + s.eventCount, 0);
+        setTotalEventCount(totalEvents);
+        setTotalUiTreeCount(userData.totalUiTreeEvents || 0);
+
+        if (totalEvents > 0) {
+          await loadEventsInChunks(Math.min(1000, totalEvents));
+           if (totalEvents > 1000) {
+            setShowLoadModal(true);
+          }
+        }
+      }
+      setIsLoading(false);
     };
     
     performInitialLoad();
@@ -658,11 +656,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
   }
 
-  if (isLoading && allEvents.length === 0) {
+  if (isLoading && totalEventCount === 0) {
     return (
       <div className="flex flex-col items-center justify-center pt-16">
         <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground mt-4">Loading Events...</p>
+        <p className="text-muted-foreground mt-4">Loading Event Data...</p>
       </div>
     );
   }
@@ -687,7 +685,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           <DialogHeader>
             <DialogTitle>Load More User Events</DialogTitle>
             <DialogDescription>
-              Showing the latest <strong>{Math.min(1000, totalEventCount).toLocaleString()}</strong> events. We found <strong>{totalEventCount.toLocaleString()}</strong> total events, including <strong>{totalUiTreeCount.toLocaleString()}</strong> key steps. Would you like to load more?
+              Showing the latest <strong>{allEvents.length.toLocaleString()}</strong> events. We found <strong>{totalEventCount.toLocaleString()}</strong> total events, including <strong>{totalUiTreeCount.toLocaleString()}</strong> key steps. Would you like to load more?
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -706,7 +704,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           <DialogFooter>
             <Button onClick={() => loadEventsInChunks(parseInt(loadAmount, 10))} disabled={isModalButtonLoading}>
               {isModalButtonLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
-              Load Events
+              Load More Events
             </Button>
           </DialogFooter>
         </DialogContent>

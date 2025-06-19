@@ -15,7 +15,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useUser } from '@/context/UserContext';
-import { Loader2 } from 'lucide-react';
 import {
     Tooltip,
     TooltipContent,
@@ -39,106 +38,6 @@ import { Progress } from "@/components/ui/progress"
 import type { LowLevelEvent } from '@/types';
 import type { CanvasContent, SynthesizedWorkflow, WorkflowStepAnalysis, CombinedEvent, FinalAnalysisData, SynthesisStep, WorkflowContext, WorkflowBoundary, WorkflowBoundaries, WorkflowDataObject, DatabaseWorkflow, SynthesisSession, Message } from './types';
 import { useWorkflowPageLogic } from './useWorkflowPageLogic';
-import type { WorkflowContext } from './types';
-
-// Placeholder for ContextEditor component
-interface ContextEditorProps {
-  editableContext: WorkflowContext;
-  onContextChange: (newContext: Partial<WorkflowContext>) => void;
-  draftWorkflowNames: string[];
-  onDraftWorkflowNamesChange: (names: string[]) => void;
-  // Add any other props that might be passed, e.g., children or isLoading
-  isLoading?: boolean;
-}
-
-const ContextEditor: React.FC<ContextEditorProps> = ({
-  editableContext,
-  onContextChange,
-  draftWorkflowNames,
-  onDraftWorkflowNamesChange,
-  isLoading,
-}) => {
-  // Basic implementation: A textarea for each field in editableContext
-  // and a simple list for draftWorkflowNames
-  return (
-    <div className="space-y-4 p-4 border rounded-md">
-      <h3 className="text-lg font-semibold">Context Editor (Placeholder)</h3>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">User Job Role</label>
-        <Textarea
-          value={editableContext.user_job_role || ''}
-          onChange={(e) => onContextChange({ user_job_role: e.target.value })}
-          placeholder="Enter user job role"
-          disabled={isLoading}
-          className="mt-1"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Project Name</label>
-        <Textarea
-          value={editableContext.project_name || ''}
-          onChange={(e) => onContextChange({ project_name: e.target.value })}
-          placeholder="Enter project name"
-          disabled={isLoading}
-          className="mt-1"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">User Goal from Recordings</label>
-        <Textarea
-          value={editableContext.user_goal_from_recordings || ''}
-          onChange={(e) => onContextChange({ user_goal_from_recordings: e.target.value })}
-          placeholder="Describe user's goal from recordings"
-          disabled={isLoading}
-          className="mt-1"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Overall Project Goal</label>
-        <Textarea
-          value={editableContext.overall_project_goal || ''}
-          onChange={(e) => onContextChange({ overall_project_goal: e.target.value })}
-          placeholder="Describe overall project goal"
-          disabled={isLoading}
-          className="mt-1"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Overall Project Description</label>
-        <Textarea
-          value={editableContext.overall_project_description || ''}
-          onChange={(e) => onContextChange({ overall_project_description: e.target.value })}
-          placeholder="Describe overall project"
-          disabled={isLoading}
-          className="mt-1"
-        />
-      </div>
-      
-      <div className="mt-4">
-        <h4 className="text-md font-semibold">Draft Workflow Names:</h4>
-        {draftWorkflowNames.length > 0 ? (
-          <ul className="list-disc pl-5 mt-2">
-            {draftWorkflowNames.map((name, index) => (
-              <li key={index}>{name}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-500 mt-1">No draft workflow names yet.</p>
-        )}
-        {/* Basic input to modify draft names - for placeholder purposes */}
-        <Input 
-          type="text" 
-          placeholder="Add/edit workflow names (comma-separated)"
-          defaultValue={draftWorkflowNames.join(', ')}
-          onBlur={(e) => onDraftWorkflowNamesChange(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-          disabled={isLoading}
-          className="mt-2"
-        />
-      </div>
-      <p className="text-xs text-gray-400 mt-2">This is a placeholder component. Implement full functionality as needed.</p>
-    </div>
-  );
-};
 import {
   EditableListItem,
   EditableWorkflowList,
@@ -165,35 +64,25 @@ const LoadingOverlay = () => (
 
 type WorkflowPageLogicType = ReturnType<typeof useWorkflowPageLogic>;
 
-type StepDefinition = {
-  id: string;
-  title: string;
-  description: string;
-};
-
-type StepId = 'define-context' | 'select-workflows' | 'define-boundaries' | 'synthesize-workflows';
-
-const STEP_DEFINITIONS: StepDefinition[] = [
-  {
-    id: 'define-context',
-    title: 'Step 1: Analyze Context & Draft Workflows',
-    description: 'Understand the user\'s environment and goals, then draft initial workflow names.',
-  },
-  {
-    id: 'select-workflows',
-    title: 'Step 2: Select & Refine Workflows',
-    description: 'Choose the workflows to proceed with and refine their names.',
-  },
-  {
-    id: 'define-boundaries',
-    title: 'Step 3: Define Workflow Boundaries',
-    description: 'Review and adjust the start and end points for each identified workflow.',
-  },
-  {
-    id: 'synthesize-workflows',
-    title: 'Step 4: Synthesize Workflows',
-    description: 'Generate detailed steps and actions for the approved workflows.',
-  },
+const STEP_DEFINITIONS = [
+    {
+        id: 'define-context',
+        number: 1,
+        title: 'Analyze Context',
+        description: 'AI will analyze events to suggest a starting context.',
+    },
+    {
+        id: 'identify-workflows',
+        number: 2,
+        title: 'Identify Workflows',
+        description: 'Review context, then generate the final workflow list.',
+    },
+    {
+        id: 'define-boundaries',
+        number: 3,
+        title: 'Define Boundaries',
+        description: 'Set triggers and terminators for workflows',
+    },
 ];
 
 const StepperItem = memo(({
@@ -214,34 +103,32 @@ const StepperItem = memo(({
 
     const actionMap: Record<string, (() => void) | undefined> = {
         'define-context': runInitialAnalysis,
-        'select-workflows': refineAndIdentifyWorkflows,
+        'identify-workflows': refineAndIdentifyWorkflows,
         'define-boundaries': () => processAllWorkflows(identifiedWorkflowNames),
     };
 
     const stepState = useMemo(() => {
-        const completedStates: Record<StepId, SynthesisStep[]> = {
-  'define-context': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'boundaries_defined', 'synthesizing', 'done'],
-  'select-workflows': ['defining_boundaries', 'boundaries_editing', 'boundaries_defined', 'synthesizing', 'done'],
-  'define-boundaries': ['boundaries_defined', 'synthesizing', 'done'],
-  'synthesize-workflows': ['done'],
-};
+        const completedStates = {
+            'define-context': ['identifying', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
+            'identify-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
+            'define-boundaries': ['done'],
+        };
 
         const enabledStates = {
             'define-context': !isFetchingEvents,
-            'select-workflows': synthesisStep === 'context_editing',
+            'identify-workflows': synthesisStep === 'context_editing',
             'define-boundaries': ['workflow_editing', 'defining_boundaries', 'boundaries_editing'].includes(synthesisStep) && identifiedWorkflowNames.length > 0,
         };
         
-        const activeStates: Record<StepId, SynthesisStep[]> = {
-  'define-context': ['context_editing'],
-  'select-workflows': ['workflow_editing'],
-  'define-boundaries': ['boundaries_editing'],
-  'synthesize-workflows': ['boundaries_defined', 'synthesizing'],
-};
+        const activeStates = {
+            'define-context': isAnalyzingEvents,
+            'identify-workflows': synthesisStep === 'identifying',
+            'define-boundaries': synthesisStep === 'defining_boundaries',
+        };
 
         const showComponentStates = {
             'define-context': ['context_editing', 'identifying', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
-            'select-workflows': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
+            'identify-workflows': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
             'define-boundaries': ['boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
         };
 
@@ -261,10 +148,9 @@ const StepperItem = memo(({
 
     const shouldBeExpanded = 
         (id === 'define-context' && (synthesisStep === 'context_editing' || isAnalyzingEvents)) ||
-        (id === 'select-workflows' && synthesisStep === 'workflow_editing') ||
-        (id === 'define-boundaries' && synthesisStep === 'boundaries_editing') ||
-        (id === 'synthesize-workflows' && synthesisStep === 'boundaries_defined');
-
+        (id === 'identify-workflows' && synthesisStep === 'workflow_editing') ||
+        (id === 'define-boundaries' && synthesisStep === 'boundaries_editing');
+        
     useEffect(() => {
         if (shouldBeExpanded) {
             setIsCollapsed(false);
@@ -334,61 +220,30 @@ const StepperItem = memo(({
                                         </div>
                                     </div>
                                 )}
-                                {id === 'define-context' && (
+                                
+                                {id === 'identify-workflows' && (
                                     <div className={completed ? 'opacity-60 pointer-events-none' : ''}>
-                                        <ContextEditor 
-                                            editableContext={logic.editableContext} 
-                                            onContextChange={logic.handleContextChange} 
-                                            draftWorkflowNames={logic.draftWorkflowNames} 
-                                            onDraftWorkflowNamesChange={logic.setDraftWorkflowNames} 
-                                            disabled={completed && !active}
-                                        />
-                                        {synthesisStep === 'context_editing' && !isAnalyzingEvents && (
+                                        <EditableWorkflowList workflows={logic.identifiedWorkflowNames} onWorkflowsChange={logic.setIdentifiedWorkflowNames} />
+                                    </div>
+                                )}
+                                
+                                {id === 'define-boundaries' && (
+                                    <div className={completed && !active ? 'opacity-60 pointer-events-none' : ''}>
+                                        <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
+                                        {['boundaries_editing', 'synthesizing'].includes(synthesisStep) && (
                                             <div className="mt-4 flex justify-end">
-                                                <Button onClick={logic.refineAndIdentifyWorkflows} disabled={isLoading} className="mt-4">
-                                                    Refine & Identify Workflows
+                                                <Button onClick={() => proceedToSynthesis(workflowBoundaries)} disabled={isLoading}>
+                                                    {isLoading ? (
+                                                        <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Synthesizing...</>
+                                                    ) : (
+                                                        'Synthesize Workflows'
+                                                    )}
                                                 </Button>
                                             </div>
                                         )}
                                     </div>
                                 )}
-                                {id === 'select-workflows' && (
-                                     <div className={completed ? 'opacity-60 pointer-events-none' : ''}>
-                                         <EditableWorkflowList workflows={logic.identifiedWorkflowNames} onWorkflowsChange={logic.setIdentifiedWorkflowNames} />
-                                         {synthesisStep === 'workflow_editing' && (
-                                            <div className="mt-4 flex justify-end">
-                                                <Button onClick={() => logic.processAllWorkflows(logic.identifiedWorkflowNames)} disabled={isLoading} className="mt-4">
-                                                    Define Workflow Boundaries
-                                                </Button>
-                                            </div>
-                                        )}
-                                     </div>
-                                )}
-                                {id === 'define-boundaries' && (
-                                     <div className={completed && !active ? 'opacity-60 pointer-events-none' : ''}>
-                                         <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
-                                        {logic.synthesisStep === 'boundaries_editing' && (
-                                             <div className="mt-4 flex justify-end">
-                                                <Button onClick={logic.confirmBoundaries} disabled={isLoading} className="mt-4">
-                                                  Confirm Boundaries & Proceed
-                                                </Button>
-                                             </div>
-                                        )}
-                                     </div>
-                                )}
-                                {id === 'synthesize-workflows' && (
-                                  <Card>
-                                    <CardContent className="pt-6">
-                                      <p className="text-sm text-muted-foreground mb-4">
-                                        All workflow boundaries have been defined. Click the button below to generate the detailed steps for each approved workflow.
-                                      </p>
-                                      <Button onClick={() => logic.proceedToSynthesis(logic.identifiedWorkflowNames)} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_defined'} className="w-full">
-                                        {logic.synthesisStep === 'synthesizing' ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Synthesizing...</> : 'Synthesize All Approved Workflows'}
-                                      </Button>
-                                    </CardContent>
-                                  </Card>
-                                )}
-                              </div>
+                            </div>
                         ) : null}
                       </div>
                     )}
@@ -553,7 +408,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                     <StepperItem 
                                         key={step.id} 
                                         {...step}
-                                        number={index + 1} // Added number prop
                                         isLast={index === STEP_DEFINITIONS.length - 1}
                                         logic={logic}
                                     />
