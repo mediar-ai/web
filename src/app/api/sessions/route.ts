@@ -17,7 +17,6 @@ interface Session {
 interface UserSessionData {
   name: string | null;
   sessions: Session[];
-  totalUiTreeEvents: number;
 }
 
 export const revalidate = 0;
@@ -69,20 +68,6 @@ export async function GET() {
       console.error('[api/sessions] Error fetching users:', usersError);
     }
 
-    const { data: uiTreeCounts, error: uiTreeCountsError } = await supabase
-      .rpc('get_user_ui_tree_counts', { user_ids_array: userIds });
-
-    if (uiTreeCountsError) {
-      console.error('[api/sessions] Error fetching ui_tree_counts:', uiTreeCountsError);
-    }
-    
-    const uiTreeCountsMap = new Map<string, number>();
-    if (uiTreeCounts) {
-      for (const count of uiTreeCounts) {
-        uiTreeCountsMap.set(count.user_id, count.ui_tree_count);
-      }
-    }
-    
     const usersMap = new Map<string, string | null>();
     for (const user of users || []) {
       usersMap.set(user.user_id, user.name);
@@ -94,7 +79,6 @@ export async function GET() {
         userSessions[session.userId] = {
           name: usersMap.get(session.userId) || null,
           sessions: [],
-          totalUiTreeEvents: uiTreeCountsMap.get(session.userId) || 0,
         };
       }
       userSessions[session.userId].sessions.push(session);

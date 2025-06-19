@@ -1,15 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part, Schema, SchemaType } from '@google/generative-ai';
-import { LowLevelEvent } from '@/types';
+import { ParsedAnalysis } from '@/types';
 
-const getGenAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not set.');
-  }
-  return new GoogleGenerativeAI(apiKey);
+type AnalysisContext = {
+  previousUiTree?: string | null;
+  currentUiTree?: string | null;
+  eventsSincePreviousUiTreeByTimestamp?: string[];
+  previousAnalyses?: Array<{
+    created_at: string,
+    step: string,
+    description: string
+  }>;
+  screenshotBefore?: string;
+  screenshotAfter?: string;
 };
 
+// 1. Correctly instantiate the Supabase Admin client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error('Missing Supabase URL or Service Role Key');
+}
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+
+// 2. Define constants and schemas from process-workflow-step route
 const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThreshold}> = [
     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
     { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -32,15 +48,17 @@ const mainAnalysisSchema: Schema = {
     required: ['workflow', 'step', 'description', 'facts', 'logic', 'tech', 'apps', 'context']
 };
 
+const getGenAI = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not set.');
+  }
+  return new GoogleGenerativeAI(apiKey);
+};
 
-export async function POST(req: NextRequest) {
-  try {
-    const { prompt, model: modelName, context } = await req.json();
 
-    if (!prompt || !modelName || !context) {
-      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
-    }
-
+// 3. Create the reusable analysis function
+export async function generateWorkflowStepAnalysis(prompt: string, modelName: string, context: AnalysisContext): Promise<ParsedAnalysis> {
     const genAI = getGenAI();
     const model = genAI.getGenerativeModel({
       model: modelName,
@@ -53,6 +71,7 @@ export async function POST(req: NextRequest) {
 
     const contextParts: Part[] = [];
 
+    // This context construction logic is copied directly from the original route
     if (context.screenshotBefore) {
         const parts = context.screenshotBefore.split(';base64,');
         if (parts.length === 2) {
@@ -70,13 +89,13 @@ export async function POST(req: NextRequest) {
         }
     }
      if (context.previousUiTree) {
-        contextParts.push({ text: `\n\nUI Tree (Before):\n${JSON.stringify(JSON.parse(context.previousUiTree), null, 2)}` });
+        contextParts.push({ text: `\n\nUI Tree (Before):\n${context.previousUiTree}` });
     }
     if (context.currentUiTree) {
-        contextParts.push({ text: `\n\nUI Tree (After):\n${JSON.stringify(JSON.parse(context.currentUiTree), null, 2)}` });
+        contextParts.push({ text: `\n\nUI Tree (After):\n${context.currentUiTree}` });
     }
-    if (context.events && context.events.length > 0) {
-        const eventsText = context.events.map((e: LowLevelEvent) => `[${new Date(e.created_at).toISOString()}] ${e.payload.payload?.type}`).join('\n');
+    if (context.eventsSincePreviousUiTreeByTimestamp && context.eventsSincePreviousUiTreeByTimestamp.length > 0) {
+        const eventsText = context.eventsSincePreviousUiTreeByTimestamp.join('\n');
         contextParts.push({ text: `\n\nEvents:\n${eventsText}` });
     }
     if (context.previousAnalyses && context.previousAnalyses.length > 0) {
@@ -91,14 +110,31 @@ export async function POST(req: NextRequest) {
     const response = result.response;
     if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
         const analysis = JSON.parse(response.candidates[0].content.parts[0].text);
-        return NextResponse.json({ analysis });
+        return analysis as ParsedAnalysis;
     }
     
-    console.error("No valid response from model:", response);
-    return NextResponse.json({ error: 'Failed to generate analysis from the model.' }, { status: 500 });
+    throw new Error('Failed to generate analysis from the model.');
+}
 
-  } catch (error) {
-    console.error('Error processing workflow step:', error);
-    return NextResponse.json({ error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  }
+// 4. Create the reusable save function
+export async function saveWorkflowStepAnalysis(userId: string, sessionId: string, clientTimestamp: string, analysis: ParsedAnalysis) {
+    const normalizedTimestamp = new Date(clientTimestamp).toISOString();
+
+    const { data, error } = await supabaseAdmin
+      .from('low_level_workflow_analyses')
+      .insert([
+        {
+          user_id: userId,
+          session_id: sessionId,
+          client_timestamp: normalizedTimestamp,
+          ...analysis,
+        },
+      ]);
+
+    if (error) {
+      console.error('Error saving LLM analysis:', error);
+      throw new Error(`Failed to save analysis to DB: ${error.message}`);
+    }
+
+    return data;
 } 
