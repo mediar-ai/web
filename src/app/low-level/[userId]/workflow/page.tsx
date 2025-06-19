@@ -399,7 +399,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
     const [elapsedTime, setElapsedTime] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const [isFetchingEvents, setIsFetchingEvents] = useState(true);
-    const [isConversationLoaded, setIsConversationLoaded] = useState(false);
     
     // Refs for chat scroll containers
     const fullscreenChatRef = useRef<HTMLDivElement>(null);
@@ -485,13 +484,16 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         if (!userId) return;
         
         try {
+            console.log('[WORKFLOW_DEBUG] Loading synthesis session for userId:', userId);
             const response = await fetch(`/api/synthesis-sessions?userId=${userId}`);
             if (response.ok) {
                 const result = await response.json();
+                console.log('[WORKFLOW_DEBUG] Synthesis session response:', result);
                 const session: SynthesisSession = result.data;
 
                 if (session && session.session_state) {
                     const { session_state } = session;
+                    console.log('[WORKFLOW_DEBUG] Found session state:', session_state);
                     
                     const loadedMessages = Array.isArray(session_state.messages) ? session_state.messages : [];
                     
@@ -510,12 +512,16 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                     if (session_state.workflow_boundaries) {
                         setWorkflowBoundaries(session_state.workflow_boundaries);
                     }
+                    
+                    console.log('[WORKFLOW_DEBUG] Synthesis step loaded:', session_state.synthesis_step);
+                } else {
+                    console.log('[WORKFLOW_DEBUG] No session data found');
                 }
+            } else {
+                console.log('[WORKFLOW_DEBUG] No synthesis session found or error:', response.status);
             }
         } catch (error) {
-            console.error("Error loading synthesis session:", error);
-        } finally {
-            setIsConversationLoaded(true);
+            console.error('[WORKFLOW_DEBUG] Error loading synthesis session:', error);
         }
     }, [userId]);
 
@@ -657,19 +663,32 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         if(!userId) return;
         setIsLoading(true);
         try {
+            console.log('[WORKFLOW_DEBUG] Fetching workflows for userId:', userId);
             const response = await fetch(`/api/workflows?userId=${userId}`);
             if (response.ok) {
                 const result = await response.json();
+                console.log('[WORKFLOW_DEBUG] API response:', result);
                 const regularWorkflows = result.data
                     .filter((d: DatabaseWorkflow) => d.title !== '__CONVERSATION__')
                     .map((workflow: DatabaseWorkflow) => ({
                         ...workflow,
                         businessLogic: workflow.business_logic || []
                     }));
+                console.log('[WORKFLOW_DEBUG] Filtered workflows:', regularWorkflows);
                 setWorkflows(regularWorkflows);
+                
+                // Auto-switch to canvas view if workflows exist
+                if (regularWorkflows.length > 0) {
+                    console.log('[WORKFLOW_DEBUG] Switching to canvas view - found', regularWorkflows.length, 'workflows');
+                    setView('canvas');
+                } else {
+                    console.log('[WORKFLOW_DEBUG] No workflows found, staying in initial view');
+                }
+            } else {
+                console.error('[WORKFLOW_DEBUG] API response not ok:', response.status, response.statusText);
             }
         } catch (error) {
-            console.error("Failed to fetch workflows", error);
+            console.error('[WORKFLOW_DEBUG] Failed to fetch workflows:', error);
         } finally {
             setIsLoading(false);
         }
@@ -822,7 +841,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             setSynthesisStep('boundaries_editing');
             
             const boundariesMessage: Message = { 
-                id: Date.now().toString(), 
+                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
                 sender: 'ai', 
                 text: "I've defined boundaries for your workflows. Please review and approve them above, or make any changes before proceeding to synthesis."
             };
@@ -872,7 +891,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 // Final state update
                 setView('canvas');
                 setSynthesisStep('done');
-                const synthesizedMessage: Message = {id: Date.now().toString(), sender: 'ai', text: "Workflows have been synthesized. You can now view and refine them in the Canvas tab."};
+                const synthesizedMessage: Message = {id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, sender: 'ai', text: "Workflows have been synthesized. You can now view and refine them in the Canvas tab."};
                 await saveSynthesisSession(updatedMessages.slice(0,-1).concat([synthesizedMessage]), 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries);
 
         } else {
@@ -919,7 +938,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
 
     const handleSendMessage = async () => {
         if (!userInput.trim()) return;
-        const userMessage: Message = { id: Date.now().toString(), sender: 'user', text: userInput };
+        const userMessage: Message = { id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, sender: 'user', text: userInput };
         setMessages(prev => [...prev, userMessage]);
         const instruction = userInput;
         setUserInput('');
@@ -942,7 +961,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
                 const result = await response.json();
                     setIdentifiedWorkflowNames(result.workflows || []);
                     setMessages(prev => [...prev, { 
-                        id: Date.now().toString(), 
+                        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
                         sender: 'ai', 
                         text: "I've updated the workflow list based on your instruction. Please review the changes above."
                     }]);
@@ -952,13 +971,13 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
             } else {
                 // Future: Handle other conversational edits when in canvas mode
                 setMessages(prev => [...prev, { 
-                    id: Date.now().toString(), 
+                    id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
                     sender: 'ai', 
                     text: "I understand you want to make changes, but I can only help during the workflow identification phase right now. Please use the direct editing interface in the canvas."
                 }]);
             }
         } catch {
-            const aiErrorResponse: Message = { id: (Date.now() + 1).toString(), sender: 'ai', text: "Sorry, something went wrong. Please try again." };
+            const aiErrorResponse: Message = { id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, sender: 'ai', text: "Sorry, something went wrong. Please try again." };
             setMessages(prev => [...prev, aiErrorResponse]);
         }
         setIsAiThinking(false);
@@ -1213,23 +1232,19 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId: str
         }
     }, [messages, view]);
 
-    // Auto-save when certain states change, with debouncing
+    // Debug: Track view and workflow state changes
     useEffect(() => {
-        if (!isConversationLoaded) return; // Don't save until initial load is complete
+        console.log('[WORKFLOW_DEBUG] State update:', {
+            view,
+            workflowCount: workflows.length,
+            synthesisStep,
+            isLoading,
+            workflowTitles: workflows.map(w => w.title)
+        });
+    }, [view, workflows, synthesisStep, isLoading]);
 
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = setTimeout(() => {
-            if (synthesisStep !== 'idle' || messages.length > 1 || Object.keys(workflowBoundaries).length > 0) {
-                saveSynthesisSession(messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries);
-            }
-        }, 1000); // 1-second debounce
-
-        return () => {
-            if (saveTimeoutRef.current) {
-                clearTimeout(saveTimeoutRef.current);
-            }
-        };
-    }, [messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries, saveSynthesisSession, isConversationLoaded]);
+    // Manual save at key moments only - no auto-save to prevent race conditions
+    // Canvas auto-save (debouncedUpdateWorkflow) handles individual workflow edits
 
     if (view === 'initial' || view === 'chat_fullscreen') {
         const isChatMode = view === 'chat_fullscreen';
