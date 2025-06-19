@@ -163,7 +163,6 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
 
   // -- New state for collapsing screenshot --
   const [isScreenshotCollapsed, setIsScreenshotCollapsed] = useState(false);
-  const [isHoveringScreenshot, setIsHoveringScreenshot] = useState(false);
   const originalSelectedEvent = useMemo(() => selectedEvent, [selectedEvent]);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -696,15 +695,29 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   };
 
   useEffect(() => {
-    if (isHoveringScreenshot) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
+    // This effect previously toggled document.body.style.overflow based on isHoveringScreenshot,
+    // causing a layout jump.
+    // Now, it sets up stable scrollbar handling for the body to prevent such jumps.
+    // The consequence is that the body might scroll when the mouse is over the sticky header.
+    // If that's an issue, further changes to prevent body scroll (without causing jumps)
+    // would be needed for the sticky header's hover state.
+
+    const originalOverflow = document.body.style.overflow;
+    const originalScrollbarGutter = document.body.style.scrollbarGutter;
+
+    // Set overflow to auto (if not already hidden by something else)
+    // and enable stable scrollbar gutter.
+    if (document.body.style.overflow !== 'hidden') {
+      document.body.style.overflow = 'auto';
     }
+    document.body.style.scrollbarGutter = 'stable';
+
     return () => {
-      document.body.style.overflow = ''; // Cleanup on unmount
-    }
-  }, [isHoveringScreenshot]);
+      // Restore original styles on unmount
+      document.body.style.overflow = originalOverflow;
+      document.body.style.scrollbarGutter = originalScrollbarGutter;
+    };
+  }, []); // Empty dependency array: run once on mount, cleanup on unmount.
 
   if (error) {
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
@@ -714,8 +727,6 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     <>
       <div 
         className="sticky top-16 bg-background z-10 border-b pb-4"
-        onMouseEnter={() => setIsHoveringScreenshot(true)}
-        onMouseLeave={() => setIsHoveringScreenshot(false)}
       >
         {loading ? (
             <div className="py-4 px-2 h-[220px] flex items-center justify-center"><Skeleton className="h-full w-full" /></div>
@@ -781,7 +792,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             </>
         )}
       </div>
-      <div className="mt-4">
+      <div className="mt-4 px-4">
         <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
                 <DropdownMenu>
@@ -824,7 +835,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                 </AlertDialog>
             </div>
             <div className="flex items-center space-x-4">
-                <div className="text-sm text-muted-foreground">
+                <div className="text-sm text-muted-foreground ml-4">
                     Total Steps: {tableData.length}
                 </div>
                 <Input

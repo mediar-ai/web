@@ -26,7 +26,6 @@ import ScreenshotView from "@/components/low-level/ScreenshotView";
 import DiffView from "@/components/low-level/DiffView";
 import { useUser } from "@/context/UserContext";
 import { RefreshCw, Expand, Minimize2, PlusSquare, MinusSquare, ChevronsDown, ChevronsUp } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -39,6 +38,22 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 
 type AnalysisOutput = {
   workflow: string;
@@ -64,7 +79,7 @@ type ContextForAnalysis = {
 };
 
 type WorkflowStepAnalysis = {
-  id: string; // Corresponds to the database primary key
+  id: string;
   workflow: string;
   step: string;
   description: string;
@@ -100,7 +115,8 @@ type StepsPageEventPayload = {
 
 const getEventTimestamp = (event: LowLevelEvent): string => {
   const payload = event.payload as StepsPageEventPayload;
-  return payload?.payload?.timestamp || event.created_at;
+  const rawTimestamp = payload?.payload?.timestamp || event.created_at;
+  return new Date(rawTimestamp).toISOString();
 };
 
 const EventSummary = ({ event }: { event: LowLevelEvent }) => {
@@ -123,7 +139,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [accordionSelection, setAccordionSelection] = useState<'expand' | 'collapse' | null>(null);
   const [contextGroupSelection, setContextGroupSelection] = useState<'expand' | 'collapse' | null>(null);
   const [detailSelection, setDetailSelection] = useState<'expand' | 'collapse' | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [totalEventCount, setTotalEventCount] = useState(0);
+  const [totalUiTreeCount, setTotalUiTreeCount] = useState(0);
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const [loadAmount, setLoadAmount] = useState('1000');
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -133,9 +154,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [currentBatchStep, setCurrentBatchStep] = useState(0);
   const [totalBatchSteps, setTotalBatchSteps] = useState(0);
   const [rawLlmInputForDisplay, setRawLlmInputForDisplay] = useState<string | null>(null);
-  
-  // State to control which context elements are included
-  const [contextConfig, ] = useState({
+
+  const [contextConfig] = useState({
     includeScreenshots: false,
     includePreviousUiTree: false,
     includePreviousWindowTitle: true,
@@ -154,6 +174,89 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const CONTEXT_GROUP_STORAGE_KEY = useMemo(() => `llm-iteration-context-group-state-${userId}`, [userId]);
   const DETAIL_ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-detail-state-${userId}`, [userId]);
 
+  const fetchAllWorkflowAnalyses = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
+      if (!response.ok) throw new Error('Failed to fetch workflow analyses');
+      const data = await response.json();
+      const analyses: WorkflowStepAnalysis[] = (data.analyses || []).map((a: WorkflowStepAnalysis) => ({
+        ...a,
+        client_timestamp: new Date(a.client_timestamp).toISOString(),
+      }));
+      setAllWorkflowAnalyses(analyses);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [userId]);
+
+  const loadEventsInChunks = useCallback(async (amountToLoad: number) => {
+    if (!userId) return;
+    setIsLoading(true);
+    setShowLoadModal(false);
+    setAllEvents([]);
+    setLoadingProgress(0);
+
+    const chunkSize = 1000;
+    let loadedEvents: LowLevelEvent[] = [];
+    let offset = 0;
+    const totalToFetch = Math.min(amountToLoad, totalEventCount);
+
+    while (loadedEvents.length < totalToFetch) {
+      const remaining = totalToFetch - loadedEvents.length;
+      const currentChunkSize = Math.min(chunkSize, remaining);
+
+      try {
+        const response = await fetch(`/api/low-level/${userId}?limit=${currentChunkSize}&offset=${offset}`);
+        if (!response.ok) throw new Error(`Network response was not ok (chunk offset: ${offset})`);
+        
+        const data = await response.json();
+        if (data.events.length === 0) {
+            setLoadingProgress(100);
+            break;
+        }
+
+        loadedEvents = [...loadedEvents, ...data.events];
+        setAllEvents(prev => [...prev, ...data.events]);
+        offset += data.events.length;
+        setLoadingProgress((loadedEvents.length / totalToFetch) * 100);
+
+        if (!data.hasMore) break;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        break;
+      }
+    }
+    
+    setAllEvents(prev => prev.sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()));
+    setIsLoading(false);
+  }, [userId, totalEventCount]);
+
+  const fetchEventCounts = useCallback(async () => {
+    if (!userId) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/low-level/${userId}/count`);
+      if (!response.ok) throw new Error('Failed to fetch event counts');
+      const data = await response.json();
+      setTotalEventCount(data.totalEvents);
+      setTotalUiTreeCount(data.totalUiTreeEvents);
+      if (data.totalEvents > 0) {
+        setShowLoadModal(true);
+      }
+      setIsLoading(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setIsLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    setUserId(userId);
+    fetchEventCounts();
+    fetchAllWorkflowAnalyses();
+  }, [userId, setUserId, fetchAllWorkflowAnalyses, fetchEventCounts]);
+
   useEffect(() => {
     if (userId) {
       const storedState = localStorage.getItem(ACCORDION_STORAGE_KEY);
@@ -162,59 +265,42 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           setOpenAccordionItems(JSON.parse(storedState));
         } catch (e) {
           console.error("Failed to parse accordion state from localStorage", e);
-          setOpenAccordionItems([]);
         }
-      } else {
-        setOpenAccordionItems([]);
       }
-
       const storedGroupState = localStorage.getItem(CONTEXT_GROUP_STORAGE_KEY);
       if (storedGroupState) {
         try {
           setOpenContextGroupItems(JSON.parse(storedGroupState));
         } catch (e) {
           console.error("Failed to parse context group state from localStorage", e);
-          setOpenContextGroupItems([]);
         }
-      } else {
-        setOpenContextGroupItems([]);
       }
-      
       const storedDetailState = localStorage.getItem(DETAIL_ACCORDION_STORAGE_KEY);
       if (storedDetailState) {
         try {
           setOpenDetailItems(JSON.parse(storedDetailState));
         } catch (e) {
           console.error("Failed to parse detail state from localStorage", e);
-          setOpenDetailItems([]);
         }
-      } else {
-        setOpenDetailItems([]);
       }
     }
   }, [userId, ACCORDION_STORAGE_KEY, CONTEXT_GROUP_STORAGE_KEY, DETAIL_ACCORDION_STORAGE_KEY]);
 
   const handleAccordionValueChange = (value: string[]) => {
     setOpenAccordionItems(value);
-    if (userId) {
-      localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(value));
-    }
+    localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(value));
     setAccordionSelection(null);
   };
 
   const handleContextGroupValueChange = (value: string[]) => {
     setOpenContextGroupItems(value);
-    if (userId) {
-      localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify(value));
-    }
+    localStorage.setItem(CONTEXT_GROUP_STORAGE_KEY, JSON.stringify(value));
     setContextGroupSelection(null);
   };
 
   const handleDetailItemsValueChange = (value: string[]) => {
     setOpenDetailItems(value);
-    if (userId) {
-      localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(value));
-    }
+    localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(value));
     setDetailSelection(null);
   };
 
@@ -246,9 +332,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
   const expandAllDetails = () => {
     const allDetailValues = [
-      "sub-item-1", "sub-item-prev-screenshot-same-window", "sub-item-5", // Screenshots
-      "sub-item-2", "sub-item-prev-window-title", "sub-item-prev-same-window", "sub-item-current-tree", "sub-item-4", // UI-Tree
-      "sub-item-3", "sub-item-events-same-window", // Events
+      "sub-item-1", "sub-item-prev-screenshot-same-window", "sub-item-5",
+      "sub-item-2", "sub-item-prev-window-title", "sub-item-prev-same-window", "sub-item-current-tree", "sub-item-4",
+      "sub-item-3", "sub-item-events-same-window",
     ];
     setOpenDetailItems(allDetailValues);
     localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify(allDetailValues));
@@ -260,48 +346,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     localStorage.setItem(DETAIL_ACCORDION_STORAGE_KEY, JSON.stringify([]));
   }
 
-  // --- Start of Reactive Data Processing ---
-
-  const fetchAllWorkflowAnalyses = useCallback(async () => {
-    if (!userId) return;
-    try {
-      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch workflow analyses');
-      }
-      const data = await response.json();
-      const analyses: WorkflowStepAnalysis[] = data.analyses || [];
-      setAllWorkflowAnalyses(analyses);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    setUserId(userId);
-    const fetchEvents = async () => {
-      try {
-        const response = await fetch(`/api/low-level/${userId}`);
-        if (!response.ok) {
-          throw new Error('Network response was not ok when fetching events');
-        }
-        const data = await response.json();
-        const sortedEvents = (data.events || []).sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        setAllEvents(sortedEvents);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (userId) {
-      fetchEvents();
-      fetchAllWorkflowAnalyses();
-    }
-  }, [userId, setUserId, fetchAllWorkflowAnalyses]);
-
-  // Filter for UI tree events and sort them
   const uiTreeEvents = useMemo(() => {
     return allEvents
       .filter(event => (event.payload as StepsPageEventPayload).payload?.type === 'ui_tree')
@@ -309,72 +353,53 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   }, [allEvents]);
 
   useEffect(() => {
-    // Automatically select the last UI tree event on initial load,
-    // but don't override if a selection has already been made.
     if (uiTreeEvents.length > 0 && !selectedEvent) {
       setSelectedEvent(uiTreeEvents[uiTreeEvents.length - 1]);
     }
   }, [uiTreeEvents, selectedEvent]);
 
   const previousAnalyses = useMemo(() => {
-    if (!selectedEvent || !allWorkflowAnalyses.length) {
-      return [];
-    }
+    if (!selectedEvent || !allWorkflowAnalyses.length) return [];
   
-    // Find the index of the currently selected event in the sorted list of all UI tree events.
     const currentIndex = uiTreeEvents.findIndex(event => event.id === selectedEvent.id);
-    if (currentIndex <= 0) {
-      return [];
-    }
+    if (currentIndex <= 0) return [];
   
-    // Get the timestamps of the three UI tree events that precede the current one.
     const precedingEvents = uiTreeEvents.slice(Math.max(0, currentIndex - 3), currentIndex);
     const precedingTimestamps = new Set(precedingEvents.map(e => getEventTimestamp(e)));
   
-    // Filter all existing analyses to find the ones that match these preceding timestamps.
-    const relevantAnalyses = allWorkflowAnalyses
+    return allWorkflowAnalyses
       .filter(analysis => precedingTimestamps.has(analysis.client_timestamp))
-      .sort((a, b) => new Date(b.client_timestamp).getTime() - new Date(a.client_timestamp).getTime()); // Sort descending
-  
-    return relevantAnalyses;
+      .sort((a, b) => new Date(b.client_timestamp).getTime() - new Date(a.client_timestamp).getTime());
   }, [selectedEvent, allWorkflowAnalyses, uiTreeEvents]);
 
-  // Find which UI tree events have not been processed yet
   const unprocessedUiTreeEvents = useMemo(() => {
-    if (!Array.isArray(allWorkflowAnalyses) || allWorkflowAnalyses.length === 0) {
-      return uiTreeEvents;
-    }
+    if (!Array.isArray(allWorkflowAnalyses) || allWorkflowAnalyses.length === 0) return uiTreeEvents;
     const analyzedTimestamps = new Set(allWorkflowAnalyses.map(a => a.client_timestamp));
     return uiTreeEvents.filter(event => !analyzedTimestamps.has(getEventTimestamp(event)));
   }, [uiTreeEvents, allWorkflowAnalyses]);
 
-  // Find the analysis that corresponds to the currently selected event
   const existingAnalysisForSelectedEvent = useMemo(() => {
     if (!selectedEvent || !allWorkflowAnalyses) return null;
     const selectedTimestamp = getEventTimestamp(selectedEvent);
     return allWorkflowAnalyses.find(a => a.client_timestamp === selectedTimestamp) || null;
   }, [selectedEvent, allWorkflowAnalyses]);
 
-  // Find the previous UI tree event in the timeline
   const previousUiTreeEvent = useMemo(() => {
     if (!selectedEvent) return null;
     const currentIndex = uiTreeEvents.findIndex(e => e.id === selectedEvent.id);
     return currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
   }, [selectedEvent, uiTreeEvents]);
 
-  // Get the UI tree string from the previous event
   const previousUiTree = useMemo(() => {
     if (!previousUiTreeEvent) return null;
     return (previousUiTreeEvent.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree || null;
   }, [previousUiTreeEvent]);
 
-  // Get the UI tree string from the current event
   const currentUiTree = useMemo(() => {
     if (!selectedEvent) return null;
     return (selectedEvent.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree || null;
   }, [selectedEvent]);
 
-  // Find all events that occurred between the previous and current UI tree events
   const eventsBetweenByTimestamp = useMemo(() => {
     if (!previousUiTreeEvent || !selectedEvent) return [];
     const prevTimestamp = new Date(getEventTimestamp(previousUiTreeEvent)).getTime();
@@ -399,9 +424,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       const payload = JSON.parse(rawLlmInputForDisplay);
       const response = await fetch('/api/process-workflow-step', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
@@ -413,20 +436,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       const result = await response.json();
       setAnalysisOutput(result);
 
-      // After processing, save the analysis
       if (selectedEvent) {
         await fetch('/api/save-llm-analysis', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ...result,
-            userId,
-            client_timestamp: getEventTimestamp(selectedEvent),
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...result, userId, client_timestamp: getEventTimestamp(selectedEvent) }),
         });
-        // Refresh analyses to include the new one
         await fetchAllWorkflowAnalyses();
       }
 
@@ -515,12 +530,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const beforeScreenshotTimestampSameWindow = useMemo(() => relevantScreenshotDiffSameWindow?.payload.payload?.event?.screenshot_diff?.before_timestamp || null, [relevantScreenshotDiffSameWindow]);
 
   const llmContext = useMemo((): ContextForAnalysis => {
-    if (!selectedEvent) {
-      return {};
-    }
-
+    if (!selectedEvent) return {};
     const context: ContextForAnalysis = {};
-
     if (contextConfig.includeScreenshots) {
       context.screenshotAfter = afterScreenshotDataUrl;
       context.screenshotBefore = beforeScreenshotDataUrlSameWindow;
@@ -532,68 +543,39 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       context.currentUiTree_structure = "The UI tree is a simplified representation of the accessibility tree. Each line has the format: 'LineNumber. RomanNumeralIndentation. [Role] 'Name' {Attributes}'.";
       context.currentUiTree = generateSimplifiedUiTreeString(currentUiTree);
     }
-    
     if (contextConfig.includeEventsSincePreviousUiTree && eventsBetweenByTimestamp.length > 0) {
       context.eventsSincePreviousUiTreeByTimestamp = eventsBetweenByTimestamp.map(event => generateEventSummaryString(event));
     }
-
     if (contextConfig.includeEventsSinceSameWindowUiTree && eventsBetweenSameWindow.length > 0) {
       context.eventsSincePreviousUiTreeBySameWindow = eventsBetweenSameWindow.map(event => generateEventSummaryString(event));
     }
-
     if (contextConfig.includePreviousAnalyses && previousAnalyses.length > 0) {
       context.previousAnalyses = previousAnalyses.slice(0, 3);
     }
-
     return context;
-  }, [
-    selectedEvent,
-    previousUiTree,
-    currentUiTree,
-    beforeScreenshotDataUrlSameWindow,
-    afterScreenshotDataUrl,
-    eventsBetweenByTimestamp,
-    eventsBetweenSameWindow,
-    previousAnalyses,
-    contextConfig,
-  ]);
+  }, [selectedEvent, previousUiTree, currentUiTree, afterScreenshotDataUrl, beforeScreenshotDataUrlSameWindow, eventsBetweenByTimestamp, eventsBetweenSameWindow, previousAnalyses, contextConfig]);
 
   useEffect(() => {
-    // Automatically update the raw JSON preview whenever the context or model changes.
     if (selectedEvent && Object.keys(llmContext).length > 0) {
-      const llmApiPayload = {
-        prompt: WORKFLOW_STEP_ANALYSIS_PROMPT,
-        model: selectedModel,
-        context: llmContext,
-      };
+      const llmApiPayload = { prompt: WORKFLOW_STEP_ANALYSIS_PROMPT, model: selectedModel, context: llmContext };
       setRawLlmInputForDisplay(JSON.stringify(llmApiPayload, null, 2));
     } else {
       setRawLlmInputForDisplay(null);
     }
   }, [llmContext, selectedModel, selectedEvent]);
 
-  // --- End of Reactive Data Processing ---
-
   const handleProcessAllRemaining = async () => {
     setIsBatchProcessing(true);
     setTotalBatchSteps(unprocessedUiTreeEvents.length);
     setCurrentBatchStep(0);
-
     let recentAnalyses: PreviousAnalysis[] = [...previousAnalyses];
-
     for (let i = 0; i < unprocessedUiTreeEvents.length; i++) {
       const eventToProcess = unprocessedUiTreeEvents[i];
       setCurrentBatchStep(i + 1);
-
-      // Assemble context for the current step
       const currentIndex = uiTreeEvents.findIndex(e => e.id === eventToProcess.id);
       const prevEvent = currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
-      
       const context: ContextForAnalysis = {};
-      
-      // This logic should be encapsulated to avoid repetition, but for now, we'll build it here
       const prevUiTreeString = prevEvent ? (prevEvent.payload.payload?.event as { screen?: { ui_tree?: string } })?.screen?.ui_tree : null;
-
       if (contextConfig.includePreviousUiTree && prevUiTreeString) {
         context.previousUiTree = generateSimplifiedUiTreeString(prevUiTreeString);
       }
@@ -604,79 +586,50 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       if (contextConfig.includePreviousAnalyses && recentAnalyses.length > 0) {
         context.previousAnalyses = recentAnalyses;
       }
-
-      // Gather and process events for the current step in the batch
       const prevEventTimestamp = prevEvent ? new Date(getEventTimestamp(prevEvent)).getTime() : 0;
       const currentEventTimestamp = new Date(getEventTimestamp(eventToProcess)).getTime();
-      
       const relevantRawEvents = allEvents.filter(e => {
         const eventTime = new Date(getEventTimestamp(e)).getTime();
-        // Include events strictly after the previous UI tree event and up to/including the current UI tree event.
-        // Also, ensure we don't include the prevEvent itself if it's a UI tree, but do include current eventToProcess.
         return eventTime > prevEventTimestamp && eventTime <= currentEventTimestamp;
       });
-
       if (relevantRawEvents.length > 0) {
         const summarizedEvents = relevantRawEvents.map(event => generateEventSummaryString(event));
         if (contextConfig.includeEventsSincePreviousUiTree) {
           context.eventsSincePreviousUiTreeByTimestamp = summarizedEvents;
         }
         if (contextConfig.includeEventsSinceSameWindowUiTree) {
-          // In batch mode, both event types refer to the same set of events between UI trees.
-          // We can assign the same summarized events here if the user has this option checked.
           context.eventsSincePreviousUiTreeBySameWindow = summarizedEvents;
         }
       }
-
-      
       try {
         const processResponse = await fetch('/api/process-workflow-step', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: WORKFLOW_STEP_ANALYSIS_PROMPT,
-            model: selectedModel,
-            context,
-          }),
+          body: JSON.stringify({ prompt: WORKFLOW_STEP_ANALYSIS_PROMPT, model: selectedModel, context }),
         });
-
-        if (!processResponse.ok) {
-          throw new Error(`API error for step ${i + 1}: ${processResponse.statusText}`);
-        }
-
+        if (!processResponse.ok) throw new Error(`API error for step ${i + 1}: ${processResponse.statusText}`);
         const result = await processResponse.json();
-        
         if (result.analysis) {
           const sessionId = localStorage.getItem('app_session_id') || 'unknown-session';
-          const clientTimestamp = eventToProcess.created_at;
-
+          const clientTimestamp = getEventTimestamp(eventToProcess);
           await fetch('/api/save-llm-analysis', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId,
-              sessionId,
-              analysis: result.analysis,
-              clientTimestamp,
-            }),
+            body: JSON.stringify({ userId, sessionId, analysis: result.analysis, clientTimestamp }),
           });
-          
           const newAnalysis: PreviousAnalysis = {
-            id: `batch-${Date.now()}`, // temp id
+            id: `batch-${Date.now()}`,
             ...result.analysis,
             client_timestamp: clientTimestamp,
             created_at: new Date().toISOString()
           };
-          
           recentAnalyses = [newAnalysis, ...recentAnalyses].slice(0, 3);
           setAllWorkflowAnalyses(prev => [...prev, newAnalysis]);
         }
       } catch (err) {
         console.error(`Failed to process step ${i + 1}`, err);
-        // Optional: decide if you want to stop the batch on error
       }
     }
-
     setIsBatchProcessing(false);
     setCurrentBatchStep(0);
     setTotalBatchSteps(0);
@@ -686,31 +639,86 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
   }
 
-  if (!loading && allEvents.length === 0) {
-    return <div className="p-4">No events found for this user.</div>;
+  if (isLoading && !showLoadModal) {
+    return (
+      <div className="flex flex-col items-center justify-center pt-16">
+        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-muted-foreground mt-4">Loading Initial Data...</p>
+      </div>
+    );
+  }
+  
+  if (totalEventCount > 0 && allEvents.length === 0 && !isLoading) {
+      return (
+        <div className="p-4 text-center">
+          <p>No events loaded.</p>
+          <p className="text-sm text-muted-foreground">Click the button below to fetch event counts and start loading.</p>
+          <Button onClick={fetchEventCounts} className="mt-4">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Re-Fetch Event Counts
+          </Button>
+        </div>
+      );
   }
 
   return (
     <div className="p-4">
-      <div className="sticky top-28 bg-background z-10 border-b">
-        {loading ? (
-          <div className="py-4 px-2 h-[124px] flex items-center">
-            <Skeleton className="h-14 w-full" />
+      <Dialog open={showLoadModal} onOpenChange={setShowLoadModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Load User Events</DialogTitle>
+            <DialogDescription>
+              We found <strong>{totalEventCount.toLocaleString()}</strong> total events, including <strong>{totalUiTreeCount.toLocaleString()}</strong> key steps.
+              Select how many of the most recent events you&apos;d like to load.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Select value={loadAmount} onValueChange={setLoadAmount}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select amount to load" />
+              </SelectTrigger>
+              <SelectContent>
+                {[...Array(Math.min(10, Math.ceil(totalEventCount / 1000)))].map((_, i) => (
+                  <SelectItem key={i} value={String((i + 1) * 1000)}>Load {(i + 1) * 1000} events</SelectItem>
+                ))}
+                <SelectItem value={String(totalEventCount)}>Load All ({totalEventCount.toLocaleString()}) events</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        ) : (
+          <DialogFooter>
+            <Button onClick={() => loadEventsInChunks(parseInt(loadAmount, 10))}>Start Loading</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="sticky top-28 bg-background z-10 border-b">
+        {isLoading && !showLoadModal ? (
+          <div className="py-4 px-2 h-[124px] flex flex-col items-center justify-center space-y-2">
+            <p className="text-sm text-muted-foreground">Loading events... {Math.round(loadingProgress)}%</p>
+            <Progress value={loadingProgress} className="w-full" />
+          </div>
+        ) : allEvents.length > 0 ? (
           <UITreeTimeline
             uiTreeEvents={uiTreeEvents}
             selectedEvent={selectedEvent}
             onEventSelect={setSelectedEvent}
           />
+        ) : (
+          <div className="p-4 text-center text-muted-foreground h-[124px] flex items-center justify-center">
+            {totalEventCount === 0 && !isLoading ? 'No events found for this user.' : ''}
+          </div>
         )}
       </div>
       <Card className="my-4">
         <CardContent className="p-4 flex items-center space-x-4 text-sm">
           <span className="font-semibold text-base">Summary:</span>
           <div className="flex items-center space-x-1.5">
+            <span className="text-muted-foreground">Total Events:</span>
+            <span className="font-semibold">{totalEventCount.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">Total Steps:</span>
-            <span className="font-semibold">{uiTreeEvents.length}</span>
+            <span className="font-semibold">{uiTreeEvents.length.toLocaleString()}</span>
           </div>
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">Processed:</span>
@@ -718,7 +726,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           </div>
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">Remaining:</span>
-            <span className="font-semibold">{unprocessedUiTreeEvents.length}</span>
+            <span className="font-semibold">{unprocessedUiTreeEvents.length.toLocaleString()}</span>
           </div>
           <div className="flex-grow" />
           <Button variant="outline" size="sm" onClick={handleProcessAllRemaining} disabled={isBatchProcessing || unprocessedUiTreeEvents.length === 0}>
@@ -790,12 +798,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           </div>
         </TooltipProvider>
       </div>
-      {loading ? (
-        <div className="flex flex-col items-center justify-center pt-16">
-          <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-muted-foreground mt-4">Loading Events...</p>
-        </div>
-      ) : (
+      {allEvents.length > 0 ? (
         <Accordion 
           type="multiple" 
           className="w-full" 
@@ -1057,8 +1060,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
           <AccordionItem value="item-raw-llm-input">
             <div className="flex items-center">
-              {/* Checkbox removed as per user request */}
-              <div className="w-12 flex justify-center"></div> {/* Maintain spacing if needed, or remove entirely if trigger should align left */} 
+              <div className="w-12 flex justify-center"></div>
               <AccordionTrigger className="flex-1 italic">Full Raw LLM Input Context</AccordionTrigger>
             </div>
             <AccordionContent>
@@ -1151,7 +1153,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-      )}
+      ) : null}
     </div>
   );
 } 
