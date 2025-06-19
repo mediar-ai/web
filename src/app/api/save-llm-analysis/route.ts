@@ -18,13 +18,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
+    // Normalize the timestamp to ensure consistency
+    const normalizedTimestamp = new Date(clientTimestamp).toISOString();
+
     const { data, error } = await supabaseAdmin
       .from('low_level_workflow_analyses')
       .insert([
         {
           user_id: userId,
           session_id: sessionId,
-          client_timestamp: clientTimestamp,
+          client_timestamp: normalizedTimestamp,
           ...analysis,
         },
       ]);
