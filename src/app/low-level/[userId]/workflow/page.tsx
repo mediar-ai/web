@@ -39,6 +39,106 @@ import { Progress } from "@/components/ui/progress"
 import type { LowLevelEvent } from '@/types';
 import type { CanvasContent, SynthesizedWorkflow, WorkflowStepAnalysis, CombinedEvent, FinalAnalysisData, SynthesisStep, WorkflowContext, WorkflowBoundary, WorkflowBoundaries, WorkflowDataObject, DatabaseWorkflow, SynthesisSession, Message } from './types';
 import { useWorkflowPageLogic } from './useWorkflowPageLogic';
+import type { WorkflowContext } from './types';
+
+// Placeholder for ContextEditor component
+interface ContextEditorProps {
+  editableContext: WorkflowContext;
+  onContextChange: (newContext: Partial<WorkflowContext>) => void;
+  draftWorkflowNames: string[];
+  onDraftWorkflowNamesChange: (names: string[]) => void;
+  // Add any other props that might be passed, e.g., children or isLoading
+  isLoading?: boolean;
+}
+
+const ContextEditor: React.FC<ContextEditorProps> = ({
+  editableContext,
+  onContextChange,
+  draftWorkflowNames,
+  onDraftWorkflowNamesChange,
+  isLoading,
+}) => {
+  // Basic implementation: A textarea for each field in editableContext
+  // and a simple list for draftWorkflowNames
+  return (
+    <div className="space-y-4 p-4 border rounded-md">
+      <h3 className="text-lg font-semibold">Context Editor (Placeholder)</h3>
+      <div>
+        <label className="block text-sm font-medium text-gray-700">User Job Role</label>
+        <Textarea
+          value={editableContext.user_job_role || ''}
+          onChange={(e) => onContextChange({ user_job_role: e.target.value })}
+          placeholder="Enter user job role"
+          disabled={isLoading}
+          className="mt-1"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Project Name</label>
+        <Textarea
+          value={editableContext.project_name || ''}
+          onChange={(e) => onContextChange({ project_name: e.target.value })}
+          placeholder="Enter project name"
+          disabled={isLoading}
+          className="mt-1"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700">User Goal from Recordings</label>
+        <Textarea
+          value={editableContext.user_goal_from_recordings || ''}
+          onChange={(e) => onContextChange({ user_goal_from_recordings: e.target.value })}
+          placeholder="Describe user's goal from recordings"
+          disabled={isLoading}
+          className="mt-1"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Overall Project Goal</label>
+        <Textarea
+          value={editableContext.overall_project_goal || ''}
+          onChange={(e) => onContextChange({ overall_project_goal: e.target.value })}
+          placeholder="Describe overall project goal"
+          disabled={isLoading}
+          className="mt-1"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Overall Project Description</label>
+        <Textarea
+          value={editableContext.overall_project_description || ''}
+          onChange={(e) => onContextChange({ overall_project_description: e.target.value })}
+          placeholder="Describe overall project"
+          disabled={isLoading}
+          className="mt-1"
+        />
+      </div>
+      
+      <div className="mt-4">
+        <h4 className="text-md font-semibold">Draft Workflow Names:</h4>
+        {draftWorkflowNames.length > 0 ? (
+          <ul className="list-disc pl-5 mt-2">
+            {draftWorkflowNames.map((name, index) => (
+              <li key={index}>{name}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500 mt-1">No draft workflow names yet.</p>
+        )}
+        {/* Basic input to modify draft names - for placeholder purposes */}
+        <Input 
+          type="text" 
+          placeholder="Add/edit workflow names (comma-separated)"
+          defaultValue={draftWorkflowNames.join(', ')}
+          onBlur={(e) => onDraftWorkflowNamesChange(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+          disabled={isLoading}
+          className="mt-2"
+        />
+      </div>
+      <p className="text-xs text-gray-400 mt-2">This is a placeholder component. Implement full functionality as needed.</p>
+    </div>
+  );
+};
 import {
   EditableListItem,
   EditableWorkflowList,
