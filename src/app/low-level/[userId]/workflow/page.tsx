@@ -336,24 +336,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                     </div>
                     <h1 className="text-2xl font-bold">Workflow Synthesis</h1>
                     <div className="w-64 flex justify-end gap-2">
-                        <TooltipProvider>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button 
-                                        variant="outline" 
-                                        size="sm" 
-                                        onClick={resetConversation}
-                                        className="flex items-center gap-2"
-                                    >
-                                        <RotateCcw className="h-4 w-4" />
-                                        Reset
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>Start over with a fresh conversation</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button 
@@ -421,45 +403,64 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                     <div className="pt-4 grid grid-cols-3 gap-6 flex-grow min-h-0">
                     {/* AI Assistant Sidebar */}
                         <aside className="col-span-1 flex flex-col bg-muted/40 border rounded-lg overflow-hidden">
-                        <div className="p-4 border-b">
+                        <div className="p-4 border-b flex items-center justify-between">
                             <h3 className="text-base font-semibold">AI Assistant</h3>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={resetConversation}
+                                            className="flex items-center gap-2"
+                                        >
+                                            <RotateCcw className="h-4 w-4" />
+                                            Reset
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Start over with a fresh conversation</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                         </div>
-                        
+                        <div className="flex-grow p-4 space-y-4 overflow-y-auto bg-muted/30">
                         {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                            {Array.isArray(messages) && messages.map((message) => (
-                                <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
-                                    <div className={`p-3 rounded-lg max-w-[80%] ${
-                                        message.sender === 'ai' 
-                                            ? 'bg-background border shadow-sm' 
-                                            : 'bg-primary text-primary-foreground'
-                                    }`}>
-                                        <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                {Array.isArray(messages) && messages.map((message) => (
+                                    <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
+                                        <div className={`p-3 rounded-lg max-w-[80%] ${
+                                            message.sender === 'ai' 
+                                                ? 'bg-background border shadow-sm' 
+                                                : 'bg-primary text-primary-foreground'
+                                        }`}>
+                                            <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+                                        </div>
                                     </div>
+                                ))}
+                                {isAiThinking && <AiThinkingBubble />}
+                            </div>
+                            
+                            {/* Chat Input */}
+                            <div className="p-4 border-t">
+                                <div className="relative">
+                                    <Textarea 
+                                        placeholder="Ask AI for help with workflows..." 
+                                        className="min-h-[60px] pr-12" 
+                                        value={userInput}
+                                        onChange={(e) => setUserInput(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
+                                        disabled={isAiThinking}
+                                    />
+                                    <Button 
+                                        size="sm" 
+                                        className="absolute bottom-2 right-2 h-8" 
+                                        onClick={handleSendMessage} 
+                                        disabled={isAiThinking || !userInput.trim()}
+                                    >
+                                        <Send className="h-4 w-4" />
+                                    </Button>
                                 </div>
-                            ))}
-                            {isAiThinking && <AiThinkingBubble />}
-                        </div>
-                        
-                        {/* Chat Input */}
-                        <div className="p-4 border-t">
-                            <div className="relative">
-                                <Textarea 
-                                    placeholder="Ask AI for help with workflows..." 
-                                    className="min-h-[60px] pr-12" 
-                                    value={userInput}
-                                    onChange={(e) => setUserInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
-                                    disabled={isAiThinking}
-                                />
-                                <Button 
-                                    size="sm" 
-                                    className="absolute bottom-2 right-2 h-8" 
-                                    onClick={handleSendMessage} 
-                                    disabled={isAiThinking || !userInput.trim()}
-                                >
-                                    <Send className="h-4 w-4" />
-                                </Button>
                             </div>
                         </div>
                     </aside>
