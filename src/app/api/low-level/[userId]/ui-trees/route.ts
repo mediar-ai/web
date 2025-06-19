@@ -10,6 +10,8 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
+
+
 export const dynamic = 'force-dynamic';
 
 export async function GET(
@@ -27,20 +29,24 @@ export async function GET(
       .from('low_level_events')
       .select('*')
       .eq('user_id', userId)
-      // Fetch events that have a ui_tree at either the new or old path
+      // This is the corrected filter. It robustly checks for the existence of the ui_tree key
+      // at both the new and old paths, which is more reliable than checking the type.
       .or(
-        'payload->event->screen->>ui_tree.not.is.null,' +
-        'payload->payload->event->screen->>ui_tree.not.is.null'
+        'payload->event->screen->ui_tree.not.is.null,' +
+        'payload->payload->event->screen->ui_tree.not.is.null'
       )
       .order('created_at', { ascending: false });
 
     if (eventsError) {
-      console.error('[API/ui-trees] Error fetching ui_tree events:', eventsError);
-      throw eventsError;
+      console.error('Supabase error:', eventsError);
+      return new Response(JSON.stringify({ error: eventsError.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     return NextResponse.json({
-        events: events || [],
+      events: events || [],
     });
 
   } catch (err) {
