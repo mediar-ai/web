@@ -321,6 +321,14 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     <div>
       <div className="flex items-center gap-2 py-2 border-b mb-2">
         <Clock />
+        <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-md">
+          <span className="text-sm font-medium text-blue-800">
+            {events.length} events loaded
+          </span>
+          {events.length >= 1000 && (
+            <span className="text-xs text-blue-600">(capped at 1000)</span>
+          )}
+        </div>
         <Input
             type="text"
             placeholder="Search events..."

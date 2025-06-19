@@ -99,13 +99,17 @@ export async function POST(request: Request) {
     }
 
     // --- Step 1 (New): Insert the raw, unmodified payload into low_level_events ---
+    // Extract the actual event timestamp for proper ordering
+    const eventTimestamp = payload.timestamp ? new Date(payload.timestamp).toISOString() : new Date().toISOString();
+    
     const { error: rawInsertError } = await supabaseAdmin
       .from('low_level_events')
       .insert({
         session_id,
         user_id,
         payload: body, // Save the entire request body in the payload column
-        source: 'windows_app' // Add a source to distinguish from other potential low-level sources
+        source: 'windows_app', // Add a source to distinguish from other potential low-level sources
+        created_at: eventTimestamp // Use actual event timestamp for proper chronological ordering
       });
 
     if (rawInsertError) {
