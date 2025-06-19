@@ -38,9 +38,9 @@ export async function GET(
       query = query.eq('session_id', sessionId);
     }
 
-    // Add pagination and ordering - sort by actual event timestamp DESC to get most recent first
+    // Fast database ordering by created_at DESC (which now contains actual event timestamps)
     query = query
-      .order("payload->'payload'->>'timestamp'", { ascending: false })
+      .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     const { data: events, error: eventsError } = await query;

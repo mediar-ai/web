@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       .from('low_level_events')
       .select('*')
       .eq('session_id', sessionId)
-      .order("payload->'payload'->>'timestamp'", { ascending: false })
+      .order('created_at', { ascending: false }) // Fast database ordering (created_at now contains actual event timestamps)
       .limit(1000); // Reasonable limit for session view - most recent first
 
     if (eventsError) {

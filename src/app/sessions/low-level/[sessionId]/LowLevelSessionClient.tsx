@@ -46,7 +46,21 @@ export default function LowLevelSessionClient({ sessionId }: { sessionId: string
   return (
     <div className="container mx-auto py-8">
       <h1 className="text-2xl font-bold mb-4">Low-Level Session: {sessionId}</h1>
-      <p className="text-gray-600 mb-4">Found {events.length} events</p>
+      <div className="flex items-center gap-4 mb-4">
+        <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
+          <span className="text-sm font-medium text-blue-800">
+            {events.length} events loaded
+          </span>
+          {events.length >= 1000 && (
+            <span className="text-xs text-blue-600">(capped at 1000 most recent)</span>
+          )}
+        </div>
+        {events.length >= 1000 && (
+          <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded">
+            ⚠️ Only showing most recent 1000 events
+          </div>
+        )}
+      </div>
       <div className="space-y-2">
         {events.map(event => (
           <pre key={event.id} className="p-2 border rounded bg-gray-100 text-xs overflow-x-auto">
