@@ -53,6 +53,15 @@ import { cn } from '@/lib/utils';
 // conflicts inside this file (which still contains the original definitions),
 // we do NOT import them here.
 
+const LoadingOverlay = () => (
+    <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="flex items-center gap-4 text-lg font-semibold text-foreground">
+            <RefreshCw className="h-6 w-6 animate-spin" />
+            <p>Loading Events...</p>
+        </div>
+    </div>
+);
+
 type WorkflowPageLogicType = ReturnType<typeof useWorkflowPageLogic>;
 
 const STEP_DEFINITIONS = [
@@ -302,7 +311,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
     }, [synthesisStep]);
 
     return (
-        <div className="h-full bg-background flex flex-col">
+        <div className="h-full bg-background flex flex-col relative">
+            {isFetchingEvents && <LoadingOverlay />}
             {/* Header */}
             <div className="border-b bg-muted/40 p-4">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
