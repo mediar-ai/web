@@ -79,6 +79,9 @@ export async function POST(req: NextRequest) {
 IMPORTANT: You must define boundaries for EXACTLY these workflow names (do not change or create new names):
 ${workflowList}
 
+User's High-Level Context:
+${JSON.stringify(context.userContext, null, 2)}
+
 Events Context:
 ${JSON.stringify(context.events, null, 2)}`;
 

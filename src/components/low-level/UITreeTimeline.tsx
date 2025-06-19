@@ -6,6 +6,7 @@ import type { LowLevelEvent } from '@/types';
 
 type UITreeEventPayload = {
   payload?: {
+    timestamp?: string;
     event?: {
       app_name?: string;
       screen?: {
@@ -14,6 +15,11 @@ type UITreeEventPayload = {
     }
   }
 }
+
+const getEventTimestamp = (event: LowLevelEvent): string => {
+  const payload = event.payload as UITreeEventPayload;
+  return payload?.payload?.timestamp || event.created_at;
+};
 
 const getEventTitle = (event: LowLevelEvent) => {
     const payload = event.payload as UITreeEventPayload;
@@ -54,11 +60,11 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
     // If there are few events, label all of them
     if (uiTreeEvents.length <= 5) {
       return uiTreeEvents.map((item, index) => {
-        const date = new Date(item.created_at);
+        const date = new Date(getEventTimestamp(item));
         return {
           id: item.id,
           index,
-          time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' }),
           isFirst: index === 0,
           isLast: index === uiTreeEvents.length - 1,
         };
@@ -72,20 +78,14 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
       const index = Math.floor((i / (maxLabels - 1)) * (uiTreeEvents.length - 1));
       const item = uiTreeEvents[index];
       if (item) {
-        const date = new Date(item.created_at);
+        const date = new Date(getEventTimestamp(item));
         const isFirst = i === 0;
         const isLast = i === maxLabels - 1;
         
         labels.push({
           id: item.id,
           index,
-          time: date.toLocaleDateString([], { 
-            month: 'short', 
-            day: 'numeric'
-          }) + ' ' + date.toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit'
-          }),
+          time: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) + ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
           isFirst,
           isLast,
         });
@@ -173,7 +173,7 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
                 selectedIndex === index ? 'bg-primary scale-150' : 'bg-muted-foreground'
               )}
               style={{ left: `${(index / (uiTreeEvents.length - 1)) * 100}%` }}
-              title={new Date(event.created_at).toLocaleTimeString()}
+              title={new Date(getEventTimestamp(event)).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
             />
           ))}
           {selectedIndex !== -1 && (
@@ -204,7 +204,7 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
       </div>
       {selectedEvent && (
         <div className="text-center text-xs text-muted-foreground mt-2">
-          <span className="font-semibold">{getEventTitle(selectedEvent)}</span> at {new Date(selectedEvent.created_at).toLocaleTimeString()}
+          <span className="font-semibold">{getEventTitle(selectedEvent)}</span> at {new Date(getEventTimestamp(selectedEvent)).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })}
         </div>
       )}
     </div>

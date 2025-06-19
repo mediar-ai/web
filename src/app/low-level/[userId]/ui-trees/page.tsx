@@ -14,18 +14,16 @@ import { diffLines } from 'diff';
 
 type UITreePayload = {
   type?: string;
+  timestamp?: string;
   event?: {
-    screen?: {
-      ui_tree?: string;
-    };
+    screen?: { ui_tree?: string };
     app_name?: string;
   };
   payload?: {
     type?: string;
+    timestamp?: string;
     event?: {
-      screen?: {
-        ui_tree?: string;
-      };
+      screen?: { ui_tree?: string };
       app_name?: string;
     };
   };
@@ -48,6 +46,11 @@ const getUITree = (event: LowLevelEvent): string | undefined => {
 const getAppName = (event: LowLevelEvent): string | undefined => {
   const payload = event.payload as UITreePayload;
   return payload?.event?.app_name || payload?.payload?.event?.app_name;
+};
+
+const getEventTimestamp = (event: LowLevelEvent): string => {
+  const payload = event.payload as UITreePayload;
+  return payload?.timestamp || payload?.payload?.timestamp || event.created_at;
 };
 
 export default function UITreesPage({ params }: { params: Promise<{ userId: string }> }) {
@@ -173,7 +176,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
     });
     // Sort events within each group by timestamp ascending (oldest first)
     for (const title in groups) {
-        groups[title].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        groups[title].sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime());
     }
     return groups;
   }, [events]);
@@ -184,34 +187,33 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
       const firstEventB = groupB[0];
       if (!firstEventA || !firstEventB) return 0;
 
-      const timeA = new Date(firstEventA.created_at).getTime();
-      const timeB = new Date(firstEventB.created_at).getTime();
+      const timeA = new Date(getEventTimestamp(firstEventA)).getTime();
+      const timeB = new Date(getEventTimestamp(firstEventB)).getTime();
 
       return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
     });
   }, [groupedEvents, sortOrder]);
 
   const formatPeriod = (start: string, end: string) => {
+    const options: Intl.DateTimeFormatOptions = {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'UTC',
+    };
+    const timeOptions: Intl.DateTimeFormatOptions = {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'UTC',
+      timeZoneName: 'short',
+    };
+
     const startDate = new Date(start);
     const endDate = new Date(end);
-    const startLocaleDate = startDate.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-    const endLocaleDate = endDate.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-    const startLocaleTime = startDate.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-    const endLocaleTime = endDate.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-    });
+    const startLocaleDate = startDate.toLocaleDateString('en-US', options);
+    const endLocaleDate = endDate.toLocaleDateString('en-US', options);
+    const startLocaleTime = startDate.toLocaleTimeString('en-US', timeOptions);
+    const endLocaleTime = endDate.toLocaleTimeString('en-US', timeOptions);
 
     if (startLocaleDate === endLocaleDate) {
         return `${startLocaleDate}, ${startLocaleTime} - ${endLocaleTime}`;
@@ -222,11 +224,14 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
 
   return (
     <div>
-      <div className="flex items-center gap-2 py-2 border-b mb-2">
+      <div className="flex items-center justify-between py-2 border-b mb-2">
         <Button variant="outline" size="sm" onClick={toggleSortOrder}>
           {sortOrder === 'desc' ? <ArrowDown className="h-4 w-4 mr-2" /> : <ArrowUp className="h-4 w-4 mr-2" />}
           Sort Events
         </Button>
+        <div className="text-sm text-muted-foreground">
+          Total Trees: {events.length}
+        </div>
       </div>
       
       {loading && (
@@ -274,7 +279,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
                 </CardTitle>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="text-xs text-gray-500">
-                    {formatPeriod(firstEvent.created_at, lastEvent.created_at)}
+                    {formatPeriod(getEventTimestamp(firstEvent), getEventTimestamp(lastEvent))}
                   </span>
                   {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </div>
@@ -300,9 +305,11 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
                                     }}
                                 >
                                   <div className="flex-none text-sm text-gray-500">
-                                    {new Date(event.created_at).toLocaleTimeString('en-US', {
+                                    {new Date(getEventTimestamp(event)).toLocaleTimeString('en-US', {
                                       hour: 'numeric',
                                       minute: '2-digit',
+                                      timeZone: 'UTC',
+                                      timeZoneName: 'short',
                                     })}
                                   </div>
                                 </Button>

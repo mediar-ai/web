@@ -55,12 +55,14 @@ export type FinalAnalysisData = {
     workflowContext?: WorkflowContext;
 };
 
-export type SynthesisStep = 'idle' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_editing' | 'synthesizing' | 'done' | 'refining';
+export type SynthesisStep = 'idle' | 'context_editing' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_editing' | 'synthesizing' | 'done' | 'refining';
 
 export type WorkflowContext = {
     user_job_role: string;
     project_name: string;
-    project_goal: string;
+    user_goal_from_recordings: string;
+    overall_project_goal: string;
+    overall_project_description: string;
 };
 
 export type WorkflowBoundary = {
@@ -99,6 +101,7 @@ export type SynthesisSession = {
         messages: Message[];
         synthesis_step: SynthesisStep;
         identified_workflow_names: string[];
+        draft_workflow_names?: string[];
         workflow_context: WorkflowContext;
         workflow_boundaries?: WorkflowBoundaries;
     };
