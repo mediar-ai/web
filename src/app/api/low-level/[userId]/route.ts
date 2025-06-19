@@ -17,35 +17,58 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   const { userId } = await params;
+  const { searchParams } = new URL(request.url);
+  const sessionId = searchParams.get('sessionId');
+  const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 1000;
+  const offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0;
 
   if (!userId) {
     return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
   }
 
   try {
-    const { data: events, error: eventsError } = await supabaseAdmin
+    // Build query with optional session filter and pagination
+    let query = supabaseAdmin
       .from('low_level_events')
       .select('*')
-      .eq('user_id', userId)
-      .order("payload->'payload'->>'timestamp'", { ascending: true });
+      .eq('user_id', userId);
+
+    // Add session filter if provided
+    if (sessionId) {
+      query = query.eq('session_id', sessionId);
+    }
+
+    // Add pagination and ordering - sort by actual event timestamp DESC to get most recent first
+    query = query
+      .order("payload->'payload'->>'timestamp'", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    const { data: events, error: eventsError } = await query;
 
     if (eventsError) {
       console.error('[API/low-level] Error fetching raw events:', eventsError);
       throw eventsError;
     }
 
-    // New, more robust query to count distinct sessions
-    const { data: sessionCountData, error: countError } = await supabaseAdmin
-        .rpc('count_distinct_sessions', { p_user_id: userId });
+    // Only fetch session count if no specific session is requested
+    let sessionCountData = 0;
+    if (!sessionId) {
+      const { data: countData, error: countError } = await supabaseAdmin
+          .rpc('count_distinct_sessions', { p_user_id: userId });
 
-    if (countError) {
-        console.error('[API/low-level] Error counting sessions:', countError);
-        throw countError;
+      if (countError) {
+          console.error('[API/low-level] Error counting sessions:', countError);
+          throw countError;
+      }
+      sessionCountData = countData || 0;
     }
 
     return NextResponse.json({
         events: events || [],
-        sessionCount: sessionCountData || 0
+        sessionCount: sessionCountData,
+        hasMore: events?.length === limit,
+        offset: offset,
+        limit: limit
     });
 
   } catch (err) {

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 import type { LowLevelEvent } from '@/types';
 
 export default function LowLevelSessionClient({ sessionId }: { sessionId: string }) {
@@ -15,18 +14,16 @@ export default function LowLevelSessionClient({ sessionId }: { sessionId: string
       setError(null);
       
       try {
-        const { data, error } = await supabase
-          .from('low_level_events')
-          .select('*')
-          .eq('session_id', sessionId)
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching low-level session data:', error);
-          setError(error.message);
-        } else {
-          setEvents(data || []);
+        // Use the optimized API endpoint with sessionId filter
+        const response = await fetch(`/api/low-level/session_owner?sessionId=${sessionId}`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch session data: ${response.statusText}`);
         }
+        
+        const data = await response.json();
+        setEvents(data.events || []);
+        
       } catch (err) {
         console.error('Error fetching low-level session data:', err);
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
