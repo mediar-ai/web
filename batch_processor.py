@@ -9,7 +9,7 @@ app = modal.App("session-event-aggregator-v2")
 
 # Define the container image for our functions.
 # We need to install libraries to connect to Postgres and to create a web endpoint.
-app.image = modal.Image.debian_slim().pip_install("psycopg2-binary")
+app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "fastapi")
 
 # This is the new, comprehensive aggregation query.
 # It recalculates all stats from the source-of-truth tables on every run.
@@ -19,13 +19,23 @@ BEGIN
     -- This temporary table will hold the new, correct stats for each session.
     CREATE TEMP TABLE temp_session_stats AS
     WITH session_base AS (
-        -- Get all unique session IDs from the events table
-        SELECT DISTINCT session_id, user_id
-        FROM low_level_events
-        WHERE session_id IS NOT NULL
+        -- Get all unique session IDs and determine their definitive type
+        SELECT
+            session_id,
+            (array_agg(user_id))[1] as user_id, -- Grab the first user_id, they should all be the same per session
+            CASE
+                WHEN COUNT(DISTINCT session_type) > 1 THEN 'mixed'
+                ELSE MAX(session_type)
+            END as session_type
+        FROM (
+            SELECT session_id, user_id, 'low-level' as session_type FROM low_level_events WHERE session_id IS NOT NULL
+            UNION ALL
+            SELECT session_id, user_id, COALESCE(source, 'web') as session_type FROM user_activity_data WHERE session_id IS NOT NULL
+        ) as all_sessions
+        GROUP BY session_id
     ),
     analysis_stats AS (
-        -- Calculate stats based on workflow analyses
+        -- Calculate stats based on workflow analyses (applies only to low-level)
         SELECT
             session_id,
             COUNT(*) as total_analyses,
@@ -45,6 +55,7 @@ BEGIN
     ),
     event_timing_stats AS (
         -- Get the first and last event timestamps for duration calculation
+        -- This needs to be done carefully for each session type
         SELECT
             session_id,
             MIN(created_at) as first_event_timestamp,
@@ -52,22 +63,41 @@ BEGIN
             COUNT(*) as total_event_count
         FROM low_level_events
         GROUP BY session_id
+        UNION ALL
+        SELECT
+            session_id,
+            MIN(client_timestamp) as first_event_timestamp,
+            MAX(client_timestamp) as last_event_timestamp,
+            COUNT(*) as total_event_count
+        FROM user_activity_data
+        GROUP BY session_id
+    ),
+    combined_timing AS (
+        -- Combine timing stats and get the true min/max and total counts
+        SELECT
+            session_id,
+            MIN(first_event_timestamp) as first_event_timestamp,
+            MAX(last_event_timestamp) as last_event_timestamp,
+            SUM(total_event_count) as total_event_count
+        FROM event_timing_stats
+        GROUP BY session_id
     )
     -- Final combined stats per session
     SELECT
         sb.session_id,
         sb.user_id,
-        ets.total_event_count,
+        cts.total_event_count,
+        sb.session_type,
         COALESCE(als.total_analyses, 0) as total_workflow_analyses,
         COALESCE(als.distinct_workflows, 0) as distinct_workflows_created,
         COALESCE(ls.total_labels, 0) as total_labeled_steps,
         COALESCE(ls.human_labels, 0) as human_labeled_steps,
-        ets.first_event_timestamp,
-        ets.last_event_timestamp
+        cts.first_event_timestamp,
+        cts.last_event_timestamp
     FROM session_base sb
     LEFT JOIN analysis_stats als ON sb.session_id = als.session_id
     LEFT JOIN label_stats ls ON sb.session_id = ls.session_id
-    JOIN event_timing_stats ets ON sb.session_id = ets.session_id;
+    JOIN combined_timing cts ON sb.session_id = cts.session_id;
 
     -- Now, update the main session_metadata table from our temp table.
     -- This is an "upsert" operation.
@@ -87,8 +117,14 @@ BEGIN
         tss.human_labeled_steps,
         tss.first_event_timestamp,
         tss.last_event_timestamp,
-        EXTRACT(EPOCH FROM (tss.last_event_timestamp - tss.first_event_timestamp)),
-        'low-level' -- Hardcoded for now as this script only handles low-level
+        EXTRACT(EPOCH FROM (
+            CASE
+                WHEN tss.last_event_timestamp > tss.first_event_timestamp
+                THEN tss.last_event_timestamp - tss.first_event_timestamp
+                ELSE '0 seconds'::interval
+            END
+        )),
+        tss.session_type
     FROM temp_session_stats tss
     ON CONFLICT (session_id) DO UPDATE SET
         user_id = EXCLUDED.user_id,
@@ -100,7 +136,8 @@ BEGIN
         human_labeled_steps = EXCLUDED.human_labeled_steps,
         first_event_timestamp = EXCLUDED.first_event_timestamp,
         last_event_timestamp = EXCLUDED.last_event_timestamp,
-        duration_seconds = EXCLUDED.duration_seconds;
+        duration_seconds = EXCLUDED.duration_seconds,
+        session_type = EXCLUDED.session_type;
 
     DROP TABLE temp_session_stats;
 END;
@@ -116,8 +153,8 @@ $$;
     # with a key "SUPABASE_CONN_STRING".
     secrets=[modal.Secret.from_name("supabase-secret")],
     
-    # Set the schedule to run every 5 minutes.
-    schedule=modal.Period(minutes=5),
+    # Set the schedule to run every 1 second.
+    schedule=modal.Period(seconds=1),
     
     # Allow this function to run for a while if needed.
     timeout=120
