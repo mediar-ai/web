@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 
-import { PlusCircle, Trash2, RefreshCw, X, Edit3, Edit2 } from 'lucide-react';
+import { PlusCircle, Trash2, RefreshCw, X, Edit3, Edit2, ChevronUp, ChevronDown } from 'lucide-react';
 
 import { WorkflowBoundaries } from './types';
 
@@ -269,6 +269,27 @@ export const EditableWorkflowBoundaries = ({
       </div>
 
 
+    </div>
+  );
+};
+
+// ----------------------------------------------------------------------------------
+// RawInputView
+// ----------------------------------------------------------------------------------
+export const RawInputView = ({ title, data }: { title: string, data: object }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  return (
+    <div className="mt-4 border-t pt-4">
+      <button onClick={() => setIsOpen(!isOpen)} className="text-sm text-muted-foreground hover:text-foreground flex items-center">
+        {isOpen ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+        {title}
+      </button>
+      {isOpen && (
+        <pre className="mt-2 p-2 text-xs overflow-auto bg-gray-50 border rounded-md font-mono text-gray-700 max-h-96">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      )}
     </div>
   );
 }; 

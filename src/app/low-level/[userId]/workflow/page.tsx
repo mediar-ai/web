@@ -44,6 +44,7 @@ import {
   AiThinkingBubble,
   AnalysisProgressBubble,
   EditableWorkflowBoundaries,
+  RawInputView,
 } from './components';
 import React from 'react';
 import { cn } from '@/lib/utils';
@@ -218,6 +219,21 @@ const StepperItem = memo(({
                                             <Label htmlFor="overallDesc" className="text-right pt-2">Overall Project Description</Label>
                                             <Textarea id="overallDesc" value={logic.editableContext?.overall_project_description || ''} onChange={(e) => logic.handleContextChange('overall_project_description', e.target.value)} className="min-h-[80px]" disabled={completed && !active} />
                                         </div>
+                                        <RawInputView
+                                            title="Raw Input for 'Identify Workflows'"
+                                            data={{
+                                                prompt: "See PROMPT_REFINE_WORKFLOWS_AND_CONTEXT in prompts.ts",
+                                                context: {
+                                                    events: logic.combinedEvents.map(e => e.analysis.step),
+                                                    workflow_context: logic.editableContext,
+                                                    draft_workflow_names: logic.draftWorkflowNames
+                                                },
+                                                stats: {
+                                                    event_count: logic.combinedEvents.length,
+                                                    total_chars: JSON.stringify(logic.combinedEvents).length
+                                                }
+                                            }}
+                                        />
                                     </div>
                                 )}
                                 
@@ -241,6 +257,19 @@ const StepperItem = memo(({
                                                 </Button>
                                             </div>
                                         )}
+                                        <RawInputView
+                                            title="Raw Input for 'Synthesize Workflows'"
+                                            data={{
+                                                prompt: "See PROMPT_SYNTHESIZE_WORKFLOW in prompts.ts",
+                                                context: {
+                                                    workflows: logic.identifiedWorkflowNames,
+                                                    workflowContext: logic.editableContext
+                                                },
+                                                stats: {
+                                                    workflow_count: logic.identifiedWorkflowNames.length
+                                                }
+                                            }}
+                                        />
                                     </div>
                                 )}
                             </div>
