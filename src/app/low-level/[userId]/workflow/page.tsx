@@ -270,13 +270,28 @@ const StepperItem = memo(({
                                         <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
                                         {['boundaries_editing', 'synthesizing'].includes(synthesisStep) && (
                                             <div className="mt-4 flex justify-end">
-                                                <Button onClick={() => proceedToSynthesis(workflowBoundaries)} disabled={isLoading}>
-                                                    {isLoading ? (
-                                                        <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Synthesizing...</>
-                                                    ) : (
-                                                        'Synthesize Workflows'
-                                                    )}
-                                                </Button>
+                                                <ButtonWithDropdown
+                                                    onClick={() => proceedToSynthesis(workflowBoundaries)}
+                                                    disabled={isLoading}
+                                                    isLoading={isLoading && synthesisStep === 'synthesizing'}
+                                                    buttonText="Synthesize Workflows"
+                                                    dropdownContent={
+                                                        <RawInputView
+                                                            title="Raw Input for 'Synthesize Workflows'"
+                                                            data={{
+                                                                prompt: "See PROMPT_SYNTHESIZE_WORKFLOW in prompts.ts",
+                                                                context: {
+                                                                    workflows: identifiedWorkflowNames.map(name => ({
+                                                                        name,
+                                                                        trigger: workflowBoundaries[name]?.trigger,
+                                                                        terminator: workflowBoundaries[name]?.terminator,
+                                                                    })),
+                                                                    userContext: logic.editableContext,
+                                                                },
+                                                            }}
+                                                        />
+                                                    }
+                                                />
                                             </div>
                                         )}
                                     </div>
