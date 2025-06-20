@@ -45,6 +45,7 @@ import {
   AnalysisProgressBubble,
   EditableWorkflowBoundaries,
   RawInputView,
+  ButtonWithDropdown,
 } from './components';
 import React from 'react';
 import { cn } from '@/lib/utils';
@@ -102,10 +103,41 @@ const StepperItem = memo(({
       workflowBoundaries, proceedToSynthesis,
     } = logic;
 
-    const actionMap: Record<string, (() => void) | undefined> = {
-        'define-context': runInitialAnalysis,
-        'identify-workflows': refineAndIdentifyWorkflows,
-        'define-boundaries': () => processAllWorkflows(identifiedWorkflowNames),
+    const actionMap: Record<string, { action: () => void; data: object; buttonText: string; } | undefined> = {
+        'define-context': {
+            action: runInitialAnalysis,
+            buttonText: 'Analyze Context',
+            data: {
+                prompt: "See PROMPT_IDENTIFY_WORKFLOWS, PROMPT_SYNTHESIZE_CONTEXT, and PROMPT_REFINE_WORKFLOWS_AND_CONTEXT in prompts.ts",
+                context: {
+                    event_count: logic.combinedEvents.length,
+                    first_100_events: logic.combinedEvents.slice(0, 100).map(e => e.analysis.step),
+                }
+            }
+        },
+        'identify-workflows': {
+            action: refineAndIdentifyWorkflows,
+            buttonText: 'Identify Workflows',
+            data: {
+                prompt: "See PROMPT_REFINE_WORKFLOWS_AND_CONTEXT in prompts.ts",
+                context: {
+                    events: logic.combinedEvents.map(e => e.analysis.step),
+                    workflow_context: logic.editableContext,
+                    draft_workflow_names: logic.draftWorkflowNames
+                }
+            }
+        },
+        'define-boundaries': {
+            action: () => processAllWorkflows(identifiedWorkflowNames),
+            buttonText: 'Define Boundaries',
+            data: {
+                 prompt: "See PROMPT_DEFINE_WORKFLOW_BOUNDARIES in prompts.ts",
+                 context: {
+                    workflows: identifiedWorkflowNames,
+                    userContext: logic.editableContext
+                },
+            }
+        },
     };
 
     const stepState = useMemo(() => {
@@ -144,7 +176,7 @@ const StepperItem = memo(({
     }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, identifiedWorkflowNames]);
     
     const { completed, active, enabled, showComponent } = stepState;
-    const action = actionMap[id];
+    const stepAction = actionMap[id];
     const [isCollapsed, setIsCollapsed] = useState(true);
 
     const shouldBeExpanded = 
@@ -178,14 +210,19 @@ const StepperItem = memo(({
                             <p className="text-sm text-muted-foreground">{description}</p>
                         </div>
                         
-                        {action && enabled && !completed && (
-                            <Button onClick={action} disabled={isLoading} className="ml-4">
-                                {isLoading && active ? (
-                                    <><RefreshCw className="mr-2 h-5 w-5 animate-spin" strokeWidth={2} />Processing...</>
-                                ) : (
-                                    title
-                                )}
-                            </Button>
+                        {stepAction && enabled && !completed && (
+                           <ButtonWithDropdown
+                                onClick={stepAction.action}
+                                disabled={isLoading && !active}
+                                isLoading={isLoading && active}
+                                buttonText={stepAction.buttonText}
+                                dropdownContent={
+                                    <RawInputView
+                                        title={`Raw Input for '${stepAction.buttonText}'`}
+                                        data={stepAction.data}
+                                    />
+                                }
+                           />
                         )}
                         
                         {(showComponent || (completed && !active)) && (
@@ -219,21 +256,6 @@ const StepperItem = memo(({
                                             <Label htmlFor="overallDesc" className="text-right pt-2">Overall Project Description</Label>
                                             <Textarea id="overallDesc" value={logic.editableContext?.overall_project_description || ''} onChange={(e) => logic.handleContextChange('overall_project_description', e.target.value)} className="min-h-[80px]" disabled={completed && !active} />
                                         </div>
-                                        <RawInputView
-                                            title="Raw Input for 'Identify Workflows'"
-                                            data={{
-                                                prompt: "See PROMPT_REFINE_WORKFLOWS_AND_CONTEXT in prompts.ts",
-                                                context: {
-                                                    events: logic.combinedEvents.map(e => e.analysis.step),
-                                                    workflow_context: logic.editableContext,
-                                                    draft_workflow_names: logic.draftWorkflowNames
-                                                },
-                                                stats: {
-                                                    event_count: logic.combinedEvents.length,
-                                                    total_chars: JSON.stringify(logic.combinedEvents).length
-                                                }
-                                            }}
-                                        />
                                     </div>
                                 )}
                                 
@@ -257,19 +279,6 @@ const StepperItem = memo(({
                                                 </Button>
                                             </div>
                                         )}
-                                        <RawInputView
-                                            title="Raw Input for 'Synthesize Workflows'"
-                                            data={{
-                                                prompt: "See PROMPT_SYNTHESIZE_WORKFLOW in prompts.ts",
-                                                context: {
-                                                    workflows: logic.identifiedWorkflowNames,
-                                                    workflowContext: logic.editableContext
-                                                },
-                                                stats: {
-                                                    workflow_count: logic.identifiedWorkflowNames.length
-                                                }
-                                            }}
-                                        />
                                     </div>
                                 )}
                             </div>

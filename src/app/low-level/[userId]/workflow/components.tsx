@@ -7,6 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 import { PlusCircle, Trash2, RefreshCw, X, Edit3, Edit2, ChevronUp, ChevronDown } from 'lucide-react';
 
@@ -290,6 +295,50 @@ export const RawInputView = ({ title, data }: { title: string, data: object }) =
           {JSON.stringify(data, null, 2)}
         </pre>
       )}
+    </div>
+  );
+};
+
+// ----------------------------------------------------------------------------------
+// ButtonWithDropdown
+// ----------------------------------------------------------------------------------
+export const ButtonWithDropdown = ({
+  onClick,
+  disabled,
+  isLoading,
+  buttonText,
+  dropdownContent,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  isLoading: boolean;
+  buttonText: string;
+  dropdownContent: React.ReactNode;
+}) => {
+  return (
+    <div className="flex items-center">
+      <Button onClick={onClick} disabled={disabled || isLoading} className="rounded-r-none">
+        {isLoading ? (
+          <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Processing...</>
+        ) : (
+          buttonText
+        )}
+      </Button>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="px-2 rounded-l-none border-l-0"
+            disabled={disabled || isLoading}
+          >
+            <ChevronDown className="h-4 w-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-96">
+          {dropdownContent}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }; 
