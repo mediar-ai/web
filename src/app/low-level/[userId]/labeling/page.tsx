@@ -157,6 +157,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   const [processingMode, setProcessingMode] = useState<ProcessingMode>('unprocessed');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [isOptionsModalOpen, setIsOptionsModalOpen] = useState(false);
+  const [currentBatch, setCurrentBatch] = useState(0);
+  const [totalBatches, setTotalBatches] = useState(0);
 
   // -- New state for table row refs --
   const [rowRefs, setRowRefs] = useState<Record<string, RefObject<HTMLTableRowElement>>>({});
@@ -395,18 +397,29 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     setIsOptionsModalOpen(false);
     setIsProcessingLabels(true);
 
-    for (let i = 0; i < rowsToProcess.length; i++) {
-        const targetRow = rowsToProcess[i];
-        
-        if(workflowEvents[targetRow.id]?.generated_output) continue;
+    const batchSize = 20;
+    const batches = [];
+    for (let i = 0; i < rowsToProcess.length; i += batchSize) {
+        batches.push(rowsToProcess.slice(i, i + batchSize));
+    }
+    setTotalBatches(batches.length);
 
-        const originalIndex = tableData.findIndex(row => String(row.id) === String(targetRow.id));
-        const startIndex = Math.max(0, originalIndex - 10);
-        const endIndex = Math.min(tableData.length, originalIndex + 11);
-        const neighborAnalyses = tableData.slice(startIndex, endIndex).filter(row => row.id !== targetRow.id);
+    for (let i = 0; i < batches.length; i++) {
+        setCurrentBatch(i + 1);
+        const batch = batches[i];
+        console.log(`Processing batch ${i + 1} of ${batches.length}...`);
 
-        try {
-            const response = await fetch('/api/generate-workflow-event', {
+        const promises = batch.map(targetRow => {
+            if (workflowEvents[targetRow.id]?.generated_output) {
+                return Promise.resolve(); // Skip already processed items
+            }
+
+            const originalIndex = tableData.findIndex(row => String(row.id) === String(targetRow.id));
+            const startIndex = Math.max(0, originalIndex - 10);
+            const endIndex = Math.min(tableData.length, originalIndex + 11);
+            const neighborAnalyses = tableData.slice(startIndex, endIndex).filter(row => row.id !== targetRow.id);
+
+            return fetch('/api/generate-workflow-event', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -416,20 +429,27 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                         neighborAnalyses: neighborAnalyses,
                     },
                 }),
+            }).then(async response => {
+                if (response.ok) {
+                    const result = await response.json();
+                    const summary = result.event_summary || '';
+                    
+                    setWorkflowEvents(prev => ({ ...prev, [targetRow.id]: { generated_output: summary, feedback: null, feedback_reason: null } }));
+                    await saveEventAndFeedback(targetRow.id, summary, null, null);
+                } else {
+                    console.error(`Failed to process event for row ${targetRow.id}:`, await response.text());
+                }
+            }).catch(error => {
+                console.error(`Error in fetch for row ${targetRow.id}:`, error);
             });
+        });
 
-            if (response.ok) {
-                const result = await response.json();
-                const summary = result.event_summary || '';
-                
-                setWorkflowEvents(prev => ({ ...prev, [targetRow.id]: { generated_output: summary, feedback: null, feedback_reason: null } }));
-                await saveEventAndFeedback(targetRow.id, summary, null, null);
-            }
-        } catch (error) {
-            console.error(`Failed to process event for row ${targetRow.id}:`, error);
-        }
+        await Promise.all(promises);
     }
+
     setIsProcessingLabels(false);
+    setCurrentBatch(0);
+    setTotalBatches(0);
   };
 
   const filteredData = useMemo(() => {
@@ -813,7 +833,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                 </DropdownMenu>
                 <Button variant="outline" onClick={() => setIsOptionsModalOpen(true)} disabled={isProcessingLabels}>
                     {isProcessingLabels ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
-                    {isProcessingLabels ? `Processing ${rowsToProcess.length}...` : 'Generate All Events'}
+                    {isProcessingLabels ? `Processing Batch ${currentBatch}/${totalBatches}...` : 'Generate All Events'}
                 </Button>
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
