@@ -102,12 +102,13 @@ const StepperItem = memo(({
   title: string;
   description: string;
   isLast: boolean;
-  logic: WorkflowPageLogicType;
+  logic: ReturnType<typeof useWorkflowPageLogic>;
 }) => {
     const { 
       synthesisStep, isFetchingEvents, isAnalyzingEvents, runInitialAnalysis, isLoading, 
       refineAndIdentifyWorkflows, identifiedWorkflowNames, processAllWorkflows, 
-      workflowBoundaries, proceedToSynthesis,
+      workflowBoundaries, proceedToSynthesis, editableContext, combinedEvents,
+      draftWorkflowNames
     } = logic;
 
     const actionMap: Record<string, { action: () => void; data: object; buttonText: string; } | undefined> = {
@@ -227,7 +228,7 @@ const StepperItem = memo(({
                                     isLoading={isLoading && active}
                                     buttonText={stepAction.buttonText}
                                 />
-                                <DialogContent className="max-w-7xl h-[90vh] flex flex-col">
+                                <DialogContent size="7xl" className="h-[90vh] flex flex-col">
                                     <DialogHeader>
                                         <DialogTitle>Setup Step: {stepAction.buttonText}</DialogTitle>
                                     </DialogHeader>
@@ -330,7 +331,7 @@ const SynthesizeButtonWithDialog = ({ logic, boundaries, workflowNames }: {
                 isLoading={isLoading && synthesisStep === 'synthesizing'}
                 buttonText="Synthesize Workflows"
             />
-             <DialogContent className="max-w-7xl h-[90vh] flex flex-col">
+             <DialogContent size="7xl" className="h-[90vh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle>Setup Step: Synthesize Workflows</DialogTitle>
                 </DialogHeader>
