@@ -68,12 +68,9 @@ export function useWorkflowPageLogic(userId: string) {
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [isFetchingEvents, setIsFetchingEvents] = useState(true);
+  const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
   
-  const isLoading = useMemo(() => 
-    isAnalyzingEvents || 
-    ['identifying', 'defining_boundaries', 'synthesizing'].includes(synthesisStep),
-    [isAnalyzingEvents, synthesisStep]
-  );
+  const isLoading = useMemo(() => isAnalyzingEvents || isFetchingEvents, [isAnalyzingEvents, isFetchingEvents]);
 
   // Refs for chat scroll containers
   const fullscreenChatRef = useRef<HTMLDivElement>(null);
@@ -184,38 +181,47 @@ export function useWorkflowPageLogic(userId: string) {
     }
   }, [userId]);
 
-  useEffect(() => {
-    setUserId(userId);
-    loadSynthesisSession();
+  const fetchAllEventsAndAnalyses = useCallback(async () => {
+    if (!userId) return { events: [], analyses: [] };
 
-    const fetchEvents = async () => {
-      setIsFetchingEvents(true);
-      try {
-        const analysisResponse = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
-        if (!analysisResponse.ok) throw new Error("Failed to fetch llm analyses");
-        const analysisData = await analysisResponse.json();
-        const analyses: WorkflowStepAnalysis[] = analysisData.analyses || [];
+    try {
+      const analysisResponse = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
+      if (!analysisResponse.ok) throw new Error("Failed to fetch llm analyses");
+      const analysisData = await analysisResponse.json();
+      const analyses: WorkflowStepAnalysis[] = analysisData.analyses || [];
 
-        const eventsResponse = await fetch(`/api/low-level/${userId}`);
-        let allEvents: LowLevelEvent[] = [];
-        if (eventsResponse.ok) {
-          const eventsData = await eventsResponse.json();
-          allEvents = eventsData.events?.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) || [];
-        }
-        
-        const combined = allEvents.map(event => ({ event }));
-        // This is a simplified combination. The previous logic was more complex and might be restored if needed.
-        setCombinedEvents(analyses.map(analysis => ({ analysis, generated_output: null, feedback: null, contextSummary: { windowTitle: '', eventCount: 0}, timestamp: new Date(analysis.client_timestamp)})));
-
-      } catch (error) {
-        console.error("Error fetching events:", error);
-      } finally {
-        setIsFetchingEvents(false);
+      const eventsResponse = await fetch(`/api/low-level/${userId}`);
+      let allEvents: LowLevelEvent[] = [];
+      if (eventsResponse.ok) {
+        const eventsData = await eventsResponse.json();
+        allEvents = eventsData.events?.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) || [];
       }
+      
+      const combined = allEvents.map(event => ({ event }));
+      // This is a simplified combination. The previous logic was more complex and might be restored if needed.
+      const events: CombinedEvent[] = analyses.map(analysis => ({ analysis, generated_output: null, feedback: null, contextSummary: { windowTitle: '', eventCount: 0}, timestamp: new Date(analysis.client_timestamp)}));
+
+      return { events, analyses };
+    } catch (err) {
+      console.error("Failed to fetch initial data:", err);
+      // In a real app, you might want to set an error state here
+      return { events: [], analyses: [] };
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    const loadInitialData = async () => {
+      setIsFetchingEvents(true);
+      const { events, analyses } = await fetchAllEventsAndAnalyses();
+      setCombinedEvents(events);
+      setAllWorkflowAnalyses(analyses);
+      setIsFetchingEvents(false);
     };
 
-    fetchEvents();
-  }, [userId, setUserId, loadSynthesisSession]);
+    if (userId) {
+      loadInitialData();
+    }
+  }, [userId, fetchAllEventsAndAnalyses]);
 
   useEffect(() => {
     const newRefs: Record<string, React.RefObject<HTMLTextAreaElement | null>[]> = {};
@@ -679,5 +685,6 @@ export function useWorkflowPageLogic(userId: string) {
     processAllWorkflows, proceedToSynthesis, handleSendMessage, handleListChange,
     handleAddItem, handleRemoveItem, handleTitleChange, handleDeleteWorkflow,
     handleContextChange, resetConversation, deleteAllWorkflows, activeContent,
+    allWorkflowAnalyses, setAllWorkflowAnalyses,
   } as const;
 } 
