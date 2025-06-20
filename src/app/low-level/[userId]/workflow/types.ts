@@ -27,6 +27,8 @@ export type SynthesizedWorkflow = {
 
 export type WorkflowStepAnalysis = {
     id: string;
+    user_id: string;
+    session_id: string;
     workflow: string;
     step: string;
     description: string;
