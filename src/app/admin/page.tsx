@@ -246,7 +246,7 @@ export default function AdminPage() {
                           <div 
                             className="flex items-center gap-2 cursor-pointer group"
                           >
-                            <Link href={userType === 'low-level' || userType === 'mixed' ? `/low-level/${userId}` : `/?userId=${userId}&userType=${userType}`} className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">
+                            <Link href={`/low-level/${userId}/workflow`} className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">
                               {userData.name || `User ${truncateId(userId)}`}
                             </Link>
                             <Pencil 
