@@ -545,7 +545,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             </div>
           );
         },
-        size: 125,
+        size: 300,
       },
       {
         accessorKey: 'analysis',
@@ -565,7 +565,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                 </div>
             )
         },
-        size: 450,
+        size: 600,
       },
       {
         accessorKey: 'userSelection',
@@ -614,7 +614,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                 </div>
             )
         },
-        size: 200,
+        size: 300,
       },
     ],
     [workflowEvents, handleProcessSingleRow, isProcessingLabels, processingRowId, handleSaveOutput]
@@ -846,8 +846,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                 />
             </div>
         </div>
-      <div className="border rounded-lg">
-          <Table className="w-full">
+      <div className="border rounded-lg overflow-x-auto">
+          <Table style={{ minWidth: 1200 }}>
           <TableHeader>
                 {table.getHeaderGroups().map(headerGroup => (
                   <TableRow key={headerGroup.id}>
