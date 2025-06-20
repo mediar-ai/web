@@ -37,6 +37,13 @@ const formatDuration = (seconds: number | null | undefined): string => {
 };
 
 export default function AdminPage() {
+  // Enhanced admin features only for specific users
+  const ENHANCED_ADMIN_USERS = [
+    '29303245-5cbb-671e-2930-32455cbb671e',
+    'c4cc0b1a-4e8b-e98c-c4cc-0b1a4e8be98c'
+  ];
+  
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<string | null>(null);
@@ -44,6 +51,19 @@ export default function AdminPage() {
   const [filter, setFilter] = useState('');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [userToDelete, setUserToDelete] = useState<{id: string, name: string} | null>(null);
+
+  // Check if current user has enhanced admin privileges
+  const hasEnhancedAccess = currentUserId && ENHANCED_ADMIN_USERS.includes(currentUserId);
+
+  useEffect(() => {
+    // Get user ID from localStorage or URL parameter
+    const storedUserId = localStorage.getItem('user_id');
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlUserId = urlParams.get('userId');
+    
+    const userId = urlUserId || storedUserId;
+    setCurrentUserId(userId);
+  }, []);
 
   const toggleUserExpansion = (userId: string) => {
     setExpandedUsers(prev => {
@@ -144,6 +164,11 @@ export default function AdminPage() {
       <div className="flex justify-between items-center mb-3">
         <h1 className="text-xl font-bold">Admin - All Users</h1>
         <div className="flex items-center gap-2">
+          {hasEnhancedAccess && (
+            <span className="text-xs text-green-600 font-semibold px-2 py-1 bg-green-100 rounded">
+              Enhanced Access
+            </span>
+          )}
           <Button 
             variant="outline" 
             onClick={fetchSessions}

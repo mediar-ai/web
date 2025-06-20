@@ -81,7 +81,7 @@ const UserLayoutContent = ({
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
               <div className="flex items-center">
-                <Button variant="ghost" size="icon" onClick={() => router.push('/admin')}>
+                <Button variant="ghost" size="icon" onClick={() => router.push('/internal-dashboard-9a8f7e6d')}>
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <Button variant="ghost" size="icon" onClick={fetchUserName} disabled={isLoading}>
@@ -134,6 +134,7 @@ const UserLayoutContent = ({
             </div>
           <Tabs value={activeTab} onValueChange={(value) => router.push(`/low-level/${userId}/${value}`)}>
             <TabsList>
+              <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="raw-low-level-events">Raw Events</TabsTrigger>
               <TabsTrigger value="ui-trees">UI Trees</TabsTrigger>
               <TabsTrigger value="steps">Steps</TabsTrigger>

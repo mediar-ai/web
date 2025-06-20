@@ -1,0 +1,24 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+### Title: `git-push-command.mdc`
+
+### Context
+I previously misinterpreted the user's intent by acting on a "push" command found in the broader conversation history, rather than waiting for a distinct, immediate command. This led to a premature push, violating the user's workflow.
+
+**The User's Prompt that created this rule:**
+> "how the rules should be modified so we avoid such situation in the future, you incorrectly pick up my push command from the history of conversation @git-rules.mdc"
+
+### Rule
+1.  **Immediate Scope Only:** The `PUSH` command must be evaluated based **only** on the user's single, most recent message. I must not scan the conversation history for previous "push" instructions.
+2.  **Unambiguous Command:** The instruction must be a direct and primary command. Good examples are:
+    *   `push`
+    *   `ok, push it`
+    *   `go ahead and push`
+3.  **Invalid Commands:** I must ignore "push" if it's part of a question, a statement about the future, or a larger, unrelated sentence. Bad examples that I must ignore include:
+    *   `"Should we push this?"`
+    *   `"I will push this later."`
+    *   `"Review the code, then push."` (This requires two steps; I must wait for the "push" command *after* the review).
+4.  **Pre-Push Checklist:** I must always follow the full pre-push checklist (`git status`, `npm run build`, fix errors, `git add .`, `git commit`) before the final `git push` command, unless explicitly told to skip a step.
