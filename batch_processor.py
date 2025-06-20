@@ -5,7 +5,7 @@ import os
 
 # Define the Modal "App" which is the main app object.
 # This is the entrypoint for all Modal functions.
-app = modal.App("session-event-aggregator-v2")
+app = modal.App("session-event-aggregator")
 
 # Define the container image for our functions.
 # We need to install libraries to connect to Postgres and to create a web endpoint.
