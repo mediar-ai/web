@@ -165,33 +165,15 @@ export default function AdminPage() {
       <table className="w-full text-sm text-left">
         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
           <tr>
-            <th scope="col" className="px-1 py-2 w-[25%]">
-              User
-            </th>
-            <th scope="col" className="px-1 py-2 w-[5%]">
-              Sessions
-            </th>
-            <th scope="col" className="px-1 py-2 w-[10%]">
-              Type
-            </th>
-            <th scope="col" className="px-1 py-2 w-[12%]">
-              STEPS (processed)
-            </th>
-            <th scope="col" className="px-1 py-2 w-[11%]">
-              Workflows
-            </th>
-            <th scope="col" className="px-1 py-2 w-[11%]">
-              Labeled
-            </th>
-            <th scope="col" className="px-1 py-2 w-[8%]">
-              Duration
-            </th>
-            <th scope="col" className="px-1 py-2 w-[15%]" style={{ minWidth: '180px' }}>
-              Last Active
-            </th>
-            <th scope="col" className="px-1 py-2 text-right w-[8%]">
-              Actions
-            </th>
+            <th scope="col" className="px-1 py-2 w-[30%]">User</th>
+            <th scope="col" className="px-1 py-2">Sessions</th>
+            <th scope="col" className="px-1 py-2">Type</th>
+            <th scope="col" className="px-1 py-2">LABELED (PROCESSED)</th>
+            <th scope="col" className="px-1 py-2">HUMAN ANNOTATION</th>
+            <th scope="col" className="px-1 py-2">WORKFLOW (DISTINCT)</th>
+            <th scope="col" className="px-1 py-2">Duration</th>
+            <th scope="col" className="px-1 py-2" style={{ minWidth: '180px' }}>Last Active</th>
+            <th scope="col" className="px-1 py-2 text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -210,13 +192,12 @@ export default function AdminPage() {
             })
             .map(([userId, userData]) => {
               const liveSessions = userData.sessions.filter(s => s.status === 'live').length;
-              const totalUiSteps = userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
               const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
+              const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
               const totalWorkflowAnalyses = userData.sessions.reduce((sum, s) => sum + (s.total_workflow_analyses || 0), 0);
               const distinctWorkflowsCreated = userData.sessions.reduce((sum, s) => sum + (s.distinct_workflows_created || 0), 0);
               const totalLabeledSteps = userData.sessions.reduce((sum, s) => sum + (s.total_labeled_steps || 0), 0);
               const humanLabeledSteps = userData.sessions.reduce((sum, s) => sum + (s.human_labeled_steps || 0), 0);
-              const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
               const mostRecentSession = userData.sessions.sort((a, b) => 
                 new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
               )[0];
@@ -264,13 +245,17 @@ export default function AdminPage() {
                         ) : (
                           <div 
                             className="flex items-center gap-2 cursor-pointer group"
-                            onClick={() => {
-                              setEditingUser(userId);
-                              setUserNameInput(userData.name || '');
-                            }}
                           >
-                            <span className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">{userData.name || `User ${truncateId(userId)}`}</span>
-                            <Pencil className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <Link href={userType === 'low-level' || userType === 'mixed' ? `/low-level/${userId}` : `/?userId=${userId}&userType=${userType}`} className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">
+                              {userData.name || `User ${truncateId(userId)}`}
+                            </Link>
+                            <Pencil 
+                              className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" 
+                              onClick={() => {
+                                setEditingUser(userId);
+                                setUserNameInput(userData.name || '');
+                              }}
+                            />
                           </div>
                         )}
                         {liveSessions > 0 && (
@@ -284,32 +269,15 @@ export default function AdminPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-1 py-1">
-                      {userData.sessions.length}
-                    </td>
-                    <td className="px-1 py-1">
-                      {userType}
-                    </td>
-                    <td className="px-1 py-1">
-                      {totalProcessedEvents} / {totalUiSteps}
-                    </td>
-                    <td className="px-1 py-1">
-                      {totalWorkflowAnalyses} ({distinctWorkflowsCreated})
-                    </td>
-                    <td className="px-1 py-1">
-                      {totalLabeledSteps} ({humanLabeledSteps})
-                    </td>
-                    <td className="px-1 py-1">
-                      {formatDuration(totalDuration)}
-                    </td>
-                    <td className="px-1 py-1">
-                      {mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}
-                    </td>
+                    <td className="px-1 py-1">{userData.sessions.length}</td>
+                    <td className="px-1 py-1">{userType}</td>
+                    <td className="px-1 py-1">{totalLabeledSteps} / {totalProcessedEvents}</td>
+                    <td className="px-1 py-1">{humanLabeledSteps}</td>
+                    <td className="px-1 py-1">{totalWorkflowAnalyses} ({distinctWorkflowsCreated})</td>
+                    <td className="px-1 py-1">{formatDuration(totalDuration)}</td>
+                    <td className="px-1 py-1">{mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}</td>
                     <td className="px-1 py-1 text-right">
                       <div className="flex items-center justify-end space-x-1">
-                        <Link href={userType === 'low-level' || userType === 'mixed' ? `/low-level/${userId}` : `/?userId=${userId}&userType=${userType}`}>
-                          <Button size="sm" variant="outline">Recordings</Button>
-                        </Link>
                         <Button 
                           variant="destructive" 
                           size="sm"
@@ -328,9 +296,9 @@ export default function AdminPage() {
                             <tr>
                               <th scope="col" className="px-1 py-1">Session ID</th>
                               <th scope="col" className="px-1 py-1">Type</th>
-                              <th scope="col" className="px-1 py-1">STEPS (processed)</th>
-                              <th scope="col" className="px-1 py-1">Workflows</th>
-                              <th scope="col" className="px-1 py-1">Labeled</th>
+                              <th scope="col" className="px-1 py-1">LABELED (PROCESSED)</th>
+                              <th scope="col" className="px-1 py-1">HUMAN ANNOTATION</th>
+                              <th scope="col" className="px-1 py-1">WORKFLOW (DISTINCT)</th>
                               <th scope="col" className="px-1 py-1">Duration</th>
                               <th scope="col" className="px-1 py-1">Status</th>
                               <th scope="col" className="px-1 py-1">Last Active</th>
@@ -344,9 +312,9 @@ export default function AdminPage() {
                               <tr key={session.id} className="bg-white border-b hover:bg-gray-50">
                                 <td className="px-1 py-1 font-mono text-xs">{truncateId(session.id)}</td>
                                 <td className="px-1 py-1 font-semibold">{session.type}</td>
-                                <td className="px-1 py-1">{session.processed_event_count || 0} / {session.total_ui_steps || 0}</td>
+                                <td className="px-1 py-1">{session.total_labeled_steps || 0} / {session.processed_event_count || 0}</td>
+                                <td className="px-1 py-1">{session.human_labeled_steps || 0}</td>
                                 <td className="px-1 py-1">{session.total_workflow_analyses || 0} ({session.distinct_workflows_created || 0})</td>
-                                <td className="px-1 py-1">{session.total_labeled_steps || 0} ({session.human_labeled_steps || 0})</td>
                                 <td className="px-1 py-1">{formatDuration(session.duration_seconds)}</td>
                                 <td className="px-1 py-1">
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${
