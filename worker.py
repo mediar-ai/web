@@ -11,7 +11,7 @@ app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
 @app.function(
     secrets=[
         modal.Secret.from_name("supabase-secret"),
-        modal.Secret.from_name("vercel-secret") # For VERCEL_URL
+        modal.Secret.from_name("custom-secret") # For VERCEL_URL
     ],
     schedule=modal.Period(seconds=30),
     timeout=60
