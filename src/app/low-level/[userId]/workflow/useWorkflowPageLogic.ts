@@ -686,5 +686,6 @@ export function useWorkflowPageLogic(userId: string) {
     handleAddItem, handleRemoveItem, handleTitleChange, handleDeleteWorkflow,
     handleContextChange, resetConversation, deleteAllWorkflows, activeContent,
     allWorkflowAnalyses, setAllWorkflowAnalyses,
+    draftWorkflowNames,
   } as const;
 } 
