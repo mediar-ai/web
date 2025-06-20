@@ -7,13 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 
-import { PlusCircle, Trash2, RefreshCw, X, Edit3, Edit2, ChevronUp, ChevronDown } from 'lucide-react';
+import { PlusCircle, Trash2, RefreshCw, X, Edit3, Edit2, ChevronDown } from 'lucide-react';
 
 import { WorkflowBoundaries } from './types';
 
@@ -281,39 +276,29 @@ export const EditableWorkflowBoundaries = ({
 // ----------------------------------------------------------------------------------
 // RawInputView
 // ----------------------------------------------------------------------------------
-export const RawInputView = ({ title, data }: { title: string, data: object }) => {
-  const [isOpen, setIsOpen] = React.useState(false);
-
+export const RawInputView = ({ data }: { data: object }) => {
   return (
-    <div className="mt-4 border-t pt-4">
-      <button onClick={() => setIsOpen(!isOpen)} className="text-sm text-muted-foreground hover:text-foreground flex items-center">
-        {isOpen ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-        {title}
-      </button>
-      {isOpen && (
-        <pre className="mt-2 p-2 text-xs overflow-auto bg-gray-50 border rounded-md font-mono text-gray-700 max-h-96">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      )}
-    </div>
+    <pre className="w-full p-4 text-xs overflow-auto bg-muted/30 border rounded-md font-mono text-foreground h-full">
+      {JSON.stringify(data, null, 2)}
+    </pre>
   );
 };
 
 // ----------------------------------------------------------------------------------
-// ButtonWithDropdown
+// ActionButtonWithPreview
 // ----------------------------------------------------------------------------------
-export const ButtonWithDropdown = ({
+export const ActionButtonWithPreview = ({
   onClick,
+  onPreview,
   disabled,
   isLoading,
   buttonText,
-  dropdownContent,
 }: {
   onClick: () => void;
+  onPreview: () => void;
   disabled: boolean;
   isLoading: boolean;
   buttonText: string;
-  dropdownContent: React.ReactNode;
 }) => {
   return (
     <div className="flex items-center">
@@ -324,21 +309,15 @@ export const ButtonWithDropdown = ({
           buttonText
         )}
       </Button>
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className="px-2 rounded-l-none border-l-0"
-            disabled={disabled || isLoading}
-          >
-            <ChevronDown className="h-4 w-4" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-96">
-          {dropdownContent}
-        </PopoverContent>
-      </Popover>
+      <Button
+        variant="outline"
+        size="sm"
+        className="px-2 rounded-l-none border-l-0"
+        disabled={disabled || isLoading}
+        onClick={onPreview}
+      >
+        <ChevronDown className="h-4 w-4" />
+      </Button>
     </div>
   );
 }; 

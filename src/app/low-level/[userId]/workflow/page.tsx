@@ -45,10 +45,17 @@ import {
   AnalysisProgressBubble,
   EditableWorkflowBoundaries,
   RawInputView,
-  ButtonWithDropdown,
+  ActionButtonWithPreview,
 } from './components';
 import React from 'react';
 import { cn } from '@/lib/utils';
+import {
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogContent,
+} from '@/components/ui/dialog';
 
 // Refactored components and shared types now live in dedicated files. They are
 // imported where needed in other modules. To avoid duplicate identifier
@@ -176,6 +183,7 @@ const StepperItem = memo(({
     }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, identifiedWorkflowNames]);
     
     const { completed, active, enabled, showComponent } = stepState;
+    const [isActionDialogOpen, setIsActionDialogOpen] = useState(false);
     const stepAction = actionMap[id];
     const [isCollapsed, setIsCollapsed] = useState(true);
 
@@ -211,18 +219,26 @@ const StepperItem = memo(({
                         </div>
                         
                         {stepAction && enabled && !completed && (
-                           <ButtonWithDropdown
-                                onClick={stepAction.action}
-                                disabled={isLoading && !active}
-                                isLoading={isLoading && active}
-                                buttonText={stepAction.buttonText}
-                                dropdownContent={
-                                    <RawInputView
-                                        title={`Raw Input for '${stepAction.buttonText}'`}
-                                        data={stepAction.data}
-                                    />
-                                }
-                           />
+                            <Dialog open={isActionDialogOpen} onOpenChange={setIsActionDialogOpen}>
+                                <ActionButtonWithPreview
+                                    onClick={stepAction.action}
+                                    onPreview={() => setIsActionDialogOpen(true)}
+                                    disabled={isLoading && !active}
+                                    isLoading={isLoading && active}
+                                    buttonText={stepAction.buttonText}
+                                />
+                                <DialogContent className="max-w-7xl h-[90vh] flex flex-col">
+                                    <DialogHeader>
+                                        <DialogTitle>Setup Step: {stepAction.buttonText}</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="flex-grow overflow-y-auto -mx-6 px-6">
+                                        <RawInputView data={stepAction.data} />
+                                    </div>
+                                    <DialogFooter>
+                                        <Button variant="outline" onClick={() => setIsActionDialogOpen(false)}>Close</Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
                         )}
                         
                         {(showComponent || (completed && !active)) && (
@@ -270,28 +286,7 @@ const StepperItem = memo(({
                                         <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
                                         {['boundaries_editing', 'synthesizing'].includes(synthesisStep) && (
                                             <div className="mt-4 flex justify-end">
-                                                <ButtonWithDropdown
-                                                    onClick={() => proceedToSynthesis(workflowBoundaries)}
-                                                    disabled={isLoading}
-                                                    isLoading={isLoading && synthesisStep === 'synthesizing'}
-                                                    buttonText="Synthesize Workflows"
-                                                    dropdownContent={
-                                                        <RawInputView
-                                                            title="Raw Input for 'Synthesize Workflows'"
-                                                            data={{
-                                                                prompt: "See PROMPT_SYNTHESIZE_WORKFLOW in prompts.ts",
-                                                                context: {
-                                                                    workflows: identifiedWorkflowNames.map(name => ({
-                                                                        name,
-                                                                        trigger: workflowBoundaries[name]?.trigger,
-                                                                        terminator: workflowBoundaries[name]?.terminator,
-                                                                    })),
-                                                                    userContext: logic.editableContext,
-                                                                },
-                                                            }}
-                                                        />
-                                                    }
-                                                />
+                                                <SynthesizeButtonWithDialog logic={logic} boundaries={logic.workflowBoundaries} workflowNames={logic.identifiedWorkflowNames} />
                                             </div>
                                         )}
                                     </div>
@@ -306,6 +301,49 @@ const StepperItem = memo(({
     );
 });
 StepperItem.displayName = 'StepperItem';
+
+const SynthesizeButtonWithDialog = ({ logic, boundaries, workflowNames }: {
+  logic: WorkflowPageLogicType;
+  boundaries: WorkflowBoundaries;
+  workflowNames: string[];
+}) => {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const { proceedToSynthesis, isLoading, synthesisStep, editableContext } = logic;
+    const data = {
+        prompt: "See PROMPT_SYNTHESIZE_WORKFLOW in prompts.ts",
+        context: {
+            workflows: workflowNames.map(name => ({
+                name,
+                trigger: boundaries[name]?.trigger,
+                terminator: boundaries[name]?.terminator,
+            })),
+            userContext: editableContext,
+        },
+    };
+
+    return (
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <ActionButtonWithPreview
+                onClick={() => proceedToSynthesis(boundaries)}
+                onPreview={() => setIsDialogOpen(true)}
+                disabled={isLoading}
+                isLoading={isLoading && synthesisStep === 'synthesizing'}
+                buttonText="Synthesize Workflows"
+            />
+             <DialogContent className="max-w-7xl h-[90vh] flex flex-col">
+                <DialogHeader>
+                    <DialogTitle>Setup Step: Synthesize Workflows</DialogTitle>
+                </DialogHeader>
+                <div className="flex-grow overflow-y-auto -mx-6 px-6">
+                   <RawInputView data={data} />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
 
 export default function WorkflowPage({ params }: { params: Promise<{ userId:string }> }) {
     const { userId } = use(params);
