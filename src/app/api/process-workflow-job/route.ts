@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateWorkflowStepAnalysis, saveWorkflowStepAnalysis } from '@/lib/workflowAnalysis';
 import { WORKFLOW_STEP_ANALYSIS_PROMPT } from '@/lib/prompts';
@@ -11,29 +11,35 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
-    // 1. Dequeue a job
-    const { data: jobs, error: jobError } = await supabaseAdmin.rpc('dequeue_workflow_job');
+    const { userId } = await req.json();
+    if (!userId) {
+      return NextResponse.json({ error: 'userId is required in the request body' }, { status: 400 });
+    }
+
+    // 1. Dequeue a job for the specific user
+    const { data: jobs, error: jobError } = await supabaseAdmin.rpc('dequeue_user_workflow_job', { p_user_id: userId });
 
     if (jobError) {
-      console.error("Error dequeuing job:", jobError);
+      console.error(`[User ${userId}] Error dequeuing job:`, jobError);
       return NextResponse.json({ error: 'Could not dequeue job' }, { status: 500 });
     }
 
     if (!jobs || jobs.length === 0) {
-      return NextResponse.json({ message: 'No pending jobs found.' }, { status: 200 });
+      console.log(`[User ${userId}] No pending jobs found. Ending chain.`);
+      return NextResponse.json({ message: 'No pending jobs found for this user.' });
     }
 
     const job = jobs[0];
-    const { id: jobId, user_id: userId, payload } = job;
+    const { id: jobId, payload } = job;
 
     try {
         // 2. Generate Analysis
         const analysisResult = await generateWorkflowStepAnalysis(
             WORKFLOW_STEP_ANALYSIS_PROMPT,
             'gemini-2.5-pro-preview-06-05',
-            payload.context // The context is pre-built and stored in the job payload
+            payload.context
         );
 
         // 3. Save Analysis
@@ -47,16 +53,32 @@ export async function POST() {
         // 4. Mark job as complete
         await supabaseAdmin.from('workflow_analysis_jobs').update({ status: 'completed' }).eq('id', jobId);
 
-        // Trigger the next worker to continue the chain
-        const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
-        fetch(`${host}/api/process-workflow-job`, { method: 'POST' }).catch(e => console.error("Error triggering next worker:", e));
+        // Check for more jobs for THIS user and trigger the next worker in the same chain
+        const { count: remainingJobs } = await supabaseAdmin
+            .from('workflow_analysis_jobs')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            .eq('status', 'pending');
+        
+        if (remainingJobs && remainingJobs > 0) {
+            console.log(`[User ${userId}] ${remainingJobs} jobs remaining. Triggering next worker for user.`);
+            const proto = req.headers.get('x-forwarded-proto') || 'http';
+            const host = req.headers.get('host');
+            const triggerUrl = `${proto}://${host}/api/process-workflow-job`;
+            
+            // Pass the userId to the next worker in the chain
+            fetch(triggerUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId }),
+            }).catch(e => console.error(`[User ${userId}] Error triggering next worker:`, e));
+        }
 
         return NextResponse.json({ success: true, jobId });
 
     } catch(processingError) {
-        console.error(`[Job ${jobId}] Error processing job:`, processingError);
+        console.error(`[Job ${jobId}] Error processing job for user ${userId}:`, processingError);
         await supabaseAdmin.from('workflow_analysis_jobs').update({ status: 'failed' }).eq('id', jobId);
-        // Re-throw or handle as needed
         throw processingError;
     }
 
