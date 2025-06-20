@@ -14,13 +14,9 @@ const ExportStatusDialog: React.FC<ExportStatusDialogProps> = ({ exportInProgres
     <Dialog open={exportInProgress}>
       <DialogContent
         className='sm:max-w-[425px]'
-        onInteractOutside={(
-          event: {
-            readonly defaultPrevented: boolean;
-            preventDefault: () => void;
-          },
-        ) => event.preventDefault()}
-        showCloseButton={false}
+        onInteractOutside={(event: { preventDefault: () => void; }) => {
+          event.preventDefault();
+        }}
       >
         <DialogHeader className='text-center'>
           <DialogTitle className='text-xl mb-2'>

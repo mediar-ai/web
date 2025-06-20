@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useUser } from '@/context/UserContext';
+import { Loader2 } from 'lucide-react';
 import {
     Tooltip,
     TooltipContent,
@@ -32,7 +33,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import type { LowLevelEvent } from '@/types';
@@ -44,18 +45,9 @@ import {
   AiThinkingBubble,
   AnalysisProgressBubble,
   EditableWorkflowBoundaries,
-  RawInputView,
-  ActionButtonWithPreview,
 } from './components';
 import React from 'react';
 import { cn } from '@/lib/utils';
-import {
-  Dialog,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogContent,
-} from '@/components/ui/dialog';
 
 // Refactored components and shared types now live in dedicated files. They are
 // imported where needed in other modules. To avoid duplicate identifier
@@ -73,25 +65,35 @@ const LoadingOverlay = () => (
 
 type WorkflowPageLogicType = ReturnType<typeof useWorkflowPageLogic>;
 
-const STEP_DEFINITIONS = [
-    {
-        id: 'define-context',
-        number: 1,
-        title: 'Analyze Context',
-        description: 'AI will analyze events to suggest a starting context.',
-    },
-    {
-        id: 'identify-workflows',
-        number: 2,
-        title: 'Identify Workflows',
-        description: 'Review context, then generate the final workflow list.',
-    },
-    {
-        id: 'define-boundaries',
-        number: 3,
-        title: 'Define Boundaries',
-        description: 'Set triggers and terminators for workflows',
-    },
+type StepDefinition = {
+  id: string;
+  title: string;
+  description: string;
+};
+
+type StepId = 'define-context' | 'select-workflows' | 'define-boundaries' | 'synthesize-workflows';
+
+const STEP_DEFINITIONS: StepDefinition[] = [
+  {
+    id: 'define-context',
+    title: 'Step 1: Analyze Context & Draft Workflows',
+    description: 'Understand the user\'s environment and goals, then draft initial workflow names.',
+  },
+  {
+    id: 'select-workflows',
+    title: 'Step 2: Select & Refine Workflows',
+    description: 'Choose the workflows to proceed with and refine their names.',
+  },
+  {
+    id: 'define-boundaries',
+    title: 'Step 3: Define Workflow Boundaries',
+    description: 'Review and adjust the start and end points for each identified workflow.',
+  },
+  {
+    id: 'synthesize-workflows',
+    title: 'Step 4: Synthesize Workflows',
+    description: 'Generate detailed steps and actions for the approved workflows.',
+  },
 ];
 
 const StepperItem = memo(({
@@ -102,74 +104,44 @@ const StepperItem = memo(({
   title: string;
   description: string;
   isLast: boolean;
-  logic: ReturnType<typeof useWorkflowPageLogic>;
+  logic: WorkflowPageLogicType;
 }) => {
     const { 
       synthesisStep, isFetchingEvents, isAnalyzingEvents, runInitialAnalysis, isLoading, 
       refineAndIdentifyWorkflows, identifiedWorkflowNames, processAllWorkflows, 
-      workflowBoundaries, proceedToSynthesis, editableContext, combinedEvents,
-      draftWorkflowNames
+      workflowBoundaries, proceedToSynthesis,
     } = logic;
 
-    const actionMap: Record<string, { action: () => void; data: object; buttonText: string; } | undefined> = {
-        'define-context': {
-            action: runInitialAnalysis,
-            buttonText: 'Analyze Context',
-            data: {
-                prompt: "See PROMPT_IDENTIFY_WORKFLOWS, PROMPT_SYNTHESIZE_CONTEXT, and PROMPT_REFINE_WORKFLOWS_AND_CONTEXT in prompts.ts",
-                context: {
-                    event_count: logic.combinedEvents.length,
-                    first_100_events: logic.combinedEvents.slice(0, 100).map(e => e.analysis.step),
-                }
-            }
-        },
-        'identify-workflows': {
-            action: refineAndIdentifyWorkflows,
-            buttonText: 'Identify Workflows',
-            data: {
-                prompt: "See PROMPT_REFINE_WORKFLOWS_AND_CONTEXT in prompts.ts",
-                context: {
-                    events: logic.combinedEvents.map(e => e.analysis.step),
-                    workflow_context: logic.editableContext,
-                    draft_workflow_names: logic.draftWorkflowNames
-                }
-            }
-        },
-        'define-boundaries': {
-            action: () => processAllWorkflows(identifiedWorkflowNames),
-            buttonText: 'Define Boundaries',
-            data: {
-                 prompt: "See PROMPT_DEFINE_WORKFLOW_BOUNDARIES in prompts.ts",
-                 context: {
-                    workflows: identifiedWorkflowNames,
-                    userContext: logic.editableContext
-                },
-            }
-        },
+    const actionMap: Record<string, (() => void) | undefined> = {
+        'define-context': runInitialAnalysis,
+        'select-workflows': refineAndIdentifyWorkflows,
+        'define-boundaries': () => processAllWorkflows(identifiedWorkflowNames),
     };
 
     const stepState = useMemo(() => {
-        const completedStates = {
-            'define-context': ['identifying', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
-            'identify-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
-            'define-boundaries': ['done'],
-        };
+        const completedStates: Record<StepId, SynthesisStep[]> = {
+  'define-context': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
+  'select-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
+  'define-boundaries': ['synthesizing', 'done'],
+  'synthesize-workflows': ['done'],
+};
 
         const enabledStates = {
             'define-context': !isFetchingEvents,
-            'identify-workflows': synthesisStep === 'context_editing',
+            'select-workflows': synthesisStep === 'context_editing',
             'define-boundaries': ['workflow_editing', 'defining_boundaries', 'boundaries_editing'].includes(synthesisStep) && identifiedWorkflowNames.length > 0,
         };
         
-        const activeStates = {
-            'define-context': isAnalyzingEvents,
-            'identify-workflows': synthesisStep === 'identifying',
-            'define-boundaries': synthesisStep === 'defining_boundaries',
-        };
+        const activeStates: Record<StepId, SynthesisStep[]> = {
+  'define-context': ['context_editing'],
+  'select-workflows': ['workflow_editing'],
+  'define-boundaries': ['boundaries_editing'],
+  'synthesize-workflows': ['synthesizing'],
+};
 
         const showComponentStates = {
             'define-context': ['context_editing', 'identifying', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
-            'identify-workflows': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
+            'select-workflows': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
             'define-boundaries': ['boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
         };
 
@@ -184,15 +156,15 @@ const StepperItem = memo(({
     }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, identifiedWorkflowNames]);
     
     const { completed, active, enabled, showComponent } = stepState;
-    const [isActionDialogOpen, setIsActionDialogOpen] = useState(false);
-    const stepAction = actionMap[id];
+    const action = actionMap[id];
     const [isCollapsed, setIsCollapsed] = useState(true);
 
     const shouldBeExpanded = 
         (id === 'define-context' && (synthesisStep === 'context_editing' || isAnalyzingEvents)) ||
-        (id === 'identify-workflows' && synthesisStep === 'workflow_editing') ||
-        (id === 'define-boundaries' && synthesisStep === 'boundaries_editing');
-        
+        (id === 'select-workflows' && synthesisStep === 'workflow_editing') ||
+        (id === 'define-boundaries' && synthesisStep === 'boundaries_editing') ||
+        (id === 'synthesize-workflows' && synthesisStep === 'synthesizing');
+
     useEffect(() => {
         if (shouldBeExpanded) {
             setIsCollapsed(false);
@@ -219,27 +191,14 @@ const StepperItem = memo(({
                             <p className="text-sm text-muted-foreground">{description}</p>
                         </div>
                         
-                        {stepAction && enabled && !completed && (
-                            <Dialog open={isActionDialogOpen} onOpenChange={setIsActionDialogOpen}>
-                                <ActionButtonWithPreview
-                                    onClick={stepAction.action}
-                                    onPreview={() => setIsActionDialogOpen(true)}
-                                    disabled={isLoading && !active}
-                                    isLoading={isLoading && active}
-                                    buttonText={stepAction.buttonText}
-                                />
-                                <DialogContent size="7xl" className="h-[90vh] flex flex-col">
-                                    <DialogHeader>
-                                        <DialogTitle>Setup Step: {stepAction.buttonText}</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="flex-grow overflow-y-auto -mx-6 px-6">
-                                        <RawInputView data={stepAction.data} />
-                                    </div>
-                                    <DialogFooter>
-                                        <Button variant="outline" onClick={() => setIsActionDialogOpen(false)}>Close</Button>
-                                    </DialogFooter>
-                                </DialogContent>
-                            </Dialog>
+                        {action && enabled && !completed && (
+                            <Button onClick={action} disabled={isLoading} className="ml-4">
+                                {isLoading && active ? (
+                                    <><RefreshCw className="mr-2 h-5 w-5 animate-spin" strokeWidth={2} />Processing...</>
+                                ) : (
+                                    title
+                                )}
+                            </Button>
                         )}
                         
                         {(showComponent || (completed && !active)) && (
@@ -276,7 +235,7 @@ const StepperItem = memo(({
                                     </div>
                                 )}
                                 
-                                {id === 'identify-workflows' && (
+                                {id === 'select-workflows' && (
                                     <div className={completed ? 'opacity-60 pointer-events-none' : ''}>
                                         <EditableWorkflowList workflows={logic.identifiedWorkflowNames} onWorkflowsChange={logic.setIdentifiedWorkflowNames} />
                                     </div>
@@ -286,11 +245,42 @@ const StepperItem = memo(({
                                     <div className={completed && !active ? 'opacity-60 pointer-events-none' : ''}>
                                         <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
                                         {['boundaries_editing', 'synthesizing'].includes(synthesisStep) && (
-                                            <div className="mt-4 flex justify-end">
-                                                <SynthesizeButtonWithDialog logic={logic} boundaries={logic.workflowBoundaries} workflowNames={logic.identifiedWorkflowNames} />
-                                            </div>
+                                            <CardFooter className="flex justify-between">
+                                              <Button onClick={logic.goBackToWorkflowEditing} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>Back</Button>
+                                              <Button onClick={logic.confirmBoundaries} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>
+                                                {logic.synthesisStep === 'synthesizing' ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Synthesizing...</> : 'Confirm Boundaries & Synthesize'}
+                                              </Button>
+                                            </CardFooter>
                                         )}
                                     </div>
+                                )}
+                                
+                                {id === 'synthesize-workflows' && (
+                                  <Card>
+                                    <CardContent>
+                                      {logic.synthesisStep === 'defining_boundaries' ? (
+                                        <div className="flex items-center space-x-2">
+                                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                          <span>Defining initial boundaries...</span>
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          <h3 className="font-semibold">Current Workflows:</h3>
+                                          <ul className="list-disc pl-5 mt-2">
+                                            {logic.identifiedWorkflowNames.map(name => <li key={name}>{name}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </CardContent>
+                                    {['boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep) && (
+                                      <CardFooter className="flex justify-between">
+                                        <Button onClick={logic.goBackToWorkflowEditing} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>Back</Button>
+                                        <Button onClick={logic.confirmBoundaries} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>
+                                          {logic.synthesisStep === 'synthesizing' ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Synthesizing...</> : 'Confirm Boundaries & Synthesize'}
+                                        </Button>
+                                      </CardFooter>
+                                    )}
+                                  </Card>
                                 )}
                             </div>
                         ) : null}
@@ -303,54 +293,77 @@ const StepperItem = memo(({
 });
 StepperItem.displayName = 'StepperItem';
 
-const SynthesizeButtonWithDialog = ({ logic, boundaries, workflowNames }: {
-  logic: WorkflowPageLogicType;
-  boundaries: WorkflowBoundaries;
-  workflowNames: string[];
-}) => {
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const { proceedToSynthesis, isLoading, synthesisStep, editableContext } = logic;
-    const data = {
-        prompt: "See PROMPT_SYNTHESIZE_WORKFLOW in prompts.ts",
-        context: {
-            workflows: workflowNames.map(name => ({
-                name,
-                trigger: boundaries[name]?.trigger,
-                terminator: boundaries[name]?.terminator,
-            })),
-            userContext: editableContext,
-        },
-    };
+const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
+  const { synthesisStep } = logic;
+  const [isStepperCollapsed, setIsStepperCollapsed] = useState(true);
 
+  useEffect(() => {
+    if (synthesisStep !== 'done') {
+      setIsStepperCollapsed(false);
+    } else {
+      setIsStepperCollapsed(true);
+    }
+  }, [synthesisStep]);
+
+  if (synthesisStep === 'idle') {
     return (
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <ActionButtonWithPreview
-                onClick={() => proceedToSynthesis(boundaries)}
-                onPreview={() => setIsDialogOpen(true)}
-                disabled={isLoading}
-                isLoading={isLoading && synthesisStep === 'synthesizing'}
-                buttonText="Synthesize Workflows"
-            />
-             <DialogContent size="7xl" className="h-[90vh] flex flex-col">
-                <DialogHeader>
-                    <DialogTitle>Setup Step: Synthesize Workflows</DialogTitle>
-                </DialogHeader>
-                <div className="flex-grow overflow-y-auto -mx-6 px-6">
-                   <RawInputView data={data} />
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Close</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+      <div className="max-w-4xl mx-auto p-8 text-center">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-2xl">Start Workflow Synthesis</CardTitle>
+            <CardDescription>Click the button below to begin analyzing events and identifying workflows.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button size="lg" onClick={logic.runInitialAnalysis} disabled={logic.isLoading}>
+              {logic.isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <RefreshCw className="mr-2 h-5 w-5" />}
+              Start Analysis
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
+  }
+
+  return (
+    <div className="w-full">
+      {synthesisStep === 'done' && logic.workflows.length > 0 && (
+        <div className="mx-auto border-b pb-1 mb-1">
+          <div
+            className="flex justify-between items-center cursor-pointer"
+            onClick={() => setIsStepperCollapsed(!isStepperCollapsed)}
+          >
+            <h2 className="text-xl font-semibold">Workflow Setup ({STEP_DEFINITIONS.length} Steps Completed)</h2>
+            <Button variant="ghost" size="sm">
+              {isStepperCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+      )}
+      {!isStepperCollapsed && (
+        <div className="max-w-4xl mx-auto py-6">
+          <div className="space-y-8">
+            {STEP_DEFINITIONS.map((step, index) => (
+              <StepperItem
+                key={step.id}
+                id={step.id}
+                number={index + 1}
+                title={step.title}
+                description={step.description}
+                isLast={index === STEP_DEFINITIONS.length - 1}
+                logic={logic}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default function WorkflowPage({ params }: { params: Promise<{ userId:string }> }) {
     const { userId } = use(params);
     const logic: WorkflowPageLogicType = useWorkflowPageLogic(userId);
-    const [isStepperCollapsed, setIsStepperCollapsed] = useState(true);
-    
+
     const {
         workflows,
         activeWorkflowIndex,
@@ -363,7 +376,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
         isLoading,
         isAiThinking,
         synthesisStep,
-        allWorkflowAnalyses,
         identifiedWorkflowNames,
         setIdentifiedWorkflowNames,
         workflowBoundaries,
@@ -395,33 +407,13 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
         proceedToSynthesis,
     } = logic;
 
-    useEffect(() => {
-        if (synthesisStep !== 'done') {
-            setIsStepperCollapsed(false);
-        } else {
-            setIsStepperCollapsed(true);
-        }
-    }, [synthesisStep]);
-
     return (
         <div className="h-full bg-background flex flex-col relative">
             {isFetchingEvents && <LoadingOverlay />}
-            {/* New Sticky Header */}
-            <div className="sticky top-16 z-20 bg-background/95 backdrop-blur-sm border-b">
-                <div className="p-4 flex items-center justify-between">
-                     <div className="flex items-center gap-4">
-                        <div 
-                            className="flex justify-between items-center cursor-pointer"
-                            onClick={() => setIsStepperCollapsed(!isStepperCollapsed)}
-                        >
-                            <h2 className="text-xl font-semibold">Workflow Setup ({allWorkflowAnalyses.length} steps)</h2>
-                            <Button variant="ghost" size="sm">
-                                {isStepperCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                            </Button>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
+            {/* Header */}
+            <div className="border-b bg-muted/40 p-4">
+                <div className="max-w-4xl mx-auto flex items-center justify-between">
+                    <div className="w-64">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" className="w-full">
@@ -438,6 +430,27 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 </DropdownMenuRadioGroup>
                             </DropdownMenuContent>
                         </DropdownMenu>
+                    </div>
+                    <h1 className="text-2xl font-bold">Workflow Synthesis</h1>
+                    <div className="w-64 flex justify-end gap-2">
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        onClick={resetConversation}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <RotateCcw className="h-4 w-4" />
+                                        Reset
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>Start over with a fresh conversation</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button 
@@ -469,86 +482,52 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             </div>
 
             {/* Main Content */}
-            <div className="p-6 flex-grow flex flex-col overflow-hidden">
-                 <div className="w-full">
-                    {!isStepperCollapsed && (
-                        <div className="max-w-4xl mx-auto mb-6">
-                            <div className="space-y-8">
-                                {STEP_DEFINITIONS.map((step, index) => (
-                                    <StepperItem 
-                                        key={step.id} 
-                                        {...step}
-                                        isLast={index === STEP_DEFINITIONS.length - 1}
-                                        logic={logic}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
+            <div className="p-6 flex-grow flex flex-col overflow-hidden items-center">
+                <Stepper logic={logic} />
 
                 {synthesisStep === 'done' && workflows.length > 0 && (
-                    <div className="pt-4 grid grid-cols-3 gap-6 flex-grow min-h-0">
+                    <div className="pt-4 grid grid-cols-3 gap-6 flex-grow min-h-0 w-full max-w-7xl">
                     {/* AI Assistant Sidebar */}
                         <aside className="col-span-1 flex flex-col bg-muted/40 border rounded-lg overflow-hidden">
-                        <div className="p-4 border-b flex items-center justify-between">
+                        <div className="p-4 border-b">
                             <h3 className="text-base font-semibold">AI Assistant</h3>
-                            <TooltipProvider>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={resetConversation}
-                                            className="flex items-center gap-2"
-                                        >
-                                            <RotateCcw className="h-4 w-4" />
-                                            Reset
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Start over with a fresh conversation</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
                         </div>
-                        <div className="flex flex-col flex-grow p-4 space-y-4 overflow-y-auto bg-muted/30">
+                        
                         {/* Messages Area */}
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                {Array.isArray(messages) && messages.map((message) => (
-                                    <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
-                                        <div className={`p-3 rounded-lg max-w-[80%] ${
-                                            message.sender === 'ai' 
-                                                ? 'bg-background border shadow-sm' 
-                                                : 'bg-primary text-primary-foreground'
-                                        }`}>
-                                            <p className="text-sm whitespace-pre-wrap">{message.text}</p>
-                                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {Array.isArray(messages) && messages.map((message) => (
+                                <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
+                                    <div className={`p-3 rounded-lg max-w-[80%] ${
+                                        message.sender === 'ai' 
+                                            ? 'bg-background border shadow-sm' 
+                                            : 'bg-primary text-primary-foreground'
+                                    }`}>
+                                        <p className="text-sm whitespace-pre-wrap">{message.text}</p>
                                     </div>
-                                ))}
-                                {isAiThinking && <AiThinkingBubble />}
-                            </div>
-                            
-                            {/* Chat Input */}
-                            <div className="p-4 border-t">
-                                <div className="relative">
-                                    <Textarea 
-                                        placeholder="Ask AI for help with workflows..." 
-                                        className="min-h-[60px] pr-12" 
-                                        value={userInput}
-                                        onChange={(e) => setUserInput(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
-                                        disabled={isAiThinking}
-                                    />
-                                    <Button 
-                                        size="sm" 
-                                        className="absolute bottom-2 right-2 h-8" 
-                                        onClick={handleSendMessage} 
-                                        disabled={isAiThinking || !userInput.trim()}
-                                    >
-                                        <Send className="h-4 w-4" />
-                                    </Button>
                                 </div>
+                            ))}
+                            {isAiThinking && <AiThinkingBubble />}
+                        </div>
+                        
+                        {/* Chat Input */}
+                        <div className="p-4 border-t">
+                            <div className="relative">
+                                <Textarea 
+                                    placeholder="Ask AI for help with workflows..." 
+                                    className="min-h-[60px] pr-12" 
+                                    value={userInput}
+                                    onChange={(e) => setUserInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
+                                    disabled={isAiThinking}
+                                />
+                                <Button 
+                                    size="sm" 
+                                    className="absolute bottom-2 right-2 h-8" 
+                                    onClick={handleSendMessage} 
+                                    disabled={isAiThinking || !userInput.trim()}
+                                >
+                                    <Send className="h-4 w-4" />
+                                </Button>
                             </div>
                         </div>
                     </aside>
