@@ -271,6 +271,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
         isLoading,
         isAiThinking,
         synthesisStep,
+        allWorkflowAnalyses,
         identifiedWorkflowNames,
         setIdentifiedWorkflowNames,
         workflowBoundaries,
@@ -313,10 +314,22 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
     return (
         <div className="h-full bg-background flex flex-col relative">
             {isFetchingEvents && <LoadingOverlay />}
-            {/* Header */}
-            <div className="border-b bg-muted/40 p-4">
-                <div className="max-w-4xl mx-auto flex items-center justify-between">
-                    <div className="w-64">
+            {/* New Sticky Header */}
+            <div className="sticky top-16 z-20 bg-background/95 backdrop-blur-sm border-b">
+                <div className="p-4 flex items-center justify-between">
+                     <div className="flex items-center gap-4">
+                        <div 
+                            className="flex items-center cursor-pointer"
+                            onClick={() => setIsStepperCollapsed(!isStepperCollapsed)}
+                        >
+                            <h2 className="text-xl font-semibold">Workflow Setup ({workflows.reduce((acc, wf) => acc + (wf.steps?.length || 0), 0)} steps)</h2>
+                            <Button variant="ghost" size="sm" className="ml-2">
+                                {isStepperCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" className="w-full">
@@ -333,9 +346,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 </DropdownMenuRadioGroup>
                             </DropdownMenuContent>
                         </DropdownMenu>
-                    </div>
-                    <h1 className="text-2xl font-bold">Workflow Synthesis</h1>
-                    <div className="w-64 flex justify-end gap-2">
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button 
@@ -369,22 +379,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             {/* Main Content */}
             <div className="p-6 flex-grow flex flex-col overflow-hidden">
                  <div className="w-full">
-                    {synthesisStep === 'done' && workflows.length > 0 && (
-                        <div className="mx-auto border-b pb-1 mb-1">
-                            <div 
-                                className="flex justify-between items-center cursor-pointer"
-                                onClick={() => setIsStepperCollapsed(!isStepperCollapsed)}
-                            >
-                                <h2 className="text-xl font-semibold">Workflow Setup</h2>
-                                <Button variant="ghost" size="sm">
-                                    {isStepperCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-                    
                     {!isStepperCollapsed && (
-                        <div className="max-w-4xl mx-auto">
+                        <div className="max-w-4xl mx-auto mb-6">
                             <div className="space-y-8">
                                 {STEP_DEFINITIONS.map((step, index) => (
                                     <StepperItem 
