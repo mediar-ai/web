@@ -126,7 +126,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
   const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
-  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [pendingJobCount, setPendingJobCount] = useState(0);
   const [rawLlmInputForDisplay, setRawLlmInputForDisplay] = useState<string | null>(null);
   const [totalEventCount, setTotalEventCount] = useState<number>(0);
@@ -361,10 +360,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      // We leave isBatchProcessing as true until the first poll confirms jobs are pending.
-      // Or we can set it to false and let the pendingJobCount handle the button state.
-      // Let's do the latter for a more responsive feel.
-      setIsBatchProcessing(false);
+      setIsLoadingMore(false);
     }
   };
 
@@ -405,15 +401,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   
     return relevantAnalyses;
   }, [selectedEvent, allWorkflowAnalyses, uiTreeEvents]);
-
-  // Find which UI tree events have not been processed yet
-  const unprocessedUiTreeEvents = useMemo(() => {
-    if (!Array.isArray(allWorkflowAnalyses) || allWorkflowAnalyses.length === 0) {
-      return uiTreeEvents;
-    }
-    const analyzedTimestamps = new Set(allWorkflowAnalyses.map(a => a.client_timestamp));
-    return uiTreeEvents.filter(event => !analyzedTimestamps.has(getEventTimestamp(event)));
-  }, [uiTreeEvents, allWorkflowAnalyses]);
 
   // Find the analysis that corresponds to the currently selected event
   const existingAnalysisForSelectedEvent = useMemo(() => {
@@ -598,37 +585,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
   // --- End of Reactive Data Processing ---
 
-  const handleProcessAllRemaining = async () => {
-    if (!userId) {
-      alert("User ID is not available.");
-      return;
-    }
-    // Optimistic UI Update: Immediately disable the button and show processing state.
-    setIsBatchProcessing(true); 
-    
-    try {
-      const response = await fetch('/api/initiate-workflow-analysis', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId }),
-      });
-
-      if (response.status !== 202) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to start batch processing.');
-      }
-      console.log("Backend processing initiated. Polling will handle further UI updates.");
-      // Note: We do NOT set isBatchProcessing to false here.
-      // The polling mechanism is now responsible for the button's state via pendingJobCount.
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      // Rollback the optimistic update on failure.
-      setIsBatchProcessing(false); 
-    }
-  };
-
   const handleLoadMoreRequest = () => {
     let amount = parseInt(loadAmount, 10);
     // In case of 'all', we'll need a different strategy, for now, let's use a very large number
@@ -684,14 +640,16 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
               {isLoadingMore ? 'Loading...' : 'Load More'}
             </Button>
           )}
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleProcessAllRemaining} 
-            disabled={isBatchProcessing || pendingJobCount > 0 || unprocessedUiTreeEvents.length === 0}
-          >
-            {pendingJobCount > 0 ? `Processing ${processedStepsCount}/${totalStepsCount}...` : 'Process all remaining Steps'}
-          </Button>
+          {pendingJobCount > 0 ? (
+            <Badge variant="outline">
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              Processing {pendingJobCount} remaining...
+            </Badge>
+          ) : (
+            <Badge variant="secondary">
+              Idle
+            </Badge>
+          )}
         </CardContent>
       </Card>
       <div className="flex items-center my-4 space-x-2">

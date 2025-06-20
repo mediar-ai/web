@@ -165,7 +165,7 @@ export default function AdminPage() {
       <table className="w-full text-sm text-left">
         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
           <tr>
-            <th scope="col" className="px-1 py-2 w-2/5">
+            <th scope="col" className="px-1 py-2 w-[25%]">
               User
             </th>
             <th scope="col" className="px-1 py-2 w-[5%]">
@@ -177,19 +177,19 @@ export default function AdminPage() {
             <th scope="col" className="px-1 py-2 w-[10%]">
               EVENTS (processed)
             </th>
-            <th scope="col" className="px-1 py-2 w-[10%]">
+            <th scope="col" className="px-1 py-2 w-[11%]">
               Workflows
             </th>
-            <th scope="col" className="px-1 py-2 w-[10%]">
+            <th scope="col" className="px-1 py-2 w-[11%]">
               Labeled
             </th>
-            <th scope="col" className="px-1 py-2 w-[10%]">
+            <th scope="col" className="px-1 py-2 w-[8%]">
               Duration
             </th>
-            <th scope="col" className="px-1 py-2 w-[15%]">
+            <th scope="col" className="px-1 py-2 w-[15%]" style={{ minWidth: '180px' }}>
               Last Active
             </th>
-            <th scope="col" className="px-1 py-2 text-right w-[10%]">
+            <th scope="col" className="px-1 py-2 text-right w-[8%]">
               Actions
             </th>
           </tr>
