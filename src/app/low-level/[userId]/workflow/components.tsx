@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 
-import { PlusCircle, Trash2, RefreshCw, X, Edit3, Edit2, ChevronDown } from 'lucide-react';
+import { PlusCircle, Trash2, RefreshCw, X, Edit3, Edit2 } from 'lucide-react';
 
 import { WorkflowBoundaries } from './types';
 
@@ -269,55 +269,6 @@ export const EditableWorkflowBoundaries = ({
       </div>
 
 
-    </div>
-  );
-};
-
-// ----------------------------------------------------------------------------------
-// RawInputView
-// ----------------------------------------------------------------------------------
-export const RawInputView = ({ data }: { data: object }) => {
-  return (
-    <pre className="w-full p-4 text-xs overflow-auto bg-muted/30 border rounded-md font-mono text-foreground h-full">
-      {JSON.stringify(data, null, 2)}
-    </pre>
-  );
-};
-
-// ----------------------------------------------------------------------------------
-// ActionButtonWithPreview
-// ----------------------------------------------------------------------------------
-export const ActionButtonWithPreview = ({
-  onClick,
-  onPreview,
-  disabled,
-  isLoading,
-  buttonText,
-}: {
-  onClick: () => void;
-  onPreview: () => void;
-  disabled: boolean;
-  isLoading: boolean;
-  buttonText: string;
-}) => {
-  return (
-    <div className="flex items-center">
-      <Button onClick={onClick} disabled={disabled || isLoading} className="rounded-r-none">
-        {isLoading ? (
-          <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Processing...</>
-        ) : (
-          buttonText
-        )}
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        className="px-2 rounded-l-none border-l-0"
-        disabled={disabled || isLoading}
-        onClick={onPreview}
-      >
-        <ChevronDown className="h-4 w-4" />
-      </Button>
     </div>
   );
 }; 
