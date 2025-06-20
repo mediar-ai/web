@@ -17,6 +17,7 @@ export interface Session {
   processed_event_count: number;
   status: 'live' | 'offline';
   duration_seconds: number | null;
+  total_ui_steps?: number;
   total_workflow_analyses?: number;
   distinct_workflows_created?: number;
   total_labeled_steps?: number;

@@ -53,6 +53,15 @@ BEGIN
         JOIN low_level_workflow_analyses llwa ON lld.low_level_workflow_analysis_id = llwa.id
         GROUP BY llwa.session_id
     ),
+    ui_step_stats AS (
+        -- Count only the events that are UI tree events, which represent "steps"
+        SELECT
+            session_id,
+            COUNT(*) as total_ui_steps
+        FROM low_level_events
+        WHERE payload->'payload'->>'type' = 'ui_tree'
+        GROUP BY session_id
+    ),
     event_timing_stats AS (
         -- Get the first and last event timestamps for duration calculation
         -- This needs to be done carefully for each session type
@@ -87,6 +96,7 @@ BEGIN
         sb.session_id,
         sb.user_id,
         cts.total_event_count,
+        COALESCE(uss.total_ui_steps, 0) as total_ui_steps,
         sb.session_type,
         COALESCE(als.total_analyses, 0) as total_workflow_analyses,
         COALESCE(als.distinct_workflows, 0) as distinct_workflows_created,
@@ -97,13 +107,15 @@ BEGIN
     FROM session_base sb
     LEFT JOIN analysis_stats als ON sb.session_id = als.session_id
     LEFT JOIN label_stats ls ON sb.session_id = ls.session_id
+    LEFT JOIN ui_step_stats uss ON sb.session_id = uss.session_id
     JOIN combined_timing cts ON sb.session_id = cts.session_id;
 
     -- Now, update the main session_metadata table from our temp table.
     -- This is an "upsert" operation.
     INSERT INTO public.session_metadata (
         session_id, user_id, event_count, processed_event_count, 
-        total_workflow_analyses, distinct_workflows_created, total_labeled_steps, human_labeled_steps,
+        total_ui_steps, total_workflow_analyses, distinct_workflows_created, 
+        total_labeled_steps, human_labeled_steps,
         first_event_timestamp, last_event_timestamp, duration_seconds, session_type
     )
     SELECT
@@ -111,6 +123,7 @@ BEGIN
         tss.user_id,
         tss.total_event_count,
         tss.total_workflow_analyses, -- processed_event_count is now the same as total_workflow_analyses
+        tss.total_ui_steps,
         tss.total_workflow_analyses,
         tss.distinct_workflows_created,
         tss.total_labeled_steps,
@@ -130,6 +143,7 @@ BEGIN
         user_id = EXCLUDED.user_id,
         event_count = EXCLUDED.event_count,
         processed_event_count = EXCLUDED.processed_event_count,
+        total_ui_steps = EXCLUDED.total_ui_steps,
         total_workflow_analyses = EXCLUDED.total_workflow_analyses,
         distinct_workflows_created = EXCLUDED.distinct_workflows_created,
         total_labeled_steps = EXCLUDED.total_labeled_steps,

@@ -140,6 +140,7 @@ token_refresh = 150
 sign_in_sign_ups = 30
 # Number of OTP / Magic link verifications that can be made in a 5 minute interval per IP address.
 token_verifications = 30
+# Number of web3 messages that can be sent per hour. Requires auth.web3 to be enabled.
 # web3 = 60
 
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
