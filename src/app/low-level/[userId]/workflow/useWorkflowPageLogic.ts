@@ -18,6 +18,7 @@ import type {
   DatabaseWorkflow,
   SynthesisSession,
 } from './types';
+import { PROMPT_SYNTHESIZE_CONTEXT, PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, WORKFLOW_BOUNDARY_PROMPT, WORKFLOW_SYNTHESIS_PROMPT } from '@/lib/prompts';
 
 export function useWorkflowPageLogic(userId: string) {
   const { setUserId } = useUser();
@@ -69,6 +70,7 @@ export function useWorkflowPageLogic(userId: string) {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [isFetchingEvents, setIsFetchingEvents] = useState(true);
   const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
+  const [rawLlmInputs, setRawLlmInputs] = useState<Record<string, string>>({});
   
   const isLoading = useMemo(() => isAnalyzingEvents || isFetchingEvents, [isAnalyzingEvents, isFetchingEvents]);
 
@@ -284,6 +286,10 @@ export function useWorkflowPageLogic(userId: string) {
     setIsAiThinking(true);
     timerRef.current = setInterval(() => setElapsedTime(prevTime => prevTime + 0.1), 100);
 
+    const eventsForPrompt = combinedEvents.slice(0, 50); // Limiting for display, backend might handle full list
+    const promptForLlm = `${PROMPT_SYNTHESIZE_CONTEXT}\n\nEvents (sample of first ${eventsForPrompt.length}):\n${JSON.stringify(eventsForPrompt.map(e => e.analysis?.description || e.analysis?.step || 'Event analysis unavailable').filter(Boolean), null, 2)}`;
+    setRawLlmInputs(prev => ({ ...prev, 'define-context': promptForLlm }));
+
     try {
       const response = await fetch('/api/initiate-workflow-analysis', {
         method: 'POST',
@@ -344,6 +350,10 @@ export function useWorkflowPageLogic(userId: string) {
   const refineAndIdentifyWorkflows = async () => {
     setSynthesisStep('identifying');
 
+    const eventsForPrompt = combinedEvents.slice(0, 50); // Limiting for display
+    const promptForLlm = `${PROMPT_REFINE_WORKFLOWS_AND_CONTEXT}\n\nEvents (sample of first ${eventsForPrompt.length}):\n${JSON.stringify(eventsForPrompt.map(e => e.analysis?.description || e.analysis?.step || 'Event analysis unavailable').filter(Boolean), null, 2)}\n\nWorkflow Context:\n${JSON.stringify(editableContext, null, 2)}\n\nDraft Workflow Names:\n${JSON.stringify(draftWorkflowNames, null, 2)}`;
+    setRawLlmInputs(prev => ({ ...prev, 'identify-workflows': promptForLlm }));
+
     try {
       const response = await fetch('/api/refine-workflow-list', {
         method: 'POST',
@@ -386,6 +396,15 @@ export function useWorkflowPageLogic(userId: string) {
     setMessages(updatedMessages);
     await saveSynthesisSession(updatedMessages, 'defining_boundaries', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
 
+    const eventsForPrompt = combinedEvents.slice(0, 50); // Limiting for display
+    const boundaryPromptContext = {
+        workflows: approvedWorkflows.map(name => ({ workflow_name: name })),
+        events: eventsForPrompt.map(e => e.analysis?.description || e.analysis?.step || 'Event analysis unavailable').filter(Boolean),
+        userContext: workflowContext,
+    };
+    const promptForLlm = `${WORKFLOW_BOUNDARY_PROMPT}\n\nContext:\n${JSON.stringify(boundaryPromptContext, null, 2)}`;
+    setRawLlmInputs(prev => ({ ...prev, 'define-boundaries': promptForLlm }));
+
     try {
       const response = await fetch('/api/define-workflow-boundaries', {
       method: 'POST',
@@ -422,9 +441,21 @@ export function useWorkflowPageLogic(userId: string) {
   const proceedToSynthesis = async (approvedBoundaries: WorkflowBoundaries) => {
     setSynthesisStep('synthesizing');
     const thinkingId = `ai-thinking-${Date.now()}`;
-    const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
-    setMessages(updatedMessages);
-    await saveSynthesisSession(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
+    const updatedMessagesWithThinking: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
+    setMessages(updatedMessagesWithThinking);
+
+    const synthesisPromptContext = {
+        workflows: identifiedWorkflowNames.map(name => ({
+            name,
+            trigger: approvedBoundaries[name]?.trigger,
+            terminator: approvedBoundaries[name]?.terminator,
+        })),
+        userContext: editableContext, 
+    };
+    const promptForLlm = `${WORKFLOW_SYNTHESIS_PROMPT}\n\nContext:\n${JSON.stringify(synthesisPromptContext, null, 2)}`;
+    setRawLlmInputs(prev => ({ ...prev, 'synthesize-workflows': promptForLlm }));
+
+    await saveSynthesisSession(updatedMessagesWithThinking, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
 
     try {
       const response = await fetch('/api/synthesize-workflow', {
@@ -437,9 +468,9 @@ export function useWorkflowPageLogic(userId: string) {
               name,
               trigger: approvedBoundaries[name]?.trigger,
               terminator: approvedBoundaries[name]?.terminator,
-              events: combinedEvents
+              events: combinedEvents // Assuming combinedEvents is available in this scope and needed by the API
             })),
-            workflowContext: workflowContext,
+            workflowContext: workflowContext, // or editableContext, ensure consistency with prompt
           }
         }),
       });
@@ -451,7 +482,8 @@ export function useWorkflowPageLogic(userId: string) {
         await saveSynthesizedWorkflows(synthesizedWorkflows);
         setSynthesisStep('done');
         const synthesizedMessage: Message = {id: `${Date.now()}`, sender: 'ai', text: "Workflows have been synthesized successfully!"};
-        const finalMessages = [...updatedMessages.slice(0, -1), synthesizedMessage];
+        // Use updatedMessagesWithThinking here as it's the latest state of messages before this AI response
+        const finalMessages = [...updatedMessagesWithThinking.slice(0, -1), synthesizedMessage];
         setMessages(finalMessages);
         await saveSynthesisSession(finalMessages, 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
 
@@ -460,8 +492,9 @@ export function useWorkflowPageLogic(userId: string) {
       }
     } catch (error) {
       console.error("Error during workflow synthesis:", error);
+      // Use updatedMessagesWithThinking here as well for consistency on error
       setMessages(prev => [...prev.slice(0, -1), { id: `error-${Date.now()}`, sender: 'ai', text: "Sorry, I encountered an error during synthesis." }]);
-      await saveSynthesisSession(messages, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
+      await saveSynthesisSession(updatedMessagesWithThinking, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames); // Revert to boundaries_editing or an appropriate error state
     }
   };
 
@@ -687,5 +720,6 @@ export function useWorkflowPageLogic(userId: string) {
     handleContextChange, resetConversation, deleteAllWorkflows, activeContent,
     allWorkflowAnalyses, setAllWorkflowAnalyses,
     draftWorkflowNames,
+    rawLlmInputs, setRawLlmInputs,
   } as const;
-} 
+}
