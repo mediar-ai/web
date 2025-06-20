@@ -319,11 +319,11 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                 <div className="p-4 flex items-center justify-between">
                      <div className="flex items-center gap-4">
                         <div 
-                            className="flex items-center cursor-pointer"
+                            className="flex justify-between items-center cursor-pointer"
                             onClick={() => setIsStepperCollapsed(!isStepperCollapsed)}
                         >
-                            <h2 className="text-xl font-semibold">Workflow Setup ({workflows.reduce((acc, wf) => acc + (wf.steps?.length || 0), 0)} steps)</h2>
-                            <Button variant="ghost" size="sm" className="ml-2">
+                            <h2 className="text-xl font-semibold">Workflow Setup ({allWorkflowAnalyses.length} steps)</h2>
+                            <Button variant="ghost" size="sm">
                                 {isStepperCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
                             </Button>
                         </div>
