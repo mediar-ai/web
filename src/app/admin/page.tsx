@@ -168,28 +168,28 @@ export default function AdminPage() {
             <th scope="col" className="px-1 py-2 w-2/5">
               User
             </th>
-            <th scope="col" className="px-1 py-2">
+            <th scope="col" className="px-1 py-2 w-[5%]">
               Sessions
             </th>
-            <th scope="col" className="px-1 py-2">
+            <th scope="col" className="px-1 py-2 w-[5%]">
               Type
             </th>
-            <th scope="col" className="px-1 py-2">
-              Events
+            <th scope="col" className="px-1 py-2 w-[10%]">
+              EVENTS (processed)
             </th>
-            <th scope="col" className="px-1 py-2">
+            <th scope="col" className="px-1 py-2 w-[10%]">
               Workflows
             </th>
-            <th scope="col" className="px-1 py-2">
+            <th scope="col" className="px-1 py-2 w-[10%]">
               Labeled
             </th>
-            <th scope="col" className="px-1 py-2">
+            <th scope="col" className="px-1 py-2 w-[10%]">
               Duration
             </th>
-            <th scope="col" className="px-1 py-2">
+            <th scope="col" className="px-1 py-2 w-[15%]">
               Last Active
             </th>
-            <th scope="col" className="px-1 py-2 text-right">
+            <th scope="col" className="px-1 py-2 text-right w-[10%]">
               Actions
             </th>
           </tr>
@@ -211,6 +211,7 @@ export default function AdminPage() {
             .map(([userId, userData]) => {
               const liveSessions = userData.sessions.filter(s => s.status === 'live').length;
               const totalEvents = userData.sessions.reduce((sum, s) => sum + s.eventCount, 0);
+              const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
               const totalWorkflowAnalyses = userData.sessions.reduce((sum, s) => sum + (s.total_workflow_analyses || 0), 0);
               const distinctWorkflowsCreated = userData.sessions.reduce((sum, s) => sum + (s.distinct_workflows_created || 0), 0);
               const totalLabeledSteps = userData.sessions.reduce((sum, s) => sum + (s.total_labeled_steps || 0), 0);
@@ -290,7 +291,7 @@ export default function AdminPage() {
                       {userType}
                     </td>
                     <td className="px-1 py-1">
-                      {totalEvents}
+                      {totalEvents} ({totalProcessedEvents})
                     </td>
                     <td className="px-1 py-1">
                       {totalWorkflowAnalyses} ({distinctWorkflowsCreated})
@@ -321,13 +322,13 @@ export default function AdminPage() {
                   </tr>
                   {expandedUsers.has(userId) && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-2 bg-gray-50">
+                      <td colSpan={9} className="px-4 py-2 bg-gray-50">
                         <table className="w-full text-sm text-left">
                           <thead className="text-xs text-gray-700 uppercase bg-gray-100">
                             <tr>
                               <th scope="col" className="px-1 py-1">Session ID</th>
                               <th scope="col" className="px-1 py-1">Type</th>
-                              <th scope="col" className="px-1 py-1">Events</th>
+                              <th scope="col" className="px-1 py-1">EVENTS (processed)</th>
                               <th scope="col" className="px-1 py-1">Workflows</th>
                               <th scope="col" className="px-1 py-1">Labeled</th>
                               <th scope="col" className="px-1 py-1">Duration</th>
@@ -343,7 +344,7 @@ export default function AdminPage() {
                               <tr key={session.id} className="bg-white border-b hover:bg-gray-50">
                                 <td className="px-1 py-1 font-mono text-xs">{truncateId(session.id)}</td>
                                 <td className="px-1 py-1 font-semibold">{session.type}</td>
-                                <td className="px-1 py-1">{session.eventCount}</td>
+                                <td className="px-1 py-1">{session.eventCount} ({session.processed_event_count || 0})</td>
                                 <td className="px-1 py-1">{session.total_workflow_analyses || 0} ({session.distinct_workflows_created || 0})</td>
                                 <td className="px-1 py-1">{session.total_labeled_steps || 0} ({session.human_labeled_steps || 0})</td>
                                 <td className="px-1 py-1">{formatDuration(session.duration_seconds)}</td>
