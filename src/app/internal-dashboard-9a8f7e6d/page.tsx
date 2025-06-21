@@ -193,6 +193,7 @@ export default function AdminPage() {
             <th scope="col" className="px-1 py-2 w-[30%]">User</th>
             <th scope="col" className="px-1 py-2">Sessions</th>
             <th scope="col" className="px-1 py-2">Type</th>
+            <th scope="col" className="px-1 py-2">EVENTS</th>
             <th scope="col" className="px-1 py-2">STEPS (PROCESSED)</th>
             <th scope="col" className="px-1 py-2">HUMAN ANNOTATION</th>
             <th scope="col" className="px-1 py-2">WORKFLOW (DISTINCT)</th>
@@ -217,6 +218,7 @@ export default function AdminPage() {
             })
             .map(([userId, userData]) => {
               const liveSessions = userData.sessions.filter(s => s.status === 'live').length;
+              const totalEvents = userData.sessions.reduce((sum, s) => sum + (s.eventCount || 0), 0);
               const totalUiSteps = userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
               const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
               const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
@@ -296,6 +298,7 @@ export default function AdminPage() {
                     </td>
                     <td className="px-1 py-1">{userData.sessions.length}</td>
                     <td className="px-1 py-1">{userType}</td>
+                    <td className="px-1 py-1">{totalEvents}</td>
                     <td className="px-1 py-1">
                       {totalProcessedEvents} / {totalUiSteps}
                     </td>
@@ -317,12 +320,13 @@ export default function AdminPage() {
                   </tr>
                   {expandedUsers.has(userId) && (
                     <tr>
-                      <td colSpan={9} className="px-4 py-2 bg-gray-50">
+                      <td colSpan={10} className="px-4 py-2 bg-gray-50">
                         <table className="w-full text-sm text-left">
                           <thead className="text-xs text-gray-700 uppercase bg-gray-100">
                             <tr>
                               <th scope="col" className="px-1 py-1">Session ID</th>
                               <th scope="col" className="px-1 py-1">Type</th>
+                              <th scope="col" className="px-1 py-1">EVENTS</th>
                               <th scope="col" className="px-1 py-1">STEPS (PROCESSED)</th>
                               <th scope="col" className="px-1 py-1">HUMAN ANNOTATION</th>
                               <th scope="col" className="px-1 py-1">WORKFLOW (DISTINCT)</th>
@@ -339,6 +343,7 @@ export default function AdminPage() {
                               <tr key={session.id} className="bg-white border-b hover:bg-gray-50">
                                 <td className="px-1 py-1 font-mono text-xs">{truncateId(session.id)}</td>
                                 <td className="px-1 py-1 font-semibold">{session.type}</td>
+                                <td className="px-1 py-1">{session.eventCount || 0}</td>
                                 <td className="px-1 py-1">{session.processed_event_count || 0} / {session.total_ui_steps || 0}</td>
                                 <td className="px-1 py-1">{session.human_labeled_steps || 0}</td>
                                 <td className="px-1 py-1">{session.total_workflow_analyses || 0} ({session.distinct_workflows_created || 0})</td>
