@@ -21,6 +21,7 @@ CRITICAL RULES:
 - Be specific about what was accomplished in this latest step
 
 OUTPUT FORMAT: Create a single concise sentence that captures the complete latest action.
+If specific names, message content, or details are not clearly visible in the data, explicitly state 'details not available' rather than inferring or creating them.
 
 EXAMPLES:
 ❌ Bad: "User sent a new chat m.."
@@ -61,6 +62,7 @@ CRITICAL INSTRUCTIONS:
 - Extract and list all static text content, such as labels, headings, and descriptions.
 - Infer the application's purpose and the user's likely goal based on the combination of elements.
 - DO NOT just list the elements. Synthesize the information into a coherent description of the screen.
+- If element names, states, or text content are unclear or missing from the UI tree, explicitly note 'information not available' instead of assuming details.
 
 EXAMPLE:
 - Input ui_tree: { role: "Window", name: "Gmail", children: [...] }
@@ -76,6 +78,8 @@ The user has provided the following context, based on their screen, UI structure
 - The three most recent workflow steps that were previously analyzed.
 
 Based on this context, your goal is to determine the single, primary action the user took and describe it in a structured format.
+
+For any requested field where information is not clearly evident in the provided context, use 'Not available in data' rather than inferring or creating details.
 
 OUTPUT FORMAT:
 Return a single JSON object with the following fields.
@@ -128,6 +132,7 @@ CRITICAL INSTRUCTIONS:
 4.  **Action-Oriented Steps:** The steps should read like a list of instructions or a description of the process from start to finish.
 5.  **Identify Business Logic:** Explicitly list any constraints or conditions identified from the user's actions (e.g., 'All leads must have a valid phone number to be qualified').
 6.  **Concrete, Goal-Oriented Title:** The title must be concrete, factual, and describe a specific business goal. For example, a bad title is "Refactoring and Debugging Rust Code with an AI Assistant" (too generic). A good title would be "Refactor Serialization Logic in a Rust Application to Prevent Data Loss."
+Base all inputs, outputs, and business logic strictly on observable actions from the events - if details are unclear, explicitly state 'insufficient data' rather than inferring.
 
 OUTPUT FORMAT:
 Return a single JSON object with a single key, "workflows". The value should be an array of workflow objects. Each object must have the following structure:
@@ -191,6 +196,7 @@ CRITICAL INSTRUCTIONS:
 3.  **Define Terminator:** Describe the specific event that marks the completion or end of the workflow.
 4.  **Return Structured JSON:** Your entire output must be a single JSON object with two keys: "trigger" (a string describing the start) and "terminator" (a string describing the end).
 5.  **Factual Inputs & Outputs:** Inputs and outputs must be factual and concrete, material items. 
+Base trigger and terminator descriptions only on actual events provided - if boundaries are unclear, state 'boundary not clearly defined in data'.
 
 For example: 
 ❌ BAD input: "A need to refactor data structures" (a need is not an input). 
@@ -214,6 +220,7 @@ CRITICAL INSTRUCTIONS:
 - The JSON object must have keys: "user_job_role", "project_name", "user_goal_from_recordings", "overall_project_goal", "overall_project_description".
 - Base "user_job_role", "project_name", and "user_goal_from_recordings" *only* on the provided 'events'.
 - For "overall_project_goal" and "overall_project_description", you must infer the high-level, long-term purpose. Think about the company, the larger project, and what the user is trying to achieve beyond the scope of the immediate recordings.
+If job role, project name, or goals cannot be clearly determined from the events, use 'Not evident from recordings' rather than making assumptions.
 
 EXAMPLE:
 - Input Events: [Events showing coding in Rust, running tests, and debugging serialization issues for a data pipeline.]
@@ -241,6 +248,7 @@ REASONING PROCESS:
     - Given the draft context (especially the 'overall_project_goal' and 'user_goal_from_recordings'), critically evaluate the 'workflow_names'.
     - Do they align with the project goals? Are they at the right level of abstraction?
     - Refine the list of workflow names based on this top-down view. Merge, split, or rephrase them to better reflect distinct business processes.
+When refining context or workflows, only use information clearly supported by the events - mark uncertain fields as 'Requires additional data' if not evident.
 
 2.  **Bottom-Up Analysis (Events -> Context):**
     - Now, look again at the raw 'events' and your newly refined list of workflow names.
