@@ -49,6 +49,8 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { diffLines } from 'diff';
+import { preprocessTree } from '@/lib/diff';
 
 type ContextForAnalysis = {
   screenshotBefore?: string | null;
@@ -58,7 +60,7 @@ type ContextForAnalysis = {
   currentUiTree_structure?: string;
   eventsSincePreviousUiTreeByTimestamp?: string[];
   eventsSincePreviousUiTreeBySameWindow?: string[];
-  uiTreeDiff?: string;
+  uiTreeDiffLatestVsPreviousForTheSameWindow?: string;
   previousAnalyses?: PreviousAnalysis[];
 };
 
@@ -544,6 +546,25 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       context.currentUiTree = generateSimplifiedUiTreeString(currentUiTree);
     }
     
+    if (contextConfig.includeUiTreeDiff && currentUiTree && previousSameWindowUiTree) {
+      const oldStr = preprocessTree(previousSameWindowUiTree);
+      const newStr = preprocessTree(currentUiTree);
+      const differences = diffLines(oldStr, newStr);
+      
+      const changedLines = differences
+        .filter(part => part.added || part.removed)
+        .map(part => {
+          const prefix = part.added ? '+' : '-';
+          // Add prefix to each line of the change
+          return part.value.split('\n').filter(line => line.length > 0).map(line => `${prefix} ${line}`).join('\n');
+        })
+        .join('\n');
+
+      if (changedLines.length > 0) {
+        context.uiTreeDiffLatestVsPreviousForTheSameWindow = changedLines;
+      }
+    }
+
     if (contextConfig.includeEventsSincePreviousUiTree && eventsBetweenByTimestamp.length > 0) {
       context.eventsSincePreviousUiTreeByTimestamp = eventsBetweenByTimestamp.map(event => generateEventSummaryString(event));
     }
@@ -567,6 +588,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     eventsBetweenSameWindow,
     previousAnalyses,
     contextConfig,
+    previousSameWindowUiTree,
   ]);
 
   useEffect(() => {
