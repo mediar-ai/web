@@ -191,11 +191,11 @@ export default function AdminPage() {
         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
           <tr>
             <th scope="col" className="px-1 py-2 w-[30%]">User</th>
-            <th scope="col" className="px-1 py-2">Sessions</th>
-            <th scope="col" className="px-1 py-2">Type</th>
+            <th scope="col" className="px-1 py-2">SS</th>
+            <th scope="col" className="px-1 py-2" style={{ minWidth: '90px' }}>Type</th>
             <th scope="col" className="px-1 py-2">EVENTS</th>
             <th scope="col" className="px-1 py-2">STEPS (PROCESSED)</th>
-            <th scope="col" className="px-1 py-2">HUMAN ANNOTATION</th>
+            <th scope="col" className="px-1 py-2">ANNOT.</th>
             <th scope="col" className="px-1 py-2">WORKFLOW (DISTINCT)</th>
             <th scope="col" className="px-1 py-2">Duration</th>
             <th scope="col" className="px-1 py-2" style={{ minWidth: '180px' }}>Last Active</th>
@@ -328,7 +328,7 @@ export default function AdminPage() {
                               <th scope="col" className="px-1 py-1">Type</th>
                               <th scope="col" className="px-1 py-1">EVENTS</th>
                               <th scope="col" className="px-1 py-1">STEPS (PROCESSED)</th>
-                              <th scope="col" className="px-1 py-1">HUMAN ANNOTATION</th>
+                              <th scope="col" className="px-1 py-1">ANNOT.</th>
                               <th scope="col" className="px-1 py-1">WORKFLOW (DISTINCT)</th>
                               <th scope="col" className="px-1 py-1">Duration</th>
                               <th scope="col" className="px-1 py-1">Status</th>
