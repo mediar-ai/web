@@ -137,7 +137,7 @@ export default function AdminPage() {
   if (loading) {
     return (
       <div className="container mx-auto py-4">
-        <h1 className="text-xl font-bold mb-3">Admin Dashboard</h1>
+        <h1 className="text-xl font-bold mb-3">Example Team</h1>
         <div>Loading sessions...</div>
       </div>
     );
@@ -146,7 +146,7 @@ export default function AdminPage() {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
       <div className="flex justify-between items-center mb-3">
-        <h1 className="text-xl font-bold">Admin Dashboard</h1>
+        <h1 className="text-xl font-bold">Example Team</h1>
         <div className="flex items-center gap-2">
           <Button 
             variant="outline" 

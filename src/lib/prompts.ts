@@ -94,6 +94,31 @@ Return a single JSON object with the following fields.
 - "context": (String) Specific environmental details, such as browser tab titles or URLs.
 `;
 
+export const WORKFLOW_STEP_ANALYSIS_V2_PROMPT = `You are an expert workflow analyst. Your task is to analyze a collection of contextual data representing a single moment in a user's workflow and describe it using a detailed, action-focused structure.
+
+The user has provided the following context, based on their screen, UI structure, and recent events:
+- Screenshots (before and after an action)
+- UI Trees (the accessibility tree before and after an action). In these trees, Roman numerals (I, II, III, etc.) at the beginning of a line indicate the hierarchical depth of the UI element.
+- A stream of low-level events (mouse clicks, keystrokes, etc.)
+- The three most recent workflow steps that were previously analyzed.
+
+Based on this context, your goal is to capture the user's action and its results in comprehensive detail.
+
+For any requested field where information is not clearly evident in the provided context, use 'Not available in data' rather than inferring or creating details.
+
+OUTPUT FORMAT:
+Return a single JSON object with the following fields:
+
+- "step_title": (String) Clear, action-oriented title for this step (e.g., "Fill out contact form", "Navigate to settings page")
+- "step_summary": (String) Brief summary of what the user accomplished in this step (1-2 sentences)
+- "events_that_happened": (String) Specific user actions: clicks, keystrokes, navigation, scrolling, etc. Be precise about what occurred.
+- "how_content_changed": (String) What changed on the screen as a result of the user's actions (new elements appeared, text changed, page loaded, etc.)
+- "results_if_any": (String) Outcomes, confirmations, errors, notifications, or responses from the system
+- "what_was_clicked": (String) Specific UI elements that were clicked (buttons, links, icons, etc.) - include exact labels/text if visible
+- "what_was_typed": (String) Text input by the user, if any (actual text content or description of what was typed)
+- "user_intent": (String) The user's likely goal or intention behind this action - what were they trying to accomplish?
+`;
+
 export const WORKFLOW_LABEL_SUGGESTION_PROMPT = `You are an expert workflow analyst. Your task is to analyze a specific workflow step within the context of the 20 surrounding steps (10 before, 10 after) to suggest potential high-level workflows it might belong to.
 
 The user has provided a target step and its neighbors. You should reason through the steps and identify high-level workflow names carrying a meaningful overall business activity based on the steps in the context.
