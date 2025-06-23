@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect, use } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Pencil, Clipboard, Check, RefreshCw, ArrowLeft } from 'lucide-react';
+import { Pencil, Clipboard, Check, RefreshCw } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePathname, useRouter } from 'next/navigation';
 import { UserProvider, useUser } from '@/context/UserContext';
@@ -81,9 +81,6 @@ const UserLayoutContent = ({
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
               <div className="flex items-center">
-                <Button variant="ghost" size="icon" onClick={() => router.push('/internal-dashboard-9a8f7e6d')}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
                 <Button variant="ghost" size="icon" onClick={fetchUserName} disabled={isLoading}>
                   <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                 </Button>
