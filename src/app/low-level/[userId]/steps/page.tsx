@@ -51,6 +51,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { diffLines } from 'diff';
 import { preprocessTree } from '@/lib/diff';
+import { FlattenedWorkflowAnalysis } from '@/types';
 
 type ContextForAnalysis = {
   screenshotBefore?: string | null;
@@ -64,19 +65,8 @@ type ContextForAnalysis = {
   previousAnalyses?: PreviousAnalysis[];
 };
 
-type WorkflowStepAnalysis = {
-  id: string; // Corresponds to the database primary key
-  workflow: string;
-  step: string;
-  description: string;
-  facts: string;
-  logic: string;
-  tech: string;
-  apps: string;
-  context: string;
-  client_timestamp: string;
-  created_at: string;
-};
+// Use the flattened type for backward compatibility in the UI
+type WorkflowStepAnalysis = FlattenedWorkflowAnalysis;
 
 type PreviousAnalysis = WorkflowStepAnalysis;
 
@@ -274,6 +264,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         throw new Error('Failed to fetch workflow analyses');
       }
       const data = await response.json();
+      // The API now returns flattened analyses for backward compatibility
       const analyses: WorkflowStepAnalysis[] = data.analyses || [];
       setAllWorkflowAnalyses(analyses);
     } catch (err) {
@@ -498,34 +489,128 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       });
   }, [allEvents, previousSameWindowUiTreeEvent, selectedEvent]);
 
+  // Screenshot for "previous ui-tree by timestamp"
+  const relevantScreenshotDiffPrevious = useMemo(() => {
+      if (!previousUiTreeEvent) return null;
+      const targetTimestamp = new Date(getEventTimestamp(previousUiTreeEvent)).getTime();
+      
+      // Time bounds: 2 seconds before, 1 second after
+      const beforeBound = targetTimestamp - (2 * 1000); // 2 seconds before
+      const afterBound = targetTimestamp + (1 * 1000);  // 1 second after
+      
+      // Find screenshot_diff events within time bounds
+      const candidateEvents = allEvents.filter(event => {
+          if ((event.payload as StepsPageEventPayload).payload?.type !== 'screenshot_diff') return false;
+          const afterTimestamp = event.payload.payload?.event?.screenshot_diff?.after_timestamp;
+          if (!afterTimestamp) return false;
+          
+          const afterTime = new Date(afterTimestamp).getTime();
+          return afterTime >= beforeBound && afterTime <= afterBound;
+      });
+      
+      // Find the one with after_timestamp closest to the UI tree timestamp
+      let closestEvent = null;
+      let smallestTimeDiff = Infinity;
+      
+      for (const event of candidateEvents) {
+          const afterTimestamp = event.payload.payload?.event?.screenshot_diff?.after_timestamp;
+          if (afterTimestamp) {
+              const afterTime = new Date(afterTimestamp).getTime();
+              const timeDiff = Math.abs(afterTime - targetTimestamp);
+              if (timeDiff < smallestTimeDiff) {
+                  smallestTimeDiff = timeDiff;
+                  closestEvent = event;
+              }
+          }
+      }
+      
+      return closestEvent;
+  }, [allEvents, previousUiTreeEvent]);
+
+  // Screenshot for "latest ui-tree"
   const relevantScreenshotDiff = useMemo(() => {
-      if (!previousUiTreeEvent || !selectedEvent) return null;
-      const prevTimestamp = new Date(getEventTimestamp(previousUiTreeEvent)).getTime();
+      if (!selectedEvent) return null;
       const currentTimestamp = new Date(getEventTimestamp(selectedEvent)).getTime();
-      return allEvents.find(event => {
+      
+      // Time bounds: 2 seconds before, 1 second after
+      const beforeBound = currentTimestamp - (2 * 1000); // 2 seconds before
+      const afterBound = currentTimestamp + (1 * 1000);  // 1 second after
+      
+      // Find screenshot_diff events within time bounds
+      const candidateEvents = allEvents.filter(event => {
           if ((event.payload as StepsPageEventPayload).payload?.type !== 'screenshot_diff') return false;
-          const diffTimestamp = new Date(getEventTimestamp(event)).getTime();
-          return diffTimestamp > prevTimestamp && diffTimestamp < currentTimestamp;
+          const afterTimestamp = event.payload.payload?.event?.screenshot_diff?.after_timestamp;
+          if (!afterTimestamp) return false;
+          
+          const afterTime = new Date(afterTimestamp).getTime();
+          return afterTime >= beforeBound && afterTime <= afterBound;
       });
-  }, [allEvents, previousUiTreeEvent, selectedEvent]);
+      
+      // Find the one with after_timestamp closest to the UI tree timestamp
+      let closestEvent = null;
+      let smallestTimeDiff = Infinity;
+      
+      for (const event of candidateEvents) {
+          const afterTimestamp = event.payload.payload?.event?.screenshot_diff?.after_timestamp;
+          if (afterTimestamp) {
+              const afterTime = new Date(afterTimestamp).getTime();
+              const timeDiff = Math.abs(afterTime - currentTimestamp);
+              if (timeDiff < smallestTimeDiff) {
+                  smallestTimeDiff = timeDiff;
+                  closestEvent = event;
+              }
+          }
+      }
+      
+      return closestEvent;
+  }, [allEvents, selectedEvent]);
 
-  const beforeScreenshotDataUrl = useMemo(() => relevantScreenshotDiff?.payload.payload?.event?.screenshot_diff?.before || null, [relevantScreenshotDiff]);
+  const beforeScreenshotDataUrl = useMemo(() => relevantScreenshotDiffPrevious?.payload.payload?.event?.screenshot_diff?.after || null, [relevantScreenshotDiffPrevious]);
+  const beforeScreenshotTimestamp = useMemo(() => relevantScreenshotDiffPrevious?.payload.payload?.event?.screenshot_diff?.after_timestamp || null, [relevantScreenshotDiffPrevious]);
+  
   const afterScreenshotDataUrl = useMemo(() => relevantScreenshotDiff?.payload.payload?.event?.screenshot_diff?.after || null, [relevantScreenshotDiff]);
-  const beforeScreenshotTimestamp = useMemo(() => relevantScreenshotDiff?.payload.payload?.event?.screenshot_diff?.before_timestamp || null, [relevantScreenshotDiff]);
+  const afterScreenshotTimestamp = useMemo(() => relevantScreenshotDiff?.payload.payload?.event?.screenshot_diff?.after_timestamp || null, [relevantScreenshotDiff]);
 
+  // Screenshot for "previous ui-tree of the same window"
   const relevantScreenshotDiffSameWindow = useMemo(() => {
-      if (!previousSameWindowUiTreeEvent || !selectedEvent) return null;
-      const prevTimestamp = new Date(getEventTimestamp(previousSameWindowUiTreeEvent)).getTime();
-      const currentTimestamp = new Date(getEventTimestamp(selectedEvent)).getTime();
-      return allEvents.find(event => {
+      if (!previousSameWindowUiTreeEvent) return null;
+      const targetTimestamp = new Date(getEventTimestamp(previousSameWindowUiTreeEvent)).getTime();
+      
+      // Time bounds: 2 seconds before, 1 second after
+      const beforeBound = targetTimestamp - (2 * 1000); // 2 seconds before
+      const afterBound = targetTimestamp + (1 * 1000);  // 1 second after
+      
+      // Find screenshot_diff events within time bounds
+      const candidateEvents = allEvents.filter(event => {
           if ((event.payload as StepsPageEventPayload).payload?.type !== 'screenshot_diff') return false;
-          const diffTimestamp = new Date(getEventTimestamp(event)).getTime();
-          return diffTimestamp > prevTimestamp && diffTimestamp < currentTimestamp;
+          const afterTimestamp = event.payload.payload?.event?.screenshot_diff?.after_timestamp;
+          if (!afterTimestamp) return false;
+          
+          const afterTime = new Date(afterTimestamp).getTime();
+          return afterTime >= beforeBound && afterTime <= afterBound;
       });
-  }, [allEvents, previousSameWindowUiTreeEvent, selectedEvent]);
+      
+      // Find the one with after_timestamp closest to the UI tree timestamp
+      let closestEvent = null;
+      let smallestTimeDiff = Infinity;
+      
+      for (const event of candidateEvents) {
+          const afterTimestamp = event.payload.payload?.event?.screenshot_diff?.after_timestamp;
+          if (afterTimestamp) {
+              const afterTime = new Date(afterTimestamp).getTime();
+              const timeDiff = Math.abs(afterTime - targetTimestamp);
+              if (timeDiff < smallestTimeDiff) {
+                  smallestTimeDiff = timeDiff;
+                  closestEvent = event;
+              }
+          }
+      }
+      
+      return closestEvent;
+  }, [allEvents, previousSameWindowUiTreeEvent]);
 
-  const beforeScreenshotDataUrlSameWindow = useMemo(() => relevantScreenshotDiffSameWindow?.payload.payload?.event?.screenshot_diff?.before || null, [relevantScreenshotDiffSameWindow]);
-  const beforeScreenshotTimestampSameWindow = useMemo(() => relevantScreenshotDiffSameWindow?.payload.payload?.event?.screenshot_diff?.before_timestamp || null, [relevantScreenshotDiffSameWindow]);
+  const beforeScreenshotDataUrlSameWindow = useMemo(() => relevantScreenshotDiffSameWindow?.payload.payload?.event?.screenshot_diff?.after || null, [relevantScreenshotDiffSameWindow]);
+  const beforeScreenshotTimestampSameWindow = useMemo(() => relevantScreenshotDiffSameWindow?.payload.payload?.event?.screenshot_diff?.after_timestamp || null, [relevantScreenshotDiffSameWindow]);
 
   const llmContext = useMemo((): ContextForAnalysis => {
     if (!selectedEvent) {
@@ -772,12 +857,27 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                           <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree by timestamp)</AccordionTrigger>
                         </div>
                         <AccordionContent>
-                          {beforeScreenshotTimestamp ? (
-                            <p className="text-xs text-muted-foreground mb-1">{new Date(beforeScreenshotTimestamp).toLocaleString()}</p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground mb-1">(Timestamp not available)</p>
-                          )}
-                          <ScreenshotView dataUrl={beforeScreenshotDataUrl} />
+                          <div className="text-xs text-muted-foreground mb-1">
+                            {previousUiTreeEvent ? (
+                              <p><strong>UI Tree:</strong> {new Date(previousUiTreeEvent.created_at).toLocaleString()}</p>
+                            ) : (
+                              <p><strong>UI Tree:</strong> (Not available)</p>
+                            )}
+                            {beforeScreenshotTimestamp ? (
+                              <p><strong>Screenshot:</strong> {new Date(beforeScreenshotTimestamp).toLocaleString()}</p>
+                            ) : (
+                              <p><strong>Screenshot:</strong> (Not available)</p>
+                            )}
+                          </div>
+                          <ScreenshotView 
+                            dataUrl={beforeScreenshotDataUrl} 
+                            storageConfig={relevantScreenshotDiffPrevious ? {
+                              userId,
+                              sessionId: relevantScreenshotDiffPrevious.session_id,
+                              eventId: relevantScreenshotDiffPrevious.id,
+                              type: 'after'
+                            } : undefined}
+                          />
                         </AccordionContent>
                       </AccordionItem>
                       <AccordionItem value="sub-item-prev-screenshot-same-window">
@@ -786,12 +886,27 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                           <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of previous ui-tree of the same window)</AccordionTrigger>
                         </div>
                         <AccordionContent>
-                          {beforeScreenshotTimestampSameWindow ? (
-                            <p className="text-xs text-muted-foreground mb-1">{new Date(beforeScreenshotTimestampSameWindow).toLocaleString()}</p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground mb-1">(Timestamp not available)</p>
-                          )}
-                          <ScreenshotView dataUrl={beforeScreenshotDataUrlSameWindow} />
+                          <div className="text-xs text-muted-foreground mb-1">
+                            {previousSameWindowUiTreeEvent ? (
+                              <p><strong>UI Tree:</strong> {new Date(previousSameWindowUiTreeEvent.created_at).toLocaleString()}</p>
+                            ) : (
+                              <p><strong>UI Tree:</strong> (Not available)</p>
+                            )}
+                            {beforeScreenshotTimestampSameWindow ? (
+                              <p><strong>Screenshot:</strong> {new Date(beforeScreenshotTimestampSameWindow).toLocaleString()}</p>
+                            ) : (
+                              <p><strong>Screenshot:</strong> (Not available)</p>
+                            )}
+                          </div>
+                          <ScreenshotView 
+                            dataUrl={beforeScreenshotDataUrlSameWindow} 
+                            storageConfig={relevantScreenshotDiffSameWindow ? {
+                              userId,
+                              sessionId: relevantScreenshotDiffSameWindow.session_id,
+                              eventId: relevantScreenshotDiffSameWindow.id,
+                              type: 'after'
+                            } : undefined}
+                          />
                         </AccordionContent>
                       </AccordionItem>
                       <AccordionItem value="sub-item-5">
@@ -800,10 +915,27 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                           <AccordionTrigger className="text-sm font-semibold flex-1">Screenshot (at the time of the latest ui-tree)</AccordionTrigger>
                         </div>
                         <AccordionContent>
-                          {afterScreenshotDataUrl && selectedEvent && (
-                            <p className="text-xs text-muted-foreground mb-1">{new Date(selectedEvent.created_at).toLocaleString()}</p>
-                          )}
-                          <ScreenshotView dataUrl={afterScreenshotDataUrl} />
+                          <div className="text-xs text-muted-foreground mb-1">
+                            {selectedEvent ? (
+                              <p><strong>UI Tree:</strong> {new Date(selectedEvent.created_at).toLocaleString()}</p>
+                            ) : (
+                              <p><strong>UI Tree:</strong> (Not available)</p>
+                            )}
+                            {afterScreenshotTimestamp ? (
+                              <p><strong>Screenshot:</strong> {new Date(afterScreenshotTimestamp).toLocaleString()}</p>
+                            ) : (
+                              <p><strong>Screenshot:</strong> (Not available)</p>
+                            )}
+                          </div>
+                          <ScreenshotView 
+                            dataUrl={afterScreenshotDataUrl} 
+                            storageConfig={relevantScreenshotDiff ? {
+                              userId,
+                              sessionId: relevantScreenshotDiff.session_id,
+                              eventId: relevantScreenshotDiff.id,
+                              type: 'after'
+                            } : undefined}
+                          />
                         </AccordionContent>
                       </AccordionItem>
                     </Accordion>

@@ -72,19 +72,10 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
-type WorkflowStepAnalysis = {
-  id: string; 
-  workflow: string;
-  step: string;
-  description: string;
-  facts: string;
-  logic: string;
-  tech: string;
-  apps: string;
-  context: string;
-  client_timestamp: string;
-  created_at: string;
-};
+import { FlattenedWorkflowAnalysis } from '@/types';
+
+// Use the flattened type for backward compatibility
+type WorkflowStepAnalysis = FlattenedWorkflowAnalysis;
 
 type TableData = {
   id: string;
@@ -489,24 +480,46 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
       return allWorkflowAnalyses.find(a => Math.abs(new Date(a.client_timestamp).getTime() - eventTime) < 1000) || null;
   }, [selectedEvent, allWorkflowAnalyses]);
 
-  const previousUiTreeEvent = useMemo(() => {
-    if (!selectedEvent || uiTreeEvents.length < 2) return null;
-    const currentIndex = uiTreeEvents.findIndex(e => e.id === selectedEvent.id);
-    return currentIndex > 0 ? uiTreeEvents[currentIndex - 1] : null;
-  }, [selectedEvent, uiTreeEvents]);
+
 
   const relevantScreenshotDiff = useMemo(() => {
-    if (!previousUiTreeEvent || !selectedEvent) return null;
-    const prevTimestamp = new Date(previousUiTreeEvent.created_at).getTime();
-    const currentTimestamp = new Date(selectedEvent.created_at).getTime();
-    return allEvents.find(event => {
-      if (event.payload.payload?.type !== 'screenshot_diff') return false;
-      const diffTimestamp = new Date(event.created_at).getTime();
-      return diffTimestamp > prevTimestamp && diffTimestamp < currentTimestamp;
-      });
-  }, [allEvents, previousUiTreeEvent, selectedEvent]);
+    if (!selectedEvent) return null;
+    const targetTimestamp = new Date(getEventTimestamp(selectedEvent)).getTime();
+    
+    // Time bounds: 2 seconds before, 1 second after
+    const beforeBound = targetTimestamp - (2 * 1000); // 2 seconds before
+    const afterBound = targetTimestamp + (1 * 1000);  // 1 second after
+    
+    // Find screenshot_diff events within time bounds
+    const candidateEvents = allEvents.filter(event => {
+        if (event.payload.payload?.type !== 'screenshot_diff') return false;
+        const afterTimestamp = event.payload.payload?.event?.screenshot_diff?.after_timestamp;
+        if (!afterTimestamp) return false;
+        
+        const afterTime = new Date(afterTimestamp).getTime();
+        return afterTime >= beforeBound && afterTime <= afterBound;
+    });
+    
+    // Find the one with after_timestamp closest to the UI tree timestamp
+    let closestEvent = null;
+    let smallestTimeDiff = Infinity;
+    
+    for (const event of candidateEvents) {
+        const afterTimestamp = event.payload.payload?.event?.screenshot_diff?.after_timestamp;
+        if (afterTimestamp) {
+            const afterTime = new Date(afterTimestamp).getTime();
+            const timeDiff = Math.abs(afterTime - targetTimestamp);
+            if (timeDiff < smallestTimeDiff) {
+                smallestTimeDiff = timeDiff;
+                closestEvent = event;
+            }
+        }
+    }
+    
+    return closestEvent;
+  }, [allEvents, selectedEvent]);
   
-  const beforeScreenshotDataUrl = relevantScreenshotDiff?.payload.payload?.event.screenshot_diff?.before || null;
+  const afterScreenshotDataUrl = relevantScreenshotDiff?.payload.payload?.event.screenshot_diff?.after || null;
 
   const handleOutputChange = (analysisId: string, newOutput: string) => {
     setWorkflowEvents(prev => ({
@@ -753,7 +766,16 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
         ) : (
             <>
                 <div className="relative">
-                    {!isScreenshotCollapsed && <ScreenshotView dataUrl={beforeScreenshotDataUrl} onWheel={handleScreenshotWheelScroll} />}
+                    {!isScreenshotCollapsed && <ScreenshotView 
+                      dataUrl={afterScreenshotDataUrl} 
+                      onWheel={handleScreenshotWheelScroll}
+                      storageConfig={relevantScreenshotDiff ? {
+                        userId,
+                        sessionId: relevantScreenshotDiff.session_id,
+                        eventId: relevantScreenshotDiff.id,
+                        type: 'after'
+                      } : undefined}
+                    />}
                     <Button 
                         variant="outline" 
                         size="icon" 
