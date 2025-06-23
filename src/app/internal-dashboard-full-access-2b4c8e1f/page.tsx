@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { type UserSessionData } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { useDebouncedCallback } from 'use-debounce';
@@ -18,7 +19,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Input } from '@/components/ui/input';
 
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
@@ -36,18 +36,34 @@ const formatDuration = (seconds: number | null | undefined): string => {
   return result.trim();
 };
 
-const ALLOWED_USERS = [
-  '29303245-5cbb-671e-2930-32455cbb671e',
-  'c4cc0b1a-4e8b-e98c-c4cc-0b1a4e8be98c'
-];
-
 export default function AdminPage() {
+  // Enhanced admin features only for specific users
+  const ENHANCED_ADMIN_USERS = [
+    '29303245-5cbb-671e-2930-32455cbb671e',
+    'c4cc0b1a-4e8b-e98c-c4cc-0b1a4e8be98c'
+  ];
+  
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [userNameInput, setUserNameInput] = useState('');
+  const [filter, setFilter] = useState('');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [userToDelete, setUserToDelete] = useState<{id: string, name: string} | null>(null);
+
+  // Check if current user has enhanced admin privileges
+  const hasEnhancedAccess = currentUserId && ENHANCED_ADMIN_USERS.includes(currentUserId);
+
+  useEffect(() => {
+    // Get user ID from localStorage or URL parameter
+    const storedUserId = localStorage.getItem('user_id');
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlUserId = urlParams.get('userId');
+    
+    const userId = urlUserId || storedUserId;
+    setCurrentUserId(userId);
+  }, []);
 
   const toggleUserExpansion = (userId: string) => {
     setExpandedUsers(prev => {
@@ -137,7 +153,7 @@ export default function AdminPage() {
   if (loading) {
     return (
       <div className="container mx-auto py-4">
-        <h1 className="text-xl font-bold mb-3">Admin Dashboard</h1>
+        <h1 className="text-xl font-bold mb-3">Admin - All Users</h1>
         <div>Loading sessions...</div>
       </div>
     );
@@ -146,8 +162,13 @@ export default function AdminPage() {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
       <div className="flex justify-between items-center mb-3">
-        <h1 className="text-xl font-bold">Admin Dashboard</h1>
+        <h1 className="text-xl font-bold">All Users</h1>
         <div className="flex items-center gap-2">
+          {hasEnhancedAccess && (
+            <span className="text-xs text-green-600 font-semibold px-2 py-1 bg-green-100 rounded">
+              Enhanced Access
+            </span>
+          )}
           <Button 
             variant="outline" 
             onClick={fetchSessions}
@@ -155,6 +176,13 @@ export default function AdminPage() {
           >
             Refresh
           </Button>
+          <Input 
+            type="text"
+            placeholder="Filter by User ID or Name..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="h-8 w-48"
+          />
           <ThemeSwitcher />
         </div>
       </div>
@@ -176,7 +204,12 @@ export default function AdminPage() {
         </thead>
         <tbody>
           {Object.entries(userSessions)
-            .filter(([userId]) => ALLOWED_USERS.includes(userId))
+            .filter(([userId, userData]) => {
+              if (!userId) return false;
+              if (!filter) return true;
+              return userId.includes(filter) || 
+                (userData.name && userData.name.toLowerCase().includes(filter.toLowerCase()));
+            })
             .sort(([, aData], [, bData]) => {
               // Sort by most recent session activity
               const aLatest = Math.max(...aData.sessions.map(s => new Date(s.timestamp).getTime()));
