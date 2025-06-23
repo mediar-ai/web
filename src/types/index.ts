@@ -36,6 +36,82 @@ export interface ParsedAnalysis {
   context: string;
 }
 
+// New flexible schema types for JSONB storage
+export interface LLMStructuredOutput {
+  // Legacy v1 schema (original 8 fields)
+  workflow?: string;
+  step?: string;
+  description?: string;
+  facts?: string;
+  logic?: string;
+  tech?: string;
+  apps?: string;
+  context?: string;
+  
+  // New v2 schema (proposed 8 fields)
+  step_title?: string;
+  step_summary?: string;
+  events_that_happened?: string;
+  how_content_changed?: string;
+  results_if_any?: string;
+  what_was_clicked?: string;
+  what_was_typed?: string;
+  user_intent?: string;
+  
+  // Future extensibility
+  [key: string]: unknown;
+  
+  // Schema metadata
+  schema_version?: string;
+  model_used?: string;
+  generation_timestamp?: string;
+}
+
+// Enhanced WorkflowStepAnalysis that supports both legacy columns and JSONB
+export interface WorkflowStepAnalysisWithJSONB {
+  id: string;
+  user_id: string;
+  session_id: string;
+  client_timestamp: string;
+  created_at: string;
+  
+  // Legacy columns (for backward compatibility)
+  workflow?: string;
+  step?: string;
+  description?: string;
+  facts?: string;
+  logic?: string;
+  tech?: string;
+  apps?: string;
+  context?: string;
+  
+  // New JSONB column
+  llm_structured_output?: LLMStructuredOutput;
+}
+
+// Helper type for accessing flattened fields regardless of storage method
+export interface FlattenedWorkflowAnalysis {
+  id: string;
+  user_id: string;
+  session_id: string;
+  client_timestamp: string;
+  created_at: string;
+  
+  // Flattened access (prioritizes JSONB over legacy columns)
+  workflow: string;
+  step: string;
+  description: string;
+  facts: string;
+  logic: string;
+  tech: string;
+  apps: string;
+  context: string;
+  
+  // Additional metadata
+  schema_version?: string;
+  raw_llm_output?: LLMStructuredOutput;
+}
+
 export interface InitialFrameDumpAnalysis {
   type: 'initial_dump';
   id: string; // Frame ID, can be the same as image_id for simplicity here
