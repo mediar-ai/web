@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useDebouncedCallback } from 'use-debounce';
-import { ChevronDown, ChevronRight, ChevronUp, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +36,7 @@ export default function UserSummaryPage({
   const { userId } = use(params);
   const [userData, setUserData] = useState<UserSessionData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expandedSessions, setExpandedSessions] = useState<boolean>(false);
+  const expandedSessions = true;
   const [isEventSummaryOpen, setIsEventSummaryOpen] = useState(false);
   const [rawEvents, setRawEvents] = useState<LowLevelEvent[]>([]);
   const [sessionCount, setSessionCount] = useState<number>(0);
@@ -69,10 +69,6 @@ export default function UserSummaryPage({
     return Array.from(windows).sort();
   }, [rawEvents]);
 
-
-  const toggleSessionsExpansion = () => {
-    setExpandedSessions(prev => !prev);
-  };
 
   const toggleEventSummary = () => {
     setIsEventSummaryOpen(prev => !prev);
@@ -149,6 +145,7 @@ export default function UserSummaryPage({
   }
 
   const liveSessions = userData.sessions.filter(s => s.status === 'live').length;
+  const totalEvents = userData.sessions.reduce((sum, s) => sum + (s.eventCount || 0), 0);
   const totalUiSteps = userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
   const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
   const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
@@ -193,6 +190,7 @@ export default function UserSummaryPage({
             <th scope="col" className="px-1 py-2 w-[30%]">User</th>
             <th scope="col" className="px-1 py-2">Sessions</th>
             <th scope="col" className="px-1 py-2">Type</th>
+            <th scope="col" className="px-1 py-2">EVENTS</th>
             <th scope="col" className="px-1 py-2">STEPS (PROCESSED)</th>
             <th scope="col" className="px-1 py-2">HUMAN ANNOTATION</th>
             <th scope="col" className="px-1 py-2">WORKFLOW (DISTINCT)</th>
@@ -205,16 +203,6 @@ export default function UserSummaryPage({
             <tr className="bg-white border-b hover:bg-gray-50">
               <td className="px-1 py-1 font-medium text-gray-900 whitespace-nowrap">
                 <div className="flex items-center">
-                  <button
-                    onClick={toggleSessionsExpansion}
-                    className="mr-1 p-1 hover:bg-gray-200 rounded"
-                  >
-                    {expandedSessions ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
-                  </button>
                   <div className="flex items-center gap-2">
                     <span className="mr-2 border-b border-dotted border-gray-400">
                       {userData.name || `User ${truncateId(userId)}`}
@@ -233,6 +221,7 @@ export default function UserSummaryPage({
               </td>
               <td className="px-1 py-1">{userData.sessions.length}</td>
               <td className="px-1 py-1">{userType}</td>
+              <td className="px-1 py-1">{totalEvents}</td>
               <td className="px-1 py-1">
                 {totalProcessedEvents} / {totalUiSteps}
               </td>
@@ -243,12 +232,13 @@ export default function UserSummaryPage({
             </tr>
             {expandedSessions && (
               <tr>
-                <td colSpan={8} className="px-4 py-2 bg-gray-50">
+                <td colSpan={9} className="px-4 py-2 bg-gray-50">
                   <table className="w-full text-sm text-left">
                     <thead className="text-xs text-gray-700 uppercase bg-gray-100">
                       <tr>
                         <th scope="col" className="px-1 py-1">Session ID</th>
                         <th scope="col" className="px-1 py-1">Type</th>
+                        <th scope="col" className="px-1 py-1">EVENTS</th>
                         <th scope="col" className="px-1 py-1">STEPS (PROCESSED)</th>
                         <th scope="col" className="px-1 py-1">HUMAN ANNOTATION</th>
                         <th scope="col" className="px-1 py-1">WORKFLOW (DISTINCT)</th>
@@ -265,6 +255,7 @@ export default function UserSummaryPage({
                         <tr key={session.id} className="bg-white border-b hover:bg-gray-50">
                           <td className="px-1 py-1 font-mono text-xs">{truncateId(session.id)}</td>
                           <td className="px-1 py-1 font-semibold">{session.type}</td>
+                          <td className="px-1 py-1">{session.eventCount || 0}</td>
                           <td className="px-1 py-1">{session.processed_event_count || 0} / {session.total_ui_steps || 0}</td>
                           <td className="px-1 py-1">{session.human_labeled_steps || 0}</td>
                           <td className="px-1 py-1">{session.total_workflow_analyses || 0} ({session.distinct_workflows_created || 0})</td>

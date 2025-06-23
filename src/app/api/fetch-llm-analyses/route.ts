@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { flattenWorkflowAnalyses } from '@/lib/workflowAnalysisHelpers';
+import { WorkflowStepAnalysisWithJSONB } from '@/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -29,7 +31,13 @@ export async function GET(req: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({ analyses: data });
+    // Flatten the analyses to provide backward-compatible access
+    const flattenedAnalyses = flattenWorkflowAnalyses(data as WorkflowStepAnalysisWithJSONB[]);
+
+    return NextResponse.json({ 
+      analyses: flattenedAnalyses,
+      raw_analyses: data // Include raw data for advanced use cases
+    });
   } catch (error) {
     console.error('Error fetching LLM analyses:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';

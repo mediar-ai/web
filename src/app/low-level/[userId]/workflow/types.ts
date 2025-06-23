@@ -25,21 +25,10 @@ export type SynthesizedWorkflow = {
     businessLogic: string[];
 };
 
-export type WorkflowStepAnalysis = {
-    id: string;
-    user_id: string;
-    session_id: string;
-    workflow: string;
-    step: string;
-    description: string;
-    facts: string;
-    logic: string;
-    tech: string;
-    apps: string;
-    context: string;
-    client_timestamp: string;
-    created_at: string;
-};
+import { FlattenedWorkflowAnalysis } from '@/types';
+
+// Use the new flattened type that handles both legacy and JSONB data
+export type WorkflowStepAnalysis = FlattenedWorkflowAnalysis;
 
 export type CombinedEvent = {
     analysis: WorkflowStepAnalysis;

@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part, Schema, SchemaType } from '@google/generative-ai';
-import { ParsedAnalysis } from '@/types';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part } from '@google/generative-ai';
+import { ParsedAnalysis, LLMStructuredOutput } from '@/types';
+import { createLegacyStructuredOutput } from './workflowAnalysisHelpers';
+import { legacyAnalysisSchema, getSchemaByVersion, SchemaVersion } from './llmSchemas';
 
 type AnalysisContext = {
   previousUiTree?: string | null;
@@ -33,21 +35,6 @@ const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThresho
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
 ];
 
-const mainAnalysisSchema: Schema = {
-    type: SchemaType.OBJECT,
-    properties: {
-        workflow: { type: SchemaType.STRING, description: "Best guess of the overall workflow/process name based on what you see." },
-        step: { type: SchemaType.STRING, description: "Concise name for this specific step, 3-5 words max." },
-        description: { type: SchemaType.STRING, description: "What is happening in 10 or less words." },
-        facts: { type: SchemaType.STRING, description: "Key observable facts from the screen." },
-        logic: { type: SchemaType.STRING, description: "Business rules or logic you can infer." },
-        tech: { type: SchemaType.STRING, description: "Technical details like application, browser, etc." },
-        apps: { type: SchemaType.STRING, description: "List of applications or programs visible." },
-        context: { type: SchemaType.STRING, description: "Specific context like browser tab titles, URLs, etc." }
-    },
-    required: ['workflow', 'step', 'description', 'facts', 'logic', 'tech', 'apps', 'context']
-};
-
 const getGenAI = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -64,7 +51,7 @@ export async function generateWorkflowStepAnalysis(prompt: string, modelName: st
       model: modelName,
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: mainAnalysisSchema,
+        responseSchema: legacyAnalysisSchema,
       },
       safetySettings,
     });
@@ -116,9 +103,25 @@ export async function generateWorkflowStepAnalysis(prompt: string, modelName: st
     throw new Error('Failed to generate analysis from the model.');
 }
 
-// 4. Create the reusable save function
-export async function saveWorkflowStepAnalysis(userId: string, sessionId: string, clientTimestamp: string, analysis: ParsedAnalysis) {
+// 4. Create the reusable save function with JSONB support
+export async function saveWorkflowStepAnalysis(
+    userId: string, 
+    sessionId: string, 
+    clientTimestamp: string, 
+    analysis: ParsedAnalysis,
+    modelName?: string
+) {
     const normalizedTimestamp = new Date(clientTimestamp).toISOString();
+    
+    // Create structured output for JSONB storage
+    const structuredOutput: LLMStructuredOutput = createLegacyStructuredOutput({
+        ...analysis,
+    });
+    
+    // Add model metadata if provided
+    if (modelName) {
+        structuredOutput.model_used = modelName;
+    }
 
     const { data, error } = await supabaseAdmin
       .from('low_level_workflow_analyses')
@@ -127,6 +130,8 @@ export async function saveWorkflowStepAnalysis(userId: string, sessionId: string
           user_id: userId,
           session_id: sessionId,
           client_timestamp: normalizedTimestamp,
+          llm_structured_output: structuredOutput,
+          // Keep legacy columns for backward compatibility during transition
           ...analysis,
         },
       ]);
@@ -137,4 +142,104 @@ export async function saveWorkflowStepAnalysis(userId: string, sessionId: string
     }
 
     return data;
+}
+
+// 5. New function to save with custom structured output (for future schemas)
+export async function saveWorkflowStepAnalysisWithCustomOutput(
+    userId: string, 
+    sessionId: string, 
+    clientTimestamp: string, 
+    structuredOutput: LLMStructuredOutput
+) {
+    const normalizedTimestamp = new Date(clientTimestamp).toISOString();
+
+    const { data, error } = await supabaseAdmin
+      .from('low_level_workflow_analyses')
+      .insert([
+        {
+          user_id: userId,
+          session_id: sessionId,
+          client_timestamp: normalizedTimestamp,
+          llm_structured_output: structuredOutput,
+        },
+      ]);
+
+    if (error) {
+      console.error('Error saving LLM analysis:', error);
+      throw new Error(`Failed to save analysis to DB: ${error.message}`);
+    }
+
+    return data;
+}
+
+// 6. Enhanced analysis function with configurable schema
+export async function generateWorkflowStepAnalysisWithSchema(
+    prompt: string, 
+    modelName: string, 
+    context: AnalysisContext,
+    schemaVersion: SchemaVersion = 'v1_legacy'
+): Promise<LLMStructuredOutput> {
+    const genAI = getGenAI();
+    const schema = getSchemaByVersion(schemaVersion);
+    
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: schema,
+      },
+      safetySettings,
+    });
+
+    const contextParts: Part[] = [];
+
+    // Context construction logic (same as original)
+    if (context.screenshotBefore) {
+        const parts = context.screenshotBefore.split(';base64,');
+        if (parts.length === 2) {
+            const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
+            contextParts.push({ text: "Screenshot Before:" });
+            contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
+        }
+    }
+    if (context.screenshotAfter) {
+        const parts = context.screenshotAfter.split(';base64,');
+        if (parts.length === 2) {
+            const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
+            contextParts.push({ text: "Screenshot After:" });
+            contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
+        }
+    }
+    if (context.previousUiTree) {
+        contextParts.push({ text: `\n\nUI Tree (Before):\n${context.previousUiTree}` });
+    }
+    if (context.currentUiTree) {
+        contextParts.push({ text: `\n\nUI Tree (After):\n${context.currentUiTree}` });
+    }
+    if (context.eventsSincePreviousUiTreeByTimestamp && context.eventsSincePreviousUiTreeByTimestamp.length > 0) {
+        const eventsText = context.eventsSincePreviousUiTreeByTimestamp.join('\n');
+        contextParts.push({ text: `\n\nEvents:\n${eventsText}` });
+    }
+    if (context.previousAnalyses && context.previousAnalyses.length > 0) {
+        const analysesText = context.previousAnalyses.map((a: { created_at: string, step: string, description: string }) => `[${new Date(a.created_at).toISOString()}] ${a.step}: ${a.description}`).join('\n');
+        contextParts.push({ text: `\n\nRecent Workflow Steps:\n${analysesText}` });
+    }
+    
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }, ...contextParts] }],
+    });
+
+    const response = result.response;
+    if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const analysis = JSON.parse(response.candidates[0].content.parts[0].text) as LLMStructuredOutput;
+        
+        // Add metadata
+        analysis.schema_version = schemaVersion;
+        analysis.model_used = modelName;
+        analysis.generation_timestamp = new Date().toISOString();
+        
+        return analysis;
+    }
+    
+    throw new Error('Failed to generate analysis from the model.');
 } 
