@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 app = modal.App("screenshot-processor")
 app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests", "fastapi[standard]")
 
-# SQL to find screenshot_diff events that haven't been processed yet
+# SQL to find screenshot_diff events that haven't been processed yet (supports both Structure A and B)
 GET_UNPROCESSED_SCREENSHOTS_SQL = """
     SELECT id, user_id, session_id, created_at, payload
     FROM low_level_events 
@@ -19,8 +19,12 @@ GET_UNPROCESSED_SCREENSHOTS_SQL = """
         WHERE lps.event_id = low_level_events.id
     )
     AND (
+        -- Structure A: screenshot_diff format
         LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'after') > 5000 OR
-        LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'before') > 5000
+        LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'before') > 5000 OR
+        -- Structure B: direct screenshot format
+        LENGTH(payload->'payload'->'event'->>'screenshot_after') > 5000 OR
+        LENGTH(payload->'payload'->'event'->>'screenshot_before') > 5000
     )
     ORDER BY created_at DESC
     LIMIT %s;
@@ -48,12 +52,19 @@ def get_db_connection():
     return psycopg2.connect(conn_string)
 
 def extract_image_data(payload: Dict) -> Tuple[Optional[str], Optional[str]]:
-    """Extract before and after image data from payload"""
+    """Extract before and after image data from payload - supports both Structure A and B"""
     try:
-        screenshot_diff = payload.get('payload', {}).get('event', {}).get('screenshot_diff', {})
+        event_data = payload.get('payload', {}).get('event', {})
         
+        # Structure A: screenshot_diff object (current format)
+        screenshot_diff = event_data.get('screenshot_diff', {})
         before_data = screenshot_diff.get('before')
         after_data = screenshot_diff.get('after')
+        
+        # Structure B: direct screenshot fields (alternative format)
+        if not before_data and not after_data:
+            before_data = event_data.get('screenshot_before')
+            after_data = event_data.get('screenshot_after')
         
         # Validate that the data URLs are actually complete images
         def is_valid_image(data):
@@ -71,6 +82,11 @@ def extract_image_data(payload: Dict) -> Tuple[Optional[str], Optional[str]]:
         # Clean up the data - convert empty strings to None
         before_data = before_data if is_valid_image(before_data) else None
         after_data = after_data if is_valid_image(after_data) else None
+        
+        # Log which structure was used for debugging
+        if before_data or after_data:
+            structure_type = "A (screenshot_diff)" if screenshot_diff else "B (direct)"
+            print(f"Extracted images using Structure {structure_type}")
         
         return before_data, after_data
     except Exception as e:
@@ -310,6 +326,64 @@ def process_new_screenshot_event():
         modal.Secret.from_name("supabase-secret")
     ]
 )
+@modal.fastapi_endpoint(method="POST")
+def reprocess_structure_b_failures():
+    """Reprocess Structure B events that were marked as failures"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Find Structure B events that were marked as failed but have valid data
+        cursor.execute("""
+            SELECT lps.event_id, lle.user_id, lle.session_id, lle.created_at, lle.payload
+            FROM low_level_processed_screenshots lps 
+            JOIN low_level_events lle ON lps.event_id = lle.id
+            WHERE lps.processing_failed = true 
+            AND lps.error_message = 'No valid image data found'
+            AND (
+                LENGTH(lle.payload->'payload'->'event'->>'screenshot_after') > 5000 OR
+                LENGTH(lle.payload->'payload'->'event'->>'screenshot_before') > 5000
+            )
+            ORDER BY lle.created_at DESC
+            LIMIT 50;
+        """)
+        
+        failed_structure_b_events = cursor.fetchall()
+        
+        if not failed_structure_b_events:
+            cursor.close()
+            conn.close()
+            return {"status": "No Structure B failed events found to reprocess"}
+        
+        # Delete the failed entries so they can be reprocessed
+        event_ids = [str(event[0]) for event in failed_structure_b_events]
+        cursor.execute(f"""
+            DELETE FROM low_level_processed_screenshots 
+            WHERE event_id IN ({','.join(event_ids)})
+            AND processing_failed = true;
+        """)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        # Now process them with the updated logic
+        result = process_screenshots.remote(batch_size=50)
+        
+        return {
+            "status": "Structure B reprocessing completed",
+            "deleted_failed_entries": len(failed_structure_b_events),
+            "reprocessing_result": result
+        }
+        
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.function(
+    secrets=[
+        modal.Secret.from_name("supabase-secret")
+    ]
+)
 @modal.fastapi_endpoint(method="GET")
 def debug_environment():
     """Debug endpoint to check environment variables"""
@@ -355,8 +429,12 @@ def scheduled_screenshot_processing():
                 WHERE lps.event_id = low_level_events.id
             )
             AND (
+                -- Structure A: screenshot_diff format
                 LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'after') > 5000 OR
-                LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'before') > 5000
+                LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'before') > 5000 OR
+                -- Structure B: direct screenshot format
+                LENGTH(payload->'payload'->'event'->>'screenshot_after') > 5000 OR
+                LENGTH(payload->'payload'->'event'->>'screenshot_before') > 5000
             );
         """)
         
