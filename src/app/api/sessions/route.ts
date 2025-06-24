@@ -10,6 +10,10 @@ interface Session {
   timestamp: string;
   eventCount: number;
   processed_event_count: number;
+  total_ui_steps: number;
+  total_workflow_analyses: number;
+  distinct_workflows_created: number;
+  human_labeled_steps: number;
   status: 'live' | 'offline';
   duration_seconds?: number;
 }
@@ -52,6 +56,10 @@ export async function GET() {
         timestamp: session.last_event_timestamp,
         eventCount: session.event_count,
         processed_event_count: session.processed_event_count || 0,
+        total_ui_steps: session.total_ui_steps || 0,
+        total_workflow_analyses: session.total_workflow_analyses || 0,
+        distinct_workflows_created: session.distinct_workflows_created || 0,
+        human_labeled_steps: session.human_labeled_steps || 0,
         duration_seconds: session.duration_seconds,
         status: isLive ? 'live' : 'offline',
       };
