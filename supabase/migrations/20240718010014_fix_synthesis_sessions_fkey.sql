@@ -1,2 +1,0 @@
-ALTER TABLE public.synthesis_sessions
-DROP CONSTRAINT synthesis_sessions_user_id_fkey; 
