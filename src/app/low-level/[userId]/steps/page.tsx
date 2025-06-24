@@ -25,7 +25,7 @@ import FormattedUITree from "@/components/low-level/FormattedUITree";
 import ScreenshotView from "@/components/low-level/ScreenshotView";
 import DiffView from "@/components/low-level/DiffView";
 import { useUser } from "@/context/UserContext";
-import { RefreshCw, Expand, Minimize2, PlusSquare, MinusSquare, ChevronsDown, ChevronsUp } from "lucide-react";
+import { RefreshCw, Expand, Minimize2, PlusSquare, MinusSquare, ChevronsDown, ChevronsUp, Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -287,10 +287,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           throw new Error('Network response was not ok when fetching events');
         }
         const data = await response.json();
-        const sortedEvents = (data.events || []).sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        setAllEvents(sortedEvents);
+        // The API now provides pre-sorted, stable data. No need to sort on the client.
+        const newEvents = data.events || [];
+        setAllEvents(newEvents);
         setHasMore(data.hasMore || false);
-        setOffset(sortedEvents.length);
+        setOffset(newEvents.length);
         if (data.totalEventCount) {
           setTotalEventCount(data.totalEventCount);
         }
@@ -348,11 +349,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         throw new Error('Network response was not ok when fetching more events');
       }
       const data = await response.json();
-      const sortedEvents = (data.events || []).sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      // The API now provides pre-sorted, stable data. No need to sort on the client.
+      const newEvents = data.events || [];
       
-      setAllEvents(prevEvents => [...prevEvents, ...sortedEvents]);
+      setAllEvents(prevEvents => [...prevEvents, ...newEvents]);
       setHasMore(data.hasMore || false);
-      setOffset(prevOffset => prevOffset + sortedEvents.length);
+      setOffset(prevOffset => prevOffset + newEvents.length);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -714,6 +716,45 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     loadMoreEvents(amount);
     setIsLoadMoreModalOpen(false);
   };
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingError, setProcessingError] = useState<string | null>(null);
+
+  const handleProcessStep = useCallback(async () => {
+    if (!selectedEvent || !userId) return;
+
+    setIsProcessing(true);
+    setProcessingError(null);
+
+    try {
+      const response = await fetch('/api/ui/process-step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userId,
+          sessionId: selectedEvent.session_id,
+          clientTimestamp: getEventTimestamp(selectedEvent),
+          context: llmContext,
+          model: selectedModel,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || 'Failed to process step');
+      }
+
+      // After successful processing, refresh all analyses to get the new one.
+      await fetchAllWorkflowAnalyses();
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error("Failed to process step:", errorMessage);
+      setProcessingError(errorMessage);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [selectedEvent, userId, llmContext, selectedModel, fetchAllWorkflowAnalyses]);
 
   if (error) {
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
@@ -1194,9 +1235,26 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                     </DropdownMenuRadioGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                <Button 
+                  onClick={handleProcessStep} 
+                  disabled={isProcessing}
+                  size="sm"
+                >
+                  {isProcessing ? (
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Pencil className="mr-2 h-4 w-4" />
+                  )}
+                  {existingAnalysisForSelectedEvent ? 'Re-Process' : 'Process'}
+                </Button>
               </div>
             </div>
             <AccordionContent>
+              {processingError && (
+                <div className="p-2 my-2 text-xs text-red-700 bg-red-100 border border-red-200 rounded-md">
+                  <strong>Error:</strong> {processingError}
+                </div>
+              )}
               {existingAnalysisForSelectedEvent ? (
                 <div className="space-y-2 p-2">
                   <AnalysisDisplay analysis={existingAnalysisForSelectedEvent} format="detailed" showMetadata={true} />

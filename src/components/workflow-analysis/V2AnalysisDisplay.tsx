@@ -62,18 +62,6 @@ export function V2AnalysisDisplay({ analysis, format = 'compact' }: V2AnalysisDi
         {renderField('Content Changes', fields.changes)}
         {renderField('Results', fields.results)}
       </div>
-
-      {/* Legacy Context (if available) */}
-      {(fields.tech !== 'Not available in V2 schema' || 
-        fields.apps !== 'Not available in V2 schema' || 
-        fields.context !== 'Not available in V2 schema') && (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-muted-foreground">Additional Context</h4>
-          {fields.tech !== 'Not available in V2 schema' && renderField('Tech', fields.tech)}
-          {fields.apps !== 'Not available in V2 schema' && renderField('Apps', fields.apps)}
-          {fields.context !== 'Not available in V2 schema' && renderField('Context', fields.context)}
-        </div>
-      )}
     </div>
   );
 

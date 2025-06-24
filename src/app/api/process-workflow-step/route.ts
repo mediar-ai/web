@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, SchemaType, Schema } from "@google/generative-ai";
-import { WORKFLOW_STEP_ANALYSIS_V2_PROMPT } from '@/lib/prompts';
+import * as prompts from '@/lib/prompts'; // Import all prompts from the library
 import { LLMStructuredOutput } from '@/types';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -27,16 +27,28 @@ const mainAnalysisSchema: Schema = {
     required: ['step_title', 'step_summary', 'events_that_happened', 'how_content_changed', 'results_if_any', 'what_was_clicked', 'what_was_typed', 'user_intent']
 };
 
+// Create a map of prompt keys to their actual content
+const promptLibrary: { [key: string]: string } = {
+  'WORKFLOW_STEP_ANALYSIS_V2_PROMPT': prompts.WORKFLOW_STEP_ANALYSIS_V2_PROMPT,
+  // Add other prompts here in the future, e.g.:
+  // 'SUMMARIZE_SESSION_PROMPT': prompts.SUMMARIZE_SESSION_PROMPT,
+};
+
 export async function POST(req: NextRequest) {
     try {
-        const { prompt, model, context } = await req.json();
+        // The 'prompt' field is now treated as a key
+        const { prompt: promptKey, model, context } = await req.json();
 
-        if (!prompt || !model || !context) {
+        if (!promptKey || !model || !context) {
             return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
         }
 
-        // Use the v2 prompt instead of the passed prompt
-        const actualPrompt = WORKFLOW_STEP_ANALYSIS_V2_PROMPT;
+        // Look up the prompt from our server-side library using the key
+        const actualPrompt = promptLibrary[promptKey];
+
+        if (!actualPrompt) {
+            return NextResponse.json({ error: `Invalid prompt key provided: ${promptKey}` }, { status: 400 });
+        }
 
         const genModel = genAI.getGenerativeModel({ 
             model,

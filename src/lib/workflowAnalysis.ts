@@ -62,7 +62,7 @@ export async function generateWorkflowStepAnalysis(prompt: string, modelName: st
 
     const contextParts: Part[] = [];
 
-    // This context construction logic is copied directly from the original route
+    // This is the fully restored context construction logic.
     if (context.screenshotBefore) {
         const parts = context.screenshotBefore.split(';base64,');
         if (parts.length === 2) {
@@ -87,7 +87,7 @@ export async function generateWorkflowStepAnalysis(prompt: string, modelName: st
             contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
         }
     }
-     if (context.previousUiTree) {
+    if (context.previousUiTree) {
         contextParts.push({ text: `\n\nUI Tree (Before):\n${context.previousUiTree}` });
     }
     if (context.previousWindowTitle) {
@@ -239,7 +239,7 @@ export async function generateWorkflowStepAnalysisWithSchema(
             contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
         }
     }
-         if (context.previousUiTree) {
+    if (context.previousUiTree) {
         contextParts.push({ text: `\n\nUI Tree (Before):\n${context.previousUiTree}` });
     }
     if (context.previousWindowTitle) {
