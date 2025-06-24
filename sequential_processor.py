@@ -133,6 +133,14 @@ def cleanup_expired_locks(cur, conn):
         """)
         stale_cleanup = cur.rowcount
         
+        # Future-proof cleanup: Remove locks with timestamps from the future
+        # This handles cases where worker clock skew creates invalid locks
+        cur.execute("""
+            DELETE FROM processing_locks
+            WHERE created_at > NOW() + INTERVAL '5 minutes'
+        """)
+        future_cleanup = cur.rowcount
+        
         # Aggressive cleanup: Remove duplicate locks for same user
         # (Keep only the most recent lock per user)
         cur.execute("""
@@ -147,9 +155,9 @@ def cleanup_expired_locks(cur, conn):
         """)
         duplicate_cleanup = cur.rowcount
         
-        total_cleaned = basic_cleanup + stale_cleanup + duplicate_cleanup
+        total_cleaned = basic_cleanup + stale_cleanup + future_cleanup + duplicate_cleanup
         if total_cleaned > 0:
-            print(f"🧹 Smart cleanup: {basic_cleanup} expired + {stale_cleanup} stale + {duplicate_cleanup} duplicate locks = {total_cleaned} total")
+            print(f"🧹 Smart cleanup: {basic_cleanup} expired + {stale_cleanup} stale + {future_cleanup} future + {duplicate_cleanup} duplicate locks = {total_cleaned} total")
         
         conn.commit()
         return total_cleaned
