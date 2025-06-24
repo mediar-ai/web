@@ -14,12 +14,16 @@ import io
 # export NEW_DB_CONN_STRING="postgresql://postgres.zrfvohqbvwepwulvanuc:NBKtcRVjpKjZVwMm@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
 
 TABLES_TO_MIGRATE = [
-    # "users", # This table is not used and has data integrity issues. Skipping.
+    "mediar_users",
     "low_level_events",
     "user_activity_data",
     "low_level_workflow_analyses",
-    "llm_traces",
+    "low_level_workflows",
     "low_level_datasets",
+    "low_level_workflow_labeling",
+    "synthesis_sessions",
+    "workflow_analysis_jobs",
+    "llm_traces",
     "session_metadata"
 ]
 
