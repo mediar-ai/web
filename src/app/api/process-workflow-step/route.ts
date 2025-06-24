@@ -86,9 +86,35 @@ export async function POST(req: NextRequest) {
             analysis: parsedResponse,
             structured_output: structuredOutput
         });
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error processing workflow step:', error);
-        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-        return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
+
+        let status = 500;
+        let statusText = 'Internal Server Error';
+        let details: unknown = 'An unknown error occurred';
+
+        if (typeof error === 'object' && error !== null) {
+            status = (error as { status?: number }).status || 500;
+            statusText = (error as { statusText?: string }).statusText || 'Internal Server Error';
+            details = (error as { errorDetails?: unknown }).errorDetails || (error as Error).message || 'An unknown error occurred';
+        } else if (error instanceof Error) {
+            details = error.message;
+        }
+        
+        // Create a JSON response containing the details of the error
+        const errorResponse = {
+            message: "Error processing workflow step",
+            upstreamError: {
+                status: status,
+                statusText: statusText,
+                details: details,
+            }
+        };
+
+        // Return a JSON response with the original, specific status code
+        return NextResponse.json(errorResponse, { 
+            status: status,
+            headers: { 'Content-Type': 'application/json' },
+        });
     }
 } 
