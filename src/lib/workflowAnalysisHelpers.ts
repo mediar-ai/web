@@ -152,4 +152,103 @@ export function buildJSONBQuery(field: string, value: string): string {
  */
 export function buildCompatibleQuery(field: string, value: string): string {
   return `(COALESCE(llm_structured_output->>'${field}', ${field}) = '${value}')`;
+}
+
+/**
+ * Enhanced interface for displayable analysis fields that works with both V1 and V2
+ */
+export interface DisplayableAnalysisFields {
+  title: string;
+  summary: string;
+  actions: string;
+  changes: string;
+  results: string;
+  clicked: string;
+  typed: string;
+  intent: string;
+  tech: string;
+  apps: string;
+  context: string;
+  schemaVersion: 'v1' | 'v2' | 'unknown';
+}
+
+/**
+ * Gets displayable fields that work universally for both V1 and V2 schemas
+ */
+export function getDisplayableFields(analysis: FlattenedWorkflowAnalysis): DisplayableAnalysisFields {
+  const isV2 = hasV2Fields(analysis);
+  const jsonbData = analysis.raw_llm_output;
+  
+  if (isV2 && jsonbData) {
+    // V2 schema - use new field names
+    return {
+      title: jsonbData.step_title || 'No title available',
+      summary: jsonbData.step_summary || 'No summary available',
+      actions: jsonbData.events_that_happened || 'No actions recorded',
+      changes: jsonbData.how_content_changed || 'No changes recorded',
+      results: jsonbData.results_if_any || 'No results recorded',
+      clicked: jsonbData.what_was_clicked || 'No clicks recorded',
+      typed: jsonbData.what_was_typed || 'No typing recorded',
+      intent: jsonbData.user_intent || 'No intent identified',
+      tech: analysis.tech || 'Not available in V2 schema',
+      apps: analysis.apps || 'Not available in V2 schema',
+      context: analysis.context || 'Not available in V2 schema',
+      schemaVersion: 'v2'
+    };
+  } else {
+    // V1 schema - map old fields to new structure
+    return {
+      title: analysis.step || 'No step name',
+      summary: analysis.description || 'No description',
+      actions: 'Not available in V1 schema',
+      changes: 'Not available in V1 schema', 
+      results: 'Not available in V1 schema',
+      clicked: 'Not available in V1 schema',
+      typed: 'Not available in V1 schema',
+      intent: 'Not available in V1 schema',
+      tech: analysis.tech || 'No tech info',
+      apps: analysis.apps || 'No apps info',
+      context: analysis.context || 'No context info',
+      schemaVersion: 'v1'
+    };
+  }
+}
+
+/**
+ * Gets the best available title regardless of schema version
+ */
+export function getBestAvailableTitle(analysis: FlattenedWorkflowAnalysis): string {
+  return analysis.raw_llm_output?.step_title || analysis.step || 'Untitled Step';
+}
+
+/**
+ * Gets the best available summary regardless of schema version
+ */
+export function getBestAvailableSummary(analysis: FlattenedWorkflowAnalysis): string {
+  return analysis.raw_llm_output?.step_summary || analysis.description || 'No summary available';
+}
+
+/**
+ * Gets schema-appropriate fields for workflow context
+ */
+export function getWorkflowContextFields(analysis: FlattenedWorkflowAnalysis): {
+  workflowName: string;
+  stepName: string;
+  description: string;
+} {
+  const isV2 = hasV2Fields(analysis);
+  
+  if (isV2 && analysis.raw_llm_output) {
+    return {
+      workflowName: analysis.workflow || 'Unknown Workflow',
+      stepName: analysis.raw_llm_output.step_title || 'Untitled Step',
+      description: analysis.raw_llm_output.step_summary || 'No description'
+    };
+  } else {
+    return {
+      workflowName: analysis.workflow || 'Unknown Workflow',
+      stepName: analysis.step || 'Untitled Step', 
+      description: analysis.description || 'No description'
+    };
+  }
 } 

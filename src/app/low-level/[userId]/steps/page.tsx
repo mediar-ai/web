@@ -52,6 +52,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { diffLines } from 'diff';
 import { preprocessTree } from '@/lib/diff';
 import { FlattenedWorkflowAnalysis } from '@/types';
+import { AnalysisDisplay } from '@/components/workflow-analysis';
 
 type ContextForAnalysis = {
   screenshotBefore?: string | null;
@@ -1126,16 +1127,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             <AccordionContent className="space-y-2">
               {previousAnalyses.length > 0 ? (
                 previousAnalyses.map((analysis) => (
-                  <div key={analysis.id} className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800 text-xs">
-                    <p><strong>Workflow:</strong> {analysis.workflow}</p>
-                    <p><strong>Step:</strong> {analysis.step}</p>
-                    <p><strong>Description:</strong> {analysis.description}</p>
-                    <p><strong>Facts:</strong> {analysis.facts}</p>
-                    <p><strong>Logic:</strong> {analysis.logic}</p>
-                    <p><strong>Tech:</strong> {analysis.tech}</p>
-                    <p><strong>Apps:</strong> {analysis.apps}</p>
-                    <p><strong>Context:</strong> {analysis.context}</p>
-                    <p className="text-muted-foreground">Timestamp: {new Date(analysis.client_timestamp).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })}</p>
+                  <div key={analysis.id} className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800">
+                    <AnalysisDisplay analysis={analysis} format="detailed" showMetadata={true} />
+                    <p className="text-muted-foreground text-xs mt-2">Timestamp: {new Date(analysis.client_timestamp).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })}</p>
                   </div>
                 ))
               ) : (
@@ -1204,15 +1198,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             </div>
             <AccordionContent>
               {existingAnalysisForSelectedEvent ? (
-                <div className="space-y-2 p-2 text-sm">
-                  <p><strong>Workflow:</strong> {existingAnalysisForSelectedEvent.workflow}</p>
-                  <p><strong>Step:</strong> {existingAnalysisForSelectedEvent.step}</p>
-                  <p><strong>Description:</strong> {existingAnalysisForSelectedEvent.description}</p>
-                  <p><strong>Facts:</strong> {existingAnalysisForSelectedEvent.facts}</p>
-                  <p><strong>Logic:</strong> {existingAnalysisForSelectedEvent.logic}</p>
-                  <p><strong>Tech:</strong> {existingAnalysisForSelectedEvent.tech}</p>
-                  <p><strong>Apps:</strong> {existingAnalysisForSelectedEvent.apps}</p>
-                  <p><strong>Context:</strong> {existingAnalysisForSelectedEvent.context}</p>
+                <div className="space-y-2 p-2">
+                  <AnalysisDisplay analysis={existingAnalysisForSelectedEvent} format="detailed" showMetadata={true} />
                 </div>
               ) : (
                 <div className="p-4 border rounded-md bg-gray-50 dark:bg-gray-800">

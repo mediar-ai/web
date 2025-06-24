@@ -73,6 +73,7 @@ import {
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 import { FlattenedWorkflowAnalysis } from '@/types';
+import { AnalysisDisplay } from '@/components/workflow-analysis';
 
 // Use the flattened type for backward compatibility
 type WorkflowStepAnalysis = FlattenedWorkflowAnalysis;
@@ -585,18 +586,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
         header: 'LLM Output',
         cell: ({ row }) => {
             const analysis = row.original.analysis;
-            return (
-                <div className="space-y-1 text-xs">
-                  <p><strong>Workflow:</strong> {analysis.workflow}</p>
-                  <p><strong>Step:</strong> {analysis.step}</p>
-                  <p><strong>Description:</strong> {analysis.description}</p>
-                  <p><strong>Facts:</strong> {analysis.facts}</p>
-                  <p><strong>Logic:</strong> {analysis.logic}</p>
-                  <p><strong>Tech:</strong> {analysis.tech}</p>
-                  <p><strong>Apps:</strong> {analysis.apps}</p>
-                  <p><strong>Context:</strong> {analysis.context}</p>
-                </div>
-            )
+            return <AnalysisDisplay analysis={analysis} format="compact" />;
         },
         size: 600,
       },
