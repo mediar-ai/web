@@ -27,18 +27,50 @@ export async function GET(
 
     if (processedError) throw processedError;
 
-    // Get the count of pending/in-progress jobs
-    const { count: pendingCount, error: pendingError } = await supabaseAdmin
-      .from('workflow_analysis_jobs')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .in('status', ['pending', 'in_progress']);
+    // Get the count of unprocessed UI tree events (new system)
+    // Use the same logic as sequential processor to count unprocessed events
+    const { data: unprocessedEvents, error: pendingError } = await supabaseAdmin
+      .rpc('get_unprocessed_ui_tree_events', { p_user_id: userId });
 
-    if (pendingError) throw pendingError;
+    let pendingCount = 0;
+    if (pendingError) {
+      // Fallback: count manually if the function doesn't exist yet
+      console.warn('get_unprocessed_ui_tree_events function not found, using fallback query');
+      
+      // Simplified fallback query - count UI tree events that don't have corresponding analyses
+      const { data: allUiTreeEvents, error: uiTreeError } = await supabaseAdmin
+        .from('low_level_events')
+        .select('created_at')
+        .eq('user_id', userId)
+        .eq('payload->payload->type', 'ui_tree')
+        .order('created_at', { ascending: true });
+
+      if (uiTreeError) throw uiTreeError;
+
+      const { data: allAnalyses, error: analysesError } = await supabaseAdmin
+        .from('low_level_workflow_analyses')
+        .select('client_timestamp')
+        .eq('user_id', userId);
+
+      if (analysesError) throw analysesError;
+
+      // Count events without matching analyses
+      const analysisTimestamps = new Set(allAnalyses?.map(a => a.client_timestamp) || []);
+      const unprocessedCount = allUiTreeEvents?.filter(event => 
+        !analysisTimestamps.has(event.created_at)
+      ).length || 0;
+      
+      return NextResponse.json({
+        processedCount: processedCount ?? 0,
+        pendingCount: unprocessedCount,
+      });
+    } else {
+      pendingCount = unprocessedEvents?.length || 0;
+    }
 
     return NextResponse.json({
       processedCount: processedCount ?? 0,
-      pendingCount: pendingCount ?? 0,
+      pendingCount: pendingCount,
     });
 
   } catch (error) {
