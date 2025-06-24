@@ -49,10 +49,24 @@ DELETE FROM processing_locks WHERE expires_at < NOW();
 """
 
 def get_database_connection():
-    """Get a database connection with proper error handling"""
+    """Get a database connection with proper error handling and optimized settings"""
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        # Optimize connection for concurrent usage
+        config = DB_CONFIG.copy()
+        config.update({
+            'connect_timeout': 10,      # Fail fast if connection takes too long
+            'application_name': 'sequential_processor',
+        })
+        
+        conn = psycopg2.connect(**config)
         conn.autocommit = False
+        
+        # Optimize connection for performance
+        with conn.cursor() as cur:
+            cur.execute("SET statement_timeout = '300s'")  # 5 minute query timeout
+            cur.execute("SET idle_in_transaction_session_timeout = '600s'")  # 10 minute idle timeout
+        conn.commit()
+        
         return conn
     except Exception as e:
         print(f"❌ Database connection failed: {e}")
@@ -954,6 +968,12 @@ def process_next_event_for_user(user_id: str):
         # Record start time for performance tracking
         start_time = time.time()
         
+        # Add small delay to prevent API rate limiting (stagger requests)
+        import random
+        delay = random.uniform(1, 3)  # 1-3 second random delay
+        print(f"⏱️  Adding {delay:.1f}s delay to prevent rate limiting...")
+        time.sleep(delay)
+        
         print(f"Calling LLM API for event {event_id}...")
         try:
             response = requests.post(
@@ -986,12 +1006,12 @@ def process_next_event_for_user(user_id: str):
                 conn.commit()
                 print(f"✅ Successfully processed and saved analysis for event {event_id}")
                 
-                # TODO: Add context_metadata and llm_traces logging once database migrations are applied
-                # cur.execute("""
-                #     UPDATE low_level_workflow_analyses 
-                #     SET context_metadata = %s
-                #     WHERE user_id = %s AND client_timestamp = %s
-                # """, (json.dumps(context_metadata), user_id, created_at.isoformat()))
+                # Save context metadata now that column exists
+                cur.execute("""
+                    UPDATE low_level_workflow_analyses 
+                    SET context_metadata = %s
+                    WHERE user_id = %s AND client_timestamp = %s
+                """, (json.dumps(context_metadata), user_id, created_at.isoformat()))
                 
             else:
                 print(f"❌ No structured output received for event {event_id}")
@@ -1064,6 +1084,56 @@ def process_next_event_for_user(user_id: str):
             conn.close()
 
 @app.function(
+    secrets=[
+        modal.Secret.from_name("supabase-secret"),
+        modal.Secret.from_name("custom-secret")  # For VERCEL_URL
+    ],
+    schedule=modal.Period(minutes=2),  # Run every 2 minutes
+    timeout=1800
+)
+def scheduled_processing():
+    """
+    Automatically find and process events for all users every 2 minutes.
+    Continues until all 3,145+ events are processed.
+    """
+    print("🔄 Starting scheduled processing...")
+    try:
+        # Check current processor load before spawning more
+        conn = get_database_connection()
+        cur = conn.cursor()
+        
+        # Count active processors
+        cur.execute("""
+            SELECT COUNT(DISTINCT processor_id) as active_processors
+            FROM processing_locks 
+            WHERE status = 'in_progress' AND expires_at > NOW()
+        """)
+        active_count = cur.fetchone()[0]
+        
+        # Limit concurrent processors to prevent overload
+        MAX_CONCURRENT_PROCESSORS = 3
+        
+        if active_count >= MAX_CONCURRENT_PROCESSORS:
+            print(f"⏸️  {active_count} processors already active (max: {MAX_CONCURRENT_PROCESSORS}), skipping this cycle")
+            return {"success": True, "message": "Skipped due to active processors", "active_processors": active_count}
+        
+        # Only spawn limited number of new processors
+        processors_to_spawn = min(MAX_CONCURRENT_PROCESSORS - active_count, 2)  # Max 2 per cycle
+        
+        print(f"📊 Active processors: {active_count}/{MAX_CONCURRENT_PROCESSORS}, spawning: {processors_to_spawn}")
+        
+        cur.close()
+        conn.close()
+        
+        # Trigger limited processing
+        result = find_and_trigger_users_with_prevention.remote()
+        print(f"✅ Scheduled processing completed: {result}")
+        return result
+    except Exception as e:
+        print(f"❌ Error in scheduled processing: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
     timeout=1800
 )
@@ -1088,7 +1158,7 @@ def find_and_trigger_users_with_prevention():
         
         # Find users with unprocessed events (not currently being processed)
         cur.execute("""
-            SELECT DISTINCT user_id 
+            SELECT DISTINCT user_id::text 
             FROM low_level_events 
             WHERE payload->'payload'->>'type' = 'ui_tree'
               AND id NOT IN (
@@ -1098,7 +1168,7 @@ def find_and_trigger_users_with_prevention():
                   ON lle.created_at = llwa.client_timestamp 
                   AND lle.user_id = llwa.user_id
               )
-              AND user_id NOT IN (
+              AND user_id::text NOT IN (
                   SELECT DISTINCT user_id FROM processing_locks 
                   WHERE status = 'in_progress' AND expires_at > NOW()
               )
@@ -1108,8 +1178,23 @@ def find_and_trigger_users_with_prevention():
         users = [row[0] for row in cur.fetchall()]
         print(f"📋 Found {len(users)} users with unprocessed events")
         
+        # Check current active processors to avoid overload
+        cur.execute("""
+            SELECT COUNT(DISTINCT processor_id) as active_processors
+            FROM processing_locks 
+            WHERE status = 'in_progress' AND expires_at > NOW()
+        """)
+        current_active = cur.fetchone()[0]
+        MAX_CONCURRENT = 3
+        available_slots = max(0, MAX_CONCURRENT - current_active)
+        
+        # Limit number of users to process based on available slots
+        users_to_process = users[:available_slots] if available_slots > 0 else []
+        
+        print(f"📊 Active: {current_active}/{MAX_CONCURRENT}, Available slots: {available_slots}, Processing: {len(users_to_process)} users")
+        
         results = []
-        for user_id in users:
+        for user_id in users_to_process:
             try:
                 print(f"🚀 Triggering processor for user: {user_id}")
                 
@@ -1128,6 +1213,11 @@ def find_and_trigger_users_with_prevention():
                     "status": "failed",
                     "error": str(e)
                 })
+        
+        # Report skipped users due to concurrency limits
+        skipped_users = users[available_slots:] if available_slots < len(users) else []
+        if skipped_users:
+            print(f"⏸️  Skipped {len(skipped_users)} users due to concurrency limits: {skipped_users[:3]}{'...' if len(skipped_users) > 3 else ''}")
         
         return {
             "success": True,
