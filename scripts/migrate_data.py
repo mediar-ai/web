@@ -2,6 +2,7 @@ import psycopg2
 import psycopg2.extras
 import os
 import sys
+import io
 
 # --- IMPORTANT ---
 # This script assumes you have set the following environment variables:
@@ -22,13 +23,16 @@ TABLES_TO_MIGRATE = [
     "session_metadata"
 ]
 
-def migrate_table(old_cur, new_cur, table_name, batch_size=10000):
+def migrate_table_with_copy(old_conn, new_conn, table_name):
     """
-    Copies data from a table in the old DB to the new DB in batches,
-    intelligently handling schema differences by only copying shared columns.
+    Uses the PostgreSQL COPY command to efficiently stream data from the
+    old DB to the new one, handling schema differences.
     """
     try:
         print(f"--- Migrating table: {table_name} ---")
+        
+        old_cur = old_conn.cursor()
+        new_cur = new_conn.cursor()
 
         # 1. Get column schemas and find intersection
         new_cur.execute(f"SELECT * FROM public.{table_name} LIMIT 0;")
@@ -53,33 +57,32 @@ def migrate_table(old_cur, new_cur, table_name, batch_size=10000):
 
         print(f"  > Migrating shared columns: {', '.join(shared_colnames_new)}")
 
-        # 2. Use a server-side cursor for efficient, batched fetching
-        select_query = f"SELECT {', '.join(shared_colnames_old)} FROM public.{table_name};"
+        # 2. Use COPY command for efficient data transfer
+        # Create an in-memory text buffer to act as the pipe
+        f = io.StringIO()
         
-        # Give the cursor a unique name
-        cursor_name = f"migration_cursor_{table_name}"
-        old_cur.execute(f"DECLARE {cursor_name} CURSOR FOR {select_query}")
+        # 3. COPY data from OLD database TO the buffer
+        copy_from_sql = f"COPY (SELECT {', '.join(shared_colnames_old)} FROM public.{table_name}) TO STDOUT WITH CSV HEADER"
+        print("  > Exporting data from old database...")
+        old_cur.copy_expert(copy_from_sql, f)
+        f.seek(0) # Rewind buffer to the beginning
+
+        # 4. COPY data FROM the buffer TO the new database
+        copy_to_sql = f"COPY public.{table_name} ({', '.join(shared_colnames_new)}) FROM STDIN WITH CSV HEADER"
+        print("  > Importing data into new database...")
+        new_cur.copy_expert(copy_to_sql, f)
         
-        total_rows_migrated = 0
-        while True:
-            # 3. Fetch a batch of rows
-            old_cur.execute(f"FETCH {batch_size} FROM {cursor_name};")
-            batch_data = old_cur.fetchall()
-            
-            if not batch_data:
-                break # No more data to fetch
+        # Commit the transaction for the current table
+        new_conn.commit()
 
-            # 4. Insert the batch into the new table
-            insert_query = f"INSERT INTO public.{table_name} ({', '.join(shared_colnames_new)}) VALUES %s"
-            psycopg2.extras.execute_values(new_cur, insert_query, batch_data)
-            
-            total_rows_migrated += len(batch_data)
-            print(f"  > Migrated {total_rows_migrated} rows...")
-
-        print(f"  > Successfully migrated a total of {total_rows_migrated} rows to new.{table_name}.")
+        # The row count is not easily available with this method, but we can query it
+        new_cur.execute(f"SELECT COUNT(*) FROM public.{table_name}")
+        count = new_cur.fetchone()[0]
+        print(f"  > Successfully migrated data. New table count: {count}")
 
     except psycopg2.Error as e:
         print(f"\n❌ An error occurred during migration for table {table_name}: {e}")
+        new_conn.rollback() # Rollback changes for the failed table
         raise
 
 def run_migration():
@@ -97,28 +100,22 @@ def run_migration():
     try:
         print("Connecting to OLD database...")
         old_conn = psycopg2.connect(old_conn_string)
-        old_cur = old_conn.cursor()
-
+        
         print("Connecting to NEW database...")
         new_conn = psycopg2.connect(new_conn_string)
-        new_cur = new_conn.cursor()
         
-        print("\nStarting data migration...")
+        print("\nStarting data migration with COPY strategy...")
         
         for table in TABLES_TO_MIGRATE:
-            migrate_table(old_cur, new_cur, table)
+            # We need to run each table in its own transaction
+            migrate_table_with_copy(old_conn, new_conn, table)
 
         print("\n✅ Data migration complete.")
-        new_conn.commit()
 
     except Exception as e:
         print(f"\n❌ A critical error occurred: {e}")
-        if new_conn:
-            new_conn.rollback()
     finally:
-        if old_cur: old_cur.close()
         if old_conn: old_conn.close()
-        if new_cur: new_cur.close()
         if new_conn: new_conn.close()
         print("All database connections closed.")
 

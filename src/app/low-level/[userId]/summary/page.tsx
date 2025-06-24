@@ -274,8 +274,8 @@ export default function UserSummaryPage({
                                 <Button size="sm" variant="outline">Raw JSON</Button>
                               </Link>
                             ) : session.type.toLowerCase() === 'web' ? (
-                              <Link href={`/sessions/web/${session.id}`}>
-                                <Button size="sm" variant="outline">Raw JSON</Button>
+                              <Link href="#">
+                                <Button size="sm" variant="outline" disabled>Raw JSON (Disabled)</Button>
                               </Link>
                             ) : (
                               <Button size="sm" variant="outline" disabled>Raw JSON</Button>
