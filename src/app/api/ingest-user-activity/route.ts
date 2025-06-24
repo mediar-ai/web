@@ -157,15 +157,18 @@ export async function POST(request: Request) {
             continue;
         }
         const mimeType = mimeTypeMatch[1];
-        const base64Data = ss.dataUrl.substring(mimeTypeMatch[0].length);
+        
+        // Convert base64 to Blob, which is compatible with Edge functions and Supabase upload.
+        const fetchRes = await fetch(ss.dataUrl);
+        const imageBlob = await fetchRes.blob();
+        
         const fileExt = mimeType.split('/')[1] || 'bin';
-        const imageBuffer = Buffer.from(base64Data, 'base64');
         const filePath = `${sessionId}/${ss.id}.${fileExt}`;
 
-        console.log(`Uploading screenshot: ${filePath} (Size: ${imageBuffer.length} bytes)`);
+        console.log(`Uploading screenshot: ${filePath} (Size: ${imageBlob.size} bytes)`);
         const { error: uploadError } = await supabaseAdmin.storage
             .from('exported-screenshots')
-            .upload(filePath, imageBuffer, {
+            .upload(filePath, imageBlob, {
               contentType: mimeType,
               upsert: true,
             });
