@@ -43,7 +43,7 @@ export function AnalysisDisplay({
         </div>
       )}
       
-      <V2AnalysisDisplay analysis={analysis} format={format} />
+        <V2AnalysisDisplay analysis={analysis} format={format} />
     </div>
   );
-}
+} 

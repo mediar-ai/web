@@ -3,7 +3,7 @@ import os
 import psycopg2
 import json
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 import time
 
@@ -87,9 +87,7 @@ def acquire_processing_lock(cur, conn, user_id, event_id, processor_id):
             existing = cur.fetchone()
             if existing:
                 existing_processor, existing_status, expires_at = existing
-                from datetime import timezone
-                now_utc = datetime.now(timezone.utc)
-                if existing_processor == processor_id and expires_at > now_utc:
+                if existing_processor == processor_id and expires_at > datetime.now(timezone.utc):
                     print(f"🔄 Reusing existing lock for user {user_id}, event {event_id}")
                     return True
                 else:
@@ -135,14 +133,6 @@ def cleanup_expired_locks(cur, conn):
         """)
         stale_cleanup = cur.rowcount
         
-        # Future-proof cleanup: Remove locks with timestamps from the future
-        # This handles cases where worker clock skew creates invalid locks
-        cur.execute("""
-            DELETE FROM processing_locks
-            WHERE created_at > NOW() + INTERVAL '5 minutes'
-        """)
-        future_cleanup = cur.rowcount
-        
         # Aggressive cleanup: Remove duplicate locks for same user
         # (Keep only the most recent lock per user)
         cur.execute("""
@@ -157,9 +147,9 @@ def cleanup_expired_locks(cur, conn):
         """)
         duplicate_cleanup = cur.rowcount
         
-        total_cleaned = basic_cleanup + stale_cleanup + future_cleanup + duplicate_cleanup
+        total_cleaned = basic_cleanup + stale_cleanup + duplicate_cleanup
         if total_cleaned > 0:
-            print(f"🧹 Smart cleanup: {basic_cleanup} expired + {stale_cleanup} stale + {future_cleanup} future + {duplicate_cleanup} duplicate locks = {total_cleaned} total")
+            print(f"🧹 Smart cleanup: {basic_cleanup} expired + {stale_cleanup} stale + {duplicate_cleanup} duplicate locks = {total_cleaned} total")
         
         conn.commit()
         return total_cleaned
@@ -267,7 +257,7 @@ def get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id):
                     AND status = 'in_progress' 
                     AND expires_at > NOW()
               )
-            ORDER BY created_at ASC, id ASC
+            ORDER BY created_at ASC
             LIMIT 1
         """, (user_id, user_id, user_id))
         
@@ -358,7 +348,7 @@ def get_events_between_timestamps(cur, user_id, start_timestamp, end_timestamp):
         FROM low_level_events
         WHERE user_id = %s
           AND created_at > %s
-          AND created_at <= %s
+          AND created_at < %s
         ORDER BY created_at ASC
     """, (user_id, start_timestamp, end_timestamp))
     return cur.fetchall()
@@ -1388,23 +1378,32 @@ def trigger_full_parallel_processing():
         if total_cleaned > 0:
             print(f"🔧 Total smart cleanup: {total_cleaned} locks removed")
         
-        # Find ALL users with unprocessed events (not currently being processed)
+        # Find ALL users with unprocessed events using a more efficient and accurate query
         cur.execute("""
-            SELECT DISTINCT user_id::text 
-            FROM low_level_events 
-            WHERE payload->'payload'->>'type' = 'ui_tree'
-              AND id NOT IN (
-                  SELECT DISTINCT lle.id
-                  FROM low_level_events lle
-                  INNER JOIN low_level_workflow_analyses llwa 
-                  ON lle.created_at = llwa.client_timestamp 
-                  AND lle.user_id = llwa.user_id
-              )
-              AND user_id::text NOT IN (
+            WITH user_event_counts AS (
+                SELECT 
+                    user_id, 
+                    COUNT(*) as event_count
+                FROM low_level_events
+                WHERE payload->'payload'->>'type' = 'ui_tree'
+                GROUP BY user_id
+            ),
+            user_analysis_counts AS (
+                SELECT 
+                    user_id,
+                    COUNT(*) as analysis_count
+                FROM low_level_workflow_analyses
+                GROUP BY user_id
+            )
+            SELECT uec.user_id::text
+            FROM user_event_counts uec
+            LEFT JOIN user_analysis_counts uac ON uec.user_id = uac.user_id
+            WHERE uec.event_count > COALESCE(uac.analysis_count, 0)
+              AND uec.user_id::text NOT IN (
                   SELECT DISTINCT user_id FROM processing_locks 
                   WHERE status = 'in_progress' AND expires_at > NOW()
               )
-            ORDER BY user_id
+            ORDER BY uec.user_id;
         """)
         
         users = [row[0] for row in cur.fetchall()]

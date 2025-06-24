@@ -7,7 +7,7 @@ import requests
 from typing import Dict, List, Optional, Tuple
 
 app = modal.App("screenshot-processor")
-app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests", "fastapi[standard]")
+app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
 
 # SQL to find screenshot_diff events that haven't been processed yet (supports both Structure A and B)
 GET_UNPROCESSED_SCREENSHOTS_SQL = """
@@ -170,280 +170,117 @@ def upload_image_to_supabase(image_data_url: str, storage_path: str) -> Tuple[bo
     secrets=[
         modal.Secret.from_name("supabase-secret")
     ],
-    concurrency_limit=5, # Limit concurrency to reduce race conditions
+    # Using the new parameter name as recommended by Modal's deprecation warning.
+    max_containers=5,
     timeout=300
 )
 def process_screenshots(batch_size: int = 10):
-    """Process a batch of screenshots and upload them to storage"""
+    """
+    Process a batch of screenshots with robust, isolated transaction handling.
+    """
     processor_id = f"screenshot-processor-{os.urandom(4).hex()}"
     print(f"🚀 Starting {processor_id}...")
     
+    events_to_process = []
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # Step 1: Fetch a batch of unprocessed events in a single transaction.
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(GET_UNPROCESSED_SCREENSHOTS_SQL, (batch_size,))
+                events_to_process = cursor.fetchall()
         
-        # Get unprocessed events
-        cursor.execute(GET_UNPROCESSED_SCREENSHOTS_SQL, (batch_size,))
-        events = cursor.fetchall()
-        
-        if not events:
+        if not events_to_process:
             print("✅ No unprocessed screenshots found.")
-            return {"processed": 0, "failed": 0, "total_in_batch": 0}
+            return {"processed": 0, "failed": 0, "skipped": 0}
 
-        processed_count = 0
-        failed_count = 0
-        
-        for event_id, user_id, session_id, created_at, payload in events:
-            # --- Acquire Lock ---
-            cursor.execute(ACQUIRE_LOCK_SQL, (event_id, processor_id))
-            lock_id = cursor.fetchone()
+    except Exception as e:
+        print(f"❌ CRITICAL: Failed to fetch event batch: {e}")
+        return {"error": f"Failed to fetch batch: {e}"}
+
+    processed_count = 0
+    failed_count = 0
+    skipped_count = 0
+
+    # Step 2: Loop through the fetched events and process them one by one.
+    for event_id, user_id, session_id, created_at, payload in events_to_process:
+        lock_acquired = False
+        try:
+            # Step 2a: Acquire lock in an isolated transaction.
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(ACQUIRE_LOCK_SQL, (event_id, processor_id))
+                    conn.commit()
+                    if cursor.rowcount > 0:
+                        lock_acquired = True
             
-            if not lock_id:
-                print(f"⏩ Event {event_id} is already locked by another process. Skipping.")
+            if not lock_acquired:
+                print(f"⏩ Event {event_id} was locked by another process. Skipping.")
+                skipped_count += 1
                 continue
 
-            try:
-                print(f"🔒 Processing event {event_id} with lock...")
-                # Extract image data using correct payload structure
-                before_data, after_data = extract_image_data(payload)
-                
-                if not before_data and not after_data:
-                    # Mark as failed - no valid image data at all
-                    cursor.execute(MARK_FAILED_SQL, (event_id, user_id, session_id, True, "No valid image data found"))
+            print(f"🔒 Processing event {event_id} with lock...")
+            
+            # Step 2b: Main processing logic (image extraction and upload).
+            before_data, after_data = extract_image_data(payload)
+
+            if not before_data and not after_data:
+                raise ValueError("No valid image data found in payload.")
+
+            before_path, after_path, before_size, after_size = None, None, 0, 0
+            
+            if before_data:
+                upload_success, size = upload_image_to_supabase(before_data, f"{user_id}/{session_id}/screenshots/{event_id}_before.jpeg")
+                if upload_success:
+                    before_path, before_size = f"{user_id}/{session_id}/screenshots/{event_id}_before.jpeg", size
+
+            if after_data:
+                upload_success, size = upload_image_to_supabase(after_data, f"{user_id}/{session_id}/screenshots/{event_id}_after.jpeg")
+                if upload_success:
+                    after_path, after_size = f"{user_id}/{session_id}/screenshots/{event_id}_after.jpeg", size
+
+            if not before_path and not after_path:
+                raise Exception("Both before and after image uploads failed.")
+
+            # Step 2c: Mark as processed in an isolated transaction.
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(MARK_PROCESSED_SQL, (event_id, user_id, session_id, before_path, after_path, before_size, after_size))
                     conn.commit()
-                    failed_count += 1
-                    continue
-                
-                # Generate storage paths
-                before_path = f"{user_id}/{session_id}/screenshots/{event_id}_before.jpeg" if before_data else None
-                after_path = f"{user_id}/{session_id}/screenshots/{event_id}_after.jpeg" if after_data else None
-                
-                # Upload images (only upload what we have)
-                before_success, before_size = (True, 0)  # Default for missing image
-                after_success, after_size = (True, 0)    # Default for missing image
-                
-                if before_data:
-                    before_success, before_size = upload_image_to_supabase(before_data, before_path)
-                    if not before_success:
-                        before_path = None
-                        before_size = 0
-                
-                if after_data:
-                    after_success, after_size = upload_image_to_supabase(after_data, after_path)
-                    if not after_success:
-                        after_path = None
-                        after_size = 0
-                
-                # Consider it successful if at least one image uploaded successfully
-                overall_success = (before_data and before_success) or (after_data and after_success)
-                
-                if overall_success:
-                    # Mark as successfully processed
-                    cursor.execute(MARK_PROCESSED_SQL, (
-                        event_id, user_id, session_id, 
-                        before_path, after_path, 
-                        before_size or 0, after_size or 0
-                    ))
-                    processed_count += 1
-                else:
-                    # Mark as failed
-                    error_msg = "Failed to upload any available images"
-                    if before_data and not before_success:
-                        error_msg += " (before upload failed)"
-                    if after_data and not after_success:
-                        error_msg += " (after upload failed)"
-                    
-                    cursor.execute(MARK_FAILED_SQL, (
-                        event_id, user_id, session_id, True, error_msg
-                    ))
-                    failed_count += 1
-                    
-            except Exception as e:
-                # Mark as failed with error
-                cursor.execute(MARK_FAILED_SQL, (
-                    event_id, user_id, session_id, True, str(e)
-                ))
-                failed_count += 1
-                print(f"Error processing event {event_id}: {e}")
-            finally:
-                # --- Release Lock ---
-                cursor.execute(RELEASE_LOCK_SQL, (event_id, processor_id))
-                conn.commit() # Commit after each event is fully processed and lock is released
-        
-        cursor.close()
-        conn.close()
-        
-        print(f"🏁 Finished {processor_id}. Processed: {processed_count}, Failed: {failed_count}")
-        return {
-            "processed": processed_count,
-            "failed": failed_count,
-            "total_in_batch": len(events)
-        }
-        
-    except Exception as e:
-        print(f"❌ Error in process_screenshots: {e}")
-        return {"error": str(e)}
+            
+            print(f"✅ Successfully processed event {event_id}")
+            processed_count += 1
 
-@app.function(
-    secrets=[
-        modal.Secret.from_name("supabase-secret")
-    ]
-)
-def get_stats():
-    """Get processing statistics"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get total screenshot events
-        cursor.execute("SELECT COUNT(*) FROM low_level_events WHERE payload->'payload'->>'type' = 'screenshot_diff';")
-        total_events = cursor.fetchone()[0]
-        
-        # Get processed events
-        cursor.execute("SELECT COUNT(*) FROM low_level_processed_screenshots;")
-        processed_events = cursor.fetchone()[0]
-        
-        # Get successful vs failed
-        cursor.execute("SELECT COUNT(*) FROM low_level_processed_screenshots WHERE processing_failed = false;")
-        successful_events = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM low_level_processed_screenshots WHERE processing_failed = true;")
-        failed_events = cursor.fetchone()[0]
-        
-        # Get storage stats
-        cursor.execute("SELECT COALESCE(SUM(before_size + after_size), 0) FROM low_level_processed_screenshots WHERE processing_failed = false;")
-        total_storage_bytes = cursor.fetchone()[0]
-        
-        cursor.close()
-        conn.close()
-        
-        return {
-            "total_screenshot_events": total_events,
-            "processed_events": processed_events,
-            "successful_events": successful_events,
-            "failed_events": failed_events,
-            "pending_events": total_events - processed_events,
-            "total_storage_bytes": total_storage_bytes,
-            "total_storage_mb": round(total_storage_bytes / 1024 / 1024, 2)
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
+        except Exception as e:
+            # Step 2d: If anything fails, mark as failed in a new, isolated transaction.
+            error_message = f"Error processing event {event_id}: {e}"
+            print(f"❌ {error_message}")
+            failed_count += 1
+            try:
+                with get_db_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(MARK_FAILED_SQL, (event_id, user_id, session_id, True, str(e)[:255]))
+                        conn.commit()
+            except Exception as mark_fail_e:
+                print(f"❌ CRITICAL: Could not mark event {event_id} as failed: {mark_fail_e}")
 
-@app.function(
-    secrets=[
-        modal.Secret.from_name("supabase-secret")
-    ]
-)
-@modal.fastapi_endpoint(method="POST")
-def trigger_screenshot_processing():
-    """Trigger screenshot processing"""
-    result = process_screenshots.remote(batch_size=50)
-    return {"status": "Screenshot processing triggered", "result": result}
+        finally:
+            # Step 2e: ALWAYS release the lock in a final, isolated transaction.
+            if lock_acquired:
+                try:
+                    with get_db_connection() as conn:
+                        with conn.cursor() as cursor:
+                            cursor.execute(RELEASE_LOCK_SQL, (event_id, processor_id))
+                            conn.commit()
+                    print(f"🔑 Released lock for event {event_id}")
+                except Exception as release_lock_e:
+                    print(f"❌ CRITICAL: Failed to release lock for event {event_id}: {release_lock_e}")
 
-@app.function(
-    secrets=[
-        modal.Secret.from_name("supabase-secret")
-    ]
-)
-@modal.fastapi_endpoint(method="POST")
-def process_new_screenshot_event():
-    """Process a specific screenshot event immediately (for real-time processing)"""
-    try:
-        # For now, process a small batch - could be enhanced to target specific event_ids
-        result = process_screenshots.remote(batch_size=5)
-        return {
-            "status": "New screenshot event processing triggered", 
-            "result": result,
-            "processed_immediately": True
-        }
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-@app.function(
-    secrets=[
-        modal.Secret.from_name("supabase-secret")
-    ]
-)
-@modal.fastapi_endpoint(method="POST")
-def reprocess_structure_b_failures():
-    """Reprocess Structure B events that were marked as failures"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Find Structure B events that were marked as failed but have valid data
-        cursor.execute("""
-            SELECT lps.event_id, lle.user_id, lle.session_id, lle.created_at, lle.payload
-            FROM low_level_processed_screenshots lps 
-            JOIN low_level_events lle ON lps.event_id = lle.id
-            WHERE lps.processing_failed = true 
-            AND lps.error_message = 'No valid image data found'
-            AND (
-                LENGTH(lle.payload->'payload'->'event'->>'screenshot_after') > 5000 OR
-                LENGTH(lle.payload->'payload'->'event'->>'screenshot_before') > 5000
-            )
-            ORDER BY lle.created_at DESC
-            LIMIT 50;
-        """)
-        
-        failed_structure_b_events = cursor.fetchall()
-        
-        if not failed_structure_b_events:
-            cursor.close()
-            conn.close()
-            return {"status": "No Structure B failed events found to reprocess"}
-        
-        # Delete the failed entries so they can be reprocessed
-        event_ids = [str(event[0]) for event in failed_structure_b_events]
-        cursor.execute(f"""
-            DELETE FROM low_level_processed_screenshots 
-            WHERE event_id IN ({','.join(event_ids)})
-            AND processing_failed = true;
-        """)
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        # Now process them with the updated logic
-        result = process_screenshots.remote(batch_size=50)
-        
-        return {
-            "status": "Structure B reprocessing completed",
-            "deleted_failed_entries": len(failed_structure_b_events),
-            "reprocessing_result": result
-        }
-        
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-@app.function(
-    secrets=[
-        modal.Secret.from_name("supabase-secret")
-    ]
-)
-@modal.fastapi_endpoint(method="GET")
-def debug_environment():
-    """Debug endpoint to check environment variables"""
+    print(f"🏁 Finished {processor_id}. Processed: {processed_count}, Failed: {failed_count}, Skipped: {skipped_count}")
     return {
-        "supabase_url": os.environ.get('NEXT_PUBLIC_SUPABASE_URL'),
-        "has_service_key": bool(os.environ.get('SUPABASE_SERVICE_KEY')),
-        "has_service_role_key": bool(os.environ.get('SUPABASE_SERVICE_ROLE_KEY')),
-        "has_conn_string": bool(os.environ.get('SUPABASE_CONN_STRING')),
-        "available_env_vars": [key for key in os.environ.keys() if 'SUPA' in key.upper()],
-        "all_env_keys": list(os.environ.keys())
+        "processed": processed_count,
+        "failed": failed_count,
+        "skipped": skipped_count
     }
-
-@app.function(
-    secrets=[
-        modal.Secret.from_name("supabase-secret")
-    ]
-)
-@modal.fastapi_endpoint(method="GET")
-def get_processing_stats():
-    """Get processing statistics"""
-    return get_stats.remote()
 
 @app.function(
     secrets=[
@@ -498,7 +335,6 @@ def scheduled_screenshot_processing():
             "batch_size": batch_size,
             "result": result
         }
-        
     except Exception as e:
-        print(f"Error in scheduled screenshot processing: {e}")
+        print(f"Error in scheduled processing: {e}")
         return {"status": "error", "error": str(e)} 
