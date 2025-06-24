@@ -39,8 +39,9 @@ BEGIN
         SELECT
             session_id,
             COUNT(*) as total_analyses,
-            COUNT(DISTINCT workflow) as distinct_workflows
+            COUNT(DISTINCT llm_structured_output->>'step_title') as distinct_workflows
         FROM low_level_workflow_analyses
+        WHERE llm_structured_output IS NOT NULL
         GROUP BY session_id
     ),
     label_stats AS (

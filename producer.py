@@ -20,7 +20,7 @@ GET_UNPROCESSED_EVENTS_SQL = """
 # GET_RECENT_ANALYSES_SQL = ...
 
 # Get existing analyses for previous context
-GET_ANALYSES_SQL = "SELECT id, user_id, session_id, workflow, step, description, facts, logic, tech, apps, context, created_at, client_timestamp FROM low_level_workflow_analyses WHERE user_id = %s ORDER BY created_at DESC;"
+GET_ANALYSES_SQL = "SELECT id, user_id, session_id, llm_structured_output, created_at, client_timestamp FROM low_level_workflow_analyses WHERE user_id = %s ORDER BY created_at DESC;"
 
 # Simplified versions of the frontend utils
 def get_event_timestamp(event):
@@ -186,7 +186,7 @@ def get_screenshots_near_timestamp(cur, user_id, target_timestamp):
 def get_recent_analyses(cur, user_id, limit=10):
     """Get recent analyses for previous context"""
     cur.execute("""
-        SELECT id, user_id, session_id, workflow, step, description, facts, logic, tech, apps, context, created_at, client_timestamp 
+        SELECT id, user_id, session_id, llm_structured_output, created_at, client_timestamp 
         FROM low_level_workflow_analyses 
         WHERE user_id = %s 
         ORDER BY created_at DESC
@@ -253,16 +253,20 @@ def build_context_for_event(cur, user_id, current_event):
         # Convert to the format expected by context
         context['previousAnalyses'] = []
         for analysis in recent_analyses[:3]:  # Limit to 3 most recent
+            # analysis structure: id, user_id, session_id, llm_structured_output, created_at, client_timestamp
+            llm_output = analysis[3] if analysis[3] else {}  # llm_structured_output JSONB
+            
+            # Extract fields from JSONB, falling back to 'Not available in data'
             context['previousAnalyses'].append({
-                'workflow': analysis[3],
-                'step': analysis[4], 
-                'description': analysis[5],
-                'facts': analysis[6],
-                'logic': analysis[7],
-                'tech': analysis[8],
-                'apps': analysis[9],
-                'context': analysis[10],
-                'client_timestamp': analysis[12].isoformat() if analysis[12] else None
+                'workflow': llm_output.get('workflow', 'Not available in data'),
+                'step': llm_output.get('step', 'Not available in data'), 
+                'description': llm_output.get('description', 'Not available in data'),
+                'facts': llm_output.get('facts', 'Not available in data'),
+                'logic': llm_output.get('logic', 'Not available in data'),
+                'tech': llm_output.get('tech', 'Not available in data'),
+                'apps': llm_output.get('apps', 'Not available in data'),
+                'context': llm_output.get('context', 'Not available in data'),
+                'client_timestamp': analysis[5].isoformat() if analysis[5] else None  # client_timestamp
             })
     
     return context

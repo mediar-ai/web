@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createLegacyStructuredOutput } from '@/lib/workflowAnalysisHelpers';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -18,6 +19,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
+    // Create structured output for JSONB storage
+    const structuredOutput = createLegacyStructuredOutput(analysis);
+
     const { data, error } = await supabaseAdmin
       .from('low_level_workflow_analyses')
       .insert([
@@ -25,7 +29,7 @@ export async function POST(req: NextRequest) {
           user_id: userId,
           session_id: sessionId,
           client_timestamp: clientTimestamp,
-          ...analysis,
+          llm_structured_output: structuredOutput,
         },
       ]);
 
