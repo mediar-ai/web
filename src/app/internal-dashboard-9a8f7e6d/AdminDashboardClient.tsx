@@ -286,4 +286,4 @@ export default function AdminDashboardClient() {
       )}
     </div>
   );
-} 
+}

@@ -37,17 +37,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to save raw event.', details: rawInsertError.message }, { status: 500 });
     }
 
-    // Trigger real-time screenshot processing for screenshot_diff events (non-blocking)
-    if (payload.type === 'screenshot_diff') {
-      // Trigger screenshot processing asynchronously - don't wait for result
-      fetch('https://m13v--screenshot-processor-process-new-screenshot-event.modal.run/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }).catch(err => {
-        // Log but don't fail the ingest - screenshot processing will catch it on scheduled runs
-        console.log('[INGEST] Screenshot processing trigger failed (non-critical):', err.message);
-      });
-    }
+    // The screenshot_diff events will now be processed by the scheduled Modal job,
+    // so the real-time trigger call has been removed to prevent race conditions.
 
     console.log(`[INGEST] Successfully saved raw event: ${payload.type}`);
     return NextResponse.json({ success: true, message: 'Data ingested' });
