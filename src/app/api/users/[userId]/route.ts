@@ -88,6 +88,36 @@ export async function DELETE(
       process.env.SUPABASE_SERVICE_KEY!
     );
     
+    // 🛡️ PROTECTION: Check for active processing before deletion
+    console.log(`[API/DELETE] Checking for active processing for user: ${userId}`);
+    const { data: activeLocks, error: lockError } = await supabaseAdmin
+      .from('processing_locks')
+      .select('event_id, processor_id, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'in_progress')
+      .gt('expires_at', new Date().toISOString());
+
+    if (lockError) {
+      console.error(`[API/DELETE] Error checking processing locks for user ${userId}:`, lockError);
+      return NextResponse.json({ 
+        error: 'Failed to check processing status', 
+        details: lockError.message 
+      }, { status: 500 });
+    }
+
+    if (activeLocks && activeLocks.length > 0) {
+      console.log(`[API/DELETE] BLOCKED: Found ${activeLocks.length} active processing locks for user ${userId}`);
+      return NextResponse.json({ 
+        error: 'Cannot delete user data while processing is active',
+        details: `${activeLocks.length} events are currently being processed. Please wait and try again.`,
+        activeLocks: activeLocks.map(lock => ({
+          event_id: lock.event_id,
+          processor_id: lock.processor_id,
+          started_at: lock.created_at
+        }))
+      }, { status: 409 }); // 409 Conflict
+    }
+    
     // Step 1: Delete all files in Supabase Storage for this user
     console.log(`[API/DELETE] Deleting storage folder for user: ${userId}`);
     const { data: list, error: listError } = await supabaseAdmin.storage
@@ -118,7 +148,15 @@ export async function DELETE(
     // The order matters to respect foreign key constraints if they exist.
     console.log(`[API/DELETE] Deleting database records for user: ${userId}`);
 
+    // 🧹 Clean up any expired/completed processing locks first
+    await supabaseAdmin
+      .from('processing_locks')
+      .delete()
+      .eq('user_id', userId)
+      .in('status', ['completed', 'failed']);
+
     await supabaseAdmin.from('user_activity_data').delete().eq('user_id', userId);
+    await supabaseAdmin.from('low_level_workflow_analyses').delete().eq('user_id', userId);
     await supabaseAdmin.from('low_level_events').delete().eq('user_id', userId);
     await supabaseAdmin.from('session_metadata').delete().eq('user_id', userId);
     // We are intentionally NOT deleting from 'mediar_users' to preserve the user's name.
