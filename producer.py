@@ -1,6 +1,8 @@
 import modal
 import os
 import psycopg2
+import json
+from datetime import datetime
 
 app = modal.App("workflow-analysis-producer")
 app.image = modal.Image.debian_slim().pip_install("psycopg2-binary")
@@ -13,65 +15,41 @@ GET_UNPROCESSED_EVENTS_SQL = """
 """
 
 # We need the full event history to build context for each job.
-GET_ALL_EVENTS_SQL = "SELECT id, session_id, created_at, payload FROM low_level_events WHERE user_id = %s ORDER BY created_at ASC;"
+# GET_ALL_EVENTS_SQL = "SELECT id, session_id, created_at, payload FROM low_level_events WHERE user_id = %s ORDER BY created_at ASC;"
+# GET_RECENT_EVENTS_SQL = ...
+# GET_RECENT_ANALYSES_SQL = ...
 
 # Get existing analyses for previous context
 GET_ANALYSES_SQL = "SELECT id, user_id, session_id, workflow, step, description, facts, logic, tech, apps, context, created_at, client_timestamp FROM low_level_workflow_analyses WHERE user_id = %s ORDER BY created_at DESC;"
 
 # Simplified versions of the frontend utils
 def get_event_timestamp(event):
+    """Get timestamp from event"""
     try:
-        # Handle different tuple structures safely
-        if len(event) >= 5:
-            payload = event[4] # Index of payload column
-            if isinstance(payload, dict):
-                return payload.get('payload', {}).get('timestamp', event[2]) # Index of created_at
-        elif len(event) >= 4:
-            payload = event[3] # Try different index
-            if isinstance(payload, dict):
-                return payload.get('payload', {}).get('timestamp', event[2])
-        
-        # Fallback to created_at if available
-        if len(event) >= 3:
-            return event[2] if event[2] else str(event[2])
-        
-        print(f"Warning: Unexpected event structure: {event}")
-        return None
-    except Exception as e:
-        print(f"Error getting timestamp from event {event}: {e}")
+        return str(event[2]) if len(event) >= 3 else None
+    except:
         return None
 
-def generate_simplified_ui_tree_string(tree_str):
-    # This is a placeholder for the more complex logic in the frontend.
-    # For now, we just pass the stringified tree.
-    import json
+def generate_simplified_ui_tree_string(ui_tree_str):
+    """Generate simplified UI tree string from raw UI tree JSON"""
+    if not ui_tree_str:
+        return None
     try:
-        if tree_str:
-            parsed = json.loads(tree_str)
-            # A real implementation would simplify this further.
-            return json.dumps(parsed, indent=2)
+        import json
+        tree = json.loads(ui_tree_str)
+        # Simplified version - just return a summary
+        return f"UI Tree with {len(str(tree))} characters"
     except:
-        pass
-    return tree_str or ""
+        return "Invalid UI tree"
 
 def generate_event_summary_string(event):
+    """Generate event summary string"""
     try:
-        # Handle different tuple structures safely
-        if len(event) >= 5:
-            payload = event[4]
-        elif len(event) >= 4:
-            payload = event[3]
-        else:
-            return f"Event: unknown (structure: {len(event)} fields)"
-        
-        if isinstance(payload, dict):
-            event_type = payload.get('payload', {}).get('type', 'unknown')
-            return f"Event: {event_type}"
-        else:
-            return f"Event: unknown (payload type: {type(payload)})"
-    except Exception as e:
-        print(f"Error generating event summary: {e}")
-        return "Event: error"
+        payload = event[3] if len(event) >= 4 else {}
+        event_type = payload.get('payload', {}).get('type', 'unknown')
+        return f"{event_type} at {event[2]}"
+    except:
+        return "Unknown event"
 
 def get_screenshot_for_ui_tree_event(cursor, user_id, session_id, ui_tree_timestamp, time_window_seconds=3):
     """
@@ -121,11 +99,178 @@ def get_screenshot_for_ui_tree_event(cursor, user_id, session_id, ui_tree_timest
         print(f"Error getting screenshot for UI tree event: {e}")
         return None
 
+# New precise queries for context building
+def get_current_event(cur, event_id):
+    """Get the current UI tree event being processed"""
+    cur.execute("""
+        SELECT id, session_id, created_at, payload 
+        FROM low_level_events 
+        WHERE id = %s
+    """, (event_id,))
+    return cur.fetchone()
+
+def get_previous_ui_tree_by_timestamp(cur, user_id, current_timestamp):
+    """Get exactly the previous UI tree event by timestamp"""
+    cur.execute("""
+        SELECT id, session_id, created_at, payload 
+        FROM low_level_events 
+        WHERE user_id = %s 
+          AND payload->'payload'->>'type' = 'ui_tree'
+          AND created_at < %s
+        ORDER BY created_at DESC 
+        LIMIT 1
+    """, (user_id, current_timestamp))
+    return cur.fetchone()
+
+def get_window_title(event):
+    """Extract window title from UI tree event"""
+    try:
+        payload = event[3] if len(event) >= 4 else {}
+        ui_tree_str = payload.get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
+        if ui_tree_str:
+            import json
+            ui_tree = json.loads(ui_tree_str)
+            return ui_tree.get('attributes', {}).get('name') or payload.get('payload', {}).get('event', {}).get('app_name', 'Unknown')
+        return payload.get('payload', {}).get('event', {}).get('app_name', 'Unknown')
+    except:
+        return 'Unknown'
+
+def get_previous_same_window_ui_tree(cur, user_id, current_timestamp, window_title):
+    """Get exactly the previous UI tree event from the same window"""
+    cur.execute("""
+        SELECT id, session_id, created_at, payload 
+        FROM low_level_events 
+        WHERE user_id = %s 
+          AND payload->'payload'->>'type' = 'ui_tree'
+          AND created_at < %s
+          AND COALESCE(
+            (payload->'payload'->'event'->'screen'->>'ui_tree')::jsonb->'attributes'->>'name',
+            payload->'payload'->'event'->>'app_name'
+          ) = %s
+        ORDER BY created_at DESC 
+        LIMIT 1
+    """, (user_id, current_timestamp, window_title))
+    return cur.fetchone()
+
+def get_events_between_timestamps(cur, user_id, start_timestamp, end_timestamp):
+    """Get all events between two timestamps"""
+    cur.execute("""
+        SELECT id, session_id, created_at, payload 
+        FROM low_level_events
+        WHERE user_id = %s
+          AND created_at > %s
+          AND created_at < %s
+        ORDER BY created_at ASC
+    """, (user_id, start_timestamp, end_timestamp))
+    return cur.fetchall()
+
+def get_screenshots_near_timestamp(cur, user_id, target_timestamp):
+    """Get the closest screenshot to a UI tree timestamp"""
+    cur.execute("""
+        SELECT id, session_id, created_at, payload,
+               ABS(EXTRACT(EPOCH FROM (
+                 (payload->'payload'->'event'->'screenshot_diff'->>'after_timestamp')::timestamp 
+                 - %s::timestamp
+               ))) as time_diff
+        FROM low_level_events
+        WHERE user_id = %s
+          AND payload->'payload'->>'type' = 'screenshot_diff'
+          AND (payload->'payload'->'event'->'screenshot_diff'->>'after_timestamp')::timestamp 
+              BETWEEN %s::timestamp - INTERVAL '2 seconds'
+                  AND %s::timestamp + INTERVAL '1 second'
+        ORDER BY time_diff ASC
+        LIMIT 1
+    """, (target_timestamp, user_id, target_timestamp, target_timestamp))
+    return cur.fetchone()
+
+def get_recent_analyses(cur, user_id, limit=10):
+    """Get recent analyses for previous context"""
+    cur.execute("""
+        SELECT id, user_id, session_id, workflow, step, description, facts, logic, tech, apps, context, created_at, client_timestamp 
+        FROM low_level_workflow_analyses 
+        WHERE user_id = %s 
+        ORDER BY created_at DESC
+        LIMIT %s
+    """, (user_id, limit))
+    return cur.fetchall()
+
+def build_context_for_event(cur, user_id, current_event):
+    """Build complete context for one UI tree event using precise queries"""
+    current_timestamp = current_event[2]  # created_at
+    window_title = get_window_title(current_event)
+    
+    context = {
+        'currentUiTree': generate_simplified_ui_tree_string(
+            current_event[3].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
+        ) if current_event[3].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree') else None
+    }
+    
+    # Get previous UI tree by timestamp
+    previous_event = get_previous_ui_tree_by_timestamp(cur, user_id, current_timestamp)
+    if previous_event:
+        context['previousUiTree'] = generate_simplified_ui_tree_string(
+            previous_event[3].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
+        ) if previous_event[3].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree') else None
+        
+        context['previousWindowTitle'] = get_window_title(previous_event)
+        context['previousWindowTimestamp'] = previous_event[2].isoformat()
+        
+        # Get events between previous and current
+        events_between = get_events_between_timestamps(cur, user_id, previous_event[2], current_timestamp)
+        if events_between:
+            context['eventsSincePreviousUiTreeByTimestamp'] = [
+                generate_event_summary_string(event) for event in events_between
+            ]
+        
+        # Get screenshot for previous event
+        prev_screenshot = get_screenshots_near_timestamp(cur, user_id, previous_event[2])
+        if prev_screenshot:
+            context['screenshotBefore'] = get_screenshot_for_ui_tree_event(cur, user_id, previous_event[1], previous_event[2])
+    
+    # Get previous same window UI tree
+    previous_same_window = get_previous_same_window_ui_tree(cur, user_id, current_timestamp, window_title)
+    if previous_same_window and (not previous_event or previous_same_window[0] != previous_event[0]):
+        # Different from timestamp previous, get events between same window
+        events_same_window = get_events_between_timestamps(cur, user_id, previous_same_window[2], current_timestamp)
+        if events_same_window:
+            context['eventsSincePreviousUiTreeBySameWindow'] = [
+                generate_event_summary_string(event) for event in events_same_window
+            ]
+        
+        # Get screenshot for same window event
+        same_window_screenshot = get_screenshots_near_timestamp(cur, user_id, previous_same_window[2])
+        if same_window_screenshot:
+            context['screenshotBeforeSameWindow'] = get_screenshot_for_ui_tree_event(cur, user_id, previous_same_window[1], previous_same_window[2])
+    
+    # Get screenshot for current event
+    current_screenshot = get_screenshots_near_timestamp(cur, user_id, current_timestamp)
+    if current_screenshot:
+        context['screenshotAfter'] = get_screenshot_for_ui_tree_event(cur, user_id, current_event[1], current_event[2])
+    
+    # Get recent analyses for previous context
+    recent_analyses = get_recent_analyses(cur, user_id, 10)
+    if recent_analyses:
+        # Convert to the format expected by context
+        context['previousAnalyses'] = []
+        for analysis in recent_analyses[:3]:  # Limit to 3 most recent
+            context['previousAnalyses'].append({
+                'workflow': analysis[3],
+                'step': analysis[4], 
+                'description': analysis[5],
+                'facts': analysis[6],
+                'logic': analysis[7],
+                'tech': analysis[8],
+                'apps': analysis[9],
+                'context': analysis[10],
+                'client_timestamp': analysis[12].isoformat() if analysis[12] else None
+            })
+    
+    return context
 
 @app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
     schedule=modal.Period(minutes=5),
-    timeout=300
+    timeout=1800  # 30 minutes - much more generous for testing
 )
 def enqueue_jobs():
     print("Running producer to enqueue new analysis jobs...")
@@ -134,9 +279,14 @@ def enqueue_jobs():
         conn = psycopg2.connect(os.environ["SUPABASE_CONN_STRING"])
         cur = conn.cursor()
 
-        # Find all users who have had recent activity to check for new work.
-        cur.execute("SELECT DISTINCT user_id FROM low_level_events WHERE created_at > NOW() - INTERVAL '1 day';")
+        # Find all users who have UI tree events to process
+        cur.execute("""
+            SELECT DISTINCT user_id 
+            FROM low_level_events 
+            WHERE payload->'payload'->>'type' = 'ui_tree'
+        """)
         user_ids = [row[0] for row in cur.fetchall()]
+        print(f"Found {len(user_ids)} users with UI tree events")
 
         for user_id in user_ids:
             print(f"Checking for unprocessed events for user: {user_id}")
@@ -155,22 +305,13 @@ def enqueue_jobs():
                 sample_event = unprocessed_events[0]
                 print(f"Sample unprocessed event structure: {len(sample_event)} fields, types: {[type(f) for f in sample_event]}")
             
-            cur.execute(GET_ALL_EVENTS_SQL, (user_id,))
-            all_events = cur.fetchall()
-            
-            # Debug: Check structure of all events
-            if all_events:
-                sample_all_event = all_events[0]
-                print(f"Sample all_events structure: {len(sample_all_event)} fields, types: {[type(f) for f in sample_all_event]}")
-            
-            # Get existing analyses for context building
             cur.execute(GET_ANALYSES_SQL, (user_id,))
             all_analyses = cur.fetchall()
             print(f"Found {len(all_analyses)} existing analyses for user {user_id}")
             
             # Filter for UI tree events with safe access
             ui_tree_events = []
-            for e in all_events:
+            for e in unprocessed_events:
                 try:
                     if len(e) >= 4:
                         payload = e[3] if len(e) == 4 else e[4] if len(e) >= 5 else None
@@ -181,137 +322,39 @@ def enqueue_jobs():
                     continue
 
             jobs_to_insert = []
+            jobs_created = 0
+            
             for event_to_process in unprocessed_events:
                 try:
                     event_id = event_to_process[0]
                     session_id = event_to_process[2]
                     created_at = event_to_process[3]
 
-                    # Build context (matching frontend logic)
-                    context = {}
+                    print(f"Processing event {event_id} for user {user_id}")
                     
-                    # Find current event in ui_tree_events
-                    current_event_in_ui_list = None
-                    current_index = -1
-                    for i, ui_event in enumerate(ui_tree_events):
-                        if ui_event[0] == event_id:
-                            current_event_in_ui_list = ui_event
-                            current_index = i
-                            break
+                    # Get current event details
+                    current_event = get_current_event(cur, event_id)
+                    if not current_event:
+                        print(f"Could not find current event {event_id}")
+                        continue
                     
-                    if current_event_in_ui_list is not None:
-                        prev_event = ui_tree_events[current_index - 1] if current_index > 0 else None
-                        
-                        # Previous UI Tree and Window Title
-                        if prev_event:
-                            payload_idx = 3 if len(prev_event) == 4 else 4
-                            prev_tree = prev_event[payload_idx].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
-                            context['previousUiTree'] = generate_simplified_ui_tree_string(prev_tree)
-                            
-                            # Add window title from previous event
-                            prev_app_name = prev_event[payload_idx].get('payload', {}).get('event', {}).get('app_name', 'Unknown App')
-                            context['previousWindowTitle'] = prev_app_name
-                            context['previousWindowTimestamp'] = str(prev_event[3])  # created_at
-                            
-                            # Add screenshot for previous UI tree
-                            prev_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, session_id, prev_event[3])
-                            if prev_screenshot:
-                                context['screenshotBefore'] = prev_screenshot
-
-                        # Current UI Tree
-                        payload_idx = 3 if len(event_to_process) == 4 else 4
-                        current_tree = event_to_process[payload_idx].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
-                        context['currentUiTree'] = generate_simplified_ui_tree_string(current_tree)
-                        
-                        # Add screenshot for current UI tree
-                        current_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, session_id, created_at)
-                        if current_screenshot:
-                            context['screenshotAfter'] = current_screenshot
-                        
-                        # Add previous analyses (up to 3, matching frontend logic)
-                        if current_index > 0 and all_analyses:
-                            # Get timestamps of the 3 preceding UI tree events
-                            preceding_events = ui_tree_events[max(0, current_index - 3):current_index]
-                            preceding_timestamps = set()
-                            for pe in preceding_events:
-                                pe_ts = get_event_timestamp(pe)
-                                if pe_ts:
-                                    preceding_timestamps.add(pe_ts)
-                            
-                            # Find analyses that match these timestamps
-                            previous_analyses = []
-                            for analysis in all_analyses:
-                                # analysis structure: (id, user_id, session_id, workflow, step, description, facts, logic, tech, apps, context, created_at, client_timestamp)
-                                analysis_timestamp = str(analysis[12]) if analysis[12] else str(analysis[11])  # client_timestamp or created_at
-                                if analysis_timestamp in preceding_timestamps and len(previous_analyses) < 3:
-                                    previous_analyses.append({
-                                        'created_at': analysis_timestamp,
-                                        'step': analysis[4] or '',  # step
-                                        'description': analysis[5] or ''  # description
-                                    })
-                            
-                            if previous_analyses:
-                                context['previousAnalyses'] = previous_analyses
-                                print(f"Added {len(previous_analyses)} previous analyses to context")
-                        
-                        # Events between previous and current UI tree
-                        if prev_event:
-                            prev_ts = get_event_timestamp(prev_event)
-                            current_ts = get_event_timestamp(event_to_process)
-                            if prev_ts and current_ts:
-                                events_between = []
-                                for e in all_events:
-                                    e_ts = get_event_timestamp(e)
-                                    if e_ts and prev_ts < e_ts < current_ts:
-                                        events_between.append(generate_event_summary_string(e))
-                                context['eventsSincePreviousUiTreeByTimestamp'] = events_between
-                        
-                        # Find previous same window UI tree for diff calculation
-                        current_app_name = event_to_process[payload_idx].get('payload', {}).get('event', {}).get('app_name', 'Unknown App')
-                        prev_same_window_event = None
-                        for i in range(current_index - 1, -1, -1):
-                            ui_event = ui_tree_events[i]
-                            event_payload_idx = 3 if len(ui_event) == 4 else 4
-                            event_app_name = ui_event[event_payload_idx].get('payload', {}).get('event', {}).get('app_name', 'Unknown App')
-                            if event_app_name == current_app_name:
-                                prev_same_window_event = ui_event
-                                break
-                        
-                        # Events between same window UI trees
-                        if prev_same_window_event:
-                            prev_same_ts = get_event_timestamp(prev_same_window_event)
-                            if prev_same_ts and current_ts:
-                                events_same_window = []
-                                for e in all_events:
-                                    e_ts = get_event_timestamp(e)
-                                    if e_ts and prev_same_ts < e_ts < current_ts:
-                                        events_same_window.append(generate_event_summary_string(e))
-                                context['eventsSincePreviousUiTreeBySameWindow'] = events_same_window
-                            
-                            # UI Tree Diff (simplified - full diff logic would be complex in Python)
-                            prev_same_payload_idx = 3 if len(prev_same_window_event) == 4 else 4
-                            prev_same_tree = prev_same_window_event[prev_same_payload_idx].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
-                            if prev_same_tree and current_tree:
-                                # Simplified diff indication
-                                context['uiTreeDiffLatestVsPreviousForTheSameWindow'] = f"UI Tree changed from previous state in {current_app_name}"
-                            
-                            # Add screenshot for previous same window UI tree (if different from previous by timestamp)
-                            if prev_same_window_event != prev_event:
-                                prev_same_window_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, session_id, prev_same_window_event[3])
-                                if prev_same_window_screenshot:
-                                    context['screenshotBeforeSameWindow'] = prev_same_window_screenshot
-
+                    # Build context using precise queries
+                    context = build_context_for_event(cur, user_id, current_event)
+                    print(f"Built context for event {event_id} with fields: {list(context.keys())}")
+                    
                     job_payload = {
                         "context": context,
                         "event": { "session_id": session_id, "created_at": created_at.isoformat() }
                     }
                     
                     # psycopg2 can't handle dicts directly for jsonb, so we stringify
-                    import json
                     jobs_to_insert.append((user_id, event_id, json.dumps(job_payload)))
+                    jobs_created += 1
                     
                 except Exception as e:
                     print(f"Error processing event {event_to_process}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     continue
 
             if jobs_to_insert:
@@ -323,6 +366,11 @@ def enqueue_jobs():
                     jobs_to_insert
                 )
                 conn.commit()
+                print(f"Successfully created {jobs_created} jobs for user {user_id}")
+            else:
+                print(f"No jobs to create for user {user_id}")
+        
+        print("Producer completed successfully!")
 
     except Exception as e:
         print(f"An error occurred in the producer: {e}")
