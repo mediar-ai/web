@@ -15,6 +15,9 @@ GET_UNPROCESSED_EVENTS_SQL = """
 # We need the full event history to build context for each job.
 GET_ALL_EVENTS_SQL = "SELECT id, session_id, created_at, payload FROM low_level_events WHERE user_id = %s ORDER BY created_at ASC;"
 
+# Get existing analyses for previous context
+GET_ANALYSES_SQL = "SELECT id, user_id, session_id, workflow, step, description, facts, logic, tech, apps, context, created_at, client_timestamp FROM low_level_workflow_analyses WHERE user_id = %s ORDER BY created_at DESC;"
+
 # Simplified versions of the frontend utils
 def get_event_timestamp(event):
     try:
@@ -160,6 +163,11 @@ def enqueue_jobs():
                 sample_all_event = all_events[0]
                 print(f"Sample all_events structure: {len(sample_all_event)} fields, types: {[type(f) for f in sample_all_event]}")
             
+            # Get existing analyses for context building
+            cur.execute(GET_ANALYSES_SQL, (user_id,))
+            all_analyses = cur.fetchall()
+            print(f"Found {len(all_analyses)} existing analyses for user {user_id}")
+            
             # Filter for UI tree events with safe access
             ui_tree_events = []
             for e in all_events:
@@ -219,6 +227,32 @@ def enqueue_jobs():
                         current_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, session_id, created_at)
                         if current_screenshot:
                             context['screenshotAfter'] = current_screenshot
+                        
+                        # Add previous analyses (up to 3, matching frontend logic)
+                        if current_index > 0 and all_analyses:
+                            # Get timestamps of the 3 preceding UI tree events
+                            preceding_events = ui_tree_events[max(0, current_index - 3):current_index]
+                            preceding_timestamps = set()
+                            for pe in preceding_events:
+                                pe_ts = get_event_timestamp(pe)
+                                if pe_ts:
+                                    preceding_timestamps.add(pe_ts)
+                            
+                            # Find analyses that match these timestamps
+                            previous_analyses = []
+                            for analysis in all_analyses:
+                                # analysis structure: (id, user_id, session_id, workflow, step, description, facts, logic, tech, apps, context, created_at, client_timestamp)
+                                analysis_timestamp = str(analysis[12]) if analysis[12] else str(analysis[11])  # client_timestamp or created_at
+                                if analysis_timestamp in preceding_timestamps and len(previous_analyses) < 3:
+                                    previous_analyses.append({
+                                        'created_at': analysis_timestamp,
+                                        'step': analysis[4] or '',  # step
+                                        'description': analysis[5] or ''  # description
+                                    })
+                            
+                            if previous_analyses:
+                                context['previousAnalyses'] = previous_analyses
+                                print(f"Added {len(previous_analyses)} previous analyses to context")
                         
                         # Events between previous and current UI tree
                         if prev_event:
