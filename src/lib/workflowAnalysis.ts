@@ -157,8 +157,6 @@ export async function saveWorkflowStepAnalysis(
           session_id: sessionId,
           client_timestamp: normalizedTimestamp,
           llm_structured_output: structuredOutput,
-          // Keep legacy columns for backward compatibility during transition
-          ...analysis,
         },
       ]);
 

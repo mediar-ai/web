@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part, Schema, SchemaType } from '@google/generative-ai';
-import { LowLevelEvent } from '@/types';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, SchemaType, Schema } from "@google/generative-ai";
+import { WORKFLOW_STEP_ANALYSIS_V2_PROMPT } from '@/lib/prompts';
+import { LLMStructuredOutput } from '@/types';
 
-const getGenAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not set.');
-  }
-  return new GoogleGenerativeAI(apiKey);
-};
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThreshold}> = [
     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -20,85 +15,68 @@ const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThresho
 const mainAnalysisSchema: Schema = {
     type: SchemaType.OBJECT,
     properties: {
-        workflow: { type: SchemaType.STRING, description: "Best guess of the overall workflow/process name based on what you see." },
-        step: { type: SchemaType.STRING, description: "Concise name for this specific step, 3-5 words max." },
-        description: { type: SchemaType.STRING, description: "What is happening in 10 or less words." },
-        facts: { type: SchemaType.STRING, description: "Key observable facts from the screen." },
-        logic: { type: SchemaType.STRING, description: "Business rules or logic you can infer." },
-        tech: { type: SchemaType.STRING, description: "Technical details like application, browser, etc." },
-        apps: { type: SchemaType.STRING, description: "List of applications or programs visible." },
-        context: { type: SchemaType.STRING, description: "Specific context like browser tab titles, URLs, etc." }
+        step_title: { type: SchemaType.STRING, description: "Clear, action-oriented title for this step" },
+        step_summary: { type: SchemaType.STRING, description: "Brief summary of what the user accomplished in this step" },
+        events_that_happened: { type: SchemaType.STRING, description: "Specific user actions: clicks, keystrokes, navigation, scrolling, etc." },
+        how_content_changed: { type: SchemaType.STRING, description: "What changed on the screen as a result of the user's actions" },
+        results_if_any: { type: SchemaType.STRING, description: "Outcomes, confirmations, errors, notifications, or responses from the system" },
+        what_was_clicked: { type: SchemaType.STRING, description: "Specific UI elements that were clicked" },
+        what_was_typed: { type: SchemaType.STRING, description: "Text input by the user, if any" },
+        user_intent: { type: SchemaType.STRING, description: "The user's likely goal or intention behind this action" }
     },
-    required: ['workflow', 'step', 'description', 'facts', 'logic', 'tech', 'apps', 'context']
+    required: ['step_title', 'step_summary', 'events_that_happened', 'how_content_changed', 'results_if_any', 'what_was_clicked', 'what_was_typed', 'user_intent']
 };
 
-
 export async function POST(req: NextRequest) {
-  try {
-    const { prompt, model: modelName, context } = await req.json();
+    try {
+        const { prompt, model, context } = await req.json();
 
-    if (!prompt || !modelName || !context) {
-      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
-    }
-
-    const genAI = getGenAI();
-    const model = genAI.getGenerativeModel({
-      model: modelName,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: mainAnalysisSchema,
-      },
-      safetySettings,
-    });
-
-    const contextParts: Part[] = [];
-
-    if (context.screenshotBefore) {
-        const parts = context.screenshotBefore.split(';base64,');
-        if (parts.length === 2) {
-            const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
-            contextParts.push({ text: "Screenshot Before:" });
-            contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
+        if (!prompt || !model || !context) {
+            return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
         }
-    }
-    if (context.screenshotAfter) {
-        const parts = context.screenshotAfter.split(';base64,');
-        if (parts.length === 2) {
-            const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
-            contextParts.push({ text: "Screenshot After:" });
-            contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
+
+        // Use the v2 prompt instead of the passed prompt
+        const actualPrompt = WORKFLOW_STEP_ANALYSIS_V2_PROMPT;
+
+        const genModel = genAI.getGenerativeModel({ 
+            model,
+            safetySettings,
+            generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: mainAnalysisSchema,
+            }
+        });
+
+        const contextString = JSON.stringify(context, null, 2);
+        const fullPrompt = `${actualPrompt}\n\nContext:\n${contextString}`;
+
+        const result = await genModel.generateContent(fullPrompt);
+        const response = await result.response;
+        const text = response.text();
+
+        let parsedResponse;
+        try {
+            parsedResponse = JSON.parse(text);
+        } catch {
+            console.error('Failed to parse LLM response:', text);
+            return NextResponse.json({ error: 'Invalid JSON response from LLM' }, { status: 500 });
         }
-    }
-     if (context.previousUiTree) {
-        contextParts.push({ text: `\n\nUI Tree (Before):\n${JSON.stringify(JSON.parse(context.previousUiTree), null, 2)}` });
-    }
-    if (context.currentUiTree) {
-        contextParts.push({ text: `\n\nUI Tree (After):\n${JSON.stringify(JSON.parse(context.currentUiTree), null, 2)}` });
-    }
-    if (context.events && context.events.length > 0) {
-        const eventsText = context.events.map((e: LowLevelEvent) => `[${new Date(e.created_at).toISOString()}] ${e.payload.payload?.type}`).join('\n');
-        contextParts.push({ text: `\n\nEvents:\n${eventsText}` });
-    }
-    if (context.previousAnalyses && context.previousAnalyses.length > 0) {
-        const analysesText = context.previousAnalyses.map((a: { created_at: string, step: string, description: string }) => `[${new Date(a.created_at).toISOString()}] ${a.step}: ${a.description}`).join('\n');
-        contextParts.push({ text: `\n\nRecent Workflow Steps:\n${analysesText}` });
-    }
-    
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }, ...contextParts] }],
-    });
 
-    const response = result.response;
-    if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        const analysis = JSON.parse(response.candidates[0].content.parts[0].text);
-        return NextResponse.json({ analysis });
-    }
-    
-    console.error("No valid response from model:", response);
-    return NextResponse.json({ error: 'Failed to generate analysis from the model.' }, { status: 500 });
+        // Create structured output with v2 schema
+        const structuredOutput: LLMStructuredOutput = {
+            ...parsedResponse,
+            schema_version: 'v2',
+            model_used: model,
+            generation_timestamp: new Date().toISOString(),
+        };
 
-  } catch (error) {
-    console.error('Error processing workflow step:', error);
-    return NextResponse.json({ error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  }
+        return NextResponse.json({ 
+            analysis: parsedResponse,
+            structured_output: structuredOutput
+        });
+    } catch (error) {
+        console.error('Error processing workflow step:', error);
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+        return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
+    }
 } 

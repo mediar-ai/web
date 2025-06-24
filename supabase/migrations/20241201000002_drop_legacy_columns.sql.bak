@@ -1,0 +1,11 @@
+-- Drop legacy columns from low_level_workflow_analyses table
+-- These columns have been replaced by the llm_structured_output JSONB column
+
+ALTER TABLE low_level_workflow_analyses DROP COLUMN IF EXISTS workflow;
+ALTER TABLE low_level_workflow_analyses DROP COLUMN IF EXISTS step;
+ALTER TABLE low_level_workflow_analyses DROP COLUMN IF EXISTS description;
+ALTER TABLE low_level_workflow_analyses DROP COLUMN IF EXISTS facts;
+ALTER TABLE low_level_workflow_analyses DROP COLUMN IF EXISTS logic;
+ALTER TABLE low_level_workflow_analyses DROP COLUMN IF EXISTS tech;
+ALTER TABLE low_level_workflow_analyses DROP COLUMN IF EXISTS apps;
+ALTER TABLE low_level_workflow_analyses DROP COLUMN IF EXISTS context; 

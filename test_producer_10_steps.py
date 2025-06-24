@@ -114,7 +114,7 @@ def test_10_steps():
         
         # Get existing analyses for context
         cur.execute("""
-            SELECT id, user_id, session_id, workflow, step, description, facts, logic, tech, apps, context, created_at, client_timestamp 
+            SELECT id, user_id, session_id, llm_structured_output, created_at, client_timestamp 
             FROM low_level_workflow_analyses 
             WHERE user_id = %s 
             ORDER BY created_at DESC
