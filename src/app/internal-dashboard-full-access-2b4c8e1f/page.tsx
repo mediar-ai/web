@@ -194,8 +194,8 @@ export default function AdminPage() {
             <th scope="col" className="px-1 py-2">SS</th>
             <th scope="col" className="px-1 py-2" style={{ minWidth: '90px' }}>Type</th>
             <th scope="col" className="px-1 py-2">EVENTS</th>
-            <th scope="col" className="px-1 py-2">STEPS (PROCESSED)</th>
-            <th scope="col" className="px-1 py-2">ANNOT.</th>
+            <th scope="col" className="px-1 py-2">STEPS TTL/PRCSD</th>
+            <th scope="col" className="px-1 py-2">ANNOTATION<br/>LLM/HUMAN</th>
             <th scope="col" className="px-1 py-2">WORKFLOW (DISTINCT)</th>
             <th scope="col" className="px-1 py-2">Duration</th>
             <th scope="col" className="px-1 py-2" style={{ minWidth: '180px' }}>Last Active</th>
@@ -222,9 +222,8 @@ export default function AdminPage() {
               const totalUiSteps = userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
               const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
               const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
-              const totalWorkflowAnalyses = userData.sessions.reduce((sum, s) => sum + (s.total_workflow_analyses || 0), 0);
-              const distinctWorkflowsCreated = userData.sessions.reduce((sum, s) => sum + (s.distinct_workflows_created || 0), 0);
-              const humanLabeledSteps = userData.sessions.reduce((sum, s) => sum + (s.human_labeled_steps || 0), 0);
+              const totalLlmLabeledSteps = userData.sessions.reduce((sum, s) => sum + (s.llm_labeled_steps || 0), 0);
+              const totalHumanAnnotatedSteps = userData.sessions.reduce((sum, s) => sum + (s.human_annotated_steps || 0), 0);
               const mostRecentSession = userData.sessions.sort((a, b) => 
                 new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
               )[0];
@@ -302,8 +301,8 @@ export default function AdminPage() {
                     <td className="px-1 py-1">
                       {totalProcessedEvents} / {totalUiSteps}
                     </td>
-                    <td className="px-1 py-1">{humanLabeledSteps}</td>
-                    <td className="px-1 py-1">{totalWorkflowAnalyses} ({distinctWorkflowsCreated})</td>
+                    <td className="px-1 py-1">{totalLlmLabeledSteps} / {totalHumanAnnotatedSteps}</td>
+                    <td className="px-1 py-1">{Math.max(...userData.sessions.map(s => s.distinct_workflows_created || 0), 0)}</td>
                     <td className="px-1 py-1">{formatDuration(totalDuration)}</td>
                     <td className="px-1 py-1">{mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}</td>
                     <td className="px-1 py-1 text-right">
@@ -327,8 +326,8 @@ export default function AdminPage() {
                               <th scope="col" className="px-1 py-1">Session ID</th>
                               <th scope="col" className="px-1 py-1">Type</th>
                               <th scope="col" className="px-1 py-1">EVENTS</th>
-                              <th scope="col" className="px-1 py-1">STEPS (PROCESSED)</th>
-                              <th scope="col" className="px-1 py-1">ANNOT.</th>
+                              <th scope="col" className="px-1 py-2">STEPS TTL/PRCSD</th>
+                              <th scope="col" className="px-1 py-1">ANNOTATION<br/>LLM/HUMAN</th>
                               <th scope="col" className="px-1 py-1">WORKFLOW (DISTINCT)</th>
                               <th scope="col" className="px-1 py-1">Duration</th>
                               <th scope="col" className="px-1 py-1">Status</th>
@@ -345,8 +344,8 @@ export default function AdminPage() {
                                 <td className="px-1 py-1 font-semibold">{session.type}</td>
                                 <td className="px-1 py-1">{session.eventCount || 0}</td>
                                 <td className="px-1 py-1">{session.processed_event_count || 0} / {session.total_ui_steps || 0}</td>
-                                <td className="px-1 py-1">{session.human_labeled_steps || 0}</td>
-                                <td className="px-1 py-1">{session.total_workflow_analyses || 0} ({session.distinct_workflows_created || 0})</td>
+                                <td className="px-1 py-1">{session.llm_labeled_steps || 0} / {session.human_annotated_steps || 0}</td>
+                                <td className="px-1 py-1">{session.distinct_workflows_created || 0}</td>
                                 <td className="px-1 py-1">{formatDuration(session.duration_seconds)}</td>
                                 <td className="px-1 py-1">
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${
