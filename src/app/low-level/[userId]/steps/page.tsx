@@ -33,7 +33,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { WORKFLOW_STEP_ANALYSIS_PROMPT } from "@/lib/prompts";
+import { WORKFLOW_STEP_ANALYSIS_V2_PROMPT } from "@/lib/prompts";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -692,7 +692,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     // Automatically update the raw JSON preview whenever the context or model changes.
     if (selectedEvent && Object.keys(llmContext).length > 0) {
       const llmApiPayload = {
-        prompt: WORKFLOW_STEP_ANALYSIS_PROMPT,
+        prompt: WORKFLOW_STEP_ANALYSIS_V2_PROMPT,
         model: selectedModel,
         context: llmContext,
       };
@@ -1094,7 +1094,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             </div>
             <AccordionContent>
               <Textarea
-                value={WORKFLOW_STEP_ANALYSIS_PROMPT}
+                value={WORKFLOW_STEP_ANALYSIS_V2_PROMPT}
                 readOnly
                 disabled
                 className="h-64 text-xs bg-gray-50 dark:bg-gray-800"

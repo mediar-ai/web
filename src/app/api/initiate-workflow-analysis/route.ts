@@ -44,27 +44,55 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Convert V1/V2 mixed events to a consistent format for analysis
+  const processedEvents = events.map((event: { analysis?: { raw_llm_output?: { schema_version?: string; step_title?: string; step_summary?: string; user_intent?: string; events_that_happened?: string; how_content_changed?: string; what_was_clicked?: string; what_was_typed?: string; results_if_any?: string; } }; [key: string]: unknown; }) => {
+    if (event.analysis) {
+      // Check if analysis has V2 structure (llm_structured_output)
+      const analysis = event.analysis;
+      if (analysis.raw_llm_output && analysis.raw_llm_output.schema_version === 'v2') {
+        // Use V2 fields for workflow analysis
+        return {
+          ...event,
+          analysis: {
+            workflow: analysis.raw_llm_output.step_title || 'Unknown Workflow',
+            step: analysis.raw_llm_output.step_summary || 'Unknown Step',
+            description: analysis.raw_llm_output.user_intent || 'No description',
+            actions: analysis.raw_llm_output.events_that_happened || 'No actions',
+            changes: analysis.raw_llm_output.how_content_changed || 'No changes',
+            clicked: analysis.raw_llm_output.what_was_clicked || 'Nothing clicked',
+            typed: analysis.raw_llm_output.what_was_typed || 'Nothing typed',
+            results: analysis.raw_llm_output.results_if_any || 'No results'
+          }
+        };
+      } else {
+        // Keep V1 structure as-is for backward compatibility
+        return event;
+      }
+    }
+    return event;
+  });
+
   // Use a ReadableStream to send events as they happen
   const stream = new ReadableStream({
     async start(controller) {
       try {
         // Step 1: Initial Workflow Identification
         controller.enqueue(toSSE({ status: 'Identifying initial workflows...', progress: 25 }));
-        const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, { events }, model);
+        const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, { events: processedEvents }, model);
         let workflowNames = initialIdentification.workflow_names || [];
         controller.enqueue(toSSE({ status: 'Initial workflows identified.', progress: 33, data: { workflowNames } }));
 
 
         // Step 2: Initial Context Synthesis (Bottom-Up)
         controller.enqueue(toSSE({ status: 'Synthesizing user context...', progress: 50 }));
-        let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, { events }, model);
+        let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, { events: processedEvents }, model);
         controller.enqueue(toSSE({ status: 'User context synthesized.', progress: 66, data: { workflowContext } }));
 
         // Step 3: Iterative Refinement Loop
         controller.enqueue(toSSE({ status: 'Refining workflows with context (2 cycles)...', progress: 75 }));
         for (let i = 0; i < 2; i++) {
           const refinementResult = await callGenerativeModel(PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, {
-            events,
+            events: processedEvents,
             workflow_context: workflowContext,
             workflow_names: workflowNames,
           }, model);

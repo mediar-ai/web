@@ -882,6 +882,152 @@ def estimate_cost_usd(model_name, tokens_input, tokens_output):
         modal.Secret.from_name("supabase-secret"),
         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
     ],
+    timeout=3600,  # 60 minutes for processing all events for a user
+    retries=0  # No automatic retries to prevent duplicates
+)
+def process_all_events_for_user(user_id: str):
+    """
+    Process ALL remaining unprocessed events for a specific user sequentially.
+    This is much more efficient than processing one event at a time.
+    """
+    processor_id = f"processor-{uuid.uuid4().hex[:8]}-{int(time.time())}"
+    print(f"🚀 Starting FULL processor {processor_id} for user: {user_id}")
+    
+    conn = None
+    cur = None
+    total_processed = 0
+    
+    try:
+        # Connect to database
+        conn = get_database_connection()
+        cur = conn.cursor()
+        
+        # Initialize processing locks table
+        cur.execute(INIT_PROCESSING_LOCKS_SQL)
+        conn.commit()
+        
+        # Clean up expired locks
+        cleanup_expired_locks(cur, conn)
+        
+        # Process events in a loop until no more remain
+        while True:
+            # Get next event with lock
+            event = get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id)
+            
+            if not event:
+                print(f"✅ No more unprocessed events for user: {user_id} (processed {total_processed} events)")
+                break
+            
+            event_id, user_id, session_id, created_at, payload = event
+            print(f"🔄 Processing event {total_processed + 1} (ID: {event_id}) for user {user_id}")
+            
+            # Double-check if event was already processed (race condition protection)
+            if is_event_already_processed(cur, user_id, created_at.isoformat()):
+                print(f"⏭️  Event {event_id} already processed, skipping")
+                release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
+                continue
+            
+            try:
+                # Build FRESH context including all previous analyses
+                context, context_metadata = build_fresh_context(cur, user_id, event)
+                
+                # Prepare LLM API call
+                model_name = 'gemini-2.5-pro-preview-06-05'
+                api_payload = {
+                    'prompt': 'WORKFLOW_STEP_ANALYSIS_V2_PROMPT',  # This will be overridden by the API
+                    'model': model_name,
+                    'context': context
+                }
+                
+                # Record start time for performance tracking
+                start_time = time.time()
+                
+                # Add small delay to prevent API rate limiting (stagger requests)
+                import random
+                delay = random.uniform(1, 3)  # 1-3 second random delay
+                time.sleep(delay)
+                
+                print(f"Calling LLM API for event {event_id}...")
+                response = requests.post(
+                    "https://app.mediar.ai/api/process-workflow-step",  # Use production URL
+                    json=api_payload,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=300  # 5 minute timeout
+                )
+                response.raise_for_status()
+                result = response.json()
+                
+                # Calculate processing time
+                end_time = time.time()
+                processing_time_ms = int((end_time - start_time) * 1000)
+                
+                # Extract metrics from response (if available)
+                structured_output = result.get('structured_output')
+                tokens_input = result.get('usage', {}).get('input_tokens')
+                tokens_output = result.get('usage', {}).get('output_tokens')
+                cost_usd = estimate_cost_usd(model_name, tokens_input, tokens_output)
+                
+                # Save the analysis result
+                if structured_output:
+                    cur.execute("""
+                        INSERT INTO low_level_workflow_analyses 
+                        (user_id, session_id, client_timestamp, llm_structured_output)
+                        VALUES (%s, %s, %s, %s)
+                    """, (user_id, session_id, created_at.isoformat(), json.dumps(structured_output)))
+                    conn.commit()
+                    
+                    # Save context metadata
+                    cur.execute("""
+                        UPDATE low_level_workflow_analyses 
+                        SET context_metadata = %s
+                        WHERE user_id = %s AND client_timestamp = %s
+                    """, (json.dumps(context_metadata), user_id, created_at.isoformat()))
+                    conn.commit()
+                    
+                    total_processed += 1
+                    print(f"✅ Successfully processed event {event_id} ({total_processed} total)")
+                else:
+                    print(f"❌ No structured output received for event {event_id}")
+                
+                # Release lock with completed status
+                release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
+                
+            except Exception as event_error:
+                print(f"❌ Error processing event {event_id}: {event_error}")
+                # Release lock with failed status
+                release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['FAILED'])
+                # Continue to next event rather than failing entire user
+                continue
+        
+        return {
+            "success": True,
+            "message": f"Processed all events for user (total: {total_processed})",
+            "user_id": user_id,
+            "total_processed": total_processed,
+            "processor_id": processor_id
+        }
+        
+    except Exception as e:
+        print(f"❌ Error processing user {user_id}: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "user_id": user_id,
+            "total_processed": total_processed,
+            "processor_id": processor_id
+        }
+        
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+@app.function(
+    secrets=[
+        modal.Secret.from_name("supabase-secret"),
+        modal.Secret.from_name("custom-secret")  # For VERCEL_URL
+    ],
     timeout=1800,  # 30 minutes
     retries=0  # No automatic retries to prevent duplicates
 )
@@ -1111,14 +1257,14 @@ def scheduled_processing():
         active_count = cur.fetchone()[0]
         
         # Limit concurrent processors to prevent overload
-        MAX_CONCURRENT_PROCESSORS = 3
+        MAX_CONCURRENT_PROCESSORS = 100  # Allow massive parallel processing
         
         if active_count >= MAX_CONCURRENT_PROCESSORS:
             print(f"⏸️  {active_count} processors already active (max: {MAX_CONCURRENT_PROCESSORS}), skipping this cycle")
             return {"success": True, "message": "Skipped due to active processors", "active_processors": active_count}
         
-        # Only spawn limited number of new processors
-        processors_to_spawn = min(MAX_CONCURRENT_PROCESSORS - active_count, 2)  # Max 2 per cycle
+        # Spawn processors for all available users (no artificial limit per cycle)
+        processors_to_spawn = min(MAX_CONCURRENT_PROCESSORS - active_count, 100)  # Max 100 per cycle
         
         print(f"📊 Active processors: {active_count}/{MAX_CONCURRENT_PROCESSORS}, spawning: {processors_to_spawn}")
         
@@ -1132,6 +1278,93 @@ def scheduled_processing():
     except Exception as e:
         print(f"❌ Error in scheduled processing: {e}")
         return {"success": False, "error": str(e)}
+
+@app.function(
+    secrets=[modal.Secret.from_name("supabase-secret")],
+    timeout=1800
+)
+def trigger_full_parallel_processing():
+    """
+    Manually trigger full parallel processing for ALL users with unprocessed events.
+    Each user gets their own processor that handles ALL their remaining events.
+    """
+    coordinator_id = f"full-coordinator-{uuid.uuid4().hex[:8]}-{int(time.time())}"
+    print(f"🎯 Starting FULL PARALLEL coordinator {coordinator_id}")
+    
+    try:
+        conn = get_database_connection()
+        cur = conn.cursor()
+        
+        # Initialize processing locks table
+        cur.execute(INIT_PROCESSING_LOCKS_SQL)
+        conn.commit()
+        
+        # Clean up expired locks
+        cleanup_expired_locks(cur, conn)
+        
+        # Find ALL users with unprocessed events (not currently being processed)
+        cur.execute("""
+            SELECT DISTINCT user_id::text 
+            FROM low_level_events 
+            WHERE payload->'payload'->>'type' = 'ui_tree'
+              AND id NOT IN (
+                  SELECT DISTINCT lle.id
+                  FROM low_level_events lle
+                  INNER JOIN low_level_workflow_analyses llwa 
+                  ON lle.created_at = llwa.client_timestamp 
+                  AND lle.user_id = llwa.user_id
+              )
+              AND user_id::text NOT IN (
+                  SELECT DISTINCT user_id FROM processing_locks 
+                  WHERE status = 'in_progress' AND expires_at > NOW()
+              )
+            ORDER BY user_id
+        """)
+        
+        users = [row[0] for row in cur.fetchall()]
+        print(f"📋 Found {len(users)} users with unprocessed events - starting FULL parallel processing")
+        
+        cur.close()
+        conn.close()
+        
+        # Trigger ALL users in parallel (no limits)
+        results = []
+        for user_id in users:
+            try:
+                print(f"🚀 Launching FULL processor for user: {user_id}")
+                
+                # Trigger processing ALL events for this user
+                result = process_all_events_for_user.remote(user_id)
+                results.append({
+                    "user_id": user_id,
+                    "status": "launched",
+                    "result": result
+                })
+                
+            except Exception as e:
+                print(f"❌ Failed to launch processor for user {user_id}: {e}")
+                results.append({
+                    "user_id": user_id,
+                    "status": "failed",
+                    "error": str(e)
+                })
+        
+        return {
+            "success": True,
+            "message": f"Launched FULL parallel processing for {len(users)} users",
+            "coordinator_id": coordinator_id,
+            "users_launched": len([r for r in results if r["status"] == "launched"]),
+            "users_failed": len([r for r in results if r["status"] == "failed"]),
+            "results": results
+        }
+        
+    except Exception as e:
+        print(f"❌ Error in FULL parallel coordinator: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "coordinator_id": coordinator_id
+        }
 
 @app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
@@ -1185,7 +1418,7 @@ def find_and_trigger_users_with_prevention():
             WHERE status = 'in_progress' AND expires_at > NOW()
         """)
         current_active = cur.fetchone()[0]
-        MAX_CONCURRENT = 3
+        MAX_CONCURRENT = 100  # Allow massive parallel processing
         available_slots = max(0, MAX_CONCURRENT - current_active)
         
         # Limit number of users to process based on available slots
@@ -1196,10 +1429,10 @@ def find_and_trigger_users_with_prevention():
         results = []
         for user_id in users_to_process:
             try:
-                print(f"🚀 Triggering processor for user: {user_id}")
+                print(f"🚀 Triggering FULL processor for user: {user_id}")
                 
-                # Trigger processing for this user
-                result = process_next_event_for_user.remote(user_id)
+                # Trigger processing ALL events for this user
+                result = process_all_events_for_user.remote(user_id)
                 results.append({
                     "user_id": user_id,
                     "status": "triggered",
@@ -1240,7 +1473,8 @@ def find_and_trigger_users_with_prevention():
             conn.close()
 
 @app.function(
-    secrets=[modal.Secret.from_name("supabase-secret")]
+    secrets=[modal.Secret.from_name("supabase-secret")],
+    timeout=1800
 )
 def get_processing_status():
     """Get current processing status and statistics"""
