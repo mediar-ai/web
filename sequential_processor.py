@@ -27,23 +27,8 @@ PROCESSING_STATUS = {
     'FAILED': 'failed'
 }
 
-# Create a processing lock table if it doesn't exist
-INIT_PROCESSING_LOCKS_SQL = """
-CREATE TABLE IF NOT EXISTS processing_locks (
-    id BIGSERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    event_id BIGINT NOT NULL,
-    processor_id TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'in_progress',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    expires_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '30 minutes',
-    UNIQUE(user_id, event_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_processing_locks_user_status ON processing_locks(user_id, status);
-CREATE INDEX IF NOT EXISTS idx_processing_locks_expires ON processing_locks(expires_at);
-
+# Clean up expired processing locks (table is created via migration)
+CLEANUP_PROCESSING_LOCKS_SQL = """
 -- Clean up expired locks
 DELETE FROM processing_locks WHERE expires_at < NOW();
 """
@@ -989,11 +974,11 @@ def process_all_events_for_user(user_id: str):
         conn = get_database_connection()
         cur = conn.cursor()
         
-        # Initialize processing locks table
-        cur.execute(INIT_PROCESSING_LOCKS_SQL)
+        # Clean up expired locks (table already exists in production)
+        cur.execute("DELETE FROM processing_locks WHERE expires_at < NOW();")
         conn.commit()
         
-        # Clean up expired locks
+        # Additional smart cleanup
         cleanup_expired_locks(cur, conn)
         
         # Process events in a loop until no more remain
@@ -1137,11 +1122,11 @@ def process_next_event_for_user_deprecated(user_id: str):
         conn = get_database_connection()
         cur = conn.cursor()
         
-        # Initialize processing locks table
-        cur.execute(INIT_PROCESSING_LOCKS_SQL)
+        # Clean up expired locks (table already exists in production) 
+        cur.execute("DELETE FROM processing_locks WHERE expires_at < NOW();")
         conn.commit()
         
-        # Clean up expired locks
+        # Additional smart cleanup
         cleanup_expired_locks(cur, conn)
         
         # Get next event with lock
@@ -1381,8 +1366,8 @@ def trigger_full_parallel_processing():
         conn = get_database_connection()
         cur = conn.cursor()
         
-        # Initialize processing locks table
-        cur.execute(INIT_PROCESSING_LOCKS_SQL)
+        # Clean up expired locks (table already exists in production)
+        cur.execute("DELETE FROM processing_locks WHERE expires_at < NOW();")
         conn.commit()
         
         # Smart cleanup of expired, stale, and problematic locks
@@ -1476,11 +1461,11 @@ def find_and_trigger_users_with_prevention_deprecated():
         conn = get_database_connection()
         cur = conn.cursor()
         
-        # Initialize processing locks table
-        cur.execute(INIT_PROCESSING_LOCKS_SQL)
+        # Clean up expired locks (table already exists in production)
+        cur.execute("DELETE FROM processing_locks WHERE expires_at < NOW();")
         conn.commit()
         
-        # Clean up expired locks
+        # Additional smart cleanup
         cleanup_expired_locks(cur, conn)
         
         # Find users with unprocessed events (not currently being processed)
