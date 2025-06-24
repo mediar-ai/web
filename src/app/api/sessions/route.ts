@@ -14,6 +14,8 @@ interface Session {
   total_workflow_analyses: number;
   distinct_workflows_created: number;
   human_labeled_steps: number;
+  llm_labeled_steps: number;
+  human_annotated_steps: number;
   status: 'live' | 'offline';
   duration_seconds?: number;
 }
@@ -44,10 +46,60 @@ export async function GET() {
       return NextResponse.json({});
     }
 
+    // Get annotation counts for each session
+    const { data: annotationData, error: annotationError } = await supabase
+      .from('low_level_datasets')
+      .select('low_level_workflow_analysis_id, feedback')
+      .eq('dataset_type', 'workflow_event_feedback');
+
+    if (annotationError) {
+      console.error('[api/sessions] Error fetching annotation data:', annotationError);
+    }
+
+    // Get workflow analyses to map analysis IDs to sessions
+    const { data: analysesData, error: analysesError } = await supabase
+      .from('low_level_workflow_analyses')
+      .select('id, session_id');
+
+    if (analysesError) {
+      console.error('[api/sessions] Error fetching analyses data:', analysesError);
+    }
+
+    // Create mapping from analysis ID to session ID
+    const analysisToSession = new Map<string, string>();
+    if (analysesData) {
+      for (const analysis of analysesData) {
+        analysisToSession.set(analysis.id.toString(), analysis.session_id);
+      }
+    }
+
+    // Group annotation data by session
+    const annotationsBySession = new Map<string, { llm_labeled: number; human_annotated: number }>();
+    
+    if (annotationData) {
+      for (const annotation of annotationData) {
+        const sessionId = analysisToSession.get(annotation.low_level_workflow_analysis_id.toString());
+        if (!sessionId) continue;
+        
+        if (!annotationsBySession.has(sessionId)) {
+          annotationsBySession.set(sessionId, { llm_labeled: 0, human_annotated: 0 });
+        }
+        
+        const counts = annotationsBySession.get(sessionId)!;
+        counts.llm_labeled++; // Has LLM generated event summary
+        
+        if (annotation.feedback) {
+          counts.human_annotated++; // Has human feedback
+        }
+      }
+    }
+
     const processedSessions: Session[] = sessions.map(session => {
       const lastEventTimestamp = new Date(session.last_event_timestamp).getTime();
       const now = Date.now();
       const isLive = (now - lastEventTimestamp) < 60000;
+
+      const annotationCounts = annotationsBySession.get(session.session_id) || { llm_labeled: 0, human_annotated: 0 };
 
       return {
         id: session.session_id,
@@ -60,6 +112,8 @@ export async function GET() {
         total_workflow_analyses: session.total_workflow_analyses || 0,
         distinct_workflows_created: session.distinct_workflows_created || 0,
         human_labeled_steps: session.human_labeled_steps || 0,
+        llm_labeled_steps: annotationCounts.llm_labeled,
+        human_annotated_steps: annotationCounts.human_annotated,
         duration_seconds: session.duration_seconds,
         status: isLive ? 'live' : 'offline',
       };
