@@ -60,6 +60,7 @@ export async function GET(
       
       const { data: events, error: eventsError } = await query
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .range(offset, offset + currentLimit - 1);
         
       if (eventsError) {

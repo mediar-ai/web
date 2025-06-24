@@ -2,8 +2,6 @@
 
 import React from 'react';
 import { FlattenedWorkflowAnalysis } from '@/types';
-import { hasV2Fields } from '@/lib/workflowAnalysisHelpers';
-import { V1AnalysisDisplay } from './V1AnalysisDisplay';
 import { V2AnalysisDisplay } from './V2AnalysisDisplay';
 import { Badge } from '@/components/ui/badge';
 
@@ -15,8 +13,8 @@ export interface AnalysisDisplayProps {
 }
 
 /**
- * Smart AnalysisDisplay component that automatically detects schema version
- * and renders the appropriate V1 or V2 display component
+ * Renders the V2 analysis display.
+ * The logic for switching between V1 and V2 has been removed as V1 is obsolete.
  */
 export function AnalysisDisplay({ 
   analysis, 
@@ -24,15 +22,13 @@ export function AnalysisDisplay({
   showMetadata = false,
   className = ''
 }: AnalysisDisplayProps) {
-  const isV2 = hasV2Fields(analysis);
-  const schemaVersion = analysis.schema_version || (isV2 ? 'v2' : 'v1');
-
+  // We now always render the V2 display. The isV2 check is no longer needed.
   return (
     <div className={`analysis-display ${className}`}>
       {showMetadata && (
         <div className="flex items-center gap-2 mb-2">
-          <Badge variant={isV2 ? 'default' : 'secondary'}>
-            Schema {schemaVersion.toUpperCase()}
+          <Badge variant='default'>
+            Schema V2
           </Badge>
           {analysis.raw_llm_output?.model_used && (
             <Badge variant="outline" className="text-xs">
@@ -47,11 +43,7 @@ export function AnalysisDisplay({
         </div>
       )}
       
-      {isV2 ? (
-        <V2AnalysisDisplay analysis={analysis} format={format} />
-      ) : (
-        <V1AnalysisDisplay analysis={analysis} format={format} />
-      )}
+      <V2AnalysisDisplay analysis={analysis} format={format} />
     </div>
   );
-} 
+}

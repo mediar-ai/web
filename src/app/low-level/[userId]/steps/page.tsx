@@ -441,7 +441,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     const currentTimestamp = new Date(getEventTimestamp(selectedEvent)).getTime();
     return allEvents.filter(e => {
       const eventTime = new Date(getEventTimestamp(e)).getTime();
-      return eventTime > prevTimestamp && eventTime < currentTimestamp;
+      return eventTime > prevTimestamp && eventTime <= currentTimestamp;
     });
   }, [allEvents, previousUiTreeEvent, selectedEvent]);
 
