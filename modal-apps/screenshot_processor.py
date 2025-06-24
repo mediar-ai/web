@@ -18,6 +18,10 @@ GET_UNPROCESSED_SCREENSHOTS_SQL = """
         SELECT 1 FROM low_level_processed_screenshots lps 
         WHERE lps.event_id = low_level_events.id
     )
+    AND NOT EXISTS (
+        SELECT 1 FROM screenshot_processing_locks spl
+        WHERE spl.event_id = low_level_events.id AND spl.expires_at > NOW()
+    )
     AND (
         -- Structure A: screenshot_diff format
         LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'after') > 5000 OR
@@ -42,6 +46,18 @@ MARK_FAILED_SQL = """
     INSERT INTO low_level_processed_screenshots 
     (event_id, user_id, session_id, processing_failed, error_message)
     VALUES (%s, %s, %s, %s, %s);
+"""
+
+# --- New Lock Management SQL ---
+ACQUIRE_LOCK_SQL = """
+    INSERT INTO screenshot_processing_locks (event_id, processor_id, expires_at)
+    VALUES (%s, %s, NOW() + INTERVAL '5 minutes')
+    ON CONFLICT (event_id) DO NOTHING
+    RETURNING id;
+"""
+
+RELEASE_LOCK_SQL = """
+    DELETE FROM screenshot_processing_locks WHERE event_id = %s AND processor_id = %s;
 """
 
 def get_db_connection():
@@ -153,10 +169,15 @@ def upload_image_to_supabase(image_data_url: str, storage_path: str) -> Tuple[bo
 @app.function(
     secrets=[
         modal.Secret.from_name("supabase-secret")
-    ]
+    ],
+    concurrency_limit=5, # Limit concurrency to reduce race conditions
+    timeout=300
 )
 def process_screenshots(batch_size: int = 10):
     """Process a batch of screenshots and upload them to storage"""
+    processor_id = f"screenshot-processor-{os.urandom(4).hex()}"
+    print(f"🚀 Starting {processor_id}...")
+    
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -165,17 +186,31 @@ def process_screenshots(batch_size: int = 10):
         cursor.execute(GET_UNPROCESSED_SCREENSHOTS_SQL, (batch_size,))
         events = cursor.fetchall()
         
+        if not events:
+            print("✅ No unprocessed screenshots found.")
+            return {"processed": 0, "failed": 0, "total_in_batch": 0}
+
         processed_count = 0
         failed_count = 0
         
         for event_id, user_id, session_id, created_at, payload in events:
+            # --- Acquire Lock ---
+            cursor.execute(ACQUIRE_LOCK_SQL, (event_id, processor_id))
+            lock_id = cursor.fetchone()
+            
+            if not lock_id:
+                print(f"⏩ Event {event_id} is already locked by another process. Skipping.")
+                continue
+
             try:
+                print(f"🔒 Processing event {event_id} with lock...")
                 # Extract image data using correct payload structure
                 before_data, after_data = extract_image_data(payload)
                 
                 if not before_data and not after_data:
                     # Mark as failed - no valid image data at all
                     cursor.execute(MARK_FAILED_SQL, (event_id, user_id, session_id, True, "No valid image data found"))
+                    conn.commit()
                     failed_count += 1
                     continue
                 
@@ -230,11 +265,15 @@ def process_screenshots(batch_size: int = 10):
                 ))
                 failed_count += 1
                 print(f"Error processing event {event_id}: {e}")
+            finally:
+                # --- Release Lock ---
+                cursor.execute(RELEASE_LOCK_SQL, (event_id, processor_id))
+                conn.commit() # Commit after each event is fully processed and lock is released
         
-        conn.commit()
         cursor.close()
         conn.close()
         
+        print(f"🏁 Finished {processor_id}. Processed: {processed_count}, Failed: {failed_count}")
         return {
             "processed": processed_count,
             "failed": failed_count,
@@ -242,7 +281,7 @@ def process_screenshots(batch_size: int = 10):
         }
         
     except Exception as e:
-        print(f"Error in process_screenshots: {e}")
+        print(f"❌ Error in process_screenshots: {e}")
         return {"error": str(e)}
 
 @app.function(

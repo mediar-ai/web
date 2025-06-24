@@ -87,7 +87,9 @@ def acquire_processing_lock(cur, conn, user_id, event_id, processor_id):
             existing = cur.fetchone()
             if existing:
                 existing_processor, existing_status, expires_at = existing
-                if existing_processor == processor_id and expires_at > datetime.now():
+                from datetime import timezone
+                now_utc = datetime.now(timezone.utc)
+                if existing_processor == processor_id and expires_at > now_utc:
                     print(f"🔄 Reusing existing lock for user {user_id}, event {event_id}")
                     return True
                 else:
@@ -265,7 +267,7 @@ def get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id):
                     AND status = 'in_progress' 
                     AND expires_at > NOW()
               )
-            ORDER BY created_at ASC
+            ORDER BY created_at ASC, id ASC
             LIMIT 1
         """, (user_id, user_id, user_id))
         
@@ -356,7 +358,7 @@ def get_events_between_timestamps(cur, user_id, start_timestamp, end_timestamp):
         FROM low_level_events
         WHERE user_id = %s
           AND created_at > %s
-          AND created_at < %s
+          AND created_at <= %s
         ORDER BY created_at ASC
     """, (user_id, start_timestamp, end_timestamp))
     return cur.fetchall()
