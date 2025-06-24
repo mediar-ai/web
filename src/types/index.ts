@@ -350,6 +350,10 @@ export interface Session {
   id: string;
   eventCount: number;
   processed_event_count?: number;
+  total_ui_steps?: number;
+  total_workflow_analyses?: number;
+  distinct_workflows_created?: number;
+  human_labeled_steps?: number;
   duration_seconds?: number;
   status: 'live' | 'ended';
   timestamp: string;
