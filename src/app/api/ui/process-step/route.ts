@@ -63,9 +63,35 @@ export async function POST(req: NextRequest) {
     // 4. Return the successful analysis to the UI
     return NextResponse.json({ success: true, analysis });
 
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    console.error('[API/UI/process-step] Error:', errorMessage);
-    return NextResponse.json({ error: 'Failed to process step.', details: errorMessage }, { status: 500 });
+  } catch (error: unknown) {
+    console.error('[API/UI/process-step] Error:', error);
+
+    let status = 500;
+    let statusText = 'Internal Server Error';
+    let details: unknown = 'An unknown error occurred';
+
+    if (typeof error === 'object' && error !== null) {
+        status = (error as { status?: number }).status || 500;
+        statusText = (error as { statusText?: string }).statusText || 'Internal Server Error';
+        details = (error as { errorDetails?: unknown }).errorDetails || (error as { details?: unknown })?.details || (error as Error).message || 'An unknown error occurred';
+    } else if (error instanceof Error) {
+        details = error.message;
+    }
+    
+    // Create a JSON response containing the details of the error
+    const errorResponse = {
+        message: "Failed to process step.",
+        upstreamError: {
+            status: status,
+            statusText: statusText,
+            details: details,
+        }
+    };
+
+    // Return a JSON response with the original, specific status code
+    return NextResponse.json(errorResponse, { 
+        status: status,
+        headers: { 'Content-Type': 'application/json' },
+    });
   }
 } 
