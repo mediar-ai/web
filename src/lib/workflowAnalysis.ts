@@ -6,8 +6,12 @@ import { legacyAnalysisSchema, getSchemaByVersion, SchemaVersion } from './llmSc
 
 type AnalysisContext = {
   previousUiTree?: string | null;
+  previousWindowTitle?: string;
+  previousWindowTimestamp?: string;
   currentUiTree?: string | null;
   eventsSincePreviousUiTreeByTimestamp?: string[];
+  eventsSincePreviousUiTreeBySameWindow?: string[];
+  uiTreeDiffLatestVsPreviousForTheSameWindow?: string;
   previousAnalyses?: Array<{
     created_at: string,
     step: string,
@@ -15,6 +19,7 @@ type AnalysisContext = {
   }>;
   screenshotBefore?: string;
   screenshotAfter?: string;
+  screenshotBeforeSameWindow?: string;
 };
 
 // 1. Correctly instantiate the Supabase Admin client
@@ -63,7 +68,15 @@ export async function generateWorkflowStepAnalysis(prompt: string, modelName: st
         const parts = context.screenshotBefore.split(';base64,');
         if (parts.length === 2) {
             const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
-            contextParts.push({ text: "Screenshot Before:" });
+            contextParts.push({ text: "Screenshot Before (Previous UI Tree by Timestamp):" });
+            contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
+        }
+    }
+    if (context.screenshotBeforeSameWindow) {
+        const parts = context.screenshotBeforeSameWindow.split(';base64,');
+        if (parts.length === 2) {
+            const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
+            contextParts.push({ text: "Screenshot Before (Previous UI Tree Same Window):" });
             contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
         }
     }
@@ -71,19 +84,32 @@ export async function generateWorkflowStepAnalysis(prompt: string, modelName: st
         const parts = context.screenshotAfter.split(';base64,');
         if (parts.length === 2) {
             const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
-            contextParts.push({ text: "Screenshot After:" });
+            contextParts.push({ text: "Screenshot After (Current UI Tree):" });
             contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
         }
     }
      if (context.previousUiTree) {
         contextParts.push({ text: `\n\nUI Tree (Before):\n${context.previousUiTree}` });
     }
+    if (context.previousWindowTitle) {
+        contextParts.push({ text: `\n\nPrevious Window: ${context.previousWindowTitle}` });
+        if (context.previousWindowTimestamp) {
+            contextParts.push({ text: `Previous Window Timestamp: ${context.previousWindowTimestamp}` });
+        }
+    }
     if (context.currentUiTree) {
         contextParts.push({ text: `\n\nUI Tree (After):\n${context.currentUiTree}` });
     }
+    if (context.uiTreeDiffLatestVsPreviousForTheSameWindow) {
+        contextParts.push({ text: `\n\nUI Tree Diff (Same Window):\n${context.uiTreeDiffLatestVsPreviousForTheSameWindow}` });
+    }
     if (context.eventsSincePreviousUiTreeByTimestamp && context.eventsSincePreviousUiTreeByTimestamp.length > 0) {
         const eventsText = context.eventsSincePreviousUiTreeByTimestamp.join('\n');
-        contextParts.push({ text: `\n\nEvents:\n${eventsText}` });
+        contextParts.push({ text: `\n\nEvents (Since Previous UI Tree):\n${eventsText}` });
+    }
+    if (context.eventsSincePreviousUiTreeBySameWindow && context.eventsSincePreviousUiTreeBySameWindow.length > 0) {
+        const eventsText = context.eventsSincePreviousUiTreeBySameWindow.join('\n');
+        contextParts.push({ text: `\n\nEvents (Since Same Window UI Tree):\n${eventsText}` });
     }
     if (context.previousAnalyses && context.previousAnalyses.length > 0) {
         const analysesText = context.previousAnalyses.map((a: { created_at: string, step: string, description: string }) => `[${new Date(a.created_at).toISOString()}] ${a.step}: ${a.description}`).join('\n');
@@ -198,7 +224,15 @@ export async function generateWorkflowStepAnalysisWithSchema(
         const parts = context.screenshotBefore.split(';base64,');
         if (parts.length === 2) {
             const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
-            contextParts.push({ text: "Screenshot Before:" });
+            contextParts.push({ text: "Screenshot Before (Previous UI Tree by Timestamp):" });
+            contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
+        }
+    }
+    if (context.screenshotBeforeSameWindow) {
+        const parts = context.screenshotBeforeSameWindow.split(';base64,');
+        if (parts.length === 2) {
+            const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
+            contextParts.push({ text: "Screenshot Before (Previous UI Tree Same Window):" });
             contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
         }
     }
@@ -206,19 +240,32 @@ export async function generateWorkflowStepAnalysisWithSchema(
         const parts = context.screenshotAfter.split(';base64,');
         if (parts.length === 2) {
             const [mimeType, imageDataBase64] = [parts[0].split(':')[1], parts[1]];
-            contextParts.push({ text: "Screenshot After:" });
+            contextParts.push({ text: "Screenshot After (Current UI Tree):" });
             contextParts.push({ inlineData: { mimeType, data: imageDataBase64 } });
         }
     }
-    if (context.previousUiTree) {
+         if (context.previousUiTree) {
         contextParts.push({ text: `\n\nUI Tree (Before):\n${context.previousUiTree}` });
+    }
+    if (context.previousWindowTitle) {
+        contextParts.push({ text: `\n\nPrevious Window: ${context.previousWindowTitle}` });
+        if (context.previousWindowTimestamp) {
+            contextParts.push({ text: `Previous Window Timestamp: ${context.previousWindowTimestamp}` });
+        }
     }
     if (context.currentUiTree) {
         contextParts.push({ text: `\n\nUI Tree (After):\n${context.currentUiTree}` });
     }
+    if (context.uiTreeDiffLatestVsPreviousForTheSameWindow) {
+        contextParts.push({ text: `\n\nUI Tree Diff (Same Window):\n${context.uiTreeDiffLatestVsPreviousForTheSameWindow}` });
+    }
     if (context.eventsSincePreviousUiTreeByTimestamp && context.eventsSincePreviousUiTreeByTimestamp.length > 0) {
         const eventsText = context.eventsSincePreviousUiTreeByTimestamp.join('\n');
-        contextParts.push({ text: `\n\nEvents:\n${eventsText}` });
+        contextParts.push({ text: `\n\nEvents (Since Previous UI Tree):\n${eventsText}` });
+    }
+    if (context.eventsSincePreviousUiTreeBySameWindow && context.eventsSincePreviousUiTreeBySameWindow.length > 0) {
+        const eventsText = context.eventsSincePreviousUiTreeBySameWindow.join('\n');
+        contextParts.push({ text: `\n\nEvents (Since Same Window UI Tree):\n${eventsText}` });
     }
     if (context.previousAnalyses && context.previousAnalyses.length > 0) {
         const analysesText = context.previousAnalyses.map((a: { created_at: string, step: string, description: string }) => `[${new Date(a.created_at).toISOString()}] ${a.step}: ${a.description}`).join('\n');

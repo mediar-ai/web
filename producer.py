@@ -70,6 +70,54 @@ def generate_event_summary_string(event):
         print(f"Error generating event summary: {e}")
         return "Event: error"
 
+def get_screenshot_for_ui_tree_event(cursor, user_id, session_id, ui_tree_timestamp, time_window_seconds=3):
+    """
+    Find screenshot_diff event closest to the UI tree timestamp within time window
+    Returns the base64 data for the 'after' screenshot
+    """
+    try:
+        # Convert timestamp to ensure we have the right format
+        from datetime import datetime, timedelta
+        
+        if isinstance(ui_tree_timestamp, str):
+            ui_tree_time = datetime.fromisoformat(ui_tree_timestamp.replace('Z', '+00:00'))
+        else:
+            ui_tree_time = ui_tree_timestamp
+        
+        # Define time bounds
+        before_bound = ui_tree_time - timedelta(seconds=time_window_seconds)
+        after_bound = ui_tree_time + timedelta(seconds=time_window_seconds)
+        
+        # Query for screenshot_diff events within time bounds
+        cursor.execute("""
+            SELECT id, session_id, created_at, payload
+            FROM low_level_events 
+            WHERE user_id = %s 
+            AND session_id = %s
+            AND payload->'payload'->>'type' = 'screenshot_diff'
+            AND created_at BETWEEN %s AND %s
+            ORDER BY ABS(EXTRACT(EPOCH FROM (created_at - %s)))
+            LIMIT 1;
+        """, (user_id, session_id, before_bound, after_bound, ui_tree_time))
+        
+        screenshot_event = cursor.fetchone()
+        if not screenshot_event:
+            return None
+            
+        # Extract the 'after' screenshot from the event
+        screenshot_payload = screenshot_event[3]  # payload column
+        screenshot_diff = screenshot_payload.get('payload', {}).get('event', {}).get('screenshot_diff', {})
+        after_screenshot = screenshot_diff.get('after')
+        
+        if after_screenshot and len(after_screenshot) > 1000:  # Valid base64 data
+            return after_screenshot
+            
+        return None
+        
+    except Exception as e:
+        print(f"Error getting screenshot for UI tree event: {e}")
+        return None
+
 
 @app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
@@ -131,7 +179,7 @@ def enqueue_jobs():
                     session_id = event_to_process[2]
                     created_at = event_to_process[3]
 
-                    # Build context (simplified version of frontend logic)
+                    # Build context (matching frontend logic)
                     context = {}
                     
                     # Find current event in ui_tree_events
@@ -146,15 +194,33 @@ def enqueue_jobs():
                     if current_event_in_ui_list is not None:
                         prev_event = ui_tree_events[current_index - 1] if current_index > 0 else None
                         
+                        # Previous UI Tree and Window Title
                         if prev_event:
                             payload_idx = 3 if len(prev_event) == 4 else 4
                             prev_tree = prev_event[payload_idx].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
                             context['previousUiTree'] = generate_simplified_ui_tree_string(prev_tree)
+                            
+                            # Add window title from previous event
+                            prev_app_name = prev_event[payload_idx].get('payload', {}).get('event', {}).get('app_name', 'Unknown App')
+                            context['previousWindowTitle'] = prev_app_name
+                            context['previousWindowTimestamp'] = str(prev_event[3])  # created_at
+                            
+                            # Add screenshot for previous UI tree
+                            prev_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, session_id, prev_event[3])
+                            if prev_screenshot:
+                                context['screenshotBefore'] = prev_screenshot
 
+                        # Current UI Tree
                         payload_idx = 3 if len(event_to_process) == 4 else 4
                         current_tree = event_to_process[payload_idx].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
                         context['currentUiTree'] = generate_simplified_ui_tree_string(current_tree)
                         
+                        # Add screenshot for current UI tree
+                        current_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, session_id, created_at)
+                        if current_screenshot:
+                            context['screenshotAfter'] = current_screenshot
+                        
+                        # Events between previous and current UI tree
                         if prev_event:
                             prev_ts = get_event_timestamp(prev_event)
                             current_ts = get_event_timestamp(event_to_process)
@@ -165,6 +231,41 @@ def enqueue_jobs():
                                     if e_ts and prev_ts < e_ts < current_ts:
                                         events_between.append(generate_event_summary_string(e))
                                 context['eventsSincePreviousUiTreeByTimestamp'] = events_between
+                        
+                        # Find previous same window UI tree for diff calculation
+                        current_app_name = event_to_process[payload_idx].get('payload', {}).get('event', {}).get('app_name', 'Unknown App')
+                        prev_same_window_event = None
+                        for i in range(current_index - 1, -1, -1):
+                            ui_event = ui_tree_events[i]
+                            event_payload_idx = 3 if len(ui_event) == 4 else 4
+                            event_app_name = ui_event[event_payload_idx].get('payload', {}).get('event', {}).get('app_name', 'Unknown App')
+                            if event_app_name == current_app_name:
+                                prev_same_window_event = ui_event
+                                break
+                        
+                        # Events between same window UI trees
+                        if prev_same_window_event:
+                            prev_same_ts = get_event_timestamp(prev_same_window_event)
+                            if prev_same_ts and current_ts:
+                                events_same_window = []
+                                for e in all_events:
+                                    e_ts = get_event_timestamp(e)
+                                    if e_ts and prev_same_ts < e_ts < current_ts:
+                                        events_same_window.append(generate_event_summary_string(e))
+                                context['eventsSincePreviousUiTreeBySameWindow'] = events_same_window
+                            
+                            # UI Tree Diff (simplified - full diff logic would be complex in Python)
+                            prev_same_payload_idx = 3 if len(prev_same_window_event) == 4 else 4
+                            prev_same_tree = prev_same_window_event[prev_same_payload_idx].get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
+                            if prev_same_tree and current_tree:
+                                # Simplified diff indication
+                                context['uiTreeDiffLatestVsPreviousForTheSameWindow'] = f"UI Tree changed from previous state in {current_app_name}"
+                            
+                            # Add screenshot for previous same window UI tree (if different from previous by timestamp)
+                            if prev_same_window_event != prev_event:
+                                prev_same_window_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, session_id, prev_same_window_event[3])
+                                if prev_same_window_screenshot:
+                                    context['screenshotBeforeSameWindow'] = prev_same_window_screenshot
 
                     job_payload = {
                         "context": context,
