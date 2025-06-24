@@ -1,19 +1,10 @@
-import asyncio
-import modal
 import psycopg2
 import os
+import sys
 
-# Define the Modal "App" which is the main app object.
-# This is the entrypoint for all Modal functions.
-app = modal.App("session-event-aggregator")
-
-# Define the container image for our functions.
-# We need to install libraries to connect to Postgres and to create a web endpoint.
-app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "fastapi")
-
-# This is the new, comprehensive aggregation query.
-# It recalculates all stats from the source-of-truth tables on every run.
-NEW_AGGREGATION_SQL = """
+# This is the comprehensive aggregation query from the old batch_processor.
+# It recalculates all stats from the source-of-truth tables.
+BACKFILL_SQL = """
 DO $$
 BEGIN
     -- This temporary table will hold the new, correct stats for each session.
@@ -22,7 +13,7 @@ BEGIN
         -- Get all unique session IDs and determine their definitive type
         SELECT
             session_id,
-            (array_agg(user_id))[1] as user_id, -- Grab the first user_id, they should all be the same per session
+            (array_agg(user_id))[1] as user_id, -- Grab the first user_id
             CASE
                 WHEN COUNT(DISTINCT session_type) > 1 THEN 'mixed'
                 ELSE MAX(session_type)
@@ -35,7 +26,7 @@ BEGIN
         GROUP BY session_id
     ),
     analysis_stats AS (
-        -- Calculate stats based on workflow analyses (applies only to low-level)
+        -- Calculate stats based on workflow analyses
         SELECT
             session_id,
             COUNT(*) as total_analyses,
@@ -55,7 +46,7 @@ BEGIN
         GROUP BY llwa.session_id
     ),
     ui_step_stats AS (
-        -- Count only the events that are UI tree events, which represent "steps"
+        -- Count only the events that are UI tree events
         SELECT
             session_id,
             COUNT(*) as total_ui_steps
@@ -64,8 +55,7 @@ BEGIN
         GROUP BY session_id
     ),
     event_timing_stats AS (
-        -- Get the first and last event timestamps for duration calculation
-        -- This needs to be done carefully for each session type
+        -- Get the first and last event timestamps
         SELECT
             session_id,
             MIN(created_at) as first_event_timestamp,
@@ -83,7 +73,7 @@ BEGIN
         GROUP BY session_id
     ),
     combined_timing AS (
-        -- Combine timing stats and get the true min/max and total counts
+        -- Combine timing stats
         SELECT
             session_id,
             MIN(first_event_timestamp) as first_event_timestamp,
@@ -111,8 +101,7 @@ BEGIN
     LEFT JOIN ui_step_stats uss ON sb.session_id = uss.session_id
     JOIN combined_timing cts ON sb.session_id = cts.session_id;
 
-    -- Now, update the main session_metadata table from our temp table.
-    -- This is an "upsert" operation.
+    -- Upsert into the main session_metadata table
     INSERT INTO public.session_metadata (
         session_id, user_id, event_count, processed_event_count, 
         total_ui_steps, total_workflow_analyses, distinct_workflows_created, 
@@ -123,7 +112,7 @@ BEGIN
         tss.session_id,
         tss.user_id,
         tss.total_event_count,
-        tss.total_workflow_analyses, -- processed_event_count is now the same as total_workflow_analyses
+        tss.total_workflow_analyses,
         tss.total_ui_steps,
         tss.total_workflow_analyses,
         tss.distinct_workflows_created,
@@ -146,7 +135,7 @@ BEGIN
         processed_event_count = EXCLUDED.processed_event_count,
         total_ui_steps = EXCLUDED.total_ui_steps,
         total_workflow_analyses = EXCLUDED.total_workflow_analyses,
-        distinct_workflows_created = EXCLUDED.distinct_workflows_created,
+        distinct_workflows_created = EXcluded.distinct_workflows_created,
         total_labeled_steps = EXCLUDED.total_labeled_steps,
         human_labeled_steps = EXCLUDED.human_labeled_steps,
         first_event_timestamp = EXCLUDED.first_event_timestamp,
@@ -159,53 +148,37 @@ END;
 $$;
 """
 
-# Define a function that runs on a schedule.
-# This function is the core of our solution.
-@app.function(
-    # To connect to Supabase, we need the connection string.
-    # We store this securely in a Modal Secret, not in our code.
-    # You will need to create a secret in the Modal UI named "supabase-secret"
-    # with a key "SUPABASE_CONN_STRING".
-    secrets=[modal.Secret.from_name("supabase-secret")],
-    
-    # Set the schedule to run every 1 second.
-    schedule=modal.Period(seconds=1),
-    
-    # Allow this function to run for a while if needed.
-    timeout=120
-)
-def aggregate_and_update_sessions():
-    """
-    This function connects to the Supabase DB and does two things:
-    1. Aggregates all events that haven't been counted yet.
-    2. Updates the session_metadata table with the new counts.
-    3. Marks the events as "counted" so they are not processed again.
-    """
-    print("Running scheduled aggregation v2...")
-    
-    try:
-        # Connect to the database using the connection string from the secret.
-        conn = psycopg2.connect(os.environ["SUPABASE_CONN_STRING"])
-        cur = conn.cursor()
+def run_backfill():
+    """Connects to the database and runs the backfill script."""
+    conn_string = os.environ.get("SUPABASE_CONN_STRING")
+    if not conn_string:
+        print("Error: SUPABASE_CONN_STRING environment variable not set.")
+        sys.exit(1)
 
-        cur.execute(NEW_AGGREGATION_SQL)
+    try:
+        print("Connecting to the database...")
+        conn = psycopg2.connect(conn_string)
+        # Set a generous timeout for this one-time, heavy operation
+        conn.set_session(autocommit=False)
+        cur = conn.cursor()
+        cur.execute("SET statement_timeout = '300s';") # 5 minutes
+
+        print("Running backfill aggregation... This may take a few minutes.")
+        cur.execute(BACKFILL_SQL)
         conn.commit()
         
-        print("Aggregation v2 successful.")
+        print("\n✅ Backfill complete. session_metadata table is now up-to-date.")
 
     except Exception as e:
-        print(f"An error occurred in v2 aggregation: {e}")
-        # In a production environment, you would add more robust error handling,
-        # perhaps sending a notification to an observability platform.
+        print(f"\n❌ An error occurred during the backfill: {e}")
+        if 'conn' in locals() and conn:
+            conn.rollback()
     finally:
-        if 'conn' in locals() and conn is not None:
+        if 'cur' in locals() and cur:
             cur.close()
+        if 'conn' in locals() and conn:
             conn.close()
-            
-# This is a dummy function to keep the service running.
-# A stub with only a scheduled function might be paused by Modal.
-# Having a dummy web endpoint is a good practice to ensure it's always "on".
-@app.function()
-@modal.fastapi_endpoint()
-def dummy():
-    return {"status": "ok"}
+        print("Database connection closed.")
+
+if __name__ == "__main__":
+    run_backfill() 
