@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part } from '@google/generative-ai';
 import { ParsedAnalysis, LLMStructuredOutput } from '@/types';
-import { createLegacyStructuredOutput } from './workflowAnalysisHelpers';
 import { legacyAnalysisSchema, getSchemaByVersion, SchemaVersion } from './llmSchemas';
 
 type AnalysisContext = {
@@ -139,15 +138,13 @@ export async function saveWorkflowStepAnalysis(
 ) {
     const normalizedTimestamp = new Date(clientTimestamp).toISOString();
     
-    // Create structured output for JSONB storage
-    const structuredOutput: LLMStructuredOutput = createLegacyStructuredOutput({
+    // Create structured output for JSONB storage directly, assuming V2+
+    const structuredOutput: LLMStructuredOutput = {
         ...analysis,
-    });
-    
-    // Add model metadata if provided
-    if (modelName) {
-        structuredOutput.model_used = modelName;
-    }
+        schema_version: 'v2', // Default to v2
+        generation_timestamp: new Date().toISOString(),
+        model_used: modelName,
+    };
 
     const { data, error } = await supabaseAdmin
       .from('low_level_workflow_analyses')
