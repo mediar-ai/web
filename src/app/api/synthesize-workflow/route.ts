@@ -65,6 +65,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters: model and context' }, { status: 400 });
     }
 
+    // Function to process V1/V2 events to consistent format
+    const processEvents = (events: unknown[]) => {
+      return events.map((event: unknown) => {
+        // Type guard to check if event has the expected structure
+        if (typeof event === 'object' && event !== null && 'analysis' in event) {
+          const typedEvent = event as { analysis?: { raw_llm_output?: { schema_version?: string; step_title?: string; step_summary?: string; user_intent?: string; events_that_happened?: string; how_content_changed?: string; what_was_clicked?: string; what_was_typed?: string; results_if_any?: string; } }; [key: string]: unknown; };
+        
+          if (typedEvent.analysis) {
+            // Check if analysis has V2 structure (llm_structured_output)
+            const analysis = typedEvent.analysis;
+            if (analysis.raw_llm_output && analysis.raw_llm_output.schema_version === 'v2') {
+              // Use V2 fields for workflow analysis
+              return {
+                ...typedEvent,
+                analysis: {
+                  workflow: analysis.raw_llm_output.step_title || 'Unknown Workflow',
+                  step: analysis.raw_llm_output.step_summary || 'Unknown Step',
+                  description: analysis.raw_llm_output.user_intent || 'No description',
+                  actions: analysis.raw_llm_output.events_that_happened || 'No actions',
+                  changes: analysis.raw_llm_output.how_content_changed || 'No changes',
+                  clicked: analysis.raw_llm_output.what_was_clicked || 'Nothing clicked',
+                  typed: analysis.raw_llm_output.what_was_typed || 'Nothing typed',
+                  results: analysis.raw_llm_output.results_if_any || 'No results'
+                }
+              };
+            } else {
+              // Keep V1 structure as-is for backward compatibility
+              return typedEvent;
+            }
+          }
+        }
+        return event;
+      });
+    };
+
     // Handle both single workflow (legacy) and multiple workflows
     const isMultipleWorkflows = context.workflows && Array.isArray(context.workflows);
     
@@ -92,10 +127,11 @@ export async function POST(req: NextRequest) {
       // Multiple workflows synthesis
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const workflowDetails = context.workflows!.map((workflow: WorkflowSynthesisInput) => {
+        const processedWorkflowEvents = processEvents(workflow.events);
         return `WORKFLOW: ${workflow.name}
 TRIGGER: ${workflow.trigger || 'Not specified'}
 TERMINATOR: ${workflow.terminator || 'Not specified'}
-EVENTS: ${JSON.stringify(workflow.events, null, 2)}`;
+EVENTS: ${JSON.stringify(processedWorkflowEvents, null, 2)}`;
       }).join('\n\n---\n\n');
       
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -111,6 +147,7 @@ ${JSON.stringify(context.workflowContext, null, 2)}
 ${workflowDetails}`;
     } else {
       // Single workflow synthesis (legacy support)
+      const processedSingleEvents = context.events ? processEvents(context.events) : [];
       prompt = `${WORKFLOW_SYNTHESIS_PROMPT}
 
 IMPORTANT: You must synthesize a workflow with EXACTLY this name (do not change it): ${context.workflow_name}
@@ -121,7 +158,7 @@ ${JSON.stringify(context.workflowContext, null, 2)}
 WORKFLOW: ${context.workflow_name}
 TRIGGER: ${context.trigger || 'Not specified'}
 TERMINATOR: ${context.terminator || 'Not specified'}
-EVENTS: ${JSON.stringify(context.events, null, 2)}`;
+EVENTS: ${JSON.stringify(processedSingleEvents, null, 2)}`;
     }
     
     const result = await model.generateContent(prompt);

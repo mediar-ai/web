@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Schema, SchemaType } from '@google/generative-ai';
-import { EVENTS_PROMPT } from '@/lib/prompts';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import { WORKFLOW_STEP_ANALYSIS_V2_PROMPT } from '@/lib/prompts';
+import { v2AnalysisSchema } from '@/lib/llmSchemas';
 
 const getGenAI = () => {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -17,17 +18,6 @@ const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThresho
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
 ];
 
-const eventSchema: Schema = {
-    type: SchemaType.OBJECT,
-    properties: {
-        event_summary: {
-            type: SchemaType.STRING,
-            description: "A single, concise sentence summarizing the user's action."
-        },
-    },
-    required: ['event_summary']
-};
-
 export async function POST(req: NextRequest) {
   try {
     const { model: modelName, context } = await req.json();
@@ -41,23 +31,30 @@ export async function POST(req: NextRequest) {
       model: modelName,
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: eventSchema,
+        responseSchema: v2AnalysisSchema,
       },
       safetySettings,
     });
     
     const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: EVENTS_PROMPT }, { text: `\n\nLATEST ACTIVITY CONTEXT:\n${JSON.stringify(context.targetAnalysis, null, 2)}` }] }],
+      contents: [{ role: "user", parts: [{ text: WORKFLOW_STEP_ANALYSIS_V2_PROMPT }, { text: `\n\nCONTEXT:\n${JSON.stringify(context, null, 2)}` }] }],
     });
 
     const response = result.response;
     if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        const eventData = JSON.parse(response.candidates[0].content.parts[0].text);
-        return NextResponse.json(eventData);
+        const analysisData = JSON.parse(response.candidates[0].content.parts[0].text);
+        
+        // Add schema version to mark as V2
+        const v2Analysis = {
+          ...analysisData,
+          schema_version: 'v2'
+        };
+        
+        return NextResponse.json(v2Analysis);
     }
     
     console.error("No valid response from model:", response);
-    return NextResponse.json({ error: 'Failed to generate event summary from the model.' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to generate workflow analysis from the model.' }, { status: 500 });
 
   } catch (error) {
     console.error('Error generating workflow event:', error);

@@ -55,6 +55,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
+    // Convert V1/V2 mixed events to a consistent format for analysis
+    const processedEvents = context.events.map((event: { analysis?: { raw_llm_output?: { schema_version?: string; step_title?: string; step_summary?: string; user_intent?: string; events_that_happened?: string; how_content_changed?: string; what_was_clicked?: string; what_was_typed?: string; results_if_any?: string; } }; [key: string]: unknown; }) => {
+      if (event.analysis) {
+        // Check if analysis has V2 structure (llm_structured_output)
+        const analysis = event.analysis;
+        if (analysis.raw_llm_output && analysis.raw_llm_output.schema_version === 'v2') {
+          // Use V2 fields for workflow analysis
+          return {
+            ...event,
+            analysis: {
+              workflow: analysis.raw_llm_output.step_title || 'Unknown Workflow',
+              step: analysis.raw_llm_output.step_summary || 'Unknown Step',
+              description: analysis.raw_llm_output.user_intent || 'No description',
+              actions: analysis.raw_llm_output.events_that_happened || 'No actions',
+              changes: analysis.raw_llm_output.how_content_changed || 'No changes',
+              clicked: analysis.raw_llm_output.what_was_clicked || 'Nothing clicked',
+              typed: analysis.raw_llm_output.what_was_typed || 'Nothing typed',
+              results: analysis.raw_llm_output.results_if_any || 'No results'
+            }
+          };
+        } else {
+          // Keep V1 structure as-is for backward compatibility
+          return event;
+        }
+      }
+      return event;
+    });
+
     // Handle both single workflow (legacy) and multiple workflows
     const workflowNames = context.workflows.map((w: { workflow_name: string }) => w.workflow_name);
     
@@ -83,7 +111,7 @@ User's High-Level Context:
 ${JSON.stringify(context.userContext, null, 2)}
 
 Events Context:
-${JSON.stringify(context.events, null, 2)}`;
+${JSON.stringify(processedEvents, null, 2)}`;
 
     const result = await model.generateContent(prompt);
 
