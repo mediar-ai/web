@@ -130,19 +130,106 @@ def release_processing_lock(cur, conn, user_id, event_id, processor_id, status):
         conn.rollback()
 
 def cleanup_expired_locks(cur, conn):
-    """Clean up expired processing locks"""
+    """Smart cleanup of expired and stale processing locks"""
     try:
+        # First, clean up obviously expired/completed locks
         cur.execute("""
             DELETE FROM processing_locks 
             WHERE expires_at < NOW() OR status IN ('completed', 'failed')
         """)
-        deleted_count = cur.rowcount
-        if deleted_count > 0:
-            print(f"🧹 Cleaned up {deleted_count} expired/completed processing locks")
+        basic_cleanup = cur.rowcount
+        
+        # Smart cleanup: Remove locks older than 10 minutes (instead of 30)
+        # This handles cases where Modal apps are stopped manually
+        cur.execute("""
+            DELETE FROM processing_locks 
+            WHERE status = 'in_progress' 
+              AND created_at < NOW() - INTERVAL '10 minutes'
+        """)
+        stale_cleanup = cur.rowcount
+        
+        # Aggressive cleanup: Remove duplicate locks for same user
+        # (Keep only the most recent lock per user)
+        cur.execute("""
+            DELETE FROM processing_locks p1
+            WHERE status = 'in_progress'
+              AND EXISTS (
+                  SELECT 1 FROM processing_locks p2 
+                  WHERE p2.user_id = p1.user_id 
+                    AND p2.status = 'in_progress'
+                    AND p2.created_at > p1.created_at
+              )
+        """)
+        duplicate_cleanup = cur.rowcount
+        
+        total_cleaned = basic_cleanup + stale_cleanup + duplicate_cleanup
+        if total_cleaned > 0:
+            print(f"🧹 Smart cleanup: {basic_cleanup} expired + {stale_cleanup} stale + {duplicate_cleanup} duplicate locks = {total_cleaned} total")
+        
         conn.commit()
+        return total_cleaned
+        
     except Exception as e:
         print(f"❌ Failed to cleanup locks: {e}")
         conn.rollback()
+        return 0
+
+def emergency_cleanup_all_locks(cur, conn):
+    """Emergency function to clean up ALL processing locks - use with caution"""
+    try:
+        print("⚠️  EMERGENCY: Cleaning up ALL processing locks...")
+        cur.execute("DELETE FROM processing_locks WHERE status = 'in_progress'")
+        deleted_count = cur.rowcount
+        conn.commit()
+        print(f"🧹 Emergency cleanup: Removed {deleted_count} locks")
+        return deleted_count
+    except Exception as e:
+        print(f"❌ Emergency cleanup failed: {e}")
+        conn.rollback()
+        return 0
+
+def smart_lock_validation(cur, conn):
+    """Validate and clean locks based on age and patterns"""
+    try:
+        # Find potentially problematic locks
+        cur.execute("""
+            SELECT user_id, processor_id, created_at, 
+                   NOW() - created_at as age,
+                   COUNT(*) OVER (PARTITION BY user_id) as user_lock_count
+            FROM processing_locks 
+            WHERE status = 'in_progress' 
+              AND expires_at > NOW()
+            ORDER BY created_at ASC
+        """)
+        
+        problematic_locks = []
+        locks = cur.fetchall()
+        
+        for user_id, processor_id, created_at, age, user_lock_count in locks:
+            # Flag locks older than 5 minutes or users with multiple locks
+            if age.total_seconds() > 300 or user_lock_count > 1:  # 5 minutes
+                problematic_locks.append((user_id, processor_id))
+        
+        if problematic_locks:
+            print(f"🔍 Found {len(problematic_locks)} problematic locks")
+            
+            # Clean them up
+            for user_id, processor_id in problematic_locks:
+                cur.execute("""
+                    DELETE FROM processing_locks 
+                    WHERE user_id = %s AND processor_id = %s AND status = 'in_progress'
+                """, (user_id, processor_id))
+            
+            conn.commit()
+            print(f"🧹 Validated and cleaned {len(problematic_locks)} problematic locks")
+            return len(problematic_locks)
+        
+        return 0
+        
+    except Exception as e:
+        print(f"❌ Lock validation failed: {e}")
+        conn.rollback()
+        return 0
 
 def is_event_already_processed(cur, user_id, event_timestamp):
     """Check if an event has already been processed (has analysis)"""
@@ -1023,15 +1110,17 @@ def process_all_events_for_user(user_id: str):
         if conn:
             conn.close()
 
-@app.function(
-    secrets=[
-        modal.Secret.from_name("supabase-secret"),
-        modal.Secret.from_name("custom-secret")  # For VERCEL_URL
-    ],
-    timeout=1800,  # 30 minutes
-    retries=0  # No automatic retries to prevent duplicates
-)
-def process_next_event_for_user(user_id: str):
+# DEPRECATED: This function processes only ONE event per user - inefficient
+# Use process_all_events_for_user() instead which processes ALL events per user
+# @app.function(
+#     secrets=[
+#         modal.Secret.from_name("supabase-secret"),
+#         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
+#     ],
+#     timeout=1800,  # 30 minutes
+#     retries=0  # No automatic retries to prevent duplicates
+# )
+def process_next_event_for_user_deprecated(user_id: str):
     """
     Process the next unprocessed event for a specific user with duplicate prevention.
     Uses database locks to ensure only one instance processes each event.
@@ -1239,10 +1328,10 @@ def process_next_event_for_user(user_id: str):
 )
 def scheduled_processing():
     """
-    Automatically find and process events for all users every 2 minutes.
-    Continues until all 3,145+ events are processed.
+    Automatically find and process ALL events for all users every 2 minutes.
+    Uses the efficient full parallel processing approach.
     """
-    print("🔄 Starting scheduled processing...")
+    print("🔄 Starting scheduled FULL parallel processing...")
     try:
         # Check current processor load before spawning more
         conn = get_database_connection()
@@ -1257,23 +1346,20 @@ def scheduled_processing():
         active_count = cur.fetchone()[0]
         
         # Limit concurrent processors to prevent overload
-        MAX_CONCURRENT_PROCESSORS = 100  # Allow massive parallel processing
+        MAX_CONCURRENT_PROCESSORS = 50  # Reasonable limit for scheduled processing
         
         if active_count >= MAX_CONCURRENT_PROCESSORS:
             print(f"⏸️  {active_count} processors already active (max: {MAX_CONCURRENT_PROCESSORS}), skipping this cycle")
             return {"success": True, "message": "Skipped due to active processors", "active_processors": active_count}
         
-        # Spawn processors for all available users (no artificial limit per cycle)
-        processors_to_spawn = min(MAX_CONCURRENT_PROCESSORS - active_count, 100)  # Max 100 per cycle
-        
-        print(f"📊 Active processors: {active_count}/{MAX_CONCURRENT_PROCESSORS}, spawning: {processors_to_spawn}")
+        print(f"📊 Active processors: {active_count}/{MAX_CONCURRENT_PROCESSORS}")
         
         cur.close()
         conn.close()
         
-        # Trigger limited processing
-        result = find_and_trigger_users_with_prevention.remote()
-        print(f"✅ Scheduled processing completed: {result}")
+        # Use efficient FULL parallel processing approach
+        result = trigger_full_parallel_processing.remote()
+        print(f"✅ Scheduled FULL parallel processing completed: {result}")
         return result
     except Exception as e:
         print(f"❌ Error in scheduled processing: {e}")
@@ -1299,8 +1385,13 @@ def trigger_full_parallel_processing():
         cur.execute(INIT_PROCESSING_LOCKS_SQL)
         conn.commit()
         
-        # Clean up expired locks
-        cleanup_expired_locks(cur, conn)
+        # Smart cleanup of expired, stale, and problematic locks
+        cleaned_basic = cleanup_expired_locks(cur, conn)
+        cleaned_validation = smart_lock_validation(cur, conn)
+        total_cleaned = cleaned_basic + cleaned_validation
+        
+        if total_cleaned > 0:
+            print(f"🔧 Total smart cleanup: {total_cleaned} locks removed")
         
         # Find ALL users with unprocessed events (not currently being processed)
         cur.execute("""
@@ -1366,11 +1457,14 @@ def trigger_full_parallel_processing():
             "coordinator_id": coordinator_id
         }
 
-@app.function(
-    secrets=[modal.Secret.from_name("supabase-secret")],
-    timeout=1800
-)
-def find_and_trigger_users_with_prevention():
+# DEPRECATED: This function uses the old inefficient approach
+# It triggers process_all_events_for_user() but with concurrency limits
+# The scheduled_processing() now calls trigger_full_parallel_processing() directly
+# @app.function(
+#     secrets=[modal.Secret.from_name("supabase-secret")],
+#     timeout=1800
+# )
+def find_and_trigger_users_with_prevention_deprecated():
     """
     Find users with unprocessed events and trigger sequential processing.
     Includes duplicate prevention to avoid multiple processors for same user.
@@ -1465,6 +1559,43 @@ def find_and_trigger_users_with_prevention():
             "success": False,
             "error": str(e),
             "coordinator_id": processor_id
+        }
+    finally:
+        if 'cur' in locals() and cur:
+            cur.close()
+        if 'conn' in locals() and conn:
+            conn.close()
+
+@app.function(
+    secrets=[modal.Secret.from_name("supabase-secret")],
+    timeout=1800
+)
+def emergency_cleanup_all_processing_locks():
+    """Emergency function to clean up ALL processing locks - use with caution!"""
+    try:
+        conn = get_database_connection()
+        cur = conn.cursor()
+        
+        # Get count before cleanup for reporting
+        cur.execute("SELECT COUNT(*) FROM processing_locks WHERE status = 'in_progress'")
+        before_count = cur.fetchone()[0]
+        
+        # Emergency cleanup
+        cleaned_count = emergency_cleanup_all_locks(cur, conn)
+        
+        return {
+            "success": True,
+            "message": f"Emergency cleanup completed",
+            "locks_before": before_count,
+            "locks_cleaned": cleaned_count,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
         }
     finally:
         if 'cur' in locals() and cur:
