@@ -36,11 +36,6 @@ const formatDuration = (seconds: number | null | undefined): string => {
   return result.trim();
 };
 
-const ALLOWED_USERS = [
-  '29303245-5cbb-671e-2930-32455cbb671e',
-  'c4cc0b1a-4e8b-e98c-c4cc-0b1a4e8be98c'
-];
-
 export default function AdminDashboardClient() {
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
@@ -176,7 +171,6 @@ export default function AdminDashboardClient() {
         </thead>
         <tbody>
           {Object.entries(userSessions)
-            .filter(([userId]) => ALLOWED_USERS.includes(userId))
             .sort(([, aData], [, bData]) => {
               // Sort by most recent session activity
               const aLatest = Math.max(...aData.sessions.map(s => new Date(s.timestamp).getTime()));
