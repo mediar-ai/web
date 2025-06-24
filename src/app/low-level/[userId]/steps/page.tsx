@@ -56,7 +56,10 @@ import { FlattenedWorkflowAnalysis } from '@/types';
 type ContextForAnalysis = {
   screenshotBefore?: string | null;
   screenshotAfter?: string | null;
+  screenshotBeforeSameWindow?: string | null;
   previousUiTree?: string | null;
+  previousWindowTitle?: string;
+  previousWindowTimestamp?: string;
   currentUiTree?: string | null;
   currentUiTree_structure?: string;
   eventsSincePreviousUiTreeByTimestamp?: string[];
@@ -130,7 +133,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   
   // State to control which context elements are included
   const [contextConfig, ] = useState({
-    includeScreenshots: false,
+    includeScreenshots: true,
     includePreviousUiTree: false,
     includePreviousWindowTitle: true,
     includePreviousSameWindowUiTree: false,
@@ -138,7 +141,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     includeEventsSinceSameWindowUiTree: true,
     includeCurrentUiTree: true,
     includeUiTreeDiff: true,
-    includeLatestScreenshot: false,
+    includeLatestScreenshot: true,
     includePreviousAnalyses: true,
     includeGoodExamples: false,
     includeBadExamples: false,
@@ -620,11 +623,18 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     const context: ContextForAnalysis = {};
 
     if (contextConfig.includeScreenshots) {
+      context.screenshotBefore = beforeScreenshotDataUrl;
+      context.screenshotBeforeSameWindow = beforeScreenshotDataUrlSameWindow;
+    }
+    if (contextConfig.includeLatestScreenshot) {
       context.screenshotAfter = afterScreenshotDataUrl;
-      context.screenshotBefore = beforeScreenshotDataUrlSameWindow;
     }
     if (contextConfig.includePreviousUiTree && previousUiTree) {
       context.previousUiTree = generateSimplifiedUiTreeString(previousUiTree);
+    }
+    if (contextConfig.includePreviousWindowTitle && previousUiTreeEvent) {
+      context.previousWindowTitle = getEventTitle(previousUiTreeEvent);
+      context.previousWindowTimestamp = new Date(previousUiTreeEvent.created_at).toLocaleString();
     }
     if (contextConfig.includeCurrentUiTree && currentUiTree) {
       context.currentUiTree_structure = "The UI tree is a simplified representation of the accessibility tree. Each line has the format: 'LineNumber. RomanNumeralIndentation. [Role] 'Name' {Attributes}'.";
@@ -674,6 +684,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     previousAnalyses,
     contextConfig,
     previousSameWindowUiTree,
+    previousUiTreeEvent,
   ]);
 
   useEffect(() => {
