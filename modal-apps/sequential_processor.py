@@ -10,6 +10,12 @@ import time
 app = modal.App("sequential-workflow-processor")
 app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
 
+# --- FEATURE FLAGS ---
+# WARNING: Disabling screenshots will significantly reduce context quality for the LLM.
+# This is a temporary measure to prevent '413 Request Entity Too Large' errors.
+INCLUDE_SCREENSHOTS_IN_CONTEXT = False
+# --- END FEATURE FLAGS ---
+
 # Database connection configuration
 DB_CONFIG = {
     'host': 'aws-0-us-west-1.pooler.supabase.com',
@@ -789,24 +795,26 @@ def build_fresh_context(cur, user_id, current_event):
     previous_event = get_previous_ui_tree_by_timestamp(cur, user_id, current_timestamp)
     previous_same_window = get_previous_same_window_ui_tree(cur, user_id, current_timestamp, window_title)
     
-    # ALWAYS try to get screenshots for all three types (matching frontend logic)
-    
-    # includeScreenshots: true (screenshotBefore - previous UI tree by timestamp)
-    if previous_event:
-        prev_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, previous_event[2], previous_event[3])  # session_id, created_at in 5-field structure
-        if prev_screenshot:
-            context['screenshotBefore'] = prev_screenshot
-    
-    # includeScreenshots: true (screenshotBeforeSameWindow - previous same window UI tree)
-    if previous_same_window:
-        same_window_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, previous_same_window[2], previous_same_window[3])  # session_id, created_at in 5-field structure
-        if same_window_screenshot:
-            context['screenshotBeforeSameWindow'] = same_window_screenshot
-    
-    # includeLatestScreenshot: true (screenshotAfter - current UI tree)
-    current_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, current_event[2], current_event[3])  # session_id, created_at in 5-field structure
-    if current_screenshot:
-        context['screenshotAfter'] = current_screenshot
+    # Conditionally include screenshots based on the feature flag
+    if INCLUDE_SCREENSHOTS_IN_CONTEXT:
+        # ALWAYS try to get screenshots for all three types (matching frontend logic)
+        
+        # includeScreenshots: true (screenshotBefore - previous UI tree by timestamp)
+        if previous_event:
+            prev_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, previous_event[2], previous_event[3])  # session_id, created_at in 5-field structure
+            if prev_screenshot:
+                context['screenshotBefore'] = prev_screenshot
+        
+        # includeScreenshots: true (screenshotBeforeSameWindow - previous same window UI tree)
+        if previous_same_window:
+            same_window_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, previous_same_window[2], previous_same_window[3])  # session_id, created_at in 5-field structure
+            if same_window_screenshot:
+                context['screenshotBeforeSameWindow'] = same_window_screenshot
+        
+        # includeLatestScreenshot: true (screenshotAfter - current UI tree)
+        current_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, current_event[2], current_event[3])  # session_id, created_at in 5-field structure
+        if current_screenshot:
+            context['screenshotAfter'] = current_screenshot
     
     # Now handle other context fields that depend on previous_event
     if previous_event:

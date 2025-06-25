@@ -65,8 +65,6 @@ export default clerkMiddleware(async (auth, req) => {
 });
 
 export const config = {
-  // Opt out of the Edge Runtime and use Node.js instead
-  runtime: 'nodejs',
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
