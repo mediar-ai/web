@@ -21,6 +21,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
@@ -105,6 +120,10 @@ function AuthenticatedAdminPage({
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [userToDelete, setUserToDelete] = useState<{id: string, name: string} | null>(null);
   const [isGlobalAdmin, setIsGlobalAdmin] = useState<boolean>(false);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('org:member');
+  const [inviteStatus, setInviteStatus] = useState<{message: string, error: boolean} | null>(null);
 
   const toggleUserExpansion = (userId: string) => {
     setExpandedUsers(prev => {
@@ -204,6 +223,37 @@ function AuthenticatedAdminPage({
     }
   };
 
+  const handleInviteUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInviteStatus({ message: 'Sending invitation...', error: false });
+
+    try {
+      const response = await fetch('/api/invite-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setInviteStatus({ message: result.message, error: false });
+        // Optionally close the dialog after a delay
+        setTimeout(() => {
+          setIsInviteDialogOpen(false);
+          setInviteEmail('');
+          setInviteRole('org:member');
+          setInviteStatus(null);
+        }, 2000);
+      } else {
+        throw new Error(result.details || 'Failed to send invitation.');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setInviteStatus({ message: errorMessage, error: true });
+    }
+  };
+
   // Get access level display text
   const getAccessLevelText = () => {
     if (isGlobalAdmin) {
@@ -265,6 +315,55 @@ function AuthenticatedAdminPage({
             className="h-8 w-48"
           />
           <ThemeSwitcher />
+          {isAdmin && (
+            <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm">Invite User</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Invite New User to {organizationName}</DialogTitle>
+                  <DialogDescription>
+                    The user will receive an email with a link to join your organization.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleInviteUser} className="space-y-4">
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email Address</label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="user@example.com"
+                      required
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="role" className="block text-sm font-medium text-gray-700">Role</label>
+                    <Select value={inviteRole} onValueChange={setInviteRole}>
+                      <SelectTrigger id="role" className="mt-1">
+                        <SelectValue placeholder="Select a role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="org:admin">Admin</SelectItem>
+                        <SelectItem value="org:member">Member</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="submit">Send Invitation</Button>
+                  </div>
+                </form>
+                {inviteStatus && (
+                  <div className={`mt-4 text-sm ${inviteStatus.error ? 'text-red-600' : 'text-green-600'}`}>
+                    {inviteStatus.message}
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </div>
       
