@@ -34,6 +34,8 @@ const promptLibrary: { [key: string]: string } = {
   // 'SUMMARIZE_SESSION_PROMPT': prompts.SUMMARIZE_SESSION_PROMPT,
 };
 
+export const maxDuration = 300; // 5 minutes
+
 export async function POST(req: NextRequest) {
     try {
         // The 'prompt' field is now treated as a key
