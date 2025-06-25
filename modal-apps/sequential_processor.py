@@ -259,9 +259,10 @@ def get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id):
               )
               AND id NOT IN (
                   SELECT event_id FROM processing_locks 
-                  WHERE user_id = %s 
-                    AND status = 'in_progress' 
-                    AND expires_at > NOW()
+                  WHERE user_id = %s AND (
+                      (status = 'in_progress' AND expires_at > NOW()) OR
+                      status = 'failed'
+                  )
               )
             ORDER BY created_at ASC
             LIMIT 1
@@ -1020,6 +1021,18 @@ def process_all_events_for_user(user_id: str):
                     # Build FRESH context including all previous analyses
                     context, context_metadata = build_fresh_context(cur, user_id, event)
                     
+                    # --- DEBUG: Log context component sizes ---
+                    print("--- CONTEXT SIZE DEBUG ---")
+                    total_size = 0
+                    for key, value in context.items():
+                        # Use json.dumps to get a more accurate representation of the size
+                        size_bytes = len(json.dumps(value).encode('utf-8'))
+                        total_size += size_bytes
+                        print(f"Component '{key}': {size_bytes / 1024:.2f} KB")
+                    print(f"Total Context Size: {total_size / (1024*1024):.2f} MB")
+                    print("--------------------------")
+                    # --- END DEBUG ---
+
                     # Prepare LLM API call
                     model_name = 'gemini-2.5-pro-preview-06-05'
                     api_payload = {
