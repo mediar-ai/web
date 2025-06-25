@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, RotateCcw, Zap, RefreshCw, PictureInPicture } from 'lucide-react';
 import type { PageHeaderControlsProps } from '../../types';
+import { SignedIn, SignedOut, UserButton, OrganizationSwitcher } from '@clerk/nextjs';
+import Link from 'next/link';
 
 interface StatusIndicatorProps {
   mainStatus: string;
@@ -107,6 +109,29 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
         <Button onClick={onTogglePip} variant="outline" size="icon" aria-label="Toggle Picture-in-Picture" disabled={!isPipSupported}>
           <PictureInPicture className="h-4 w-4" />
         </Button>
+        <SignedIn>
+          <OrganizationSwitcher 
+            hidePersonal={true}
+            afterSelectOrganizationUrl="/admin"
+            appearance={{
+              elements: {
+                organizationSwitcherTrigger: "px-3 py-2 text-sm border rounded-md hover:bg-gray-50"
+              }
+            }}
+          />
+          <UserButton 
+            appearance={{
+              elements: {
+                avatarBox: "w-8 h-8"
+              }
+            }}
+          />
+        </SignedIn>
+        <SignedOut>
+          <Button asChild>
+            <Link href="/sign-in">Sign In</Link>
+          </Button>
+        </SignedOut>
       </div>
     </div>
   );

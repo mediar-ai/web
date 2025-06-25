@@ -20,6 +20,10 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Input } from '@/components/ui/input';
 
+interface AdminDashboardClientProps {
+  isAdmin: boolean;
+}
+
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
 const formatDuration = (seconds: number | null | undefined): string => {
@@ -36,7 +40,7 @@ const formatDuration = (seconds: number | null | undefined): string => {
   return result.trim();
 };
 
-export default function AdminDashboardClient() {
+export default function AdminDashboardClient({ isAdmin }: AdminDashboardClientProps) {
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<string | null>(null);
@@ -141,7 +145,15 @@ export default function AdminDashboardClient() {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
       <div className="flex justify-between items-center mb-3">
-        <h1 className="text-xl font-bold">Stoke Team</h1>
+        <div>
+          <h1 className="text-xl font-bold">Stoke Team</h1>
+          {isAdmin && (
+            <span className="text-sm text-blue-600 font-medium">Admin Access - All Organizations</span>
+          )}
+          {!isAdmin && (
+            <span className="text-sm text-green-600 font-medium">Member Access - Organization Data</span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <Button 
             variant="outline" 
@@ -166,7 +178,7 @@ export default function AdminDashboardClient() {
             <th scope="col" className="px-1 py-2">WORKFLOW (DISTINCT)</th>
             <th scope="col" className="px-1 py-2">Duration</th>
             <th scope="col" className="px-1 py-2" style={{ minWidth: '180px' }}>Last Active</th>
-            <th scope="col" className="px-1 py-2 text-right">Actions</th>
+            {isAdmin && <th scope="col" className="px-1 py-2 text-right">Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -205,7 +217,7 @@ export default function AdminDashboardClient() {
                         <button onClick={() => toggleUserExpansion(userId)} className="mr-2 p-1">
                           {expandedUsers.has(userId) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                         </button>
-                        {editingUser === userId ? (
+                        {editingUser === userId && isAdmin ? (
                           <Input 
                             type="text" 
                             value={userNameInput}
@@ -218,9 +230,11 @@ export default function AdminDashboardClient() {
                         ) : (
                           <span className="font-bold">{userData.name || 'Anonymous'}</span>
                         )}
-                        <button onClick={() => { setEditingUser(userId); setUserNameInput(userData.name || ''); }} className="ml-2 text-gray-400 hover:text-gray-700">
-                          <Pencil size={12} />
-                        </button>
+                        {isAdmin && (
+                          <button onClick={() => { setEditingUser(userId); setUserNameInput(userData.name || ''); }} className="ml-2 text-gray-400 hover:text-gray-700">
+                            <Pencil size={12} />
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="px-1 py-2 text-center">{liveSessions}/{userData.sessions.length}</td>
@@ -231,15 +245,17 @@ export default function AdminDashboardClient() {
                     <td className="px-1 py-2 text-center">{distinctWorkflowsCreated}</td>
                     <td className="px-1 py-2">{formatDuration(totalDuration)}</td>
                     <td className="px-1 py-2">{mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'N/A'}</td>
-                    <td className="px-1 py-2 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => setUserToDelete({id: userId, name: userData.name || 'Anonymous'})} className="text-red-500 hover:text-red-700">
-                        <Trash2 size={16}/>
-                      </Button>
-                    </td>
+                    {isAdmin && (
+                      <td className="px-1 py-2 text-right">
+                        <Button variant="ghost" size="sm" onClick={() => setUserToDelete({id: userId, name: userData.name || 'Anonymous'})} className="text-red-500 hover:text-red-700">
+                          <Trash2 size={16}/>
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                   {expandedUsers.has(userId) && (
                     <tr className="bg-gray-50">
-                      <td colSpan={10} className="px-4 py-2">
+                      <td colSpan={isAdmin ? 10 : 9} className="px-4 py-2">
                         <div className="font-semibold mb-1">Sessions:</div>
                         <ul className="list-disc pl-5">
                           {userData.sessions.map(session => (
@@ -260,7 +276,7 @@ export default function AdminDashboardClient() {
         </tbody>
       </table>
 
-      {userToDelete && (
+      {userToDelete && isAdmin && (
         <AlertDialog open onOpenChange={() => setUserToDelete(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>

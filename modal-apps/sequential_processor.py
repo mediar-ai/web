@@ -601,7 +601,7 @@ def preprocess_tree(json_string):
         
         tree = json.loads(json_string)
         cleaned_tree = remove_ids(tree)
-        return json.dumps(cleaned_tree, indent=2)
+        return json.dumps(cleaned_tree, indent=15)
     except Exception as e:
         print(f"Failed to parse or preprocess UI tree: {e}")
         return json_string
@@ -954,7 +954,7 @@ def estimate_cost_usd(model_name, tokens_input, tokens_output):
         modal.Secret.from_name("supabase-secret"),
         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
     ],
-    timeout=3600,  # 60 minutes for processing all events for a user
+    timeout=7200,  # 120 minutes for processing all events for a user
     retries=0  # No automatic retries to prevent duplicates
 )
 def process_all_events_for_user(user_id: str):
@@ -980,6 +980,10 @@ def process_all_events_for_user(user_id: str):
         
         # Additional smart cleanup
         cleanup_expired_locks(cur, conn)
+
+        # Define retry logic variables
+        base_retry_delay_seconds = 60
+        max_retries = 6
         
         # Process events in a loop until no more remain
         while True:
@@ -993,83 +997,101 @@ def process_all_events_for_user(user_id: str):
             event_id, user_id, session_id, created_at, payload = event
             print(f"🔄 Processing event {total_processed + 1} (ID: {event_id}) for user {user_id}")
             
-            # Double-check if event was already processed (race condition protection)
-            if is_event_already_processed(cur, user_id, created_at.isoformat()):
-                print(f"⏭️  Event {event_id} already processed, skipping")
-                release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
-                continue
+            # Inner loop for retries
+            retries = 0
+            event_processed_or_failed = False
+            while not event_processed_or_failed and retries < max_retries:
+                # Double-check if event was already processed (race condition protection)
+                if is_event_already_processed(cur, user_id, created_at.isoformat()):
+                    print(f"⏭️  Event {event_id} already processed, skipping")
+                    release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
+                    event_processed_or_failed = True
+                    continue # Continues the inner while loop, which will exit and go to the next event
             
-            try:
-                # Build FRESH context including all previous analyses
-                context, context_metadata = build_fresh_context(cur, user_id, event)
-                
-                # Prepare LLM API call
-                model_name = 'gemini-2.5-pro-preview-06-05'
-                api_payload = {
-                    'prompt': 'WORKFLOW_STEP_ANALYSIS_V2_PROMPT',  # This will be overridden by the API
-                    'model': model_name,
-                    'context': context
-                }
-                
-                # Record start time for performance tracking
-                start_time = time.time()
-                
-                # Add small delay to prevent API rate limiting (stagger requests)
-                import random
-                delay = random.uniform(1, 3)  # 1-3 second random delay
-                time.sleep(delay)
-                
-                print(f"Calling LLM API for event {event_id}...")
-                response = requests.post(
-                    "https://app.mediar.ai/api/process-workflow-step",  # Use production URL
-                    json=api_payload,
-                    headers={'Content-Type': 'application/json'},
-                    timeout=300  # 5 minute timeout
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                # Calculate processing time
-                end_time = time.time()
-                processing_time_ms = int((end_time - start_time) * 1000)
-                
-                # Extract metrics from response (if available)
-                structured_output = result.get('structured_output')
-                tokens_input = result.get('usage', {}).get('input_tokens')
-                tokens_output = result.get('usage', {}).get('output_tokens')
-                cost_usd = estimate_cost_usd(model_name, tokens_input, tokens_output)
-                
-                # Save the analysis result
-                if structured_output:
-                    cur.execute("""
-                        INSERT INTO low_level_workflow_analyses 
-                        (user_id, session_id, client_timestamp, llm_structured_output)
-                        VALUES (%s, %s, %s, %s)
-                    """, (user_id, session_id, created_at.isoformat(), json.dumps(structured_output)))
-                    conn.commit()
+                try:
+                    # Build FRESH context including all previous analyses
+                    context, context_metadata = build_fresh_context(cur, user_id, event)
                     
-                    # Save context metadata
-                    cur.execute("""
-                        UPDATE low_level_workflow_analyses 
-                        SET context_metadata = %s
-                        WHERE user_id = %s AND client_timestamp = %s
-                    """, (json.dumps(context_metadata), user_id, created_at.isoformat()))
-                    conn.commit()
+                    # Prepare LLM API call
+                    model_name = 'gemini-2.5-pro-preview-06-05'
+                    api_payload = {
+                        'prompt': 'WORKFLOW_STEP_ANALYSIS_V2_PROMPT',  # This will be overridden by the API
+                        'model': model_name,
+                        'context': context
+                    }
                     
-                    total_processed += 1
-                    print(f"✅ Successfully processed event {event_id} ({total_processed} total)")
-                else:
-                    print(f"❌ No structured output received for event {event_id}")
-                
-                # Release lock with completed status
-                release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
-                
-            except Exception as event_error:
-                print(f"❌ Error processing event {event_id}: {event_error}")
-                # Release lock with failed status
+                    # Record start time for performance tracking
+                    start_time = time.time()
+                    
+                    print(f"Calling LLM API for event {event_id}...")
+                    response = requests.post(
+                        "https://app.mediar.ai/api/process-workflow-step",  # Use production URL
+                        json=api_payload,
+                        headers={'Content-Type': 'application/json'},
+                        timeout=300  # 5 minute timeout
+                    )
+
+                    # Handle 429 rate limit with backoff
+                    if response.status_code == 429:
+                        retries += 1
+                        import random
+                        # Calculate delay with exponential backoff and jitter
+                        delay = (base_retry_delay_seconds * (2 ** (retries - 1))) + random.uniform(0, 5)
+                        print(f"🚨 Rate limit (429) detected for event {event_id}. Retrying in {delay:.1f}s... (Attempt {retries}/{max_retries})")
+                        time.sleep(delay)
+                        continue # Retries the same event in the inner loop
+                    else:
+                        # For other errors, raise an exception to be caught below
+                        response.raise_for_status()
+                    
+                    result = response.json()
+                    
+                    # Calculate processing time
+                    end_time = time.time()
+                    processing_time_ms = int((end_time - start_time) * 1000)
+                    
+                    # Extract metrics from response (if available)
+                    structured_output = result.get('structured_output')
+                    tokens_input = result.get('usage', {}).get('input_tokens')
+                    tokens_output = result.get('usage', {}).get('output_tokens')
+                    cost_usd = estimate_cost_usd(model_name, tokens_input, tokens_output)
+                    
+                    # Save the analysis result
+                    if structured_output:
+                        cur.execute("""
+                            INSERT INTO low_level_workflow_analyses 
+                            (user_id, session_id, client_timestamp, llm_structured_output)
+                            VALUES (%s, %s, %s, %s)
+                        """, (user_id, session_id, created_at.isoformat(), json.dumps(structured_output)))
+                        conn.commit()
+                        
+                        # Save context metadata
+                        cur.execute("""
+                            UPDATE low_level_workflow_analyses 
+                            SET context_metadata = %s
+                            WHERE user_id = %s AND client_timestamp = %s
+                        """, (json.dumps(context_metadata), user_id, created_at.isoformat()))
+                        conn.commit()
+                        
+                        total_processed += 1
+                        print(f"✅ Successfully processed event {event_id} ({total_processed} total)")
+                    else:
+                        print(f"❌ No structured output received for event {event_id}")
+                    
+                    # Release lock with completed status
+                    release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
+                    event_processed_or_failed = True
+                    
+                except Exception as event_error:
+                    print(f"❌ Error processing event {event_id}: {event_error}")
+                    # Release lock with failed status
+                    release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['FAILED'])
+                    event_processed_or_failed = True # Mark as failed to stop retrying this event
+            
+            # Handle case where max retries are exceeded for an event
+            if not event_processed_or_failed and retries >= max_retries:
+                print(f"❌ Max retries ({max_retries}) exceeded for event {event_id}. Marking as failed.")
                 release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['FAILED'])
-                # Continue to next event rather than failing entire user
-                continue
         
         return {
             "success": True,
@@ -1308,12 +1330,12 @@ def process_next_event_for_user_deprecated(user_id: str):
         modal.Secret.from_name("supabase-secret"),
         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
     ],
-    schedule=modal.Period(minutes=2),  # Run every 2 minutes
+    schedule=modal.Period(minutes=15),  # Run every 32 minutes
     timeout=1800
 )
 def scheduled_processing():
     """
-    Automatically find and process ALL events for all users every 2 minutes.
+    Automatically find and process ALL events for all users every 15 minutes.
     Uses the efficient full parallel processing approach.
     """
     print("🔄 Starting scheduled FULL parallel processing...")

@@ -95,6 +95,7 @@ interface ExportedDataFromClient {
 interface RequestPayload {
   sessionId: string;
   userId: string;
+  organizationId?: string;
   exportedData: ExportedDataFromClient;
 }
 
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const payload = body as RequestPayload;
-    const { sessionId, userId, exportedData } = payload;
+    const { sessionId, userId, organizationId, exportedData } = payload;
 
     if (!sessionId || !userId || !exportedData) {
       return NextResponse.json({ error: 'Missing sessionId, userId, or exportedData' }, { status: 400 });
@@ -132,11 +133,28 @@ export async function POST(request: Request) {
     // Ensure user exists before logging activity
     const { error: userError } = await supabaseAdmin
       .from('users')
-      .upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
+      .upsert({ 
+        id: userId, 
+        organization_id: organizationId || null 
+      }, { onConflict: 'id', ignoreDuplicates: false });
 
     if (userError) {
       console.error(`Error ensuring user exists:`, userError);
       // We can choose to fail here or continue. For now, let's continue.
+    }
+
+    // Also update mediar_users table if organizationId is provided
+    if (organizationId) {
+      const { error: mediarUserError } = await supabaseAdmin
+        .from('mediar_users')
+        .upsert({ 
+          user_id: userId, 
+          organization_id: organizationId 
+        }, { onConflict: 'user_id', ignoreDuplicates: false });
+
+      if (mediarUserError) {
+        console.error(`Error updating mediar_users organization:`, mediarUserError);
+      }
     }
     
     console.log(`Processing data for session ID: ${sessionId} and user ID: ${userId}.`);
