@@ -134,7 +134,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   
   // State to control which context elements are included
   const [contextConfig, ] = useState({
-    includeScreenshots: true,
+    includeScreenshots: false,
     includePreviousUiTree: false,
     includePreviousWindowTitle: true,
     includePreviousSameWindowUiTree: false,
@@ -142,10 +142,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     includeEventsSinceSameWindowUiTree: true,
     includeCurrentUiTree: true,
     includeUiTreeDiff: true,
-    includeLatestScreenshot: true,
+    includeLatestScreenshot: false,
     includePreviousAnalyses: true,
     includeGoodExamples: false,
     includeBadExamples: false,
+    includePreviousWindowTimestamp: true,
   });
 
   const ACCORDION_STORAGE_KEY = useMemo(() => `llm-iteration-accordion-state-${userId}`, [userId]);
