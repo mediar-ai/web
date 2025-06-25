@@ -27,7 +27,11 @@ interface UserSessionData {
 
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Organization filtering - re-enabled after migration
+  const { searchParams } = new URL(request.url);
+  const orgId = searchParams.get('orgId');
+  
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -121,22 +125,50 @@ export async function GET() {
     
     const userIds = [...new Set(processedSessions.map(s => s.userId).filter(id => id !== 'unknown_user'))];
     
-    const { data: users, error: usersError } = await supabase
+    // Check if the requesting organization has global access
+    let hasGlobalAccess = false;
+    if (orgId) {
+      const { data: accessData } = await supabase
+        .from('organization_data_access')
+        .select('data_access_scope')
+        .eq('clerk_organization_id', orgId)
+        .single();
+      
+      hasGlobalAccess = accessData?.data_access_scope === 'global';
+    }
+
+    // Fetch users with organization filtering if orgId is provided and doesn't have global access
+    let usersQuery = supabase
       .from('mediar_users')
-      .select('user_id, name')
+      .select('user_id, name, organization_id')
       .in('user_id', userIds);
+    
+    // Apply organization filtering only if requested AND organization doesn't have global access
+    if (orgId && !hasGlobalAccess) {
+      usersQuery = usersQuery.eq('organization_id', orgId);
+    }
+
+    const { data: users, error: usersError } = await usersQuery;
 
     if (usersError) {
       console.error('[api/sessions] Error fetching users:', usersError);
     }
 
     const usersMap = new Map<string, string | null>();
+    const filteredUserIds = new Set<string>();
+    
     for (const user of users || []) {
       usersMap.set(user.user_id, user.name);
+      filteredUserIds.add(user.user_id);
     }
 
     const userSessions: Record<string, UserSessionData> = {};
     for (const session of processedSessions) {
+      // If organization filtering is active and organization doesn't have global access, only include sessions from filtered users
+      if (orgId && !hasGlobalAccess && !filteredUserIds.has(session.userId)) {
+        continue;
+      }
+      
       if (!userSessions[session.userId]) {
         userSessions[session.userId] = {
           name: usersMap.get(session.userId) || null,

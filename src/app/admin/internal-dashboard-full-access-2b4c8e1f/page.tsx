@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
-import { useDebouncedCallback } from 'use-debounce';
+
 import { ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import { useAuth, SignIn, useOrganization } from '@clerk/nextjs';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,28 +23,79 @@ import {
 
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
-const formatDuration = (seconds: number | null | undefined): string => {
-  if (seconds === null || seconds === undefined || seconds === 0) return 'N/A';
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  
-  let result = '';
-  if (h > 0) result += `${h}h `;
-  if (m > 0) result += `${m}m`;
-  
-  return result.trim();
+const formatDuration = (seconds: number) => {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 };
 
 export default function AdminPage() {
-  // Enhanced admin features only for specific users
-  const ENHANCED_ADMIN_USERS = [
-    '29303245-5cbb-671e-2930-32455cbb671e',
-    'c4cc0b1a-4e8b-e98c-c4cc-0b1a4e8be98c'
-  ];
+  const { isLoaded, userId, has } = useAuth();
+  const { organization, membership } = useOrganization();
   
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Show loading while Clerk is initializing
+  if (!isLoaded) {
+    return (
+      <div className="container mx-auto py-4">
+        <div>Loading...</div>
+      </div>
+    );
+  }
+  
+  // Show sign-in if not authenticated
+  if (!userId) {
+    return (
+      <div className="container mx-auto py-4 flex justify-center">
+        <SignIn />
+      </div>
+    );
+  }
+
+  // Check if user has required role for full access dashboard
+  const hasAdminRole = has({ role: 'org:admin' });
+  const hasMemberRole = has({ role: 'org:member' });
+  
+  // Access level will be determined by the API based on organization_data_access table
+  
+  if (!hasAdminRole && !hasMemberRole) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full space-y-8 text-center">
+          <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+          <p className="text-gray-600">You need admin or member privileges to access this dashboard.</p>
+          <Link href="/">
+            <Button variant="outline">Return to Home</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Pass organization context to the authenticated component
+  return (
+    <AuthenticatedAdminPage 
+      isAdmin={hasAdminRole}
+      organizationId={organization?.id}
+      organizationName={organization?.name}
+      userRole={membership?.role}
+    />
+  );
+}
+
+interface AuthenticatedAdminPageProps {
+  isAdmin: boolean;
+  isGlobalAdmin: boolean;
+  organizationId?: string;
+  organizationName?: string;
+  userRole?: string;
+}
+
+function AuthenticatedAdminPage({ 
+  isAdmin, 
+  organizationId, 
+  organizationName, 
+  userRole
+}: Omit<AuthenticatedAdminPageProps, 'isGlobalAdmin'>) {
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<string | null>(null);
@@ -51,19 +103,7 @@ export default function AdminPage() {
   const [filter, setFilter] = useState('');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [userToDelete, setUserToDelete] = useState<{id: string, name: string} | null>(null);
-
-  // Check if current user has enhanced admin privileges
-  const hasEnhancedAccess = currentUserId && ENHANCED_ADMIN_USERS.includes(currentUserId);
-
-  useEffect(() => {
-    // Get user ID from localStorage or URL parameter
-    const storedUserId = localStorage.getItem('user_id');
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlUserId = urlParams.get('userId');
-    
-    const userId = urlUserId || storedUserId;
-    setCurrentUserId(userId);
-  }, []);
+  const [isGlobalAdmin, setIsGlobalAdmin] = useState<boolean>(false);
 
   const toggleUserExpansion = (userId: string) => {
     setExpandedUsers(prev => {
@@ -78,76 +118,109 @@ export default function AdminPage() {
   };
 
   const fetchSessions = useCallback(async () => {
-    const response = await fetch(`/api/sessions?v=${Date.now()}`);
+    // Always include orgId - the API will determine access level based on organization_data_access table
+    const params = new URLSearchParams({ v: Date.now().toString() });
+    if (organizationId) {
+      params.append('orgId', organizationId);
+    }
+    
+    const response = await fetch(`/api/sessions?${params}`);
     const sessionData = await response.json();
     setUserSessions(sessionData);
-  }, []);
+    
+    // Check if this organization has global access by making a simple API call
+    if (organizationId) {
+      try {
+        const accessResponse = await fetch(`/api/organization-access?orgId=${organizationId}`);
+        if (accessResponse.ok) {
+          const accessData = await accessResponse.json();
+          setIsGlobalAdmin(accessData.isGlobal || false);
+        }
+      } catch (error) {
+        console.error('Failed to fetch organization access level:', error);
+      }
+    }
+  }, [organizationId]);
 
-  // Debounce for 2 seconds to handle the firehose of events and refresh efficiently.
-  const debouncedFetchSessions = useDebouncedCallback(fetchSessions, 2000);
+
 
   useEffect(() => {
-    const initialFetch = async () => {
-      setLoading(true);
-      await fetchSessions();
-      setLoading(false);
-    }
-    initialFetch();
+    fetchSessions();
+    setLoading(false);
+  }, [fetchSessions]);
 
-    const channel = supabase
-      .channel('public:session_metadata')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'session_metadata' }, 
-        () => {
-          debouncedFetchSessions();
-        }
-      )
-      .subscribe((status, err) => {
-        if (err) {
-          console.error('[Realtime] Subscription error:', err as Error);
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchSessions, debouncedFetchSessions]);
+  const handleEditName = (userId: string, currentName: string) => {
+    setEditingUser(userId);
+    setUserNameInput(currentName || '');
+  };
 
   const handleSaveName = async (userId: string) => {
-    try {
-      await fetch(`/api/users/${userId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name: userNameInput }),
-      });
-      setEditingUser(null);
-      setUserNameInput('');
-      debouncedFetchSessions(); // Refresh data using debounced fetch
-    } catch (error) {
-      console.error('Failed to save user name:', error);
+    if (!userNameInput.trim()) return;
+    
+    const { error } = await supabase
+      .from('mediar_users')
+      .upsert({ user_id: userId, name: userNameInput.trim() }, { onConflict: 'user_id' });
+    
+    if (error) {
+      console.error('Error updating user name:', error);
+      return;
     }
+    
+    setEditingUser(null);
+    setUserNameInput('');
+    await fetchSessions(); // Refresh the user list
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!userId) return;
-
     try {
-      const response = await fetch(`/api/users/${userId}`, {
-        method: 'DELETE',
-      });
+      // Delete from mediar_users table
+      const { error: mediarUsersError } = await supabase
+        .from('mediar_users')
+        .delete()
+        .eq('user_id', userId);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || `Failed to delete user: ${response.statusText}`);
+      if (mediarUsersError) {
+        console.error('Error deleting from mediar_users:', mediarUsersError);
+        return;
       }
-      
-      setUserToDelete(null); // Close the dialog
+
+      // Delete from session_metadata table
+      const { error: sessionError } = await supabase
+        .from('session_metadata')
+        .delete()
+        .eq('user_id', userId);
+
+      if (sessionError) {
+        console.error('Error deleting from session_metadata:', sessionError);
+        return;
+      }
+
+      setUserToDelete(null);
       await fetchSessions(); // Refresh the user list
     } catch (error) {
       console.error('Failed to delete user:', error);
       // You might want to show an error notification to the user here
     }
+  };
+
+  // Get access level display text
+  const getAccessLevelText = () => {
+    if (isGlobalAdmin) {
+      return "Mediar Admin - Global Access";
+    }
+    if (isAdmin && organizationName) {
+      return `Admin - ${organizationName}`;
+    }
+    if (organizationName) {
+      return `Member - ${organizationName}`;
+    }
+    return "Organization Access";
+  };
+
+  const getAccessLevelColor = () => {
+    if (isGlobalAdmin) return "text-purple-600";
+    if (isAdmin) return "text-blue-600";
+    return "text-green-600";
   };
 
   if (loading) {
@@ -162,13 +235,20 @@ export default function AdminPage() {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
       <div className="flex justify-between items-center mb-3">
-        <h1 className="text-xl font-bold">All Users</h1>
-        <div className="flex items-center gap-2">
-          {hasEnhancedAccess && (
-            <span className="text-xs text-green-600 font-semibold px-2 py-1 bg-green-100 rounded">
-              Enhanced Access
+        <div>
+          <h1 className="text-xl font-bold">
+            {isGlobalAdmin ? "All Users" : `${organizationName || "Organization"} Users`}
+          </h1>
+          <span className={`text-sm font-medium ${getAccessLevelColor()}`}>
+            {getAccessLevelText()}
+          </span>
+          {userRole && (
+            <span className="text-xs text-gray-500 ml-2">
+              Role: {userRole}
             </span>
           )}
+        </div>
+        <div className="flex items-center gap-2">
           <Button 
             variant="outline" 
             onClick={fetchSessions}
@@ -275,27 +355,19 @@ export default function AdminPage() {
                             <Link href={`/low-level/${userId}/workflow`} className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">
                               {userData.name || `User ${truncateId(userId)}`}
                             </Link>
-                            <Pencil 
-                              className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" 
-                              onClick={() => {
-                                setEditingUser(userId);
-                                setUserNameInput(userData.name || '');
-                              }}
-                            />
+                            {isAdmin && (
+                              <button 
+                                onClick={() => handleEditName(userId, userData.name || '')}
+                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            )}
                           </div>
-                        )}
-                        {liveSessions > 0 && (
-                          <span className="flex items-center gap-1.5 ml-2">
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                            </span>
-                            <span className="text-xs text-green-600 font-semibold">LIVE</span>
-                          </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-1 py-1">{userData.sessions.length}</td>
+                    <td className="px-1 py-1">{liveSessions}</td>
                     <td className="px-1 py-1">{userType}</td>
                     <td className="px-1 py-1">{totalEvents}</td>
                     <td className="px-1 py-1">
@@ -307,13 +379,15 @@ export default function AdminPage() {
                     <td className="px-1 py-1">{mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}</td>
                     <td className="px-1 py-1 text-right">
                       <div className="flex items-center justify-end space-x-1">
-                        <Button 
-                          variant="destructive" 
-                          size="sm"
-                          onClick={() => setUserToDelete({ id: userId, name: userData.name || `User ${truncateId(userId)}` })}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isAdmin && (
+                          <Button 
+                            variant="destructive" 
+                            size="sm"
+                            onClick={() => setUserToDelete({ id: userId, name: userData.name || `User ${truncateId(userId)}` })}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -325,28 +399,20 @@ export default function AdminPage() {
                             <tr>
                               <th scope="col" className="px-1 py-1">Session ID</th>
                               <th scope="col" className="px-1 py-1">Type</th>
-                              <th scope="col" className="px-1 py-1">EVENTS</th>
-                              <th scope="col" className="px-1 py-2">STEPS TTL/PRCSD</th>
-                              <th scope="col" className="px-1 py-1">ANNOTATION<br/>LLM/HUMAN</th>
-                              <th scope="col" className="px-1 py-1">WORKFLOW (DISTINCT)</th>
+                              <th scope="col" className="px-1 py-1">Events</th>
                               <th scope="col" className="px-1 py-1">Duration</th>
                               <th scope="col" className="px-1 py-1">Status</th>
-                              <th scope="col" className="px-1 py-1">Last Active</th>
+                              <th scope="col" className="px-1 py-1">Timestamp</th>
                               <th scope="col" className="px-1 py-1 text-right">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
-                          {userData.sessions
-                            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                            .map((session) => (
-                              <tr key={session.id} className="bg-white border-b hover:bg-gray-50">
+                            {userData.sessions.map((session) => (
+                              <tr key={session.id} className="border-b border-gray-200">
                                 <td className="px-1 py-1 font-mono text-xs">{truncateId(session.id)}</td>
-                                <td className="px-1 py-1 font-semibold">{session.type}</td>
+                                <td className="px-1 py-1">{session.type}</td>
                                 <td className="px-1 py-1">{session.eventCount || 0}</td>
-                                <td className="px-1 py-1">{session.processed_event_count || 0} / {session.total_ui_steps || 0}</td>
-                                <td className="px-1 py-1">{session.llm_labeled_steps || 0} / {session.human_annotated_steps || 0}</td>
-                                <td className="px-1 py-1">{session.distinct_workflows_created || 0}</td>
-                                <td className="px-1 py-1">{formatDuration(session.duration_seconds)}</td>
+                                <td className="px-1 py-1">{formatDuration(session.duration_seconds || 0)}</td>
                                 <td className="px-1 py-1">
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${
                                     session.status === 'live' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -393,7 +459,7 @@ export default function AdminPage() {
                 onClick={() => handleDeleteUser(userToDelete.id)}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                Continue
+                Delete User
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
