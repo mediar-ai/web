@@ -1077,17 +1077,19 @@ def process_all_events_for_user(user_id: str):
                     
                     # Extract metrics from response (if available)
                     structured_output = result.get('structured_output')
+                    print(f"📝 LLM Response (structured_output): {json.dumps(structured_output, indent=2)}")
                     tokens_input = result.get('usage', {}).get('input_tokens')
                     tokens_output = result.get('usage', {}).get('output_tokens')
                     cost_usd = estimate_cost_usd(model_name, tokens_input, tokens_output)
                     
                     # Save the analysis result
                     if structured_output:
+                        window_title = get_window_title(event)
                         cur.execute("""
                             INSERT INTO low_level_workflow_analyses 
-                            (user_id, session_id, client_timestamp, llm_structured_output)
-                            VALUES (%s, %s, %s, %s)
-                        """, (user_id, session_id, created_at.isoformat(), json.dumps(structured_output)))
+                            (user_id, session_id, client_timestamp, llm_structured_output, window_title)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (user_id, session_id, created_at.isoformat(), json.dumps(structured_output), window_title))
                         conn.commit()
                         
                         # Save context metadata
@@ -1258,6 +1260,7 @@ def process_next_event_for_user_deprecated(user_id: str):
             
             # Extract metrics from response (if available)
             structured_output = result.get('structured_output')
+            print(f"📝 LLM Response (structured_output): {json.dumps(structured_output, indent=2)}")
             tokens_input = result.get('usage', {}).get('input_tokens')
             tokens_output = result.get('usage', {}).get('output_tokens')
             cost_usd = estimate_cost_usd(model_name, tokens_input, tokens_output)
@@ -1265,11 +1268,12 @@ def process_next_event_for_user_deprecated(user_id: str):
             # Save the analysis result
             analysis_id = None
             if structured_output:
+                window_title = get_window_title(event)
                 cur.execute("""
                     INSERT INTO low_level_workflow_analyses 
-                    (user_id, session_id, client_timestamp, llm_structured_output)
-                    VALUES (%s, %s, %s, %s)
-                """, (user_id, session_id, created_at.isoformat(), json.dumps(structured_output)))
+                    (user_id, session_id, client_timestamp, llm_structured_output, window_title)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (user_id, session_id, created_at.isoformat(), json.dumps(structured_output), window_title))
                 conn.commit()
                 print(f"✅ Successfully processed and saved analysis for event {event_id}")
                 

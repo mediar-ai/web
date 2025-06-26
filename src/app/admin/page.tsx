@@ -370,7 +370,8 @@ function AuthenticatedAdminPage({
       <table className="w-full text-sm text-left">
         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
           <tr>
-            <th scope="col" className="px-1 py-2 w-[30%]">User</th>
+            <th scope="col" className="px-1 py-2 w-[25%]">User</th>
+            <th scope="col" className="px-1 py-2 w-[15%]">Organization</th>
             <th scope="col" className="px-1 py-2">SS</th>
             <th scope="col" className="px-1 py-2" style={{ minWidth: '90px' }}>Type</th>
             <th scope="col" className="px-1 py-2">EVENTS</th>
@@ -467,6 +468,7 @@ function AuthenticatedAdminPage({
                         )}
                       </div>
                     </td>
+                    <td className="px-1 py-1">{userData.organizationName}</td>
                     <td className="px-1 py-1">{liveSessions}</td>
                     <td className="px-1 py-1">{userType}</td>
                     <td className="px-1 py-1">{totalEvents}</td>
