@@ -196,14 +196,6 @@ export function useWorkflowPageLogic(userId: string) {
         const analysisData = await analysisResponse.json();
         const analyses: WorkflowStepAnalysis[] = analysisData.analyses || [];
 
-        const eventsResponse = await fetch(`/api/low-level/${userId}`);
-        let allEvents: LowLevelEvent[] = [];
-        if (eventsResponse.ok) {
-          const eventsData = await eventsResponse.json();
-          allEvents = eventsData.events?.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) || [];
-        }
-        
-        const combined = allEvents.map(event => ({ event }));
         // This is a simplified combination. The previous logic was more complex and might be restored if needed.
         setCombinedEvents(analyses.map(analysis => ({ analysis, generated_output: null, feedback: null, contextSummary: { windowTitle: '', eventCount: 0}, timestamp: new Date(analysis.client_timestamp)})));
 

@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useState, useEffect, use, useCallback, useMemo } from "react";
 import type { LowLevelEvent } from "@/types";
-import { generateEventSummaryString } from "../../../../lib/eventSummarizer";
 import { generateSimplifiedUiTreeString } from '@/lib/uiTreeUtils';
 import UITreeTimeline from "@/components/low-level/UITreeTimeline";
 import FormattedUITree from "@/components/low-level/FormattedUITree";
@@ -54,26 +53,6 @@ import { preprocessTree } from '@/lib/diff';
 import { FlattenedWorkflowAnalysis } from '@/types';
 import { AnalysisDisplay } from '@/components/workflow-analysis';
 
-type ContextForAnalysis = {
-  screenshotBefore?: string | null;
-  screenshotAfter?: string | null;
-  screenshotBeforeSameWindow?: string | null;
-  previousUiTree?: string | null;
-  previousWindowTitle?: string;
-  previousWindowTimestamp?: string;
-  currentUiTree?: string | null;
-  currentUiTree_structure?: string;
-  eventsSincePreviousUiTreeByTimestamp?: string[];
-  eventsSincePreviousUiTreeBySameWindow?: string[];
-  uiTreeDiffLatestVsPreviousForTheSameWindow?: string;
-  previousAnalyses?: PreviousAnalysis[];
-};
-
-// Use the flattened type for backward compatibility in the UI
-type WorkflowStepAnalysis = FlattenedWorkflowAnalysis;
-
-type PreviousAnalysis = WorkflowStepAnalysis;
-
 interface GenericEvent {
   [key: string]: unknown;
   keyboard?: { key_code: number, keys?: string, is_key_down?: boolean };
@@ -93,19 +72,51 @@ type StepsPageEventPayload = {
   }
 }
 
+type RawEventPayload = {
+  timestamp?: string;
+  type?: string;
+  event?: GenericEvent;
+};
+
+type ContextForAnalysis = {
+  screenshotBefore?: string | null;
+  screenshotAfter?: string | null;
+  screenshotBeforeSameWindow?: string | null;
+  previousUiTree?: string | null;
+  previousWindowTitle?: string;
+  previousWindowTimestamp?: string;
+  currentUiTree?: string | null;
+  currentUiTree_structure?: string;
+  eventsSincePreviousUiTreeByTimestamp?: RawEventPayload[];
+  eventsSincePreviousUiTreeBySameWindow?: RawEventPayload[];
+  uiTreeDiffLatestVsPreviousForTheSameWindow?: string;
+  previousAnalyses?: PreviousAnalysis[];
+};
+
+// Use the flattened type for backward compatibility in the UI
+type WorkflowStepAnalysis = FlattenedWorkflowAnalysis;
+
+type PreviousAnalysis = WorkflowStepAnalysis;
+
 const getEventTimestamp = (event: LowLevelEvent): string => {
   const payload = event.payload as StepsPageEventPayload;
   return payload?.payload?.timestamp || event.created_at;
 };
 
-const EventSummary = ({ event }: { event: LowLevelEvent }) => {
-  const summary = generateEventSummaryString(event);
-  return (
-    <div className="text-sm font-medium pr-4" title={typeof summary === 'string' ? summary : undefined}>
-      {summary}
-    </div>
-  );
-};
+const getEventTitle = (event: LowLevelEvent) => {
+  const payload = event.payload as { payload?: { event?: { app_name?: string, screen?: { ui_tree?: string } } } };
+  const appName = payload?.payload?.event?.app_name || 'Unknown App';
+  const uiTree = payload?.payload?.event?.screen?.ui_tree;
+  if (uiTree) {
+    try {
+      const parsedTree = JSON.parse(uiTree);
+      return parsedTree.attributes?.name || appName;
+    } catch {
+      return appName;
+    }
+  }
+  return appName;
+}
 
 export default function LlmIterationPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = use(params);
@@ -454,21 +465,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     return uiTreeEvents.filter(event => analyzedTimestamps.has(getEventTimestamp(event))).length;
   }, [allWorkflowAnalyses, uiTreeEvents]);
 
-  const getEventTitle = (event: LowLevelEvent) => {
-    const payload = event.payload as { payload?: { event?: { app_name?: string, screen?: { ui_tree?: string } } } };
-    const appName = payload?.payload?.event?.app_name || 'Unknown App';
-    const uiTree = payload?.payload?.event?.screen?.ui_tree;
-    if (uiTree) {
-      try {
-        const parsedTree = JSON.parse(uiTree);
-        return parsedTree.attributes?.name || appName;
-      } catch {
-        return appName;
-      }
-    }
-    return appName;
-  }
-
   const previousSameWindowUiTreeEvent = useMemo(() => {
     if (!selectedEvent) return null;
     const currentTitle = getEventTitle(selectedEvent);
@@ -665,11 +661,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
 
     if (contextConfig.includeEventsSincePreviousUiTree && eventsBetweenByTimestamp.length > 0) {
-      context.eventsSincePreviousUiTreeByTimestamp = eventsBetweenByTimestamp.map(event => generateEventSummaryString(event));
+      context.eventsSincePreviousUiTreeByTimestamp = eventsBetweenByTimestamp.map(event => event.payload.payload as RawEventPayload);
     }
 
     if (contextConfig.includeEventsSinceSameWindowUiTree && eventsBetweenSameWindow.length > 0) {
-      context.eventsSincePreviousUiTreeBySameWindow = eventsBetweenSameWindow.map(event => generateEventSummaryString(event));
+      context.eventsSincePreviousUiTreeBySameWindow = eventsBetweenSameWindow.map(event => event.payload.payload as RawEventPayload);
     }
 
     if (contextConfig.includePreviousAnalyses && previousAnalyses.length > 0) {
@@ -681,6 +677,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     selectedEvent,
     previousUiTree,
     currentUiTree,
+    beforeScreenshotDataUrl,
     beforeScreenshotDataUrlSameWindow,
     afterScreenshotDataUrl,
     eventsBetweenByTimestamp,
@@ -688,7 +685,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     previousAnalyses,
     contextConfig,
     previousSameWindowUiTree,
-    previousUiTreeEvent,
+    previousUiTreeEvent
   ]);
 
   useEffect(() => {
@@ -1097,7 +1094,13 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                         <AccordionContent>
                           <div className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800 space-y-1">
                             {eventsBetweenByTimestamp.length > 0 ? (
-                              eventsBetweenByTimestamp.map(event => <EventSummary key={event.id} event={event} />)
+                              eventsBetweenByTimestamp.map((event, index) => (
+                                <div key={index}>
+                                  <pre className="text-xs overflow-auto bg-gray-50 border rounded-md font-mono text-gray-700">
+                                    {JSON.stringify(event.payload.payload, null, 2)}
+                                  </pre>
+                                </div>
+                              ))
                             ) : (
                               <p className="text-xs text-muted-foreground">No events found in this interval.</p>
                             )}
@@ -1113,7 +1116,13 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                           <div className="p-2 border rounded-md bg-gray-50 dark:bg-gray-800 space-y-1">
                             {previousSameWindowUiTreeEvent ? (
                               eventsBetweenSameWindow.length > 0 ? (
-                                eventsBetweenSameWindow.map(event => <EventSummary key={event.id} event={event} />)
+                                eventsBetweenSameWindow.map((event, index) => (
+                                  <div key={index}>
+                                    <pre className="text-xs overflow-auto bg-gray-50 border rounded-md font-mono text-gray-700">
+                                      {JSON.stringify(event.payload.payload, null, 2)}
+                                    </pre>
+                                  </div>
+                                ))
                               ) : (
                                 <p className="text-xs text-muted-foreground">No events found in this interval.</p>
                               )
