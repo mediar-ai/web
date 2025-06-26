@@ -333,20 +333,24 @@ def get_window_title(event):
         return 'Unknown'
 
 def get_previous_same_window_ui_tree(cur, user_id, current_timestamp, window_title):
-    """Get exactly the previous UI tree event from the same window"""
+    """
+    Get exactly the previous UI tree event from the same window,
+    but only look back a maximum of 10 minutes to prevent excessive context.
+    """
     cur.execute("""
         SELECT id, user_id, session_id, created_at, payload 
         FROM low_level_events 
         WHERE user_id = %s 
           AND payload->'payload'->>'type' = 'ui_tree'
           AND created_at < %s
+          AND created_at > %s - INTERVAL '10 minutes' -- Limit lookback
           AND COALESCE(
             (payload->'payload'->'event'->'screen'->>'ui_tree')::jsonb->'attributes'->>'name',
             payload->'payload'->'event'->>'app_name'
           ) = %s
         ORDER BY created_at DESC 
         LIMIT 1
-    """, (user_id, current_timestamp, window_title))
+    """, (user_id, current_timestamp, current_timestamp, window_title))
     return cur.fetchone()
 
 def get_events_between_timestamps(cur, user_id, start_timestamp, end_timestamp):
@@ -744,6 +748,42 @@ def generate_context_metadata(context):
     
     return metadata
 
+def process_and_filter_intermediate_events(events):
+    """
+    Filters and processes a list of raw database event rows for context.
+    - Skips screenshot_diff events.
+    - Truncates ui_tree strings in ui_tree events to 200 characters.
+    """
+    processed_payloads = []
+    for event in events:
+        # The full event payload from the DB is the 5th element (index 4)
+        original_payload = event[4].get('payload', {})
+        event_type = original_payload.get('type')
+
+        if event_type == 'screenshot_diff':
+            continue  # Ignore screenshot_diff events entirely
+
+        if event_type == 'ui_tree':
+            try:
+                ui_tree_str = original_payload.get('event', {}).get('screen', {}).get('ui_tree')
+                if ui_tree_str and isinstance(ui_tree_str, str) and len(ui_tree_str) > 200:
+                    import copy
+                    payload_to_add = copy.deepcopy(original_payload)
+                    truncated_tree = ui_tree_str[:200] + '... (truncated)'
+                    payload_to_add['event']['screen']['ui_tree'] = truncated_tree
+                    processed_payloads.append(payload_to_add)
+                else:
+                    # No truncation needed, add original payload
+                    processed_payloads.append(original_payload)
+            except Exception as e:
+                print(f"Warning: Could not process intermediate ui_tree. Error: {e}")
+                processed_payloads.append(original_payload) # Fallback
+        else:
+            # Not a ui_tree or screenshot_diff, so add it as is
+            processed_payloads.append(original_payload)
+            
+    return processed_payloads
+
 def build_fresh_context(cur, user_id, current_event):
     """Build complete context for one UI tree event with FRESH data - matching frontend format exactly"""
     # current_event structure: id, user_id, session_id, created_at, payload (5 fields)
@@ -768,10 +808,11 @@ def build_fresh_context(cur, user_id, current_event):
         # ALWAYS try to get screenshots for all three types (matching frontend logic)
         
         # includeScreenshots: true (screenshotBefore - previous UI tree by timestamp)
-        if previous_event:
-            prev_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, previous_event[2], previous_event[3])  # session_id, created_at in 5-field structure
-            if prev_screenshot:
-                context['screenshotBefore'] = prev_screenshot
+        # This is disabled to further reduce context size.
+        # if previous_event:
+        #     prev_screenshot = get_screenshot_for_ui_tree_event(cur, user_id, previous_event[2], previous_event[3])  # session_id, created_at in 5-field structure
+        #     if prev_screenshot:
+        #         context['screenshotBefore'] = prev_screenshot
         
         # includeScreenshots: true (screenshotBeforeSameWindow - previous same window UI tree)
         if previous_same_window:
@@ -793,18 +834,18 @@ def build_fresh_context(cur, user_id, current_event):
         # includeEventsSincePreviousUiTree: true
         events_between = get_events_between_timestamps(cur, user_id, previous_event[3], current_timestamp)  # created_at in 5-field structure
         if events_between:
-            context['eventsSincePreviousUiTreeByTimestamp'] = [
-                event[4].get('payload', {}) for event in events_between
-            ]
+            processed_events = process_and_filter_intermediate_events(events_between)
+            if processed_events:
+                context['eventsSincePreviousUiTreeByTimestamp'] = processed_events
     
     # Handle same window context fields
     if previous_same_window:
         # includeEventsSinceSameWindowUiTree: true
         events_same_window = get_events_between_timestamps(cur, user_id, previous_same_window[3], current_timestamp)  # created_at in 5-field structure
         if events_same_window:
-            context['eventsSincePreviousUiTreeBySameWindow'] = [
-                event[4].get('payload', {}) for event in events_same_window
-            ]
+            processed_events = process_and_filter_intermediate_events(events_same_window)
+            if processed_events:
+                context['eventsSincePreviousUiTreeBySameWindow'] = processed_events
     
     # includeUiTreeDiff: true - CRITICAL FIELD! (Match frontend logic exactly)
     if current_ui_tree_str and previous_same_window:
