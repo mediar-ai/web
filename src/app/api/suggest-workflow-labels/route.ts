@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part, Schema, SchemaType } from '@google/generative-ai';
-import { WORKFLOW_LABEL_SUGGESTION_PROMPT } from '@/lib/prompts';
+import { CONTEXT_AWARE_STEP_LABEL_PROMPT } from '@/lib/prompts';
 
 const getGenAI = () => {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -20,15 +20,12 @@ const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThresho
 const suggestionSchema: Schema = {
     type: SchemaType.OBJECT,
     properties: {
-        workflows: {
-            type: SchemaType.ARRAY,
-            items: {
-                type: SchemaType.STRING,
-                description: "A potential workflow name."
-            }
+        label: {
+            type: SchemaType.STRING,
+            description: "The new, context-aware descriptive string for the target step."
         },
     },
-    required: ['workflows']
+    required: ['label']
 };
 
 
@@ -56,21 +53,25 @@ export async function POST(req: NextRequest) {
         contextParts.push({ text: `\n\nTARGET STEP TO LABEL:\n${JSON.stringify(context.targetAnalysis, null, 2)}` });
     }
     if (context.neighborAnalyses && context.neighborAnalyses.length > 0) {
-        type NeighborAnalysis = { timestamp: string; analysis: { step: string; description: string } };
-        const analysesText = context.neighborAnalyses.map((a: NeighborAnalysis) => `[${new Date(a.timestamp).toISOString()}] ${a.analysis.step}: ${a.analysis.description}`).join('\n');
+        type NeighborAnalysis = { timestamp: string; analysis: { step_title?: string; step_summary?: string; step?: string; description?: string } | null };
+        const analysesText = context.neighborAnalyses.map((a: NeighborAnalysis) => {
+            if (!a.analysis) {
+                return `[${new Date(a.timestamp).toISOString()}] [No analysis data available]`;
+            }
+            const title = a.analysis.step_title || a.analysis.step || 'Untitled';
+            const summary = a.analysis.step_summary || a.analysis.description || 'No summary.';
+            return `[${new Date(a.timestamp).toISOString()}] ${title}: ${summary}`;
+        }).join('\n');
         contextParts.push({ text: `\n\nNEIGHBORING STEPS (for context):\n${analysesText}` });
     }
     
     const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: WORKFLOW_LABEL_SUGGESTION_PROMPT }, ...contextParts] }],
+      contents: [{ role: "user", parts: [{ text: CONTEXT_AWARE_STEP_LABEL_PROMPT }, ...contextParts] }],
     });
 
     const response = result.response;
     if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
         const suggestion = JSON.parse(response.candidates[0].content.parts[0].text);
-        if (suggestion.workflows && Array.isArray(suggestion.workflows)) {
-            suggestion.workflows = suggestion.workflows.slice(0, 5);
-        }
         return NextResponse.json(suggestion);
     }
     
@@ -79,6 +80,33 @@ export async function POST(req: NextRequest) {
 
   } catch (error) {
     console.error('Error suggesting workflow labels:', error);
-    return NextResponse.json({ error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+
+    let status = 500;
+    let statusText = 'Internal Server Error';
+    let details: unknown = 'An unknown error occurred';
+
+    if (typeof error === 'object' && error !== null) {
+        status = (error as { status?: number }).status || 500;
+        statusText = (error as { statusText?: string }).statusText || 'Internal Server Error';
+        details = (error as { errorDetails?: unknown }).errorDetails || (error as Error).message || 'An unknown error occurred';
+    } else if (error instanceof Error) {
+        details = error.message;
+    }
+    
+    // Create a JSON response containing the details of the error
+    const errorResponse = {
+        message: "Error suggesting workflow labels",
+        upstreamError: {
+            status: status,
+            statusText: statusText,
+            details: details,
+        }
+    };
+
+    // Return a JSON response with the original, specific status code
+    return NextResponse.json(errorResponse, { 
+        status: status,
+        headers: { 'Content-Type': 'application/json' },
+    });
   }
 } 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { mapClerkIdToDbId } from '@/lib/orgIdMapping';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -12,17 +13,20 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const orgId = searchParams.get('orgId');
+  const clerkOrgId = searchParams.get('orgId');
   
-  if (!orgId) {
+  if (!clerkOrgId) {
     return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
   }
+
+  // Convert Clerk org ID to database org ID for development environment
+  const dbOrgId = mapClerkIdToDbId(clerkOrgId);
 
   try {
     const { data: accessData, error } = await supabaseAdmin
       .from('organization_data_access')
       .select('data_access_scope')
-      .eq('clerk_organization_id', orgId)
+      .eq('clerk_organization_id', dbOrgId)
       .single();
 
     if (error) {

@@ -24,11 +24,18 @@ export default clerkMiddleware(async (auth, req) => {
     console.log('[Middleware Debug] Org Slug:', orgSlug);
     console.log('[Middleware Debug] Session Claims:', JSON.stringify(sessionClaims, null, 2));
     
+    // Add more detailed debugging
+    console.log('[Middleware Debug] Full auth object keys:', Object.keys(auth));
+    console.log('[Middleware Debug] Has function result for org:admin:', has({ role: 'org:admin' }));
+    console.log('[Middleware Debug] Has function result for org:member:', has({ role: 'org:member' }));
+    
     const hasOrgAdminRole = has({ role: 'org:admin' });
     const hasOrgMemberRole = has({ role: 'org:member' });
     
     const organizationMemberships = sessionClaims?.organizationMemberships || [];
     console.log('[Middleware Debug] Organization memberships:', organizationMemberships);
+    console.log('[Middleware Debug] Organization memberships type:', typeof organizationMemberships);
+    console.log('[Middleware Debug] Organization memberships length:', Array.isArray(organizationMemberships) ? organizationMemberships.length : 'not an array');
     
     let hasAnyAdminRole = hasOrgAdminRole;
     let hasAnyMemberRole = hasOrgMemberRole;

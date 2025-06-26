@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { mapClerkIdToDbId } from '@/lib/orgIdMapping';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,8 @@ interface Session {
 
 interface UserSessionData {
   name: string | null;
+  organizationId: string | null;
+  organizationName: string | null;
   sessions: Session[];
 }
 
@@ -30,7 +33,10 @@ export const revalidate = 0;
 export async function GET(request: Request) {
   // Organization filtering - re-enabled after migration
   const { searchParams } = new URL(request.url);
-  const orgId = searchParams.get('orgId');
+  const clerkOrgId = searchParams.get('orgId');
+  
+  // Convert Clerk org ID to database org ID for development environment
+  const dbOrgId = clerkOrgId ? mapClerkIdToDbId(clerkOrgId) : null;
   
   try {
     const supabase = createClient(
@@ -127,11 +133,11 @@ export async function GET(request: Request) {
     
     // Check if the requesting organization has global access
     let hasGlobalAccess = false;
-    if (orgId) {
+    if (dbOrgId) {
       const { data: accessData } = await supabase
         .from('organization_data_access')
         .select('data_access_scope')
-        .eq('clerk_organization_id', orgId)
+        .eq('clerk_organization_id', dbOrgId)
         .single();
       
       hasGlobalAccess = accessData?.data_access_scope === 'global';
@@ -144,8 +150,8 @@ export async function GET(request: Request) {
       .in('user_id', userIds);
     
     // Apply organization filtering only if requested AND organization doesn't have global access
-    if (orgId && !hasGlobalAccess) {
-      usersQuery = usersQuery.eq('organization_id', orgId);
+    if (dbOrgId && !hasGlobalAccess) {
+      usersQuery = usersQuery.eq('organization_id', dbOrgId);
     }
 
     const { data: users, error: usersError } = await usersQuery;
@@ -154,24 +160,43 @@ export async function GET(request: Request) {
       console.error('[api/sessions] Error fetching users:', usersError);
     }
 
-    const usersMap = new Map<string, string | null>();
+    // Fetch organization names for the organization IDs we have
+    const orgIds = [...new Set(users?.map(u => u.organization_id).filter(Boolean) || [])];
+    const { data: organizations } = await supabase
+      .from('organization_data_access')
+      .select('clerk_organization_id, organization_name')
+      .in('clerk_organization_id', orgIds);
+
+    const orgNamesMap = new Map<string, string>();
+    for (const org of organizations || []) {
+      orgNamesMap.set(org.clerk_organization_id, org.organization_name);
+    }
+
+    const usersMap = new Map<string, { name: string | null; organizationId: string | null; organizationName: string | null }>();
     const filteredUserIds = new Set<string>();
     
     for (const user of users || []) {
-      usersMap.set(user.user_id, user.name);
+      usersMap.set(user.user_id, {
+        name: user.name,
+        organizationId: user.organization_id,
+        organizationName: orgNamesMap.get(user.organization_id) || null
+      });
       filteredUserIds.add(user.user_id);
     }
 
     const userSessions: Record<string, UserSessionData> = {};
     for (const session of processedSessions) {
       // If organization filtering is active and organization doesn't have global access, only include sessions from filtered users
-      if (orgId && !hasGlobalAccess && !filteredUserIds.has(session.userId)) {
+      if (dbOrgId && !hasGlobalAccess && !filteredUserIds.has(session.userId)) {
         continue;
       }
       
       if (!userSessions[session.userId]) {
+        const userData = usersMap.get(session.userId);
         userSessions[session.userId] = {
-          name: usersMap.get(session.userId) || null,
+          name: userData?.name || null,
+          organizationId: userData?.organizationId || null,
+          organizationName: userData?.organizationName || null,
           sessions: [],
         };
       }

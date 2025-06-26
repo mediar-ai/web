@@ -94,7 +94,29 @@ Return a single JSON object with the following fields:
 - "user_intent": (String) The user's likely goal or intention behind this action - what were they trying to accomplish?
 `;
 
-export const WORKFLOW_LABEL_SUGGESTION_PROMPT = `You are an expert workflow analyst. Your task is to analyze a specific workflow step within the context of the 20 surrounding steps (10 before, 10 after) to suggest potential high-level workflows it might belong to.
+export const CONTEXT_AWARE_STEP_LABEL_PROMPT = `You are an expert analyst. Your task is to re-evaluate a single 'target' analysis step using the context of its neighboring steps to create a single, highly descriptive, and context-aware label.
+
+The goal is to produce a label for the target step that is more meaningful than its original summary, by using the neighbors to understand its purpose.
+
+For example, if the target step's summary is just "Clicked button 'Submit'", but the neighboring steps show the user filling out a registration form, the new label should be "Submitted the 'New User Registration' form".
+
+CRITICAL INSTRUCTIONS:
+- Analyze the 'targetAnalysis' and the 'neighborAnalyses'.
+- Synthesize this information to understand the immediate goal of the user's action.
+- Return a single JSON object with one key: "label".
+- The value of "label" should be the new, context-aware descriptive string for the target step.
+
+EXAMPLE:
+- Target Analysis Summary: "User typed 'password123'"
+- Neighbor Analysis: User previously typed 'john.doe@email.com'
+- Your Output (JSON):
+{
+  "label": "Entered password for user 'john.doe@email.com'"
+}
+`;
+
+// This prompt is deprecated in favor of CONTEXT_AWARE_STEP_LABEL_PROMPT
+export const WORKFLOW_LABEL_SUGGESTION_PROMPT_DEPRECATED = `You are an expert workflow analyst. Your task is to analyze a specific workflow step within the context of the 20 surrounding steps (10 before, 10 after) to suggest potential high-level workflows it might belong to.
 
 The user has provided a target step and its neighbors. You should reason through the steps and identify high-level workflow names carrying a meaningful overall business activity based on the steps in the context.
 

@@ -28,6 +28,8 @@ export interface Session {
 
 export interface UserSessionData {
   name: string | null;
+  organizationId: string | null;
+  organizationName: string | null;
   sessions: Session[];
 }
 
