@@ -319,17 +319,28 @@ def get_previous_ui_tree_by_timestamp(cur, user_id, current_timestamp):
     return cur.fetchone()
 
 def get_window_title(event):
-    """Extract window title from UI tree event"""
+    """
+    Extracts the window title from the top-level 'name' attribute of the UI tree,
+    falling back to the app_name if the UI tree is not present.
+    """
     try:
         # event structure: id, user_id, session_id, created_at, payload (5 fields)
         payload = event[4] if len(event) >= 5 else {}
         ui_tree_str = payload.get('payload', {}).get('event', {}).get('screen', {}).get('ui_tree')
+
         if ui_tree_str:
-            import json
             ui_tree = json.loads(ui_tree_str)
-            return ui_tree.get('attributes', {}).get('name') or payload.get('payload', {}).get('event', {}).get('app_name', 'Unknown')
-        return payload.get('payload', {}).get('event', {}).get('app_name', 'Unknown')
-    except:
+            top_level_name = ui_tree.get('attributes', {}).get('name')
+            if top_level_name:
+                print(f"    -> Title extracted via ui_tree: '{top_level_name}'")
+                return top_level_name
+        
+        # Fallback to the app_name if the ui_tree or top-level name is not found
+        fallback_name = payload.get('payload', {}).get('event', {}).get('app_name', 'Unknown')
+        print(f"    -> Title extracted via fallback app_name: '{fallback_name}'")
+        return fallback_name
+    except Exception as e:
+        print(f"Error parsing window title for event: {e}")
         return 'Unknown'
 
 def get_previous_same_window_ui_tree(cur, user_id, current_timestamp, window_title):
@@ -790,7 +801,9 @@ def build_fresh_context(cur, user_id, current_event):
     current_timestamp = current_event[3]  # created_at
     window_title = get_window_title(current_event)
     
-    context = {}
+    context = {
+        'currentWindowTitle': window_title
+    }
     
     # Match frontend contextConfig defaults:
     # includeCurrentUiTree: true
@@ -962,6 +975,20 @@ def estimate_cost_usd(model_name, tokens_input, tokens_output):
     
     return round(input_cost + output_cost, 6)
 
+def log_truncated_context(context, context_name="LLM Context"):
+    """Logs the context dictionary with long string values truncated."""
+    print(f"--- {context_name.upper()} REVIEW ---")
+    for key, value in context.items():
+        if isinstance(value, str) and len(value) > 100:
+            print(f"  -> {key}: {value[:100]}... (truncated, total length: {len(value)})")
+        elif isinstance(value, list) and len(value) > 3:
+             print(f"  -> {key}: (list of {len(value)} items, showing first 3)")
+             for i, item in enumerate(value[:3]):
+                 log_truncated_context(item, f"Item {i+1}")
+        else:
+            print(f"  -> {key}: {value}")
+    print(f"--- END {context_name.upper()} ---")
+
 @app.function(
     secrets=[
         modal.Secret.from_name("supabase-secret"),
@@ -1025,17 +1052,7 @@ def process_all_events_for_user(user_id: str):
                     # Build FRESH context including all previous analyses
                     context, context_metadata = build_fresh_context(cur, user_id, event)
                     
-                    # --- DEBUG: Log context component sizes ---
-                    print("--- CONTEXT SIZE DEBUG ---")
-                    total_size = 0
-                    for key, value in context.items():
-                        # Use json.dumps to get a more accurate representation of the size
-                        size_bytes = len(json.dumps(value).encode('utf-8'))
-                        total_size += size_bytes
-                        print(f"Component '{key}': {size_bytes / 1024:.2f} KB")
-                    print(f"Total Context Size: {total_size / (1024*1024):.2f} MB")
-                    print("--------------------------")
-                    # --- END DEBUG ---
+                    log_truncated_context(context, f"Context for Event {event_id}")
 
                     # Prepare LLM API call
                     model_name = 'gemini-2.5-pro-preview-06-05'
@@ -1085,6 +1102,7 @@ def process_all_events_for_user(user_id: str):
                     # Save the analysis result
                     if structured_output:
                         window_title = get_window_title(event)
+                        print(f"💾 SAVING to DB: analysis for event {event_id} with title '{window_title}'")
                         cur.execute("""
                             INSERT INTO low_level_workflow_analyses 
                             (user_id, session_id, client_timestamp, llm_structured_output, window_title)
@@ -1214,14 +1232,7 @@ def process_next_event_for_user_deprecated(user_id: str):
         context_metadata = generate_context_metadata(context)
         print(f"Context metadata: {context_metadata}")
         
-        # Debug: Print the actual context content (truncated)
-        print("=== CONTEXT REVIEW ===")
-        for key, value in context.items():
-            if isinstance(value, str) and len(value) > 200:
-                print(f"{key}: {value[:200]}... (truncated, total length: {len(value)})")
-            else:
-                print(f"{key}: {value}")
-        print("=== END CONTEXT ===")
+        log_truncated_context(context, f"Context for Event {event_id}")
         
         # Prepare LLM API call
         model_name = 'gemini-2.5-pro-preview-06-05'
@@ -1269,6 +1280,7 @@ def process_next_event_for_user_deprecated(user_id: str):
             analysis_id = None
             if structured_output:
                 window_title = get_window_title(event)
+                print(f"💾 SAVING to DB: analysis for event {event_id} with title '{window_title}'")
                 cur.execute("""
                     INSERT INTO low_level_workflow_analyses 
                     (user_id, session_id, client_timestamp, llm_structured_output, window_title)

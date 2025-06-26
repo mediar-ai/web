@@ -111,23 +111,22 @@ def get_ready_to_label_analysis(cur, conn, user_id, processor_id):
 
 def get_neighbor_analyses(cur, user_id, target_timestamp, limit=10):
     """
-    Fetches and formats the structured output and timestamp of neighboring analyses
-    into the precise format expected by the API.
+    Fetches the full, unmodified llm_structured_output and timestamp of neighboring analyses.
     """
     
     def fetch_and_format(query, params):
         cur.execute(query, params)
         results = []
         for row in cur.fetchall():
-            timestamp, analysis_json = row
+            timestamp, analysis_json, window_title = row
             if not analysis_json:
-                continue # Skip neighbors with null analysis data
+                continue
 
-            # Extract only the required fields to create a clean, consistent object
-            # This prevents errors from older, different data schemas.
+            # Construct a complete analysis object for the neighbor
             formatted_analysis = {
-                "step_title": analysis_json.get("step_title"),
-                "step_summary": analysis_json.get("step_summary")
+                "client_timestamp": timestamp.isoformat(),
+                "window_title": window_title,
+                **(analysis_json or {})
             }
             results.append({
                 "timestamp": timestamp.isoformat(),
@@ -137,7 +136,7 @@ def get_neighbor_analyses(cur, user_id, target_timestamp, limit=10):
 
     # Analyses before the target
     before_query = """
-        SELECT client_timestamp, llm_structured_output FROM low_level_workflow_analyses
+        SELECT client_timestamp, llm_structured_output, window_title FROM low_level_workflow_analyses
         WHERE user_id = %s AND client_timestamp < %s
         ORDER BY client_timestamp DESC LIMIT %s
     """
@@ -145,7 +144,7 @@ def get_neighbor_analyses(cur, user_id, target_timestamp, limit=10):
 
     # Analyses after the target
     after_query = """
-        SELECT client_timestamp, llm_structured_output FROM low_level_workflow_analyses
+        SELECT client_timestamp, llm_structured_output, window_title FROM low_level_workflow_analyses
         WHERE user_id = %s AND client_timestamp > %s
         ORDER BY client_timestamp ASC LIMIT %s
     """

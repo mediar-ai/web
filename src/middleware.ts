@@ -32,21 +32,22 @@ export default clerkMiddleware(async (auth, req) => {
     const hasOrgAdminRole = has({ role: 'org:admin' });
     const hasOrgMemberRole = has({ role: 'org:member' });
     
-    const organizationMemberships = sessionClaims?.organizationMemberships || [];
+    const organizationMemberships = sessionClaims?.organizationMemberships || {};
     console.log('[Middleware Debug] Organization memberships:', organizationMemberships);
     console.log('[Middleware Debug] Organization memberships type:', typeof organizationMemberships);
-    console.log('[Middleware Debug] Organization memberships length:', Array.isArray(organizationMemberships) ? organizationMemberships.length : 'not an array');
+    console.log('[Middleware Debug] Organization memberships keys:', Object.keys(organizationMemberships));
     
     let hasAnyAdminRole = hasOrgAdminRole;
     let hasAnyMemberRole = hasOrgMemberRole;
     
-    if (Array.isArray(organizationMemberships)) {
-      for (const membership of organizationMemberships) {
-        console.log('[Middleware Debug] Checking membership:', membership);
-        if (membership.role === 'admin') {
+    // Handle organization memberships as object { orgId: role }
+    if (typeof organizationMemberships === 'object' && organizationMemberships !== null) {
+      for (const [orgId, role] of Object.entries(organizationMemberships)) {
+        console.log('[Middleware Debug] Checking membership:', { orgId, role });
+        if (role === 'org:admin') {
           hasAnyAdminRole = true;
         }
-        if (membership.role === 'member' || membership.role === 'admin') {
+        if (role === 'org:member' || role === 'org:admin') {
           hasAnyMemberRole = true;
         }
       }
@@ -57,7 +58,7 @@ export default clerkMiddleware(async (auth, req) => {
     console.log('[Middleware Debug] Has any admin role:', hasAnyAdminRole);
     console.log('[Middleware Debug] Has any member role:', hasAnyMemberRole);
     
-    if (Array.isArray(organizationMemberships) && organizationMemberships.length > 0 && !orgId) {
+    if (Object.keys(organizationMemberships).length > 0 && !orgId) {
       console.log('[Middleware Debug] User has orgs but no active org - redirecting to org selection');
       return Response.redirect(new URL('/select-organization', req.url));
     }
