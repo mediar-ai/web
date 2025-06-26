@@ -6,6 +6,7 @@ import requests
 from datetime import datetime, timedelta, timezone
 import uuid
 import time
+import difflib
 
 app = modal.App("sequential-workflow-processor")
 app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
@@ -588,7 +589,6 @@ def generate_event_summary_string(event):
 def preprocess_tree(json_string):
     """Preprocess UI tree by removing id and element_id fields - matches frontend diff.ts"""
     try:
-        import json
         
         def remove_ids(obj):
             if obj is None or not isinstance(obj, (dict, list)):
@@ -606,69 +606,36 @@ def preprocess_tree(json_string):
             
             return obj
         
-        tree = json.loads(json_string)
+        tree = json.loads(json_string, strict=False)
         cleaned_tree = remove_ids(tree)
-        return json.dumps(cleaned_tree, indent=15)
+        return json.dumps(cleaned_tree, indent=2)
     except Exception as e:
         print(f"Failed to parse or preprocess UI tree: {e}")
         return json_string
 
 def simple_ui_tree_diff(old_tree_str, new_tree_str):
-    """Simple diff implementation for UI trees - matches frontend logic more closely"""
+    """Computes a diff between two UI tree JSON strings, matching frontend logic."""
     if not old_tree_str or not new_tree_str:
         return None
     
     try:
-        # Preprocess both trees like the frontend does
         old_processed = preprocess_tree(old_tree_str)
         new_processed = preprocess_tree(new_tree_str)
         
-        # Simple line-by-line diff (basic implementation of diffLines)
-        old_lines = old_processed.strip().split('\n')
-        new_lines = new_processed.strip().split('\n')
+        if not old_processed or not new_processed:
+            return None
+
+        old_lines = old_processed.splitlines()
+        new_lines = new_processed.splitlines()
         
-        # Very basic diff - find lines that are different
-        # This mimics the frontend's diffLines() + filter(part => part.added || part.removed)
-        max_lines = max(len(old_lines), len(new_lines))
-        diff_parts = []
+        # difflib.ndiff produces a diff that is easy to parse for added/removed lines
+        diff = difflib.ndiff(old_lines, new_lines)
         
-        # Simple algorithm: compare line by line and mark differences
-        i, j = 0, 0
-        while i < len(old_lines) or j < len(new_lines):
-            if i >= len(old_lines):
-                # Only new lines remain - these are "added"
-                diff_parts.append({'added': True, 'value': new_lines[j] + '\n'})
-                j += 1
-            elif j >= len(new_lines):
-                # Only old lines remain - these are "removed"
-                diff_parts.append({'removed': True, 'value': old_lines[i] + '\n'})
-                i += 1
-            elif old_lines[i] == new_lines[j]:
-                # Lines match, skip both (these would be unchanged parts in diffLines)
-                i += 1
-                j += 1
-            else:
-                # Lines differ - mark both as changed
-                diff_parts.append({'removed': True, 'value': old_lines[i] + '\n'})
-                diff_parts.append({'added': True, 'value': new_lines[j] + '\n'})
-                i += 1
-                j += 1
+        # Filter for lines that were added or removed, same as frontend
+        changed_lines = [line for line in diff if line.startswith('+ ') or line.startswith('- ')]
         
-        # Now filter and format like the frontend:
-        # differences.filter(part => part.added || part.removed).map(part => {...})
-        changed_parts = []
-        for part in diff_parts:
-            if part.get('added') or part.get('removed'):
-                prefix = '+' if part.get('added') else '-'
-                # Split by newlines, filter out empty lines, add prefix to each line
-                lines = part['value'].split('\n')
-                non_empty_lines = [line for line in lines if line.strip()]
-                prefixed_lines = [f"{prefix} {line}" for line in non_empty_lines]
-                if prefixed_lines:
-                    changed_parts.extend(prefixed_lines)
-        
-        if changed_parts:
-            return '\n'.join(changed_parts)
+        if changed_lines:
+            return '\n'.join(changed_lines)
         else:
             return None
             
@@ -827,7 +794,7 @@ def build_fresh_context(cur, user_id, current_event):
         events_between = get_events_between_timestamps(cur, user_id, previous_event[3], current_timestamp)  # created_at in 5-field structure
         if events_between:
             context['eventsSincePreviousUiTreeByTimestamp'] = [
-                generate_event_summary_string(event) for event in events_between
+                event[4].get('payload', {}) for event in events_between
             ]
     
     # Handle same window context fields
@@ -836,7 +803,7 @@ def build_fresh_context(cur, user_id, current_event):
         events_same_window = get_events_between_timestamps(cur, user_id, previous_same_window[3], current_timestamp)  # created_at in 5-field structure
         if events_same_window:
             context['eventsSincePreviousUiTreeBySameWindow'] = [
-                generate_event_summary_string(event) for event in events_same_window
+                event[4].get('payload', {}) for event in events_same_window
             ]
     
     # includeUiTreeDiff: true - CRITICAL FIELD! (Match frontend logic exactly)
@@ -845,13 +812,9 @@ def build_fresh_context(cur, user_id, current_event):
         if previous_same_window_ui_tree_str:
             # Frontend logic: preprocessTree(oldTree) and preprocessTree(newTree), then diffLines()
             # We need to diff the RAW JSON trees, not the simplified strings!
-            old_processed = preprocess_tree(previous_same_window_ui_tree_str)
-            new_processed = preprocess_tree(current_ui_tree_str)
-            
-            if old_processed and new_processed:
-                diff_result = simple_ui_tree_diff(old_processed, new_processed)
-                if diff_result:
-                    context['uiTreeDiffLatestVsPreviousForTheSameWindow'] = diff_result
+            diff_result = simple_ui_tree_diff(previous_same_window_ui_tree_str, current_ui_tree_str)
+            if diff_result:
+                context['uiTreeDiffLatestVsPreviousForTheSameWindow'] = diff_result
     
     # includePreviousAnalyses: true
     recent_analyses = get_recent_analyses(cur, user_id, 10)

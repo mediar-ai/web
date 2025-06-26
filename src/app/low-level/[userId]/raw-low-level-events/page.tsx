@@ -5,7 +5,6 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { generateEventSummaryString } from '@/lib/eventSummarizer';
 import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -42,6 +41,15 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const LOCAL_STORAGE_KEY = `low-level-viewer-expanded-events-${userId}`;
   const SUMMARY_OPEN_STORAGE_KEY = `raw-events-summary-open-${userId}`;
   const SORT_ORDER_STORAGE_KEY = `raw-events-sort-order-${userId}`;
+
+  const getEventType = useCallback((event: LowLevelEvent): string => {
+    const payload = event.payload as { payload?: { type?: string } };
+    return payload?.payload?.type || 'unknown';
+  }, []);
+
+  const getEventTimestamp = useCallback((event: LowLevelEvent): string => {
+    return new Date(event.created_at).toLocaleString();
+  }, []);
 
   useEffect(() => {
     try {
@@ -382,13 +390,23 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       <div className="space-y-1">
         {filteredEvents.map((event) => {
           const isExpanded = expandedEvents[event.id] || false;
+          const eventType = getEventType(event);
+          const timestamp = getEventTimestamp(event);
+          
           return (
           <Card key={event.id}>
             <CardHeader 
               className="p-2 bg-gray-50 border-b flex flex-row justify-between items-center cursor-pointer"
               onClick={() => toggleEventExpansion(event.id)}
             >
-              <div className="text-sm font-medium pr-4 whitespace-normal">{generateEventSummaryString(event, { truncate: false })}</div>
+              <div className="text-sm font-medium pr-4 whitespace-normal flex items-center gap-2">
+                <Badge variant="outline" className="shrink-0">
+                  {eventType}
+                </Badge>
+                <span className="text-xs text-gray-500">
+                  {timestamp}
+                </span>
+              </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </div>

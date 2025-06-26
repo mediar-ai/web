@@ -11,7 +11,7 @@ import type {
 export interface Session {
   id: string;
   userId: string;
-  type: 'lowLevel' | 'web';
+  type: 'low-level' | 'web';
   timestamp: string;
   eventCount: number;
   processed_event_count: number;

@@ -232,11 +232,15 @@ def process_screenshots(batch_size: int = 10):
                 upload_success, size = upload_image_to_supabase(before_data, f"{user_id}/{session_id}/screenshots/{event_id}_before.jpeg")
                 if upload_success:
                     before_path, before_size = f"{user_id}/{session_id}/screenshots/{event_id}_before.jpeg", size
+                else:
+                    raise Exception(f"Upload failed for before_path for event {event_id}")
 
             if after_data:
                 upload_success, size = upload_image_to_supabase(after_data, f"{user_id}/{session_id}/screenshots/{event_id}_after.jpeg")
                 if upload_success:
                     after_path, after_size = f"{user_id}/{session_id}/screenshots/{event_id}_after.jpeg", size
+                else:
+                    raise Exception(f"Upload failed for after_path for event {event_id}")
 
             if not before_path and not after_path:
                 raise Exception("Both before and after image uploads failed.")
