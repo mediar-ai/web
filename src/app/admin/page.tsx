@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
-// import { useDebouncedCallback } from 'use-debounce'; // Disabled with real-time
+import { useDebouncedCallback } from 'use-debounce';
 import {
   Tooltip,
   TooltipContent,
@@ -132,7 +132,7 @@ function AuthenticatedAdminPage({
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  // const [isLiveRefreshing, setIsLiveRefreshing] = useState(false); // Disabled with real-time
+  const [isLiveRefreshing, setIsLiveRefreshing] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [userNameInput, setUserNameInput] = useState('');
   const [filter, setFilter] = useState('');
@@ -288,9 +288,19 @@ function AuthenticatedAdminPage({
     }
   }, [organizationId]);
 
-  // Real-time refresh functions disabled (not needed without WebSocket connection)
-  // const liveRefreshSessions = useCallback(async () => { ... }, [fetchSessions]);
-  // const debouncedFetchSessions = useDebouncedCallback(liveRefreshSessions, 2000);
+  // Wrapper for live refresh that shows indicator
+  const liveRefreshSessions = useCallback(async () => {
+    setIsLiveRefreshing(true);
+    try {
+      await fetchSessions();
+    } finally {
+      // Keep indicator visible for a short time so users can see it
+      setTimeout(() => setIsLiveRefreshing(false), 1000);
+    }
+  }, [fetchSessions]);
+
+  // Debounce for 2 seconds to handle frequent polling efficiently
+  const debouncedFetchSessions = useDebouncedCallback(liveRefreshSessions, 2000);
 
   useEffect(() => {
     const initialFetch = async () => {
@@ -300,38 +310,56 @@ function AuthenticatedAdminPage({
     }
     initialFetch();
 
-    // Real-time temporarily disabled due to WebSocket connection issues
-    // TODO: Re-enable once WebSocket connection to Supabase realtime is stable
-    console.log('[Admin] Real-time disabled - using manual refresh only');
+    // Use intelligent polling instead of realtime (more reliable with Clerk auth)
+    console.log('[Admin] Setting up intelligent polling for live updates...');
     
-    /* DISABLED REAL-TIME CODE:
-    const channel = supabase
-      .channel('admin:session_metadata')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'session_metadata' }, 
-        () => {
-          console.log('[Admin Realtime] Received database change - updating table');
-          debouncedFetchSessions();
-        }
-      )
-      .subscribe((status, err) => {
-        console.log('[Admin Realtime] Connection status:', status);
-        if (err) {
-          console.error('[Admin Realtime] Subscription error:', err as Error);
-          console.warn('[Admin Realtime] Live updates disabled - falling back to manual refresh only');
-        } else if (status === 'SUBSCRIBED') {
-          console.log('[Admin Realtime] ✅ Successfully connected - live updates enabled');
-        } else if (status === 'CLOSED') {
-          console.warn('[Admin Realtime] ❌ Connection closed');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('[Admin Realtime] ❌ Channel error');
-        }
-      });
-    */
+    let pollingInterval: NodeJS.Timeout;
+    let isPolling = false;
+    
+    const startPolling = () => {
+      if (isPolling) return;
+      isPolling = true;
+      
+             // Poll every 2 seconds when page is visible, 30s when hidden
+       const getInterval = () => document.hidden ? 30000 : 2000;
+      
+             const poll = async () => {
+         if (!document.hidden) {
+           console.log('[Admin] 🔄 Polling for updates...');
+           debouncedFetchSessions();
+         }
+         
+         // Schedule next poll with current interval
+         pollingInterval = setTimeout(poll, getInterval());
+       };
+      
+      // Start first poll after 10 seconds
+      pollingInterval = setTimeout(poll, 10000);
+    };
+    
+    // Handle visibility changes to adjust polling frequency
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('[Admin] 👁️ Page visible - refreshing immediately');
+        // Immediate refresh when page becomes visible
+        fetchSessions();
+      }
+      console.log(`[Admin] Polling frequency: ${document.hidden ? '60s' : '10s'}`);
+    };
+    
+    // Start polling and set up visibility listener
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    console.log('[Admin] ✅ Intelligent polling enabled - updates every 10s when active, 60s when hidden');
 
     return () => {
-      // No cleanup needed when real-time is disabled
+      isPolling = false;
+      clearTimeout(pollingInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      console.log('[Admin] 🛑 Polling stopped');
     };
-  }, [fetchSessions]);
+  }, [fetchSessions, liveRefreshSessions, debouncedFetchSessions]);
 
   const handleEditName = (userId: string, currentName: string) => {
     setEditingUser(userId);
@@ -465,7 +493,12 @@ function AuthenticatedAdminPage({
             )}
           </div>
         <div className="flex items-center gap-2">
-          {/* Live update indicator disabled with real-time */}
+          {isLiveRefreshing && (
+            <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              Auto-updating...
+            </div>
+          )}
           <Button 
             variant="outline" 
             onClick={fetchSessions}
