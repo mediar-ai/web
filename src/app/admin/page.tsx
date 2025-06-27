@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { useDebouncedCallback } from 'use-debounce';
 import {
   Tooltip,
   TooltipContent,
@@ -286,12 +287,35 @@ function AuthenticatedAdminPage({
     }
   }, [organizationId]);
 
-
+  // Debounce for 2 seconds to handle the firehose of events and refresh efficiently.
+  const debouncedFetchSessions = useDebouncedCallback(fetchSessions, 2000);
 
   useEffect(() => {
-    fetchSessions();
-    setLoading(false);
-  }, [fetchSessions]);
+    const initialFetch = async () => {
+      setLoading(true);
+      await fetchSessions();
+      setLoading(false);
+    }
+    initialFetch();
+
+    // Set up real-time subscription to session_metadata table
+    const channel = supabase
+      .channel('admin:session_metadata')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'session_metadata' }, 
+        () => {
+          debouncedFetchSessions();
+        }
+      )
+      .subscribe((status, err) => {
+        if (err) {
+          console.error('[Admin Realtime] Subscription error:', err as Error);
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchSessions, debouncedFetchSessions]);
 
   const handleEditName = (userId: string, currentName: string) => {
     setEditingUser(userId);
