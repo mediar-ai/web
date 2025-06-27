@@ -132,6 +132,7 @@ function AuthenticatedAdminPage({
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLiveRefreshing, setIsLiveRefreshing] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [userNameInput, setUserNameInput] = useState('');
   const [filter, setFilter] = useState('');
@@ -287,8 +288,19 @@ function AuthenticatedAdminPage({
     }
   }, [organizationId]);
 
+  // Wrapper for live refresh that shows indicator
+  const liveRefreshSessions = useCallback(async () => {
+    setIsLiveRefreshing(true);
+    try {
+      await fetchSessions();
+    } finally {
+      // Keep indicator visible for a short time so users can see it
+      setTimeout(() => setIsLiveRefreshing(false), 1000);
+    }
+  }, [fetchSessions]);
+
   // Debounce for 2 seconds to handle the firehose of events and refresh efficiently.
-  const debouncedFetchSessions = useDebouncedCallback(fetchSessions, 2000);
+  const debouncedFetchSessions = useDebouncedCallback(liveRefreshSessions, 2000);
 
   useEffect(() => {
     const initialFetch = async () => {
@@ -315,7 +327,7 @@ function AuthenticatedAdminPage({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchSessions, debouncedFetchSessions]);
+  }, [fetchSessions, liveRefreshSessions, debouncedFetchSessions]);
 
   const handleEditName = (userId: string, currentName: string) => {
     setEditingUser(userId);
@@ -449,6 +461,12 @@ function AuthenticatedAdminPage({
             )}
           </div>
         <div className="flex items-center gap-2">
+          {isLiveRefreshing && (
+            <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              Live updating...
+            </div>
+          )}
           <Button 
             variant="outline" 
             onClick={fetchSessions}
