@@ -30,6 +30,7 @@ export interface UserSessionData {
   name: string | null;
   organizationId: string | null;
   organizationName: string | null;
+  workflowCount: number;
   sessions: Session[];
 }
 

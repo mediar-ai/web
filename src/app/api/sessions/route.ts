@@ -25,6 +25,7 @@ interface UserSessionData {
   name: string | null;
   organizationId: string | null;
   organizationName: string | null;
+  workflowCount: number;
   sessions: Session[];
 }
 
@@ -120,7 +121,7 @@ export async function GET(request: Request) {
         processed_event_count: session.processed_event_count || 0,
         total_ui_steps: session.total_ui_steps || 0,
         total_workflow_analyses: session.total_workflow_analyses || 0,
-        distinct_workflows_created: session.distinct_workflows_created || 0,
+        distinct_workflows_created: 0,
         human_labeled_steps: session.human_labeled_steps || 0,
         llm_labeled_steps: annotationCounts.llm_labeled,
         human_annotated_steps: annotationCounts.human_annotated,
@@ -130,6 +131,25 @@ export async function GET(request: Request) {
     });
     
     const userIds = [...new Set(processedSessions.map(s => s.userId).filter(id => id !== 'unknown_user'))];
+    
+    // GET ACTUAL WORKFLOW COUNTS BY USER from low_level_workflows table
+    const { data: workflowData, error: workflowError } = await supabase
+      .from('low_level_workflows')
+      .select('user_id')
+      .in('user_id', userIds);
+
+    if (workflowError) {
+      console.error('[api/sessions] Error fetching workflow counts:', workflowError);
+    }
+
+    // Count workflows by user
+    const workflowCountsByUser = new Map<string, number>();
+    if (workflowData) {
+      for (const workflow of workflowData) {
+        const userId = workflow.user_id;
+        workflowCountsByUser.set(userId, (workflowCountsByUser.get(userId) || 0) + 1);
+      }
+    }
     
     // Check if the requesting organization has global access
     let hasGlobalAccess = false;
@@ -197,6 +217,7 @@ export async function GET(request: Request) {
           name: userData?.name || null,
           organizationId: userData?.organizationId || null,
           organizationName: userData?.organizationName || null,
+          workflowCount: workflowCountsByUser.get(session.userId) || 0,
           sessions: [],
         };
       }
