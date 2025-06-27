@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Schema, SchemaType } from '@google/generative-ai';
 import { WORKFLOW_BOUNDARY_PROMPT } from '@/lib/prompts';
+import { FlattenedWorkflowAnalysis } from '@/types';
 
 // Removed unused interface - boundaries are handled as Record<string, {trigger: string, terminator: string}>
 
@@ -51,36 +52,42 @@ export async function POST(req: NextRequest) {
   try {
     const { model: modelName, context } = await req.json();
 
-    if (!modelName || !context || !context.events || !context.workflows) {
+    if (!modelName || !context || !context.analyses || !context.workflows) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    // Convert V1/V2 mixed events to a consistent format for analysis
-    const processedEvents = context.events.map((event: { analysis?: { raw_llm_output?: { schema_version?: string; step_title?: string; step_summary?: string; user_intent?: string; events_that_happened?: string; how_content_changed?: string; what_was_clicked?: string; what_was_typed?: string; results_if_any?: string; } }; [key: string]: unknown; }) => {
-      if (event.analysis) {
-        // Check if analysis has V2 structure (llm_structured_output)
-        const analysis = event.analysis;
-        if (analysis.raw_llm_output && analysis.raw_llm_output.schema_version === 'v2') {
-          // Use V2 fields for workflow analysis
-          return {
-            ...event,
-            analysis: {
-              workflow: analysis.raw_llm_output.step_title || 'Unknown Workflow',
-              step: analysis.raw_llm_output.step_summary || 'Unknown Step',
-              description: analysis.raw_llm_output.user_intent || 'No description',
-              actions: analysis.raw_llm_output.events_that_happened || 'No actions',
-              changes: analysis.raw_llm_output.how_content_changed || 'No changes',
-              clicked: analysis.raw_llm_output.what_was_clicked || 'Nothing clicked',
-              typed: analysis.raw_llm_output.what_was_typed || 'Nothing typed',
-              results: analysis.raw_llm_output.results_if_any || 'No results'
-            }
-          };
-        } else {
-          // Keep V1 structure as-is for backward compatibility
-          return event;
-        }
+    // Convert analyses to a consistent format for the LLM
+    const processedAnalyses = context.analyses.map((analysis: FlattenedWorkflowAnalysis) => {
+      // Check if analysis has V2 structure (llm_structured_output)
+      if (analysis.raw_llm_output && analysis.raw_llm_output.schema_version === 'v2') {
+        // Use V2 fields for workflow analysis
+        return {
+          id: analysis.id,
+          timestamp: analysis.client_timestamp,
+          workflow: analysis.raw_llm_output.step_title || 'Unknown Workflow',
+          step: analysis.raw_llm_output.step_summary || 'Unknown Step',
+          description: analysis.raw_llm_output.user_intent || 'No description',
+          actions: analysis.raw_llm_output.events_that_happened || 'No actions',
+          changes: analysis.raw_llm_output.how_content_changed || 'No changes',
+          clicked: analysis.raw_llm_output.what_was_clicked || 'Nothing clicked',
+          typed: analysis.raw_llm_output.what_was_typed || 'Nothing typed',
+          results: analysis.raw_llm_output.results_if_any || 'No results'
+        };
+      } else {
+        // Keep V1 structure as-is for backward compatibility
+        return {
+          id: analysis.id,
+          timestamp: analysis.client_timestamp,
+          workflow: analysis.workflow || 'Unknown Workflow',
+          step: analysis.step || 'Unknown Step',
+          description: analysis.description || 'No description',
+          facts: analysis.facts || 'No facts',
+          logic: analysis.logic || 'No logic',
+          tech: analysis.tech || 'No tech',
+          apps: analysis.apps || 'No apps',
+          context: analysis.context || 'No context'
+        };
       }
-      return event;
     });
 
     // Handle both single workflow (legacy) and multiple workflows
@@ -110,8 +117,11 @@ ${workflowList}
 User's High-Level Context:
 ${JSON.stringify(context.userContext, null, 2)}
 
-Events Context:
-${JSON.stringify(processedEvents, null, 2)}`;
+Analyses Context:
+${JSON.stringify(processedAnalyses, null, 2)}
+
+Labels Context:
+${JSON.stringify(context.labels, null, 2)}`;
 
     const result = await model.generateContent(prompt);
 

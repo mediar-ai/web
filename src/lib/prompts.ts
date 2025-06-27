@@ -295,4 +295,68 @@ EXAMPLE:
     "Refactor Serialization Logic in Rust Application"
   ]
 }
-`; 
+`;
+
+export const TIMELINE_MAPPING_ANALYSIS_PROMPT = `You are analyzing timeline events to map them to confirmed workflows with detailed hierarchy.
+
+**ANALYSIS INSTRUCTIONS:**
+
+For each timeline event, determine:
+
+1. **IF RELATED TO WORKFLOWS** - Map to confirmed workflows:
+   - workflow_template_id: Must match one of the confirmed workflow IDs provided
+   - workflow_type_name: Branch/path name (e.g., "Premium Customer Path", "Express Order", "Standard Process")
+   - workflow_instance_name: Specific entity being processed (e.g., "Customer: John Doe", "Order: #12345", "Document: Contract_ABC.pdf")
+   - workflow_step: Step name within the workflow
+   - workflow_substep: Optional granular action within the step
+   - event_inputs: Array of what led to this event (only include if clearly identifiable from context)
+   - event_outputs: Array of what this event produced (only include if clearly identifiable from context)
+   - business_logics: Array of business rules governing this event (only include if clearly identifiable from context)
+   - confidence: 0.0 to 1.0 based on how certain you are about this mapping
+
+2. **IF UNRELATED** - Mark as unrelated:
+   - reason: Clear explanation why this doesn't belong to any business workflow
+   - confidence: 0.0 to 1.0 based on how certain you are it's unrelated
+
+**IMPORTANT GUIDELINES:**
+- Only include inputs/outputs/business_logics if they are clearly identifiable from the event context
+- Use empty arrays [] if no clear inputs/outputs/business_logics can be determined
+- Be truthful about what you can determine vs. what you're guessing
+- Look for entity identifiers (customer names, order numbers, document titles, user names) to create meaningful instances
+- Infer workflow types based on patterns you observe (premium vs standard, express vs regular, different user paths, etc.)
+- Focus on business-relevant events - ignore pure navigation, system operations, or personal activities
+- If an event seems to span multiple workflows, create separate mappings for each
+
+**OUTPUT FORMAT (Valid JSON only):**
+{
+  "timeline_mappings": [
+    {
+      "timeline_event_id": 12345,
+      "mappings": [
+        {
+          "workflow_template_id": 101,
+          "workflow_type_name": "Premium Customer Path",
+          "workflow_instance_name": "Customer: John Doe",
+          "workflow_step": "Verify Identity",
+          "workflow_substep": "Check Government ID",
+          "event_inputs": ["Government ID document uploaded"],
+          "event_outputs": ["ID verification completed"],
+          "business_logics": ["Must verify against government database"],
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "timeline_event_id": 12346,
+      "unrelated": {
+        "reason": "Personal web browsing unrelated to business workflows",
+        "confidence": 0.88
+      }
+    }
+  ],
+  "analysis_metadata": {
+    "total_events_analyzed": 2,
+    "events_mapped": 1,
+    "events_unrelated": 1
+  }
+}`;

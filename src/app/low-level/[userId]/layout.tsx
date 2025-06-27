@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect, use } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Pencil, Clipboard, Check, RefreshCw } from 'lucide-react';
+import { Pencil, Clipboard, Check, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePathname, useRouter } from 'next/navigation';
 import { UserProvider, useUser } from '@/context/UserContext';
@@ -80,6 +80,9 @@ const UserLayoutContent = ({
       <div className="sticky top-0 z-10 bg-background container mx-auto gap-2 py-5 border-b">
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => router.push('/admin')}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
               <div className="flex items-center">
                 <Button variant="ghost" size="icon" onClick={fetchUserName} disabled={isLoading}>
                   <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -131,7 +134,6 @@ const UserLayoutContent = ({
             </div>
           <Tabs value={activeTab} onValueChange={(value) => router.push(`/low-level/${userId}/${value}`)}>
             <TabsList>
-              <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="raw-low-level-events">Raw Events</TabsTrigger>
               <TabsTrigger value="ui-trees">UI Trees</TabsTrigger>
               <TabsTrigger value="steps">Steps</TabsTrigger>

@@ -57,61 +57,10 @@ export async function GET(request: Request) {
       return NextResponse.json({});
     }
 
-    // Get labeling counts for each session from workflow labeling table
-    const { data: labelingData, error: labelingError } = await supabase
-      .from('low_level_workflow_labeling')
-      .select('low_level_workflow_analysis_id, selected_labels');
-
-    if (labelingError) {
-      console.error('[api/sessions] Error fetching labeling data:', labelingError);
-    }
-
-    // Get workflow analyses to map analysis IDs to sessions
-    const { data: analysesData, error: analysesError } = await supabase
-      .from('low_level_workflow_analyses')
-      .select('id, session_id');
-
-    if (analysesError) {
-      console.error('[api/sessions] Error fetching analyses data:', analysesError);
-    }
-
-    // Create mapping from analysis ID to session ID
-    const analysisToSession = new Map<string, string>();
-    if (analysesData) {
-      for (const analysis of analysesData) {
-        analysisToSession.set(analysis.id.toString(), analysis.session_id);
-      }
-    }
-
-    // Group labeling data by session
-    const labelingBySession = new Map<string, { llm_labeled: number; human_labeled: number }>();
-    
-    if (labelingData) {
-      for (const labeling of labelingData) {
-        const sessionId = analysisToSession.get(labeling.low_level_workflow_analysis_id.toString());
-        if (!sessionId) continue;
-        
-        if (!labelingBySession.has(sessionId)) {
-          labelingBySession.set(sessionId, { llm_labeled: 0, human_labeled: 0 });
-        }
-        
-        const counts = labelingBySession.get(sessionId)!;
-        
-        // Count LLM-generated labels (selected_labels contains LLM labels)
-        if (labeling.selected_labels && labeling.selected_labels.length > 0) {
-          counts.llm_labeled++;
-        }
-        
-        // Note: human_labeled remains 0 as we don't currently track human-selected labels
-      }
-    }
-
     const processedSessions: Session[] = sessions.map(session => {
       const lastEventTimestamp = new Date(session.last_event_timestamp).getTime();
       const now = Date.now();
       const isLive = (now - lastEventTimestamp) < 60000;
-
-      const labelingCounts = labelingBySession.get(session.session_id) || { llm_labeled: 0, human_labeled: 0 };
 
       return {
         id: session.session_id,
@@ -123,9 +72,9 @@ export async function GET(request: Request) {
         total_ui_steps: session.total_ui_steps || 0,
         total_workflow_analyses: session.total_workflow_analyses || 0,
         distinct_workflows_created: 0,
-        human_labeled_steps: labelingCounts.human_labeled,
-        llm_labeled_steps: labelingCounts.llm_labeled,
-        human_annotated_steps: labelingCounts.human_labeled, // Keep for backwards compatibility
+        human_labeled_steps: session.human_labeled_steps || 0,
+        llm_labeled_steps: session.total_labeled_steps || 0, // Using total_labeled_steps for llm_labeled_steps
+        human_annotated_steps: session.human_labeled_steps || 0, // Keep for backwards compatibility
         duration_seconds: session.duration_seconds,
         status: isLive ? 'live' : 'offline',
       };
