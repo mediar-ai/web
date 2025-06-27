@@ -61,7 +61,7 @@ In your Clerk dashboard, ensure you have these roles configured:
 
 ### 1. Dashboard Access Levels
 
-The dashboard at `/internal-dashboard-full-access-2b4c8e1f` now shows:
+The admin dashboard at `/admin` now shows:
 
 - **Global Admins**: "Global Admin - All Organizations" 
 - **Org Admins**: "Admin - [Organization Name]"

@@ -15,7 +15,7 @@ export default function SelectOrganizationPage() {
   useEffect(() => {
     // If user has an active organization, redirect to dashboard
     if (isLoaded && organization) {
-      router.push('/internal-dashboard-full-access-2b4c8e1f');
+      router.push('/admin');
     }
   }, [isLoaded, organization, router]);
 
