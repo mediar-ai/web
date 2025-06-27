@@ -15,7 +15,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-import { ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import { useAuth, SignIn, useOrganization } from '@clerk/nextjs';
 import {
   AlertDialog,
@@ -130,6 +130,7 @@ function AuthenticatedAdminPage({
 }: Omit<AuthenticatedAdminPageProps, 'isGlobalAdmin'>) {
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [userNameInput, setUserNameInput] = useState('');
   const [filter, setFilter] = useState('');
@@ -256,27 +257,32 @@ function AuthenticatedAdminPage({
   };
 
   const fetchSessions = useCallback(async () => {
-    // Always include orgId - the API will determine access level based on organization_data_access table
-    const params = new URLSearchParams({ v: Date.now().toString() });
-    if (organizationId) {
-      params.append('orgId', organizationId);
-    }
-    
-    const response = await fetch(`/api/sessions?${params}`);
-    const sessionData = await response.json();
-    setUserSessions(sessionData);
-    
-    // Check if this organization has global access by making a simple API call
-    if (organizationId) {
-      try {
-        const accessResponse = await fetch(`/api/organization-access?orgId=${organizationId}`);
-        if (accessResponse.ok) {
-          const accessData = await accessResponse.json();
-          setIsGlobalAdmin(accessData.isGlobal || false);
-        }
-      } catch (error) {
-        console.error('Failed to fetch organization access level:', error);
+    setIsRefreshing(true);
+    try {
+      // Always include orgId - the API will determine access level based on organization_data_access table
+      const params = new URLSearchParams({ v: Date.now().toString() });
+      if (organizationId) {
+        params.append('orgId', organizationId);
       }
+      
+      const response = await fetch(`/api/sessions?${params}`);
+      const sessionData = await response.json();
+      setUserSessions(sessionData);
+      
+      // Check if this organization has global access by making a simple API call
+      if (organizationId) {
+        try {
+          const accessResponse = await fetch(`/api/organization-access?orgId=${organizationId}`);
+          if (accessResponse.ok) {
+            const accessData = await accessResponse.json();
+            setIsGlobalAdmin(accessData.isGlobal || false);
+          }
+        } catch (error) {
+          console.error('Failed to fetch organization access level:', error);
+        }
+      }
+    } finally {
+      setIsRefreshing(false);
     }
   }, [organizationId]);
 
@@ -423,8 +429,19 @@ function AuthenticatedAdminPage({
             variant="outline" 
             onClick={fetchSessions}
             size="sm"
+            disabled={isRefreshing}
           >
-            Refresh
+            {isRefreshing ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </>
+            )}
           </Button>
           <Input 
             type="text"
