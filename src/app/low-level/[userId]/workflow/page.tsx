@@ -36,8 +36,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
-import type { LowLevelEvent } from '@/types';
-import type { CanvasContent, SynthesizedWorkflow, WorkflowStepAnalysis, CombinedEvent, FinalAnalysisData, SynthesisStep, WorkflowContext, WorkflowBoundary, WorkflowBoundaries, WorkflowDataObject, DatabaseWorkflow, SynthesisSession, Message } from './types';
+import type { CanvasContent, SynthesizedWorkflow, WorkflowStepAnalysis, FinalAnalysisData, SynthesisStep, WorkflowContext, WorkflowBoundary, WorkflowBoundaries, WorkflowDataObject, DatabaseWorkflow, SynthesisSession, Message } from './types';
 import { useWorkflowPageLogic } from './useWorkflowPageLogic';
 import {
   EditableListItem,
@@ -120,7 +119,7 @@ const StepperItem = memo(({
 
     const stepState = useMemo(() => {
         const completedStates: Record<StepId, SynthesisStep[]> = {
-  'define-context': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
+  'define-context': ['context_editing', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
   'select-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
   'define-boundaries': ['synthesizing', 'done'],
   'synthesize-workflows': ['done'],
@@ -132,12 +131,35 @@ const StepperItem = memo(({
             'define-boundaries': ['workflow_editing', 'defining_boundaries', 'boundaries_editing'].includes(synthesisStep) && identifiedWorkflowNames.length > 0,
         };
         
-        const activeStates: Record<StepId, SynthesisStep[]> = {
-  'define-context': ['context_editing'],
-  'select-workflows': ['workflow_editing'],
-  'define-boundaries': ['boundaries_editing'],
-  'synthesize-workflows': ['synthesizing'],
-};
+        // Active states should only be true when actual processing is happening (for spinning animation)
+        const getActiveState = (stepId: StepId): boolean => {
+            switch (stepId) {
+                case 'define-context':
+                    return isAnalyzingEvents; // Only active when actually analyzing
+                case 'select-workflows':
+                    return synthesisStep === 'identifying'; // Only active when identifying workflows
+                case 'define-boundaries':
+                    return synthesisStep === 'defining_boundaries'; // Only active when defining boundaries
+                case 'synthesize-workflows':
+                    return synthesisStep === 'synthesizing'; // Only active when synthesizing
+                default:
+                    return false;
+            }
+        };
+
+        // Separate logic for when fields should be editable
+        const getEditableState = (stepId: StepId): boolean => {
+            switch (stepId) {
+                case 'define-context':
+                    return isAnalyzingEvents || synthesisStep === 'context_editing'; // Editable when analyzing OR editing context
+                case 'select-workflows':
+                    return synthesisStep === 'identifying' || synthesisStep === 'workflow_editing'; // Editable when processing or editing
+                case 'define-boundaries':
+                    return synthesisStep === 'defining_boundaries' || synthesisStep === 'boundaries_editing'; // Editable when processing or editing
+                default:
+                    return false;
+            }
+        };
 
         const showComponentStates = {
             'define-context': ['context_editing', 'identifying', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
@@ -145,17 +167,19 @@ const StepperItem = memo(({
             'define-boundaries': ['boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
         };
 
-        const active = activeStates[id as keyof typeof activeStates] ?? false;
+        const active = getActiveState(id as StepId);
+        const editable = getEditableState(id as StepId);
         
         return {
             completed: (completedStates[id as keyof typeof completedStates] || []).includes(synthesisStep),
             active: active,
+            editable: editable,
             enabled: enabledStates[id as keyof typeof enabledStates] ?? false,
             showComponent: showComponentStates[id as keyof typeof showComponentStates] ?? false,
         };
     }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, identifiedWorkflowNames]);
     
-    const { completed, active, enabled, showComponent } = stepState;
+    const { completed, active, editable, enabled, showComponent } = stepState;
     const action = actionMap[id];
     const [isCollapsed, setIsCollapsed] = useState(true);
 
@@ -215,22 +239,22 @@ const StepperItem = memo(({
                         ) : showComponent ? (
                             <div className="p-4 border rounded-lg bg-muted/50">
                                 {id === 'define-context' && (
-                                    <div className={completed && !active ? 'opacity-60 pointer-events-none' : ''}>
+                                    <div className={completed && !editable ? 'opacity-60 pointer-events-none' : ''}>
                                         <div className="grid grid-cols-[auto_1fr] items-start gap-x-4 gap-y-2">
                                             <Label htmlFor="jobRole" className="text-right pt-2">Your Job Role</Label>
-                                            <Input id="jobRole" value={logic.editableContext?.user_job_role || ''} onChange={(e) => logic.handleContextChange('user_job_role', e.target.value)} disabled={completed && !active} />
+                                            <Input id="jobRole" value={logic.editableContext?.user_job_role || ''} onChange={(e) => logic.handleContextChange('user_job_role', e.target.value)} disabled={!editable} />
                                             
                                             <Label htmlFor="projectName" className="text-right pt-2">Project Name</Label>
-                                            <Input id="projectName" value={logic.editableContext?.project_name || ''} onChange={(e) => logic.handleContextChange('project_name', e.target.value)} disabled={completed && !active} />
+                                            <Input id="projectName" value={logic.editableContext?.project_name || ''} onChange={(e) => logic.handleContextChange('project_name', e.target.value)} disabled={!editable} />
                                             
                                             <Label htmlFor="userGoal" className="text-right pt-2">User Goal (from recordings)</Label>
-                                            <Textarea id="userGoal" value={logic.editableContext?.user_goal_from_recordings || ''} onChange={(e) => logic.handleContextChange('user_goal_from_recordings', e.target.value)} className="min-h-[60px]" disabled={completed && !active} />
+                                            <Textarea id="userGoal" value={logic.editableContext?.user_goal_from_recordings || ''} onChange={(e) => logic.handleContextChange('user_goal_from_recordings', e.target.value)} className="min-h-[60px]" disabled={!editable} />
                                             
                                             <Label htmlFor="overallGoal" className="text-right pt-2">Overall Project Goal</Label>
-                                            <Textarea id="overallGoal" value={logic.editableContext?.overall_project_goal || ''} onChange={(e) => logic.handleContextChange('overall_project_goal', e.target.value)} className="min-h-[60px]" disabled={completed && !active} />
+                                            <Textarea id="overallGoal" value={logic.editableContext?.overall_project_goal || ''} onChange={(e) => logic.handleContextChange('overall_project_goal', e.target.value)} className="min-h-[60px]" disabled={!editable} />
                                             
                                             <Label htmlFor="overallDesc" className="text-right pt-2">Overall Project Description</Label>
-                                            <Textarea id="overallDesc" value={logic.editableContext?.overall_project_description || ''} onChange={(e) => logic.handleContextChange('overall_project_description', e.target.value)} className="min-h-[80px]" disabled={completed && !active} />
+                                            <Textarea id="overallDesc" value={logic.editableContext?.overall_project_description || ''} onChange={(e) => logic.handleContextChange('overall_project_description', e.target.value)} className="min-h-[80px]" disabled={!editable} />
                                         </div>
                                     </div>
                                 )}
@@ -242,7 +266,7 @@ const StepperItem = memo(({
                                 )}
                                 
                                 {id === 'define-boundaries' && (
-                                    <div className={completed && !active ? 'opacity-60 pointer-events-none' : ''}>
+                                    <div className={completed && !editable ? 'opacity-60 pointer-events-none' : ''}>
                                         <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
                                         {['boundaries_editing', 'synthesizing'].includes(synthesisStep) && (
                                             <CardFooter className="flex justify-between">
@@ -294,7 +318,7 @@ const StepperItem = memo(({
 StepperItem.displayName = 'StepperItem';
 
 const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
-  const { synthesisStep } = logic;
+  const { synthesisStep, isFetchingEvents } = logic;
   const [isStepperCollapsed, setIsStepperCollapsed] = useState(true);
 
   useEffect(() => {
@@ -307,16 +331,62 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
 
   if (synthesisStep === 'idle') {
     return (
-      <div className="max-w-4xl mx-auto p-8 text-center">
+      <div className="w-full p-8 text-center">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-2xl">Start Workflow Synthesis</CardTitle>
-            <CardDescription>Click the button below to begin analyzing events and identifying workflows.</CardDescription>
-          </CardHeader>
           <CardContent>
-            <Button size="lg" onClick={logic.runInitialAnalysis} disabled={logic.isLoading}>
+            {logic.userStats && (
+                <div className="mb-4 text-left">
+                    <h3 className="text-lg font-semibold mb-2">User Stats</h3>
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div className="bg-muted p-3 rounded-lg">
+                            <p className="text-muted-foreground">Total Events</p>
+                            <p className="font-bold text-2xl">{logic.userStats.totalEvents}</p>
+                        </div>
+                        <div className="bg-muted p-3 rounded-lg">
+                            <p className="text-muted-foreground">Timeline Steps Processed</p>
+                            <p className="font-bold text-2xl">{logic.userStats.stepsProcessed} / {logic.userStats.totalSteps}</p>
+                        </div>
+                        <div className="bg-muted p-3 rounded-lg">
+                            <p className="text-muted-foreground">LLM Labeled / Human Labeled</p>
+                            <p className="font-bold text-2xl">{logic.userStats.labelingTotal} / {logic.userStats.humanLabeled}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+            <div className="mb-4 text-left">
+              <h3 className="text-lg font-semibold mb-2">Loaded Data Stats</h3>
+              {isFetchingEvents ? (
+                <div className="flex items-center justify-center h-24">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="bg-muted p-3 rounded-lg">
+                    <p className="text-muted-foreground">Timeline Steps Loaded</p>
+                    <p className="font-bold text-2xl">{logic.rawAnalyses.length}</p>
+                  </div>
+                  <div className="bg-muted p-3 rounded-lg">
+                    <p className="text-muted-foreground">LLM Labeled</p>
+                    <p className="font-bold text-2xl">{logic.llmLabels.length}</p>
+                  </div>
+                  {logic.rawAnalyses.length > 0 && (
+                    <>
+                      <div className="bg-muted p-3 rounded-lg">
+                        <p className="text-muted-foreground">From</p>
+                        <p className="font-bold text-xl">{new Date(logic.rawAnalyses[logic.rawAnalyses.length - 1].client_timestamp).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-muted p-3 rounded-lg">
+                        <p className="text-muted-foreground">To</p>
+                        <p className="font-bold text-xl">{new Date(logic.rawAnalyses[0].client_timestamp).toLocaleString()}</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <Button size="lg" onClick={logic.runInitialAnalysis} disabled={logic.isLoading || isFetchingEvents}>
               {logic.isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <RefreshCw className="mr-2 h-5 w-5" />}
-              Start Analysis
+              Start Analysis ({logic.rawAnalyses.length} timeline steps)
             </Button>
           </CardContent>
         </Card>
@@ -365,51 +435,22 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
     const logic: WorkflowPageLogicType = useWorkflowPageLogic(userId);
 
     const {
-        workflows,
-        activeWorkflowIndex,
-        setActiveWorkflowIndex,
-        messages,
-        userInput,
-        setUserInput,
-        selectedModel,
-        setSelectedModel,
-        isLoading,
-        isAiThinking,
-        synthesisStep,
-        identifiedWorkflowNames,
-        setIdentifiedWorkflowNames,
-        workflowBoundaries,
-        setWorkflowBoundaries,
-        combinedEvents,
-        collapsedSections,
-        workflowContext,
-        editableContext,
-        isAnalyzingEvents,
-        analysisStatus,
-        analysisProgress,
-        elapsedTime,
-        isFetchingEvents,
-        activeContent,
-        itemRefs,
-        toggleSection,
-        handleSendMessage,
-        handleListChange,
-        handleAddItem,
-        handleRemoveItem,
-        handleTitleChange,
-        handleDeleteWorkflow,
-        handleContextChange,
-        resetConversation,
-        deleteAllWorkflows,
-        runInitialAnalysis,
-        refineAndIdentifyWorkflows,
-        processAllWorkflows,
-        proceedToSynthesis,
+        view, setView, workflows, setWorkflows, activeWorkflowIndex, setActiveWorkflowIndex,
+        messages, setMessages, userInput, setUserInput, selectedModel, setSelectedModel,
+        identifiedWorkflowNames, workflowContext, collapsedSections, toggleSection,
+        isAnalyzingEvents, isLoading, synthesisStep, setSynthesisStep,
+        rawAnalyses, workflowBoundaries,
+        processAllWorkflows, proceedToSynthesis, handleSendMessage, handleListChange,
+        draftWorkflowNames, setDraftWorkflowNames, confirmBoundaries,
+        elapsedTime, isFetchingEvents,
+        // New timeline mapping state
+        timelineMappingMode, setTimelineMappingMode, timelineEvents,
+        // Timeline view mode functions
+        convertTimelineMappingsToWorkflows, updateCanvasWithTimelineMappings
     } = logic;
 
     return (
         <div className="h-full bg-background flex flex-col relative">
-            {isFetchingEvents && <LoadingOverlay />}
             {/* Header */}
             <div className="border-b bg-muted/40 p-4">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -439,7 +480,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                     <Button 
                                         variant="outline" 
                                         size="sm" 
-                                        onClick={resetConversation}
+                                        onClick={logic.resetConversation}
                                         className="flex items-center gap-2"
                                     >
                                         <RotateCcw className="h-4 w-4" />
@@ -471,7 +512,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={deleteAllWorkflows}>
+                                    <AlertDialogAction onClick={logic.deleteAllWorkflows}>
                                         Delete All Workflows & Session
                                     </AlertDialogAction>
                                 </AlertDialogFooter>
@@ -506,7 +547,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                     </div>
                                 </div>
                             ))}
-                            {isAiThinking && <AiThinkingBubble />}
+                            {logic.isAiThinking && <AiThinkingBubble />}
                         </div>
                         
                         {/* Chat Input */}
@@ -517,14 +558,14 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                     className="min-h-[60px] pr-12" 
                                     value={userInput}
                                     onChange={(e) => setUserInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
-                                    disabled={isAiThinking}
+                                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), logic.handleSendMessage())}
+                                    disabled={logic.isAiThinking}
                                 />
                                 <Button 
                                     size="sm" 
                                     className="absolute bottom-2 right-2 h-8" 
-                                    onClick={handleSendMessage} 
-                                    disabled={isAiThinking || !userInput.trim()}
+                                    onClick={logic.handleSendMessage} 
+                                    disabled={logic.isAiThinking || !userInput.trim()}
                                 >
                                     <Send className="h-4 w-4" />
                                 </Button>
@@ -538,10 +579,99 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                             <div>
                                 <div className="flex items-center justify-between mb-6">
                                     <h2 className="text-2xl font-bold">Workflow Canvas</h2>
-                                    <div className="text-sm text-muted-foreground">
-                                        {workflows.length} workflow{workflows.length !== 1 ? 's' : ''} generated
+                                    <div className="flex items-center gap-4">
+                                        {/* Timeline Mapping Mode Toggle */}
+                                        {logic.timelineMappingMode && (
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm text-muted-foreground">Timeline Mode:</span>
+                                                <Button
+                                                    variant={logic.timelineMappingMode ? "default" : "outline"}
+                                                    size="sm"
+                                                    onClick={() => logic.setTimelineMappingMode(!logic.timelineMappingMode)}
+                                                >
+                                                    📊 Timeline View
+                                                </Button>
+                                            </div>
+                                        )}
+                                        <div className="text-sm text-muted-foreground">
+                                            {workflows.length} workflow{workflows.length !== 1 ? 's' : ''} generated
+                                            {logic.timelineEvents?.length > 0 && (
+                                                <span className="ml-2">• {logic.timelineEvents.length} events mapped</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
+                                
+                                {/* Timeline Mapping Summary (when in timeline mode) */}
+                                {logic.timelineMappingMode && logic.timelineEvents?.length > 0 && (
+                                    <div className="mb-6 p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/30">
+                                        <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">📈 Timeline Mapping Summary</h3>
+                                        <div className="grid grid-cols-4 gap-4 text-sm">
+                                            <div>
+                                                <span className="text-muted-foreground">Total Events:</span>
+                                                <div className="font-semibold">{logic.timelineEvents.length}</div>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground">Workflow Related:</span>
+                                                <div className="font-semibold text-green-600">
+                                                    {logic.timelineEvents.filter(e => e.is_workflow_related).length}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground">Unrelated:</span>
+                                                <div className="font-semibold text-gray-500">
+                                                    {logic.timelineEvents.filter(e => !e.is_workflow_related).length}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground">Avg Confidence:</span>
+                                                <div className="font-semibold">
+                                                    {logic.timelineEvents.length > 0 ? 
+                                                        Math.round((logic.timelineEvents
+                                                            .filter(e => e.confidence_score)
+                                                            .reduce((sum, e) => sum + (e.confidence_score || 0), 0) / 
+                                                            logic.timelineEvents.filter(e => e.confidence_score).length) * 100) + '%'
+                                                        : 'N/A'
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {/* Timeline Mapping Mode Toggle and Controls */}
+                                {logic.timelineEvents && logic.timelineEvents.length > 0 && (
+                                    <div className="border-b pb-4 mb-6">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <Button
+                                                onClick={() => logic.setTimelineMappingMode(!logic.timelineMappingMode)}
+                                                variant={logic.timelineMappingMode ? "default" : "outline"}
+                                                className="text-sm"
+                                            >
+                                                🕒 Timeline Mapping Mode
+                                                {logic.timelineMappingMode && <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">ON</span>}
+                                            </Button>
+                                            
+                                            {logic.timelineMappingMode && (
+                                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                                    <span>📊 {logic.timelineEvents.length} total events</span>
+                                                    <span>✅ {logic.timelineEvents.filter(e => e.is_workflow_related).length} workflow events</span>
+                                                    <span>❌ {logic.timelineEvents.filter(e => !e.is_workflow_related).length} unrelated</span>
+                                                    <span>⭐ {
+                                                        logic.timelineEvents.filter(e => e.is_workflow_related).length > 0 
+                                                            ? Math.round(
+                                                                logic.timelineEvents
+                                                                    .filter(e => e.is_workflow_related && e.confidence_score)
+                                                                    .reduce((sum, e) => sum + (e.confidence_score || 0), 0) / 
+                                                                logic.timelineEvents.filter(e => e.is_workflow_related && e.confidence_score).length * 100
+                                                            ) + '% avg confidence'
+                                                            : '0% avg confidence'
+                                                    }</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                                 
                                 {/* Workflow Tabs */}
                                 <Tabs value={String(activeWorkflowIndex)} onValueChange={(value) => setActiveWorkflowIndex(Number(value))} className="w-full">
@@ -564,7 +694,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                                         </AlertDialogHeader>
                                                         <AlertDialogFooter>
                                                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => handleDeleteWorkflow(wf.id)}>Delete</AlertDialogAction>
+                                                                <AlertDialogAction onClick={() => logic.handleDeleteWorkflow(wf.id)}>Delete</AlertDialogAction>
                                                         </AlertDialogFooter>
                                                     </AlertDialogContent>
                                                 </AlertDialog>
@@ -573,44 +703,118 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                     </TabsList>
                                     
                                     {/* Active Workflow Content */}
-                                    {activeContent && (
+                                    {logic.activeContent && (
                                         <div className="border rounded-lg p-6 bg-background mt-4">
                                             <div className="mb-6">
                                                 <Textarea 
-                                                    value={activeContent.title || 'Untitled Workflow'}
-                                                    onChange={(e) => handleTitleChange(e.target.value)}
+                                                    value={logic.activeContent.title || 'Untitled Workflow'}
+                                                    onChange={(e) => logic.handleTitleChange(e.target.value)}
                                                     className="text-2xl font-bold border-0 p-0 h-auto focus-visible:ring-0 resize-none bg-transparent"
                                                 />
                                             </div>
                                             
                                             <div className="space-y-8">
+                                                {/* Timeline Event Details (when in timeline mode) */}
+                                                {logic.timelineMappingMode && logic.timelineEvents?.length > 0 && (
+                                                    <div className="border rounded-lg p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30">
+                                                        <h3 className="text-lg font-semibold flex items-center mb-4">
+                                                            🕒 Timeline Event Mapping
+                                                            <span className="ml-2 text-sm text-muted-foreground">
+                                                                ({logic.timelineEvents.filter(e => e.is_workflow_related).length} workflow events)
+                                                            </span>
+                                                        </h3>
+                                                        
+                                                        <div className="space-y-3 max-h-60 overflow-y-auto">
+                                                            {logic.timelineEvents
+                                                                .filter(event => event.is_workflow_related)
+                                                                .slice(0, 10) // Show first 10 events
+                                                                .map((event, index) => {
+                                                                    const firstMapping = event.workflow_mappings?.[0];
+                                                                    return (
+                                                                        <div key={event.id} className="border rounded p-3 bg-white dark:bg-gray-900/50">
+                                                                            <div className="flex items-start justify-between mb-2">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200">
+                                                                                        Step {firstMapping?.workflow_step || 'N/A'}
+                                                                                    </span>
+                                                                                    {event.confidence_score && (
+                                                                                        <span className={`text-xs px-2 py-1 rounded ${
+                                                                                            event.confidence_score > 0.8 ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200' :
+                                                                                            event.confidence_score > 0.6 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200' :
+                                                                                            'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200'
+                                                                                        }`}>
+                                                                                            {Math.round(event.confidence_score * 100)}% confident
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <span className="text-xs text-muted-foreground">
+                                                                                    {new Date(event.timestamp).toLocaleTimeString()}
+                                                                                </span>
+                                                                            </div>
+                                                                            
+                                                                            <div className="text-sm mb-2">
+                                                                                <strong>Event:</strong> {event.event_type} 
+                                                                                {event.payload?.app_name && typeof event.payload.app_name === 'string' ? ` - ${event.payload.app_name}` : ''}
+                                                                                {event.payload?.window_name && typeof event.payload.window_name === 'string' ? ` - ${event.payload.window_name}` : ''}
+                                                                            </div>
+                                                                            
+                                                                            {firstMapping?.event_inputs && firstMapping.event_inputs.length > 0 && (
+                                                                                <div className="text-xs text-muted-foreground mb-1">
+                                                                                    <strong>Inputs:</strong> {firstMapping.event_inputs.join(', ')}
+                                                                                </div>
+                                                                            )}
+                                                                            
+                                                                            {firstMapping?.event_outputs && firstMapping.event_outputs.length > 0 && (
+                                                                                <div className="text-xs text-muted-foreground mb-1">
+                                                                                    <strong>Outputs:</strong> {firstMapping.event_outputs.join(', ')}
+                                                                                </div>
+                                                                            )}
+                                                                            
+                                                                            {firstMapping?.business_logics && firstMapping.business_logics.length > 0 && (
+                                                                                <div className="text-xs text-blue-600 dark:text-blue-400">
+                                                                                    <strong>Logic:</strong> {firstMapping.business_logics[0]}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            
+                                                            {logic.timelineEvents.filter(e => e.is_workflow_related).length > 10 && (
+                                                                <div className="text-center text-sm text-muted-foreground">
+                                                                    ... and {logic.timelineEvents.filter(e => e.is_workflow_related).length - 10} more events
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
                                                 {/* Inputs */}
                                                 <div>
-                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => toggleSection('inputs')}>
-                                                        {collapsedSections.inputs ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => logic.toggleSection('inputs')}>
+                                                        {logic.collapsedSections.inputs ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
                                                         Inputs
                                                     </h3>
-                                                    {!collapsedSections.inputs && (
+                                                    {!logic.collapsedSections.inputs && (
                                                         <div className="space-y-2">
                                                             <ul className="list-disc list-outside pl-5 space-y-1">
-                                                                {(activeContent.inputs || []).map((item, index) => {
+                                                                {(logic.activeContent.inputs || []).map((item, index) => {
                                                                     const fieldKey = `${activeWorkflowIndex}-inputs`;
-                                                                    const itemRef = itemRefs[fieldKey]?.[index];
+                                                                    const itemRef = logic.itemRefs[fieldKey]?.[index];
                                                                     return (
                                                                         <li key={index}>
                                                                             <EditableListItem 
                                                                                 item={item} 
                                                                                 itemRef={itemRef}
-                                                                                onChange={(v) => handleListChange('inputs', index, v)} 
-                                                                                onRemove={() => handleRemoveItem('inputs', index)}
-                                                                                onEnter={() => handleAddItem('inputs', index)}
-                                                                                onBackspaceEmpty={() => handleRemoveItem('inputs', index)}
+                                                                                onChange={(v) => logic.handleListChange('inputs', index, v)} 
+                                                                                onRemove={() => logic.handleRemoveItem('inputs', index)}
+                                                                                onEnter={() => logic.handleAddItem('inputs', index)}
+                                                                                onBackspaceEmpty={() => logic.handleRemoveItem('inputs', index)}
                                                                             />
                                                                         </li>
                                                                     )
                                                                 })}
                                                             </ul>
-                                                            <Button variant="ghost" size="sm" onClick={() => handleAddItem('inputs', (activeContent.inputs || []).length - 1)} className="text-muted-foreground">
+                                                            <Button variant="ghost" size="sm" onClick={() => logic.handleAddItem('inputs', (logic.activeContent.inputs || []).length - 1)} className="text-muted-foreground">
                                                                 <PlusCircle className="h-4 w-4 mr-2" />Add Input
                                                             </Button>
                                                         </div>
@@ -619,31 +823,31 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
 
                                                 {/* Outputs */}
                                                 <div>
-                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => toggleSection('outputs')}>
-                                                        {collapsedSections.outputs ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => logic.toggleSection('outputs')}>
+                                                        {logic.collapsedSections.outputs ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
                                                         Outputs
                                                     </h3>
-                                                    {!collapsedSections.outputs && (
+                                                    {!logic.collapsedSections.outputs && (
                                                         <div className="space-y-2">
                                                             <ul className="list-disc list-outside pl-5 space-y-1">
-                                                                {(activeContent.outputs || []).map((item, index) => {
+                                                                {(logic.activeContent.outputs || []).map((item, index) => {
                                                                     const fieldKey = `${activeWorkflowIndex}-outputs`;
-                                                                    const itemRef = itemRefs[fieldKey]?.[index];
+                                                                    const itemRef = logic.itemRefs[fieldKey]?.[index];
                                                                     return (
                                                                         <li key={index}>
                                                                             <EditableListItem 
                                                                                 item={item} 
                                                                                 itemRef={itemRef}
-                                                                                onChange={(v) => handleListChange('outputs', index, v)} 
-                                                                                onRemove={() => handleRemoveItem('outputs', index)}
-                                                                                onEnter={() => handleAddItem('outputs', index)}
-                                                                                onBackspaceEmpty={() => handleRemoveItem('outputs', index)}
+                                                                                onChange={(v) => logic.handleListChange('outputs', index, v)} 
+                                                                                onRemove={() => logic.handleRemoveItem('outputs', index)}
+                                                                                onEnter={() => logic.handleAddItem('outputs', index)}
+                                                                                onBackspaceEmpty={() => logic.handleRemoveItem('outputs', index)}
                                                                             />
                                                                         </li>
                                                                     )
                                                                 })}
                                                             </ul>
-                                                            <Button variant="ghost" size="sm" onClick={() => handleAddItem('outputs', (activeContent.outputs || []).length - 1)} className="text-muted-foreground">
+                                                            <Button variant="ghost" size="sm" onClick={() => logic.handleAddItem('outputs', (logic.activeContent.outputs || []).length - 1)} className="text-muted-foreground">
                                                                 <PlusCircle className="h-4 w-4 mr-2" />Add Output
                                                             </Button>
                                                         </div>
@@ -652,31 +856,31 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
 
                                                 {/* Steps */}
                                                 <div>
-                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => toggleSection('steps')}>
-                                                        {collapsedSections.steps ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => logic.toggleSection('steps')}>
+                                                        {logic.collapsedSections.steps ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
                                                         Steps
                                                     </h3>
-                                                    {!collapsedSections.steps && (
+                                                    {!logic.collapsedSections.steps && (
                                                         <div className="space-y-2">
                                                             <ol className="list-decimal list-outside pl-5 space-y-1">
-                                                                {(activeContent.steps || []).map((item, index) => {
+                                                                {(logic.activeContent.steps || []).map((item, index) => {
                                                                     const fieldKey = `${activeWorkflowIndex}-steps`;
-                                                                    const itemRef = itemRefs[fieldKey]?.[index];
+                                                                    const itemRef = logic.itemRefs[fieldKey]?.[index];
                                                                     return (
                                                                         <li key={index}>
                                                                             <EditableListItem 
                                                                                 item={item} 
                                                                                 itemRef={itemRef}
-                                                                                onChange={(v) => handleListChange('steps', index, v)} 
-                                                                                onRemove={() => handleRemoveItem('steps', index)}
-                                                                                onEnter={() => handleAddItem('steps', index)}
-                                                                                onBackspaceEmpty={() => handleRemoveItem('steps', index)}
+                                                                                onChange={(v) => logic.handleListChange('steps', index, v)} 
+                                                                                onRemove={() => logic.handleRemoveItem('steps', index)}
+                                                                                onEnter={() => logic.handleAddItem('steps', index)}
+                                                                                onBackspaceEmpty={() => logic.handleRemoveItem('steps', index)}
                                                                             />
                                                                         </li>
                                                                     )
                                                                 })}
                                                             </ol>
-                                                            <Button variant="ghost" size="sm" onClick={() => handleAddItem('steps', (activeContent.steps || []).length - 1)} className="text-muted-foreground">
+                                                            <Button variant="ghost" size="sm" onClick={() => logic.handleAddItem('steps', (logic.activeContent.steps || []).length - 1)} className="text-muted-foreground">
                                                                 <PlusCircle className="h-4 w-4 mr-2" />Add Step
                                                             </Button>
                                                         </div>
@@ -685,31 +889,31 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
 
                                                 {/* Business Logic */}
                                                 <div>
-                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => toggleSection('businessLogic')}>
-                                                        {collapsedSections.businessLogic ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => logic.toggleSection('businessLogic')}>
+                                                        {logic.collapsedSections.businessLogic ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
                                                         Business Logic
                                                     </h3>
-                                                    {!collapsedSections.businessLogic && (
+                                                    {!logic.collapsedSections.businessLogic && (
                                                         <div className="space-y-2">
                                                             <ul className="list-disc list-outside pl-5 space-y-1">
-                                                                {(activeContent.businessLogic || []).map((item, index) => {
+                                                                {(logic.activeContent.businessLogic || []).map((item, index) => {
                                                                     const fieldKey = `${activeWorkflowIndex}-businessLogic`;
-                                                                    const itemRef = itemRefs[fieldKey]?.[index];
+                                                                    const itemRef = logic.itemRefs[fieldKey]?.[index];
                                                                     return (
                                                                         <li key={index}>
                                                                             <EditableListItem 
                                                                                 item={item} 
                                                                                 itemRef={itemRef}
-                                                                                onChange={(v) => handleListChange('businessLogic', index, v)} 
-                                                                                onRemove={() => handleRemoveItem('businessLogic', index)}
-                                                                                onEnter={() => handleAddItem('businessLogic', index)}
-                                                                                onBackspaceEmpty={() => handleRemoveItem('businessLogic', index)}
+                                                                                onChange={(v) => logic.handleListChange('businessLogic', index, v)} 
+                                                                                onRemove={() => logic.handleRemoveItem('businessLogic', index)}
+                                                                                onEnter={() => logic.handleAddItem('businessLogic', index)}
+                                                                                onBackspaceEmpty={() => logic.handleRemoveItem('businessLogic', index)}
                                                                             />
                                                                         </li>
                                                                     )
                                                                 })}
                                                             </ul>
-                                                            <Button variant="ghost" size="sm" onClick={() => handleAddItem('businessLogic', (activeContent.businessLogic || []).length - 1)} className="text-muted-foreground">
+                                                            <Button variant="ghost" size="sm" onClick={() => logic.handleAddItem('businessLogic', (logic.activeContent.businessLogic || []).length - 1)} className="text-muted-foreground">
                                                                 <PlusCircle className="h-4 w-4 mr-2" />Add Item
                                                             </Button>
                                                         </div>

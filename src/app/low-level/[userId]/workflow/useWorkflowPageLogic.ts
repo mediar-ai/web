@@ -9,7 +9,6 @@ import type {
   CanvasContent,
   SynthesizedWorkflow,
   WorkflowStepAnalysis,
-  CombinedEvent,
   FinalAnalysisData,
   SynthesisStep,
   WorkflowContext,
@@ -17,7 +16,17 @@ import type {
   WorkflowDataObject,
   DatabaseWorkflow,
   SynthesisSession,
+  LlmLabel,
 } from './types';
+import type { EnhancedTimelineEvent } from '@/lib/timelineMappingTypes';
+
+type UserStats = {
+  totalEvents: number;
+  stepsProcessed: number;
+  totalSteps: number;
+  labelingTotal: number;
+  humanLabeled: number;
+};
 
 export function useWorkflowPageLogic(userId: string) {
   const { setUserId } = useUser();
@@ -40,7 +49,6 @@ export function useWorkflowPageLogic(userId: string) {
   const [draftWorkflowNames, setDraftWorkflowNames] = useState<string[]>([]);
   const [identifiedWorkflowNames, setIdentifiedWorkflowNames] = useState<string[]>([]);
   const [workflowBoundaries, setWorkflowBoundaries] = useState<WorkflowBoundaries>({});
-  const [combinedEvents, setCombinedEvents] = useState<CombinedEvent[]>([]);
   const [collapsedSections, setCollapsedSections] = useState({
     inputs: true,
     outputs: true,
@@ -68,6 +76,12 @@ export function useWorkflowPageLogic(userId: string) {
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [isFetchingEvents, setIsFetchingEvents] = useState(true);
+  const [timelineEvents, setTimelineEvents] = useState<EnhancedTimelineEvent[]>([]);
+  const [timelineMappingMode, setTimelineMappingMode] = useState(false);
+  const [lowLevelEvents, setLowLevelEvents] = useState<LowLevelEvent[]>([]);
+  const [llmLabels, setLlmLabels] = useState<LlmLabel[]>([]);
+  const [rawAnalyses, setRawAnalyses] = useState<WorkflowStepAnalysis[]>([]);
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
   
   const isLoading = useMemo(() => 
     isAnalyzingEvents || 
@@ -178,6 +192,8 @@ export function useWorkflowPageLogic(userId: string) {
             setWorkflowBoundaries(session_state.workflow_boundaries);
           }
         }
+      } else if (response.status !== 404) {
+        console.error("Failed to load synthesis session, status:", response.status);
       }
     } catch (error) {
       console.error('[WORKFLOW_DEBUG] Error loading synthesis session:', error);
@@ -188,16 +204,38 @@ export function useWorkflowPageLogic(userId: string) {
     setUserId(userId);
     loadSynthesisSession();
 
+    const fetchUserStats = async () => {
+      if (!userId) return;
+      try {
+        const response = await fetch(`/api/users/${userId}/stats`);
+        if (response.ok) {
+          const stats = await response.json();
+          setUserStats(stats);
+        } else {
+          console.error("Failed to fetch user stats");
+        }
+      } catch (error) {
+        console.error("Error fetching user stats:", error);
+      }
+    };
+
     const fetchEvents = async () => {
       setIsFetchingEvents(true);
       try {
-        const analysisResponse = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
-        if (!analysisResponse.ok) throw new Error("Failed to fetch llm analyses");
-        const analysisData = await analysisResponse.json();
-        const analyses: WorkflowStepAnalysis[] = analysisData.analyses || [];
+        const [analysisResponse, labelsResponse] = await Promise.all([
+          fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`),
+          fetch(`/api/fetch-llm-labels?userId=${userId}`)
+        ]);
 
-        // This is a simplified combination. The previous logic was more complex and might be restored if needed.
-        setCombinedEvents(analyses.map(analysis => ({ analysis, generated_output: null, feedback: null, contextSummary: { windowTitle: '', eventCount: 0}, timestamp: new Date(analysis.client_timestamp)})));
+        if (!analysisResponse.ok) throw new Error("Failed to fetch llm analyses");
+        if (!labelsResponse.ok) throw new Error("Failed to fetch llm labels");
+
+        const analysisData = await analysisResponse.json();
+        const labelsData = await labelsResponse.json();
+        
+        const analyses: WorkflowStepAnalysis[] = analysisData.analyses || [];
+        setRawAnalyses(analyses);
+        setLlmLabels(labelsData.labels || []);
 
       } catch (error) {
         console.error("Error fetching events:", error);
@@ -207,6 +245,7 @@ export function useWorkflowPageLogic(userId: string) {
     };
 
     fetchEvents();
+    fetchUserStats();
   }, [userId, setUserId, loadSynthesisSession]);
 
   useEffect(() => {
@@ -274,8 +313,13 @@ export function useWorkflowPageLogic(userId: string) {
       const response = await fetch('/api/initiate-workflow-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ events: combinedEvents, model: selectedModel }),
+        body: JSON.stringify({ analyses: rawAnalyses, labels: llmLabels, model: selectedModel }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || `API Error: ${response.status} ${response.statusText}`);
+      }
 
       if (!response.body) throw new Error("Response body is null");
 
@@ -288,11 +332,19 @@ export function useWorkflowPageLogic(userId: string) {
         for (const line of lines) {
           try {
             const parsed = JSON.parse(line.substring(5));
+            if (parsed.error) {
+              throw new Error(parsed.details || parsed.error);
+            }
             if (parsed.status) setAnalysisStatus(parsed.status);
             if (typeof parsed.progress === 'number') setAnalysisProgress(parsed.progress);
             if (parsed.data?.workflowNames) finalData.workflowNames = parsed.data.workflowNames;
             if (parsed.data?.workflowContext) finalData.workflowContext = parsed.data.workflowContext;
-          } catch {}
+          } catch (parseError) {
+            if (parseError instanceof Error && parseError.message !== '') {
+              throw parseError;
+            }
+            // Ignore JSON parsing errors for malformed chunks
+          }
         }
       };
       
@@ -319,7 +371,22 @@ export function useWorkflowPageLogic(userId: string) {
 
     } catch (error) {
       console.error("Error during initial analysis:", error);
-      setMessages([{ id: `error-${Date.now()}`, sender: 'ai', text: "Sorry, I encountered an error. Please try again." }]);
+      let errorMessage = "Sorry, I encountered an error. Please try again.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes('quota') || error.message.includes('429') || error.message.includes('Too Many Requests')) {
+          errorMessage = "API quota exceeded. Please try again later or check your API key limits.";
+        } else if (error.message.includes('Failed to parse generative model response')) {
+          errorMessage = "The AI service is currently experiencing issues. Please try again in a few minutes.";
+        } else if (error.message.includes('API Error:')) {
+          errorMessage = `API Error: ${error.message}`;
+        } else {
+          errorMessage = `Error: ${error.message}`;
+        }
+      }
+      
+      setMessages([{ id: `error-${Date.now()}`, sender: 'ai', text: errorMessage }]);
+      setSynthesisStep('idle'); // Reset to idle state so user can try again
     } finally {
       if (timerRef.current) clearInterval(timerRef.current);
       setIsAnalyzingEvents(false);
@@ -336,7 +403,8 @@ export function useWorkflowPageLogic(userId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModel,
-          events: combinedEvents,
+          analyses: rawAnalyses,
+          labels: llmLabels,
           workflow_context: editableContext,
           draft_workflow_names: draftWorkflowNames,
         }),
@@ -380,7 +448,8 @@ export function useWorkflowPageLogic(userId: string) {
           model: selectedModel,
           context: {
             workflows: approvedWorkflows.map(name => ({ workflow_name: name })),
-            events: combinedEvents,
+            analyses: rawAnalyses,
+            labels: llmLabels,
             userContext: workflowContext,
           }
         })
@@ -401,7 +470,7 @@ export function useWorkflowPageLogic(userId: string) {
     } catch (error) {
       console.error("Error defining workflow boundaries:", error);
       setMessages(prev => [...prev.slice(0, -1), { id: `error-${Date.now()}`, sender: 'ai', text: "Sorry, an error occurred while defining boundaries." }]);
-      await saveSynthesisSession(messages.slice(0,-1), 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
+      await saveSynthesisSession(messages, 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
     }
   };
 
@@ -413,40 +482,72 @@ export function useWorkflowPageLogic(userId: string) {
     await saveSynthesisSession(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
 
     try {
-      const response = await fetch('/api/synthesize-workflow', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // Step 1: Analyze timeline events and create workflow mappings
+      const analysisResponse = await fetch('/api/analyze-timeline-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: selectedModel,
-          context: { 
-            workflows: identifiedWorkflowNames.map(name => ({
-              name,
-              trigger: approvedBoundaries[name]?.trigger,
-              terminator: approvedBoundaries[name]?.terminator,
-              events: combinedEvents
-            })),
-            workflowContext: workflowContext,
-          }
+          user_id: userId,
+          analyses: rawAnalyses,
+          labels: llmLabels,
+          workflow_context: workflowContext,
+          workflow_boundaries: approvedBoundaries,
+          identified_workflows: identifiedWorkflowNames
         }),
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        const synthesizedWorkflows = result.workflows || [];
-        
-        await saveSynthesizedWorkflows(synthesizedWorkflows);
-        setSynthesisStep('done');
-        const synthesizedMessage: Message = {id: `${Date.now()}`, sender: 'ai', text: "Workflows have been synthesized successfully!"};
-        const finalMessages = [...updatedMessages.slice(0, -1), synthesizedMessage];
-        setMessages(finalMessages);
-        await saveSynthesisSession(finalMessages, 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
-
-      } else {
-        throw new Error('Failed to synthesize workflows');
+      if (!analysisResponse.ok) {
+        throw new Error('Failed to analyze timeline events');
       }
+
+      const analysisResult = await analysisResponse.json();
+      
+      // Step 2: Save the timeline event mappings to database
+      const saveMappingsResponse = await fetch('/api/timeline-event-mappings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(analysisResult),
+      });
+
+      if (!saveMappingsResponse.ok) {
+        throw new Error('Failed to save timeline mappings');
+      }
+
+      // Step 3: Fetch the enriched timeline events for canvas display
+      const fetchMappingsResponse = await fetch(`/api/timeline-event-mappings?user_id=${userId}&include_unrelated=true`);
+      
+      if (!fetchMappingsResponse.ok) {
+        throw new Error('Failed to fetch timeline mappings');
+      }
+
+      const mappingsData = await fetchMappingsResponse.json();
+      
+      // Step 4: Convert timeline mappings to synthesized workflows for backwards compatibility
+      const synthesizedWorkflows = convertTimelineMappingsToWorkflows(mappingsData.events, identifiedWorkflowNames);
+      
+      await saveSynthesizedWorkflows(synthesizedWorkflows);
+      
+      // Step 5: Update canvas with timeline mapping data
+      await updateCanvasWithTimelineMappings(mappingsData.events);
+      
+      setSynthesisStep('done');
+      const synthesizedMessage: Message = {
+        id: `${Date.now()}`, 
+        sender: 'ai', 
+        text: `Successfully mapped ${mappingsData.events?.length || 0} events to ${identifiedWorkflowNames.length} workflows with detailed step-by-step traceability!`
+      };
+      const finalMessages = [...updatedMessages.slice(0, -1), synthesizedMessage];
+      setMessages(finalMessages);
+      await saveSynthesisSession(finalMessages, 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
+
     } catch (error) {
-      console.error("Error during workflow synthesis:", error);
-      setMessages(prev => [...prev.slice(0, -1), { id: `error-${Date.now()}`, sender: 'ai', text: "Sorry, I encountered an error during synthesis." }]);
+      console.error("Error during timeline mapping:", error);
+      setMessages(prev => [...prev.slice(0, -1), { 
+        id: `error-${Date.now()}`, 
+        sender: 'ai', 
+        text: `Sorry, I encountered an error during timeline mapping: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      }]);
+      setSynthesisStep('boundaries_editing');
       await saveSynthesisSession(messages, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
     }
   };
@@ -664,21 +765,115 @@ export function useWorkflowPageLogic(userId: string) {
     proceedToSynthesis(workflowBoundaries);
   };
 
+  const convertTimelineMappingsToWorkflows = (events: EnhancedTimelineEvent[], workflowNames: string[]): SynthesizedWorkflow[] => {
+    const workflowMap = new Map<string, {
+      inputs: Set<string>,
+      outputs: Set<string>, 
+      steps: Set<string>,
+      businessLogic: Set<string>
+    }>();
+
+    // Initialize workflow map
+    workflowNames.forEach(name => {
+      workflowMap.set(name, {
+        inputs: new Set(),
+        outputs: new Set(),
+        steps: new Set(), 
+        businessLogic: new Set()
+      });
+    });
+
+    // Process each event's workflow mappings
+    events?.forEach(event => {
+      if (event.workflow_mappings) {
+        event.workflow_mappings.forEach(mapping => {
+          const workflowTypeName = mapping.workflow_type.type_name;
+          const workflowData = workflowMap.get(workflowTypeName);
+          if (workflowData) {
+            // Add inputs, outputs, steps, business logic
+            mapping.event_inputs?.forEach((input: string) => workflowData.inputs.add(input));
+            mapping.event_outputs?.forEach((output: string) => workflowData.outputs.add(output));
+            
+            const stepText = mapping.workflow_substep ? 
+              `${mapping.workflow_step} → ${mapping.workflow_substep}` : 
+              mapping.workflow_step;
+            workflowData.steps.add(stepText);
+            
+            mapping.business_logics?.forEach((logic: string) => workflowData.businessLogic.add(logic));
+          }
+        });
+      }
+    });
+
+    // Convert map to SynthesizedWorkflow array
+    return Array.from(workflowMap.entries()).map(([title, data]) => ({
+      title,
+      inputs: Array.from(data.inputs),
+      outputs: Array.from(data.outputs),
+      steps: Array.from(data.steps),
+      businessLogic: Array.from(data.businessLogic)
+    }));
+  };
+
+  const updateCanvasWithTimelineMappings = async (events: EnhancedTimelineEvent[]) => {
+    setTimelineEvents(events);
+    setTimelineMappingMode(true);
+    
+    // Convert timeline events to canvas content for display
+    const canvasWorkflows: CanvasContent[] = events
+      ?.filter(event => event.is_workflow_related)
+      .reduce((acc: CanvasContent[], event) => {
+        event.workflow_mappings?.forEach(mapping => {
+          const workflowTypeName = mapping.workflow_type.type_name;
+          const existing = acc.find(item => item.title === workflowTypeName);
+          if (existing) {
+            // Add event details to existing workflow
+            if (mapping.event_inputs) existing.inputs.push(...mapping.event_inputs);
+            if (mapping.event_outputs) existing.outputs.push(...mapping.event_outputs);
+            if (mapping.business_logics) existing.businessLogic.push(...mapping.business_logics);
+            
+            const stepText = `[${event.timestamp}] ${mapping.workflow_step}${mapping.workflow_substep ? ` → ${mapping.workflow_substep}` : ''}`;
+            existing.steps.push(stepText);
+          } else {
+            // Create new workflow entry
+            acc.push({
+              id: Date.now() + Math.random(), // Generate unique ID for canvas
+              title: workflowTypeName,
+              inputs: mapping.event_inputs || [],
+              outputs: mapping.event_outputs || [],
+              steps: [`[${event.timestamp}] ${mapping.workflow_step}${mapping.workflow_substep ? ` → ${mapping.workflow_substep}` : ''}`],
+              businessLogic: mapping.business_logics || [],
+              chat_history: [{ id: 'timeline-mapping', sender: 'ai', text: 'Generated from timeline mapping analysis' }]
+            });
+          }
+        });
+        return acc;
+      }, []) || [];
+
+    setWorkflows(canvasWorkflows);
+  };
+
   return {
     view, setView, workflows, setWorkflows, activeWorkflowIndex, setActiveWorkflowIndex,
     messages, setMessages, userInput, setUserInput, selectedModel, setSelectedModel,
-    isLoading, isAiThinking, setIsAiThinking, itemRefs, setItemRefs,
-    saveTimeoutRef, synthesisStep, setSynthesisStep, identifiedWorkflowNames, setIdentifiedWorkflowNames,
-    workflowBoundaries, setWorkflowBoundaries, combinedEvents, setCombinedEvents,
-    collapsedSections, setCollapsedSections, synthesisSessionId, setSynthesisSessionId,
-    workflowContext, setWorkflowContext, editableContext, setEditableContext,
-    isAnalyzingEvents, setIsAnalyzingEvents, analysisStatus, setAnalysisStatus,
-    analysisProgress, setAnalysisProgress, elapsedTime, setElapsedTime, timerRef,
-    isFetchingEvents, setIsFetchingEvents, fullscreenChatRef, sidebarChatRef,
-    toggleSection, scrollToBottom, runInitialAnalysis, refineAndIdentifyWorkflows,
+    identifiedWorkflowNames, workflowContext, collapsedSections, toggleSection,
+    isAnalyzingEvents, isLoading, synthesisStep, setSynthesisStep,
+    rawAnalyses, workflowBoundaries,
     processAllWorkflows, proceedToSynthesis, handleSendMessage, handleListChange,
+    draftWorkflowNames, setDraftWorkflowNames, confirmBoundaries,
+    elapsedTime, isFetchingEvents, 
+    // Canvas editing state and functions
+    activeContent, itemRefs,
     handleAddItem, handleRemoveItem, handleTitleChange, handleDeleteWorkflow,
-    handleContextChange, resetConversation, deleteAllWorkflows, activeContent,
-    goBackToWorkflowEditing, confirmBoundaries,
-  } as const;
+    handleContextChange, resetConversation, deleteAllWorkflows,
+    runInitialAnalysis, refineAndIdentifyWorkflows,
+    isAiThinking, editableContext, analysisStatus, analysisProgress,
+    setIdentifiedWorkflowNames, setWorkflowBoundaries, goBackToWorkflowEditing,
+    // New timeline mapping state
+    timelineEvents, timelineMappingMode, setTimelineMappingMode,
+    llmLabels,
+    userStats,
+    // Timeline view mode functions
+    convertTimelineMappingsToWorkflows, updateCanvasWithTimelineMappings
+  };
 } 

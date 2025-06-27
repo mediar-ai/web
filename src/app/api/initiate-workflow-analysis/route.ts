@@ -35,7 +35,7 @@ function toSSE(data: object): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { events, model } = await req.json();
+  const { analyses, labels, model } = await req.json();
 
   if (!model) {
     return new Response(JSON.stringify({ error: 'Missing required "model" parameter' }), {
@@ -48,23 +48,25 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        const context = { analyses, labels };
+
         // Step 1: Initial Workflow Identification
         controller.enqueue(toSSE({ status: 'Identifying initial workflows...', progress: 25 }));
-        const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, { events }, model);
+        const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, context, model);
         let workflowNames = initialIdentification.workflow_names || [];
         controller.enqueue(toSSE({ status: 'Initial workflows identified.', progress: 33, data: { workflowNames } }));
 
 
         // Step 2: Initial Context Synthesis (Bottom-Up)
         controller.enqueue(toSSE({ status: 'Synthesizing user context...', progress: 50 }));
-        let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, { events }, model);
+        let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, context, model);
         controller.enqueue(toSSE({ status: 'User context synthesized.', progress: 66, data: { workflowContext } }));
 
         // Step 3: Iterative Refinement Loop
         controller.enqueue(toSSE({ status: 'Refining workflows with context (2 cycles)...', progress: 75 }));
         for (let i = 0; i < 2; i++) {
           const refinementResult = await callGenerativeModel(PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, {
-            events,
+            ...context,
             workflow_context: workflowContext,
             workflow_names: workflowNames,
           }, model);

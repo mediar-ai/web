@@ -32,6 +32,10 @@ export async function GET(req: NextRequest) {
       throw error;
     }
 
+    if (!data) {
+      return NextResponse.json({ error: 'No synthesis session found for this user' }, { status: 404 });
+    }
+
     return NextResponse.json({ data });
 
   } catch (error) {

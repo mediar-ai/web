@@ -30,17 +30,6 @@ import { FlattenedWorkflowAnalysis } from '@/types';
 // Use the new flattened type that handles both legacy and JSONB data
 export type WorkflowStepAnalysis = FlattenedWorkflowAnalysis;
 
-export type CombinedEvent = {
-    analysis: WorkflowStepAnalysis;
-    generated_output: string | null;
-    feedback: 'good' | 'bad' | 'irrelevant' | null;
-    contextSummary: {
-        windowTitle: string;
-        eventCount: number;
-    };
-    timestamp: Date;
-};
-
 export type FinalAnalysisData = {
     workflowNames?: string[];
     workflowContext?: WorkflowContext;
@@ -96,4 +85,13 @@ export type SynthesisSession = {
         workflow_context: WorkflowContext;
         workflow_boundaries?: WorkflowBoundaries;
     };
+};
+
+export type LlmLabel = {
+  id: number;
+  created_at: string;
+  user_id: string;
+  low_level_workflow_analysis_id: number;
+  suggested_labels: string[] | null;
+  selected_labels: string[] | null;
 }; 
