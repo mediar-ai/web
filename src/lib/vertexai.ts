@@ -10,17 +10,26 @@ const getVertexAIConfig = () => {
   };
 
   // Handle different credential scenarios
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-    // Vercel deployment: decode base64 credentials
-    const credentialsJson = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf-8');
-    config.googleAuthOptions = {
-      credentials: JSON.parse(credentialsJson),
-    };
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  // Prioritize file-based credentials for local development
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     // Local development: use file path
     config.googleAuthOptions = {
       keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
     };
+    console.log('🔧 Using file-based credentials for Vertex AI');
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
+    // Vercel deployment: decode base64 credentials
+    try {
+      const credentialsJson = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf-8');
+      const credentials = JSON.parse(credentialsJson);
+      config.googleAuthOptions = {
+        credentials: credentials,
+      };
+      console.log('🔧 Using base64 credentials for Vertex AI');
+    } catch (error) {
+      console.error('❌ Failed to parse base64 credentials:', error);
+      console.log('🔄 Using default Google Cloud authentication');
+    }
   }
   // If neither is set, it will use default Google Cloud authentication
 
