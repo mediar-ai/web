@@ -2,10 +2,32 @@ import { VertexAI } from '@google-cloud/vertexai';
 import type { SafetySetting, GenerateContentRequest } from '@google-cloud/vertexai';
 
 // Initialize Vertex AI with project and location
-const vertex_ai = new VertexAI({
-  project: process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022',
-  location: process.env.VERTEX_AI_LOCATION || 'us-central1',
-});
+const getVertexAIConfig = () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const config: any = {
+    project: process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022',
+    location: process.env.VERTEX_AI_LOCATION || 'us-central1',
+  };
+
+  // Handle different credential scenarios
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
+    // Vercel deployment: decode base64 credentials
+    const credentialsJson = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf-8');
+    config.googleAuthOptions = {
+      credentials: JSON.parse(credentialsJson),
+    };
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    // Local development: use file path
+    config.googleAuthOptions = {
+      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    };
+  }
+  // If neither is set, it will use default Google Cloud authentication
+
+  return config;
+};
+
+const vertex_ai = new VertexAI(getVertexAIConfig());
 
 // Helper function to get the right model name for Vertex AI
 export function getVertexModelName(studioModelName: string): string {
