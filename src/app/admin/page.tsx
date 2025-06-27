@@ -506,7 +506,7 @@ function AuthenticatedAdminPage({
               <Tooltip>
                 <TooltipTrigger className="cursor-help">SS</TooltipTrigger>
                 <TooltipContent>
-                  <p>Live Sessions - Number of currently active sessions</p>
+                  <p>Total Sessions - Total number of sessions for this user</p>
                 </TooltipContent>
               </Tooltip>
               <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'ss')} />
@@ -585,7 +585,7 @@ function AuthenticatedAdminPage({
               return bLatest - aLatest;
             })
             .map(([userId, userData]) => {
-              const liveSessions = userData.sessions.filter(s => s.status === 'live').length;
+              const totalSessions = userData.sessions.length;
               const totalEvents = userData.sessions.reduce((sum, s) => sum + (s.eventCount || 0), 0);
               const totalUiSteps = userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
               const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
@@ -673,7 +673,7 @@ function AuthenticatedAdminPage({
                         </TooltipContent>
                       </Tooltip>
                     </td>
-                    <td className="px-1 py-1">{liveSessions}</td>
+                    <td className="px-1 py-1">{totalSessions}</td>
                     <td className="px-1 py-1">{userType}</td>
                     <td className="px-1 py-1">{totalEvents}</td>
                     <td className="px-1 py-1">

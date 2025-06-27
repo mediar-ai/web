@@ -190,7 +190,7 @@ export default function AdminDashboardClient({ isAdmin }: AdminDashboardClientPr
               return bLatest - aLatest;
             })
             .map(([userId, userData]) => {
-              const liveSessions = userData.sessions.filter(s => s.status === 'live').length;
+              const totalSessions = userData.sessions.length;
               const totalEvents = userData.sessions.reduce((sum, s) => sum + (s.eventCount || 0), 0);
               const totalUiSteps = userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
               const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
@@ -237,7 +237,7 @@ export default function AdminDashboardClient({ isAdmin }: AdminDashboardClientPr
                         )}
                       </div>
                     </td>
-                    <td className="px-1 py-2 text-center">{liveSessions}/{userData.sessions.length}</td>
+                    <td className="px-1 py-2 text-center">{totalSessions}</td>
                     <td className="px-1 py-2">{userType}</td>
                     <td className="px-1 py-2 text-center">{totalEvents}</td>
                     <td className="px-1 py-2 text-center">{totalUiSteps}</td>
