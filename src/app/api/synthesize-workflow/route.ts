@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 // import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Schema, SchemaType } from '@google/generative-ai';
 import { getVertexGenAI } from '@/lib/vertexai';
-import { Schema, SchemaType } from '@google/generative-ai';
 import { HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
 import { WORKFLOW_SYNTHESIS_PROMPT } from '@/lib/prompts';
 
@@ -38,27 +37,6 @@ const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThresho
     { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
 ];
-
-const synthesisSchema: Schema = {
-    type: SchemaType.OBJECT,
-    properties: {
-        workflows: {
-            type: SchemaType.ARRAY,
-            items: {
-                type: SchemaType.OBJECT,
-                properties: {
-                    title: { type: SchemaType.STRING },
-                    inputs: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                    outputs: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                    steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                    businessLogic: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                },
-                required: ['title', 'inputs', 'outputs', 'steps', 'businessLogic']
-            }
-        },
-    },
-    required: ['workflows']
-};
 
 export async function POST(req: NextRequest) {
   try {
@@ -119,10 +97,6 @@ export async function POST(req: NextRequest) {
     const genAI = getVertexGenAI();
     const model = genAI.getGenerativeModel({
       model: modelName,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: synthesisSchema,
-      },
       safetySettings,
     });
     
@@ -171,9 +145,30 @@ EVENTS: ${JSON.stringify(processedSingleEvents, null, 2)}`;
     // 🔥 VERTEX AI RESPONSE HANDLING 🔥
     const response = result.response;
     if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        const synthesis = JSON.parse(response.candidates[0].content.parts[0].text);
-        console.log('✅ Vertex AI synthesis successful');
-        return NextResponse.json(synthesis);
+        const rawText = response.candidates[0].content.parts[0].text;
+        console.log('📄 Raw Vertex AI response:', rawText.substring(0, 200) + '...');
+        
+        // Handle markdown-formatted JSON (remove ```json and ``` markers)
+        let cleanedText = rawText.trim();
+        if (cleanedText.startsWith('```json')) {
+          cleanedText = cleanedText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanedText.startsWith('```')) {
+          cleanedText = cleanedText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
+        try {
+          const synthesis = JSON.parse(cleanedText);
+          console.log('✅ Vertex AI synthesis successful');
+          return NextResponse.json(synthesis);
+        } catch (parseError) {
+          console.error('❌ Failed to parse Vertex AI response as JSON:', parseError);
+          console.log('🔍 Cleaned text:', cleanedText.substring(0, 300));
+          return NextResponse.json({ 
+            error: 'Invalid JSON response from Vertex AI',
+            details: parseError instanceof Error ? parseError.message : 'Unknown parsing error',
+            rawResponse: rawText.substring(0, 500)
+          }, { status: 500 });
+        }
     }
     
     console.error("No valid response from Vertex AI model:", response);

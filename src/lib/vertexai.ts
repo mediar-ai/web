@@ -1,42 +1,140 @@
 import { VertexAI } from '@google-cloud/vertexai';
 import type { SafetySetting, GenerateContentRequest } from '@google-cloud/vertexai';
 
-// Initialize Vertex AI with project and location
+// Initialize Vertex AI with proper credential handling
 const getVertexAIConfig = () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const config: any = {
-    project: process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022',
-    location: process.env.VERTEX_AI_LOCATION || 'us-central1',
-  };
+  const project = process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022';
+  const location = process.env.VERTEX_AI_LOCATION || 'us-central1';
+  
+  // Detect environment
+  const isVercel = process.env.VERCEL === '1';
+  const hasFileCredentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const hasBase64Credentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
+  const hasDirectCredentials = !!(process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY);
+  
+  console.log('🔧 Vertex AI Environment Detection:', {
+    isVercel,
+    hasFileCredentials,
+    hasBase64Credentials,
+    hasDirectCredentials,
+    project,
+    location
+  });
 
-  // Handle different credential scenarios
-  // Prioritize file-based credentials for local development
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    // Local development: use file path
-    config.googleAuthOptions = {
-      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    };
-    console.log('🔧 Using file-based credentials for Vertex AI');
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-    // Vercel deployment: decode base64 credentials
+  // Method 1: File-based credentials (prioritize for local development)
+  if (hasFileCredentials && !isVercel) {
+    console.log('🔑 Using file-based credentials for Vertex AI');
+    
+    return new VertexAI({
+      project,
+      location,
+      googleAuthOptions: {
+        scopes: [
+          'https://www.googleapis.com/auth/cloud-platform',
+          'https://www.googleapis.com/auth/cloud-platform.read-only'
+        ]
+      }
+    });
+  }
+
+  // Method 2: Direct credentials (recommended for Vercel)
+  if (hasDirectCredentials) {
+    console.log('🔑 Using direct credentials for Vertex AI');
+    
+    return new VertexAI({
+      project,
+      location,
+      googleAuthOptions: {
+        credentials: {
+          client_email: process.env.GOOGLE_CLIENT_EMAIL!,
+          private_key: process.env.GOOGLE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
+        },
+        scopes: [
+          'https://www.googleapis.com/auth/cloud-platform',
+          'https://www.googleapis.com/auth/cloud-platform.read-only'
+        ]
+      }
+    });
+  }
+
+  // Method 3: Base64 credentials (fallback)
+  if (hasBase64Credentials) {
+    console.log('🔑 Using base64 credentials for Vertex AI');
+    
     try {
-      const credentialsJson = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf-8');
+      const base64Credentials = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64!;
+      const credentialsJson = Buffer.from(base64Credentials, 'base64').toString('utf-8');
       const credentials = JSON.parse(credentialsJson);
-      config.googleAuthOptions = {
-        credentials: credentials,
-      };
-      console.log('🔧 Using base64 credentials for Vertex AI');
+      
+      // Validate required fields
+      if (!credentials.client_email || !credentials.private_key) {
+        throw new Error('Invalid credentials: missing client_email or private_key');
+      }
+      
+      return new VertexAI({
+        project,
+        location,
+        googleAuthOptions: {
+          credentials: {
+            client_email: credentials.client_email,
+            private_key: credentials.private_key,
+          },
+          scopes: [
+            'https://www.googleapis.com/auth/cloud-platform',
+            'https://www.googleapis.com/auth/cloud-platform.read-only'
+          ]
+        }
+      });
     } catch (error) {
       console.error('❌ Failed to parse base64 credentials:', error);
-      console.log('🔄 Using default Google Cloud authentication');
+      throw new Error(`Invalid base64 credentials: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-  // If neither is set, it will use default Google Cloud authentication
 
-  return config;
+  // Fallback: Default credentials
+  console.log('🔑 Using default credentials for Vertex AI');
+  return new VertexAI({
+    project,
+    location,
+    googleAuthOptions: {
+      scopes: [
+        'https://www.googleapis.com/auth/cloud-platform',
+        'https://www.googleapis.com/auth/cloud-platform.read-only'
+      ]
+    }
+  });
 };
 
-const vertex_ai = new VertexAI(getVertexAIConfig());
+// Create Vertex AI instance
+let vertexAI: VertexAI;
+
+try {
+  vertexAI = getVertexAIConfig();
+  console.log('✅ Vertex AI initialized successfully');
+} catch (error) {
+  console.error('❌ Failed to initialize Vertex AI:', error);
+  throw error;
+}
+
+// Create a Google AI Studio-compatible interface
+export function getVertexGenAI() {
+  return {
+    getGenerativeModel: (config: { model: string; safetySettings?: SafetySetting[] }) => {
+      console.log(`🤖 Using Vertex AI model: ${config.model}`);
+      
+      return vertexAI.getGenerativeModel({
+        model: config.model,
+        safetySettings: config.safetySettings,
+      });
+    }
+  };
+}
+
+// Export types for compatibility
+export type { SafetySetting, GenerateContentRequest };
+
+// Export HarmCategory and HarmBlockThreshold from Vertex AI
+export { HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
 
 // Helper function to get the right model name for Vertex AI
 export function getVertexModelName(studioModelName: string): string {
@@ -60,50 +158,10 @@ export function getVertexModelName(studioModelName: string): string {
   return modelMap[studioModelName] || 'gemini-2.5-flash'; // Default to generally available model
 }
 
-// Create a Google AI Studio compatible interface using Vertex AI
-export function getVertexGenAI() {
-  return {
-    getGenerativeModel: (config: { 
-      model: string; 
-      generationConfig?: Record<string, unknown>; 
-      safetySettings?: SafetySetting[] 
-    }) => {
-      const vertexModelName = getVertexModelName(config.model);
-      
-      // Log the model mapping for debugging
-      if (config.model !== vertexModelName) {
-        console.log(`🔄 Vertex AI: Using ${vertexModelName} (requested: ${config.model})`);
-      }
-      
-      const model = vertex_ai.preview.getGenerativeModel({
-        model: vertexModelName,
-        generationConfig: config.generationConfig,
-        safetySettings: config.safetySettings,
-      });
-      
-      // Wrap the model to match Google AI Studio interface
-      return {
-        generateContent: async (prompt: string | GenerateContentRequest) => {
-          const result = await model.generateContent(prompt);
-          
-          // Convert Vertex AI response to Google AI Studio format
-          return {
-            response: {
-              text: () => result.response.candidates?.[0]?.content?.parts?.[0]?.text || '',
-              candidates: result.response.candidates,
-              usageMetadata: result.response.usageMetadata,
-            }
-          };
-        }
-      };
-    }
-  };
-}
-
 // Get generative model directly (for advanced usage)
 export function getVertexAIModel(modelName: string) {
   const vertexModelName = getVertexModelName(modelName);
-  return vertex_ai.preview.getGenerativeModel({
+  return vertexAI.preview.getGenerativeModel({
     model: vertexModelName,
   });
 } 
