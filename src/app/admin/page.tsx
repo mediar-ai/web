@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
-import { useDebouncedCallback } from 'use-debounce';
+// import { useDebouncedCallback } from 'use-debounce'; // Disabled with real-time
 import {
   Tooltip,
   TooltipContent,
@@ -132,7 +132,7 @@ function AuthenticatedAdminPage({
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLiveRefreshing, setIsLiveRefreshing] = useState(false);
+  // const [isLiveRefreshing, setIsLiveRefreshing] = useState(false); // Disabled with real-time
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [userNameInput, setUserNameInput] = useState('');
   const [filter, setFilter] = useState('');
@@ -288,19 +288,9 @@ function AuthenticatedAdminPage({
     }
   }, [organizationId]);
 
-  // Wrapper for live refresh that shows indicator
-  const liveRefreshSessions = useCallback(async () => {
-    setIsLiveRefreshing(true);
-    try {
-      await fetchSessions();
-    } finally {
-      // Keep indicator visible for a short time so users can see it
-      setTimeout(() => setIsLiveRefreshing(false), 1000);
-    }
-  }, [fetchSessions]);
-
-  // Debounce for 2 seconds to handle the firehose of events and refresh efficiently.
-  const debouncedFetchSessions = useDebouncedCallback(liveRefreshSessions, 2000);
+  // Real-time refresh functions disabled (not needed without WebSocket connection)
+  // const liveRefreshSessions = useCallback(async () => { ... }, [fetchSessions]);
+  // const debouncedFetchSessions = useDebouncedCallback(liveRefreshSessions, 2000);
 
   useEffect(() => {
     const initialFetch = async () => {
@@ -310,24 +300,38 @@ function AuthenticatedAdminPage({
     }
     initialFetch();
 
-    // Set up real-time subscription to session_metadata table
+    // Real-time temporarily disabled due to WebSocket connection issues
+    // TODO: Re-enable once WebSocket connection to Supabase realtime is stable
+    console.log('[Admin] Real-time disabled - using manual refresh only');
+    
+    /* DISABLED REAL-TIME CODE:
     const channel = supabase
       .channel('admin:session_metadata')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'session_metadata' }, 
         () => {
+          console.log('[Admin Realtime] Received database change - updating table');
           debouncedFetchSessions();
         }
       )
       .subscribe((status, err) => {
+        console.log('[Admin Realtime] Connection status:', status);
         if (err) {
           console.error('[Admin Realtime] Subscription error:', err as Error);
+          console.warn('[Admin Realtime] Live updates disabled - falling back to manual refresh only');
+        } else if (status === 'SUBSCRIBED') {
+          console.log('[Admin Realtime] ✅ Successfully connected - live updates enabled');
+        } else if (status === 'CLOSED') {
+          console.warn('[Admin Realtime] ❌ Connection closed');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[Admin Realtime] ❌ Channel error');
         }
       });
+    */
 
     return () => {
-      supabase.removeChannel(channel);
+      // No cleanup needed when real-time is disabled
     };
-  }, [fetchSessions, liveRefreshSessions, debouncedFetchSessions]);
+  }, [fetchSessions]);
 
   const handleEditName = (userId: string, currentName: string) => {
     setEditingUser(userId);
@@ -461,12 +465,7 @@ function AuthenticatedAdminPage({
             )}
           </div>
         <div className="flex items-center gap-2">
-          {isLiveRefreshing && (
-            <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-              <RefreshCw className="h-3 w-3 animate-spin" />
-              Live updating...
-            </div>
-          )}
+          {/* Live update indicator disabled with real-time */}
           <Button 
             variant="outline" 
             onClick={fetchSessions}
