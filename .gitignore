@@ -62,3 +62,4 @@ venv/
 
 #ബോ
 server.log
+.gcp/
