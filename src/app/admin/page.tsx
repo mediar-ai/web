@@ -62,26 +62,75 @@ const ResizeHandle = ({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => v
   />
 );
 
-// Floating delta pill component
+// Live status pill component for user names  
+const LiveUserPill = ({ isLive }: { isLive: boolean }) => {
+  const [showPill, setShowPill] = useState(false);
+  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    if (isLive) {
+      console.log('[LiveUserPill] User is LIVE - showing pill for 2 minutes');
+      setShowPill(true);
+      
+      // Clear any existing timer (resets on new activity)
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+      
+      // Hide after 2 minutes (timer resets each time user becomes live)
+      hideTimerRef.current = setTimeout(() => {
+        console.log('[LiveUserPill] 2 minutes elapsed - hiding LIVE pill');
+        setShowPill(false);
+        hideTimerRef.current = null;
+      }, 120000); // 2 minutes = 120,000ms
+      
+      return () => {
+        if (hideTimerRef.current) {
+          clearTimeout(hideTimerRef.current);
+          hideTimerRef.current = null;
+        }
+      };
+    }
+  }, [isLive]);
+
+  if (!showPill) return null;
+
+  return (
+    <div className="absolute -top-1 -right-4 z-20 pointer-events-none animate-bounce-in">
+      <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-lg border border-green-600 font-medium animate-pulse">
+        LIVE
+      </div>
+    </div>
+  );
+};
+
+// Floating delta pill component for numbers
 const FloatingDelta = ({ value, delay = 0 }: { value: number; delay?: number }) => {
-  const [isVisible, setIsVisible] = useState(true);
+  const [showPill, setShowPill] = useState(false);
   
   useEffect(() => {
     if (value > 0) {
-      const timer = setTimeout(() => setIsVisible(false), 4000 + delay);
-      return () => clearTimeout(timer);
+      console.log('[FloatingDelta] Showing +' + value + ' pill');
+      setShowPill(true);
+      
+      // Hide after 4 seconds
+      const hideTimer = setTimeout(() => {
+        console.log('[FloatingDelta] Hiding +' + value + ' pill');
+        setShowPill(false);
+      }, 4000);
+      
+      return () => clearTimeout(hideTimer);
+    } else {
+      setShowPill(false);
     }
-  }, [value, delay]);
+  }, [value]);
 
-  if (value <= 0 || !isVisible) return null;
+  if (value <= 0 || !showPill) return null;
 
   return (
     <div 
-      className="absolute -top-1 -right-1 z-10 pointer-events-none"
-      style={{ 
-        animation: `bounce-in 0.3s ease-out ${delay}ms`,
-        animationFillMode: 'both'
-      }}
+      className="absolute -top-1 -right-1 z-20 pointer-events-none animate-bounce-in"
+      style={{ animationDelay: `${delay}ms` }}
     >
       <div className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full shadow-lg border border-green-600 font-medium">
         +{value}
@@ -159,7 +208,6 @@ function AuthenticatedAdminPage({
 }: Omit<AuthenticatedAdminPageProps, 'isGlobalAdmin'>) {
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLiveRefreshing, setIsLiveRefreshing] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [userNameInput, setUserNameInput] = useState('');
@@ -172,7 +220,10 @@ function AuthenticatedAdminPage({
   const [inviteRole, setInviteRole] = useState('org:member');
   const [inviteStatus, setInviteStatus] = useState<{message: string, error: boolean} | null>(null);
 
-  // Delta tracking for floating pills (using refs to avoid re-renders)
+  // Live user tracking (users with recent activity)
+  const [liveUsers, setLiveUsers] = useState<Set<string>>(new Set());
+  
+  // Delta tracking for floating number pills (using refs to avoid re-renders)
   const previousData = useRef<Record<string, {
     events: number;
     steps: number;
@@ -301,67 +352,81 @@ function AuthenticatedAdminPage({
   };
 
   const fetchSessions = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      // Always include orgId - the API will determine access level based on organization_data_access table
-      const params = new URLSearchParams({ v: Date.now().toString() });
-      if (organizationId) {
-        params.append('orgId', organizationId);
-      }
+    // Always include orgId - the API will determine access level based on organization_data_access table
+    const params = new URLSearchParams({ v: Date.now().toString() });
+    if (organizationId) {
+      params.append('orgId', organizationId);
+    }
+    
+    const response = await fetch(`/api/sessions?${params}`);
+    const sessionData = await response.json();
+    
+    // Detect live users (users with actual data changes = events deltas > 0)
+    const newLiveUsers = new Set<string>();
+    
+    // Calculate deltas for floating number pills
+    const newDeltas: Record<string, {
+      events: number;
+      steps: number;
+      workflows: number;
+      processed: number;
+    }> = {};
+    
+    Object.entries(sessionData as Record<string, UserSessionData>).forEach(([userId, userData]) => {
+      // Calculate deltas for this user first
+      const currentEvents = userData.sessions.reduce((sum: number, s) => sum + (s.eventCount || 0), 0);
+      const currentSteps = userData.sessions.reduce((sum: number, s) => sum + (s.total_ui_steps || 0), 0);
+      const currentProcessed = userData.sessions.reduce((sum: number, s) => sum + (s.processed_event_count || 0), 0);
+      const currentWorkflows = userData.workflowCount || 0;
       
-      const response = await fetch(`/api/sessions?${params}`);
-      const sessionData = await response.json();
-      
-      // Calculate deltas for floating pills
-      const newDeltas: Record<string, {
-        events: number;
-        steps: number;
-        workflows: number;
-        processed: number;
-      }> = {};
-      
-      Object.entries(sessionData as Record<string, UserSessionData>).forEach(([userId, userData]) => {
-        const currentEvents = userData.sessions.reduce((sum: number, s) => sum + (s.eventCount || 0), 0);
-        const currentSteps = userData.sessions.reduce((sum: number, s) => sum + (s.total_ui_steps || 0), 0);
-        const currentProcessed = userData.sessions.reduce((sum: number, s) => sum + (s.processed_event_count || 0), 0);
-        const currentWorkflows = userData.workflowCount || 0;
-        
-        const previous = previousData.current[userId];
-        if (previous) {
-          newDeltas[userId] = {
-            events: Math.max(0, currentEvents - previous.events),
-            steps: Math.max(0, currentSteps - previous.steps),
-            workflows: Math.max(0, currentWorkflows - previous.workflows),
-            processed: Math.max(0, currentProcessed - previous.processed),
-          };
-        }
-        
-        // Update previous data for next comparison
-        previousData.current[userId] = {
-          events: currentEvents,
-          steps: currentSteps,
-          workflows: currentWorkflows,
-          processed: currentProcessed,
+      const previous = previousData.current[userId];
+      if (previous) {
+        newDeltas[userId] = {
+          events: Math.max(0, currentEvents - previous.events),
+          steps: Math.max(0, currentSteps - previous.steps),
+          workflows: Math.max(0, currentWorkflows - previous.workflows),
+          processed: Math.max(0, currentProcessed - previous.processed),
         };
-      });
-      
-      setDeltas(newDeltas);
-      setUserSessions(sessionData);
-      
-      // Check if this organization has global access by making a simple API call
-      if (organizationId) {
-        try {
-          const accessResponse = await fetch(`/api/organization-access?orgId=${organizationId}`);
-          if (accessResponse.ok) {
-            const accessData = await accessResponse.json();
-            setIsGlobalAdmin(accessData.isGlobal || false);
-          }
-        } catch (error) {
-          console.error('Failed to fetch organization access level:', error);
+        
+        // Mark user as LIVE if they have any events increase
+        if (newDeltas[userId].events > 0) {
+          newLiveUsers.add(userId);
+          console.log('[Admin] 🟢 Live user detected (events +' + newDeltas[userId].events + '):', userId, userData.name || 'Unnamed');
         }
       }
-    } finally {
-      setIsRefreshing(false);
+      
+      // Update previous data for next comparison
+      previousData.current[userId] = {
+        events: currentEvents,
+        steps: currentSteps,
+        workflows: currentWorkflows,
+        processed: currentProcessed,
+      };
+    });
+    
+    // Debug logging for deltas
+    const hasAnyDeltas = Object.values(newDeltas).some(delta => 
+      delta.events > 0 || delta.steps > 0 || delta.workflows > 0 || delta.processed > 0
+    );
+    if (hasAnyDeltas) {
+      console.log('[Admin] 🔥 Number deltas detected:', newDeltas);
+    }
+    
+    setLiveUsers(newLiveUsers);
+    setDeltas(newDeltas);
+    setUserSessions(sessionData);
+    
+    // Check if this organization has global access by making a simple API call
+    if (organizationId) {
+      try {
+        const accessResponse = await fetch(`/api/organization-access?orgId=${organizationId}`);
+        if (accessResponse.ok) {
+          const accessData = await accessResponse.json();
+          setIsGlobalAdmin(accessData.isGlobal || false);
+        }
+      } catch (error) {
+        console.error('Failed to fetch organization access level:', error);
+      }
     }
   }, [organizationId]);
 
@@ -576,24 +641,6 @@ function AuthenticatedAdminPage({
               Auto-updating...
             </div>
           )}
-          <Button 
-            variant="outline" 
-            onClick={fetchSessions}
-            size="sm"
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Refreshing...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </>
-            )}
-          </Button>
           <Input 
             type="text"
             placeholder="Filter by User ID or Name..."
@@ -780,7 +827,7 @@ function AuthenticatedAdminPage({
               return (
                 <React.Fragment key={userId}>
                   <tr className="bg-white border-b hover:bg-gray-50">
-                    <td className="px-1 py-1 font-medium text-gray-900 whitespace-nowrap">
+                    <td className="px-1 py-1 font-medium text-gray-900 whitespace-nowrap relative">
                       <div className="flex items-center">
                         <button
                           onClick={() => toggleUserExpansion(userId)}
@@ -830,6 +877,7 @@ function AuthenticatedAdminPage({
                           </div>
                         )}
                       </div>
+                      <LiveUserPill isLive={liveUsers.has(userId)} />
                     </td>
                     <td className="px-1 py-1">
                       <Tooltip>
