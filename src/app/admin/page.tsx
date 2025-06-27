@@ -62,6 +62,34 @@ const ResizeHandle = ({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => v
   />
 );
 
+// Floating delta pill component
+const FloatingDelta = ({ value, delay = 0 }: { value: number; delay?: number }) => {
+  const [isVisible, setIsVisible] = useState(true);
+  
+  useEffect(() => {
+    if (value > 0) {
+      const timer = setTimeout(() => setIsVisible(false), 4000 + delay);
+      return () => clearTimeout(timer);
+    }
+  }, [value, delay]);
+
+  if (value <= 0 || !isVisible) return null;
+
+  return (
+    <div 
+      className="absolute -top-1 -right-1 z-10 pointer-events-none"
+      style={{ 
+        animation: `bounce-in 0.3s ease-out ${delay}ms`,
+        animationFillMode: 'both'
+      }}
+    >
+      <div className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full shadow-lg border border-green-600 font-medium">
+        +{value}
+      </div>
+    </div>
+  );
+};
+
 export default function AdminPage() {
   const { isLoaded, userId, has } = useAuth();
   const { organization, membership } = useOrganization();
@@ -143,6 +171,20 @@ function AuthenticatedAdminPage({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('org:member');
   const [inviteStatus, setInviteStatus] = useState<{message: string, error: boolean} | null>(null);
+
+  // Delta tracking for floating pills (using refs to avoid re-renders)
+  const previousData = useRef<Record<string, {
+    events: number;
+    steps: number;
+    workflows: number;
+    processed: number;
+  }>>({});
+  const [deltas, setDeltas] = useState<Record<string, {
+    events: number;
+    steps: number;
+    workflows: number;
+    processed: number;
+  }>>({});
 
   // Column widths state and localStorage persistence
   const defaultColumnWidths = {
@@ -269,6 +311,41 @@ function AuthenticatedAdminPage({
       
       const response = await fetch(`/api/sessions?${params}`);
       const sessionData = await response.json();
+      
+      // Calculate deltas for floating pills
+      const newDeltas: Record<string, {
+        events: number;
+        steps: number;
+        workflows: number;
+        processed: number;
+      }> = {};
+      
+      Object.entries(sessionData as Record<string, UserSessionData>).forEach(([userId, userData]) => {
+        const currentEvents = userData.sessions.reduce((sum: number, s) => sum + (s.eventCount || 0), 0);
+        const currentSteps = userData.sessions.reduce((sum: number, s) => sum + (s.total_ui_steps || 0), 0);
+        const currentProcessed = userData.sessions.reduce((sum: number, s) => sum + (s.processed_event_count || 0), 0);
+        const currentWorkflows = userData.workflowCount || 0;
+        
+        const previous = previousData.current[userId];
+        if (previous) {
+          newDeltas[userId] = {
+            events: Math.max(0, currentEvents - previous.events),
+            steps: Math.max(0, currentSteps - previous.steps),
+            workflows: Math.max(0, currentWorkflows - previous.workflows),
+            processed: Math.max(0, currentProcessed - previous.processed),
+          };
+        }
+        
+        // Update previous data for next comparison
+        previousData.current[userId] = {
+          events: currentEvents,
+          steps: currentSteps,
+          workflows: currentWorkflows,
+          processed: currentProcessed,
+        };
+      });
+      
+      setDeltas(newDeltas);
       setUserSessions(sessionData);
       
       // Check if this organization has global access by making a simple API call
@@ -766,12 +843,19 @@ function AuthenticatedAdminPage({
                     </td>
                     <td className="px-1 py-1">{totalSessions}</td>
                     <td className="px-1 py-1">{userType}</td>
-                    <td className="px-1 py-1">{totalEvents}</td>
-                    <td className="px-1 py-1">
+                    <td className="px-1 py-1 relative">
+                      {totalEvents}
+                      <FloatingDelta value={deltas[userId]?.events || 0} />
+                    </td>
+                    <td className="px-1 py-1 relative">
                       {totalProcessedEvents} / {totalUiSteps}
+                      <FloatingDelta value={deltas[userId]?.processed || 0} delay={100} />
                     </td>
                     <td className="px-1 py-1">{totalLlmLabeledSteps} / {totalHumanAnnotatedSteps}</td>
-                    <td className="px-1 py-1">{userData.workflowCount}</td>
+                    <td className="px-1 py-1 relative">
+                      {userData.workflowCount}
+                      <FloatingDelta value={deltas[userId]?.workflows || 0} delay={200} />
+                    </td>
                     <td className="px-1 py-1">{formatDuration(totalDuration)}</td>
                     <td className="px-1 py-1">{mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}</td>
                     <td className="px-1 py-1 text-right">

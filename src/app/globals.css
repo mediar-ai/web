@@ -123,6 +123,35 @@
   }
 }
 
+/* Floating delta pill animations */
+@keyframes bounce-in {
+  0% { 
+    transform: scale(0) translateY(-10px); 
+    opacity: 0; 
+  }
+  50% { 
+    transform: scale(1.1) translateY(-5px); 
+    opacity: 1; 
+  }
+  100% { 
+    transform: scale(1) translateY(0); 
+    opacity: 1; 
+  }
+}
+
+@keyframes fade-out {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.8); }
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.3s ease-out;
+}
+
+.animate-fade-out {
+  animation: fade-out 0.5s ease-out forwards;
+}
+
 .resizer {
   @apply absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none;
 }
