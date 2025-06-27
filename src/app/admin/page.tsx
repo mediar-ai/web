@@ -1,13 +1,19 @@
 'use client';
 
 // This is the main admin dashboard page, accessible at /admin.
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { type UserSessionData } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 import { ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import { useAuth, SignIn, useOrganization } from '@clerk/nextjs';
@@ -44,6 +50,16 @@ const formatDuration = (seconds: number) => {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 };
+
+// Resize handle component
+const ResizeHandle = ({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) => (
+  <div
+    className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500 bg-gray-300 opacity-30 hover:opacity-100 transition-all duration-150"
+    onMouseDown={onMouseDown}
+    style={{ marginRight: '-2px' }}
+    title="Drag to resize column"
+  />
+);
 
 export default function AdminPage() {
   const { isLoaded, userId, has } = useAuth();
@@ -124,6 +140,108 @@ function AuthenticatedAdminPage({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('org:member');
   const [inviteStatus, setInviteStatus] = useState<{message: string, error: boolean} | null>(null);
+
+  // Column widths state and localStorage persistence
+  const defaultColumnWidths = {
+    user: 300,
+    organization: 150,
+    ss: 60,
+    type: 90,
+    events: 80,
+    steps: 120,
+    annotation: 120,
+    workflow: 120,
+    duration: 80,
+    lastActive: 180,
+    actions: 80
+  };
+
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(defaultColumnWidths);
+  
+  // Use refs to avoid stale closures in event handlers  
+  const resizeState = useRef<{
+    isResizing: string | null;
+    startX: number;
+    startWidth: number;
+  }>({
+    isResizing: null,
+    startX: 0,
+    startWidth: 0
+  });
+
+  // Load column widths from localStorage on mount
+  useEffect(() => {
+    const savedWidths = localStorage.getItem('admin-table-column-widths');
+    if (savedWidths) {
+      try {
+        const parsed = JSON.parse(savedWidths);
+        setColumnWidths({ ...defaultColumnWidths, ...parsed });
+      } catch (error) {
+        console.error('Failed to parse saved column widths:', error);
+      }
+    }
+  }, []);
+
+  // Save column widths to localStorage
+  const saveColumnWidths = useCallback((widths: Record<string, number>) => {
+    localStorage.setItem('admin-table-column-widths', JSON.stringify(widths));
+  }, []);
+
+  // Handle mouse move during resize
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!resizeState.current.isResizing) return;
+    
+    e.preventDefault();
+    const deltaX = e.clientX - resizeState.current.startX;
+    const newWidth = Math.max(50, resizeState.current.startWidth + deltaX); // Minimum width of 50px
+    
+    setColumnWidths(prev => ({
+      ...prev,
+      [resizeState.current.isResizing!]: newWidth
+    }));
+  }, []);
+
+  // Handle mouse up to end resize
+  const handleMouseUp = useCallback(() => {
+    if (resizeState.current.isResizing) {
+      setColumnWidths(currentWidths => {
+        saveColumnWidths(currentWidths);
+        return currentWidths;
+      });
+      resizeState.current.isResizing = null;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  }, [handleMouseMove, saveColumnWidths]);
+
+  // Handle column resize start
+  const handleResizeStart = useCallback((e: React.MouseEvent, columnKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    resizeState.current = {
+      isResizing: columnKey,
+      startX: e.clientX,
+      startWidth: columnWidths[columnKey]
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [columnWidths, handleMouseMove, handleMouseUp]);
+
+  // Cleanup event listeners on unmount
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [handleMouseMove, handleMouseUp]);
 
   const toggleUserExpansion = (userId: string) => {
     setExpandedUsers(prev => {
@@ -284,21 +402,22 @@ function AuthenticatedAdminPage({
   }
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-      <div className="flex justify-between items-center mb-3">
-        <div>
-          <h1 className="text-xl font-bold">
-            {isGlobalAdmin ? "All Users" : `${organizationName || "Organization"} Users`}
-          </h1>
-          <span className={`text-sm font-medium ${getAccessLevelColor()}`}>
-            {getAccessLevelText()}
-          </span>
-          {userRole && (
-            <span className="text-xs text-gray-500 ml-2">
-              Role: {userRole}
+    <TooltipProvider>
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+        <div className="flex justify-between items-center mb-3">
+          <div>
+            <h1 className="text-xl font-bold">
+              {isGlobalAdmin ? "All Users" : `${organizationName || "Organization"} Users`}
+            </h1>
+            <span className={`text-sm font-medium ${getAccessLevelColor()}`}>
+              {getAccessLevelText()}
             </span>
-          )}
-        </div>
+            {userRole && (
+              <span className="text-xs text-gray-500 ml-2">
+                Role: {userRole}
+              </span>
+            )}
+          </div>
         <div className="flex items-center gap-2">
           <Button 
             variant="outline" 
@@ -367,20 +486,88 @@ function AuthenticatedAdminPage({
         </div>
       </div>
       
-      <table className="w-full text-sm text-left">
+      <table className="w-full text-sm text-left" style={{ tableLayout: 'fixed' }}>
         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
           <tr>
-            <th scope="col" className="px-1 py-2 w-[25%]">User</th>
-            <th scope="col" className="px-1 py-2 w-[15%]">Organization</th>
-            <th scope="col" className="px-1 py-2">SS</th>
-            <th scope="col" className="px-1 py-2" style={{ minWidth: '90px' }}>Type</th>
-            <th scope="col" className="px-1 py-2">EVENTS</th>
-            <th scope="col" className="px-1 py-2">STEPS TTL/PRCSD</th>
-            <th scope="col" className="px-1 py-2">ANNOTATION<br/>LLM/HUMAN</th>
-            <th scope="col" className="px-1 py-2">WORKFLOW (DISTINCT)</th>
-            <th scope="col" className="px-1 py-2">Duration</th>
-            <th scope="col" className="px-1 py-2" style={{ minWidth: '180px' }}>Last Active</th>
-            <th scope="col" className="px-1 py-2 text-right">Actions</th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.user}px` }}>
+              User
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'user')} />
+            </th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.organization}px` }}>
+              <Tooltip>
+                <TooltipTrigger className="cursor-help">Organization</TooltipTrigger>
+                <TooltipContent>
+                  <p>User&apos;s organization name</p>
+                </TooltipContent>
+              </Tooltip>
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'organization')} />
+            </th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.ss}px` }}>
+              <Tooltip>
+                <TooltipTrigger className="cursor-help">SS</TooltipTrigger>
+                <TooltipContent>
+                  <p>Live Sessions - Number of currently active sessions</p>
+                </TooltipContent>
+              </Tooltip>
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'ss')} />
+            </th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.type}px` }}>
+              <Tooltip>
+                <TooltipTrigger className="cursor-help">Type</TooltipTrigger>
+                <TooltipContent>
+                  <p>Session type: web, low-level, or mixed</p>
+                </TooltipContent>
+              </Tooltip>
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'type')} />
+            </th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.events}px` }}>
+              <Tooltip>
+                <TooltipTrigger className="cursor-help">EVENTS</TooltipTrigger>
+                <TooltipContent>
+                  <p>Total number of events across all sessions</p>
+                </TooltipContent>
+              </Tooltip>
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'events')} />
+            </th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.steps}px` }}>
+              <Tooltip>
+                <TooltipTrigger className="cursor-help">STEPS PRCSD/TTL</TooltipTrigger>
+                <TooltipContent>
+                  <p>Workflow Analyses: Completed / Total UI Steps - Shows processing completion percentage</p>
+                </TooltipContent>
+              </Tooltip>
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'steps')} />
+            </th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.annotation}px` }}>
+              <Tooltip>
+                <TooltipTrigger className="cursor-help">ANNOTATION<br/>LLM/HUMAN</TooltipTrigger>
+                <TooltipContent>
+                  <p>Annotated steps: LLM labeled / Human annotated</p>
+                </TooltipContent>
+              </Tooltip>
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'annotation')} />
+            </th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.workflow}px` }}>
+              <Tooltip>
+                <TooltipTrigger className="cursor-help">WORKFLOW (DISTINCT)</TooltipTrigger>
+                <TooltipContent>
+                  <p>Number of distinct workflows created</p>
+                </TooltipContent>
+              </Tooltip>
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'workflow')} />
+            </th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.duration}px` }}>
+              Duration
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'duration')} />
+            </th>
+            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.lastActive}px` }}>
+              Last Active
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'lastActive')} />
+            </th>
+            <th scope="col" className="px-1 py-2 text-right relative" style={{ width: `${columnWidths.actions}px` }}>
+              Actions
+              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'actions')} />
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -453,9 +640,17 @@ function AuthenticatedAdminPage({
                           <div 
                             className="flex items-center gap-2 cursor-pointer group"
                           >
-                            <Link href={`/low-level/${userId}/workflow`} className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">
-                              {userData.name || `User ${truncateId(userId)}`}
-                            </Link>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Link href={`/low-level/${userId}/workflow`} className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">
+                                  {userData.name || `User ${truncateId(userId)}`}
+                                </Link>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Full User ID: {userId}</p>
+                                {userData.name && <p>Name: {userData.name}</p>}
+                              </TooltipContent>
+                            </Tooltip>
                             {isAdmin && (
                               <button 
                                 onClick={() => handleEditName(userId, userData.name || '')}
@@ -468,7 +663,16 @@ function AuthenticatedAdminPage({
                         )}
                       </div>
                     </td>
-                    <td className="px-1 py-1">{userData.organizationName}</td>
+                    <td className="px-1 py-1">
+                      <Tooltip>
+                        <TooltipTrigger className="cursor-help truncate max-w-[100px] block">
+                          {userData.organizationName}
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{userData.organizationName}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </td>
                     <td className="px-1 py-1">{liveSessions}</td>
                     <td className="px-1 py-1">{userType}</td>
                     <td className="px-1 py-1">{totalEvents}</td>
@@ -476,7 +680,7 @@ function AuthenticatedAdminPage({
                       {totalProcessedEvents} / {totalUiSteps}
                     </td>
                     <td className="px-1 py-1">{totalLlmLabeledSteps} / {totalHumanAnnotatedSteps}</td>
-                    <td className="px-1 py-1">{Math.max(...userData.sessions.map(s => s.distinct_workflows_created || 0), 0)}</td>
+                    <td className="px-1 py-1">{userData.workflowCount}</td>
                     <td className="px-1 py-1">{formatDuration(totalDuration)}</td>
                     <td className="px-1 py-1">{mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}</td>
                     <td className="px-1 py-1 text-right">
@@ -511,7 +715,18 @@ function AuthenticatedAdminPage({
                           <tbody>
                             {userData.sessions.map((session) => (
                               <tr key={session.id} className="border-b border-gray-200">
-                                <td className="px-1 py-1 font-mono text-xs">{truncateId(session.id)}</td>
+                                <td className="px-1 py-1 font-mono text-xs">
+                                  <Tooltip>
+                                    <TooltipTrigger className="cursor-help">
+                                      {truncateId(session.id)}
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Full Session ID: {session.id}</p>
+                                      <p>Session Type: {session.type}</p>
+                                      <p>Status: {session.status}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </td>
                                 <td className="px-1 py-1">{session.type}</td>
                                 <td className="px-1 py-1">{session.eventCount || 0}</td>
                                 <td className="px-1 py-1">{formatDuration(session.duration_seconds || 0)}</td>
@@ -567,6 +782,7 @@ function AuthenticatedAdminPage({
           </AlertDialogContent>
         </AlertDialog>
       )}
-    </div>
+      </div>
+    </TooltipProvider>
   );
 } 
