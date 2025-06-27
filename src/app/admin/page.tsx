@@ -299,8 +299,8 @@ function AuthenticatedAdminPage({
     }
   }, [fetchSessions]);
 
-  // Debounce for 2 seconds to handle frequent polling efficiently
-  const debouncedFetchSessions = useDebouncedCallback(liveRefreshSessions, 2000);
+  // Debounced version for manual refresh button clicks and other user actions
+  const debouncedFetchSessions = useDebouncedCallback(liveRefreshSessions, 500);
 
   useEffect(() => {
     const initialFetch = async () => {
@@ -326,32 +326,32 @@ function AuthenticatedAdminPage({
              const poll = async () => {
          if (!document.hidden) {
            console.log('[Admin] 🔄 Polling for updates...');
-           debouncedFetchSessions();
+           liveRefreshSessions(); // Direct call for polling - no debounce needed
          }
          
          // Schedule next poll with current interval
          pollingInterval = setTimeout(poll, getInterval());
        };
       
-      // Start first poll after 10 seconds
-      pollingInterval = setTimeout(poll, 10000);
+      // Start first poll after 2 seconds  
+      pollingInterval = setTimeout(poll, 2000);
     };
     
     // Handle visibility changes to adjust polling frequency
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         console.log('[Admin] 👁️ Page visible - refreshing immediately');
-        // Immediate refresh when page becomes visible
-        fetchSessions();
+        // Immediate refresh when page becomes visible with indicator
+        liveRefreshSessions();
       }
-      console.log(`[Admin] Polling frequency: ${document.hidden ? '60s' : '10s'}`);
+      console.log(`[Admin] Polling frequency: ${document.hidden ? '30s' : '2s'}`);
     };
     
     // Start polling and set up visibility listener
     startPolling();
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    console.log('[Admin] ✅ Intelligent polling enabled - updates every 10s when active, 60s when hidden');
+    console.log('[Admin] ✅ Intelligent polling enabled - updates every 2s when active, 30s when hidden');
 
     return () => {
       isPolling = false;
