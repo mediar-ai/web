@@ -57,14 +57,13 @@ export async function GET(request: Request) {
       return NextResponse.json({});
     }
 
-    // Get annotation counts for each session
-    const { data: annotationData, error: annotationError } = await supabase
-      .from('low_level_datasets')
-      .select('low_level_workflow_analysis_id, feedback')
-      .eq('dataset_type', 'workflow_event_feedback');
+    // Get labeling counts for each session from workflow labeling table
+    const { data: labelingData, error: labelingError } = await supabase
+      .from('low_level_workflow_labeling')
+      .select('low_level_workflow_analysis_id, selected_labels');
 
-    if (annotationError) {
-      console.error('[api/sessions] Error fetching annotation data:', annotationError);
+    if (labelingError) {
+      console.error('[api/sessions] Error fetching labeling data:', labelingError);
     }
 
     // Get workflow analyses to map analysis IDs to sessions
@@ -84,24 +83,26 @@ export async function GET(request: Request) {
       }
     }
 
-    // Group annotation data by session
-    const annotationsBySession = new Map<string, { llm_labeled: number; human_annotated: number }>();
+    // Group labeling data by session
+    const labelingBySession = new Map<string, { llm_labeled: number; human_labeled: number }>();
     
-    if (annotationData) {
-      for (const annotation of annotationData) {
-        const sessionId = analysisToSession.get(annotation.low_level_workflow_analysis_id.toString());
+    if (labelingData) {
+      for (const labeling of labelingData) {
+        const sessionId = analysisToSession.get(labeling.low_level_workflow_analysis_id.toString());
         if (!sessionId) continue;
         
-        if (!annotationsBySession.has(sessionId)) {
-          annotationsBySession.set(sessionId, { llm_labeled: 0, human_annotated: 0 });
+        if (!labelingBySession.has(sessionId)) {
+          labelingBySession.set(sessionId, { llm_labeled: 0, human_labeled: 0 });
         }
         
-        const counts = annotationsBySession.get(sessionId)!;
-        counts.llm_labeled++; // Has LLM generated event summary
+        const counts = labelingBySession.get(sessionId)!;
         
-        if (annotation.feedback) {
-          counts.human_annotated++; // Has human feedback
+        // Count LLM-generated labels (selected_labels contains LLM labels)
+        if (labeling.selected_labels && labeling.selected_labels.length > 0) {
+          counts.llm_labeled++;
         }
+        
+        // Note: human_labeled remains 0 as we don't currently track human-selected labels
       }
     }
 
@@ -110,7 +111,7 @@ export async function GET(request: Request) {
       const now = Date.now();
       const isLive = (now - lastEventTimestamp) < 60000;
 
-      const annotationCounts = annotationsBySession.get(session.session_id) || { llm_labeled: 0, human_annotated: 0 };
+      const labelingCounts = labelingBySession.get(session.session_id) || { llm_labeled: 0, human_labeled: 0 };
 
       return {
         id: session.session_id,
@@ -122,9 +123,9 @@ export async function GET(request: Request) {
         total_ui_steps: session.total_ui_steps || 0,
         total_workflow_analyses: session.total_workflow_analyses || 0,
         distinct_workflows_created: 0,
-        human_labeled_steps: session.human_labeled_steps || 0,
-        llm_labeled_steps: annotationCounts.llm_labeled,
-        human_annotated_steps: annotationCounts.human_annotated,
+        human_labeled_steps: labelingCounts.human_labeled,
+        llm_labeled_steps: labelingCounts.llm_labeled,
+        human_annotated_steps: labelingCounts.human_labeled, // Keep for backwards compatibility
         duration_seconds: session.duration_seconds,
         status: isLive ? 'live' : 'offline',
       };
