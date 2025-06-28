@@ -178,6 +178,122 @@ export function getVertexAIModel(modelName: string) {
   });
 }
 
+/**
+ * JSON repair function to handle malformed responses from Vertex AI
+ * 
+ * Common issues this fixes:
+ * - Unterminated strings (e.g., "what_was_typed": "text without closing quote)
+ * - Unescaped newlines within JSON strings  
+ * - Truncated JSON responses
+ * - Missing closing braces
+ * - Trailing commas
+ * 
+ * @param jsonString The potentially malformed JSON string from Vertex AI
+ * @returns Repaired JSON string that should parse successfully
+ */
+function repairMalformedJson(jsonString: string): string {
+  let repaired = jsonString.trim();
+  
+  // Track if we made any repairs for logging
+  const repairsMade: string[] = [];
+  
+  try {
+    // First, try to parse as-is to see if repair is needed
+    JSON.parse(repaired);
+    return repaired; // Already valid JSON
+  } catch {
+    // JSON is malformed, attempt repairs
+  }
+  
+  // 1. Fix unterminated strings by finding the last quote and ensuring proper closure
+  const lines = repaired.split('\n');
+  let inString = false;
+  let stringChar = null;
+  let lastValidLine = -1;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let j = 0;
+    
+    while (j < line.length) {
+      const char = line[j];
+      const prevChar = j > 0 ? line[j - 1] : null;
+      
+      if (!inString && (char === '"' || char === "'")) {
+        inString = true;
+        stringChar = char;
+      } else if (inString && char === stringChar && prevChar !== '\\') {
+        inString = false;
+        stringChar = null;
+      }
+      j++;
+    }
+    
+    if (!inString) {
+      lastValidLine = i;
+    }
+  }
+  
+  // If we have an unterminated string, truncate to last valid line and try to close the JSON
+  if (inString && lastValidLine >= 0) {
+    const truncatedLines = lines.slice(0, lastValidLine + 1);
+    let truncated = truncatedLines.join('\n');
+    
+    // Try to properly close the JSON structure
+    const openBraces = (truncated.match(/\{/g) || []).length;
+    const closeBraces = (truncated.match(/\}/g) || []).length;
+    const missingBraces = openBraces - closeBraces;
+    
+    if (missingBraces > 0) {
+      // Add missing closing braces
+      truncated += '\n' + '}'.repeat(missingBraces);
+      repairsMade.push(`added ${missingBraces} missing closing braces`);
+    }
+    
+    repaired = truncated;
+    repairsMade.push('truncated unterminated string');
+  }
+  
+  // 2. Fix common escape sequence issues within JSON strings
+  repaired = repaired.replace(/"([^"]*?)\\n\\n([^"]*?)$/gm, (match, before, after) => {
+    // If line ends without closing quote, add it
+    if (!after.includes('"')) {
+      repairsMade.push('closed unterminated string with newlines');
+      return `"${before}\\n\\n${after}"`;
+    }
+    return match;
+  });
+  
+  // 3. Fix unescaped newlines within JSON strings
+  repaired = repaired.replace(/"([^"]*?)\n([^"]*?)"/g, (match, before, after) => {
+    repairsMade.push('escaped unescaped newlines');
+    return `"${before}\\n${after}"`;
+  });
+  
+  // 4. Fix trailing commas
+  repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
+  if (repaired.includes(',}') || repaired.includes(',]')) {
+    repairsMade.push('removed trailing commas');
+  }
+  
+  // 5. Ensure proper JSON structure closure
+  const openBraces = (repaired.match(/\{/g) || []).length;
+  const closeBraces = (repaired.match(/\}/g) || []).length;
+  
+  if (openBraces > closeBraces) {
+    const missing = openBraces - closeBraces;
+    repaired += '\n' + '}'.repeat(missing);
+    repairsMade.push(`added ${missing} missing closing braces`);
+  }
+  
+  // Log repairs made
+  if (repairsMade.length > 0) {
+    console.log('🔧 JSON repairs made:', repairsMade.join(', '));
+  }
+  
+  return repaired;
+}
+
 // Helper function for structured output calls
 export async function callVertexWithStructuredOutput(
   prompt: string, 
@@ -232,7 +348,9 @@ export async function callVertexWithStructuredOutput(
           
           console.log('🧹 Cleaned JSON text:', cleanedText.substring(0, 200) + (cleanedText.length > 200 ? '...' : ''));
           
-          return JSON.parse(cleanedText);
+          // Attempt to repair malformed JSON before parsing
+          const repairedJson = repairMalformedJson(cleanedText);
+          return JSON.parse(repairedJson);
         } catch (parseError) {
           console.error('❌ Failed to parse structured JSON response:', parseError);
           console.error('❌ Raw response text:', rawText);

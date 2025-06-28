@@ -10,6 +10,19 @@ import time
 app = modal.App("labeling-data-processor")
 app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
 
+# --- CANCELLATION PREVENTION NOTES ---
+# Modal cancellation requests can occur when:
+# 1. Scheduled functions overlap due to long-running processors vs short schedule intervals
+# 2. Multiple coordinators try to run simultaneously
+# 3. Resource limits are exceeded causing Modal to cancel older instances
+# 
+# Prevention strategies implemented:
+# - Increased schedule from 30min to 90min to prevent overlaps  
+# - Reduced processor timeout from 2hrs to 1hr to prevent long-running overlaps
+# - Added coordinator locking to prevent multiple instances
+# - Added coordinator conflict detection in scheduled_labeling_processing
+# --- END CANCELLATION NOTES ---
+
 # Database connection configuration
 DB_CONFIG = {
     'host': 'aws-0-us-west-1.pooler.supabase.com',
@@ -20,6 +33,37 @@ DB_CONFIG = {
 }
 
 # --- Utility Functions (Adapted from sequential_processor.py) ---
+
+def cleanup_expired_labeling_locks(cur, conn):
+    """Clean up expired and stale labeling processing locks"""
+    try:
+        # Clean up expired/completed locks
+        cur.execute("""
+            DELETE FROM processing_locks 
+            WHERE expires_at < NOW() OR status IN ('completed', 'failed')
+        """)
+        basic_cleanup = cur.rowcount
+        
+        # Clean up stale labeling locks older than 5 minutes
+        cur.execute("""
+            DELETE FROM processing_locks 
+            WHERE status = 'in_progress' 
+              AND processor_id LIKE 'labeler-%'
+              AND created_at < NOW() - INTERVAL '5 minutes'
+        """)
+        stale_cleanup = cur.rowcount
+        
+        total_cleaned = basic_cleanup + stale_cleanup
+        if total_cleaned > 0:
+            print(f"🧹 Labeling cleanup: {basic_cleanup} expired + {stale_cleanup} stale = {total_cleaned} total")
+        
+        conn.commit()
+        return total_cleaned
+        
+    except Exception as e:
+        print(f"❌ Failed to cleanup labeling locks: {e}")
+        conn.rollback()
+        return 0
 
 def get_database_connection():
     """Gets a new database connection."""
@@ -40,7 +84,7 @@ def acquire_labeling_lock(cur, conn, user_id, analysis_id, processor_id):
             VALUES (%s, %s, %s, 'in_progress', NOW() + INTERVAL '10 minutes')
             ON CONFLICT (user_id, event_id) DO NOTHING
             RETURNING id
-        """, (user_id, analysis_id, processor_id))
+        """, (user_id, analysis_id, processor_id))  # 10 min expiration for lighter labeling workload
         
         if cur.fetchone():
             conn.commit()
@@ -156,7 +200,7 @@ def get_neighbor_analyses(cur, user_id, target_timestamp, limit=10):
 
 @app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
-    timeout=7200, # 2 hours
+    timeout=3600, # 1 hour (reduced from 2 hours to prevent overlaps)
     retries=0
 )
 def process_all_labels_for_user(user_id: str):
@@ -322,6 +366,28 @@ def trigger_labeling_for_all_users():
     try:
         conn = get_database_connection()
         cur = conn.cursor()
+        
+        # Acquire coordinator lock to prevent multiple instances
+        try:
+            cur.execute("""
+                INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
+                VALUES ('label-coordinator', 0, %s, 'in_progress', NOW() + INTERVAL '30 minutes')
+                ON CONFLICT (user_id, event_id) DO NOTHING
+                RETURNING id
+            """, (coordinator_id,))
+            
+            if not cur.fetchone():
+                print(f"⏸️  Another labeling coordinator is already running, skipping")
+                return {"success": True, "message": "Skipped due to active coordinator", "coordinator_id": coordinator_id}
+            
+            conn.commit()
+            print(f"🔒 Acquired labeling coordinator lock: {coordinator_id}")
+        except Exception as lock_error:
+            print(f"❌ Failed to acquire coordinator lock: {lock_error}")
+            return {"success": False, "error": f"Failed to acquire coordinator lock: {lock_error}"}
+
+        # Clean up expired locks first
+        cleanup_expired_labeling_locks(cur, conn)
 
         # Find users who have analyses that are ready for labeling
         cur.execute("""
@@ -332,21 +398,95 @@ def trigger_labeling_for_all_users():
                 analysis.label_status = 'pending'
                 AND NOT EXISTS ( -- Not currently being processed by another labeler
                     SELECT 1 FROM processing_locks
-                    WHERE event_id = analysis.id AND user_id::uuid = analysis.user_id AND status = 'in_progress' AND expires_at > NOW()
+                    WHERE event_id = analysis.id 
+                    AND user_id NOT LIKE '%coordinator%'  -- Fix: Filter out coordinator locks before UUID casting
+                    AND user_id::uuid = analysis.user_id 
+                    AND status = 'in_progress' 
+                    AND expires_at > NOW()
                 );
         """)
         
         users_to_process = [row[0] for row in cur.fetchall()]
         print(f"📋 Found {len(users_to_process)} users with analyses to label.")
         
+        # Limit concurrent processing to avoid overwhelming the system
+        MAX_CONCURRENT_USERS = 10  # Process up to 10 users simultaneously
+        if len(users_to_process) > MAX_CONCURRENT_USERS:
+            print(f"⚠️ Limiting to {MAX_CONCURRENT_USERS} concurrent users (found {len(users_to_process)})")
+            users_to_process = users_to_process[:MAX_CONCURRENT_USERS]
+        
+        # Create all remote calls WITHOUT waiting for them to start
+        print(f"🚀 Preparing {len(users_to_process)} processors for parallel launch...")
+        
+        # Collect all remote calls first (this is fast and non-blocking)
+        remote_calls = []
         for user_id in users_to_process:
-            print(f"🚀 Launching label processor for user: {user_id}")
-            process_all_labels_for_user.remote(user_id)
+            print(f"  📋 Queueing processor for user: {user_id[:8]}...")
+            try:
+                # Try spawn first for non-blocking parallel execution
+                remote_calls.append(process_all_labels_for_user.spawn(user_id))
+            except Exception as e:
+                print(f"  ⚠️ Spawn failed, using remote for user {user_id[:8]}...: {e}")
+                # Fall back to remote() if spawn fails
+                remote_calls.append(process_all_labels_for_user.remote(user_id))
+        
+        print(f"🔥 ALL {len(remote_calls)} PROCESSORS QUEUED - Launching in parallel NOW!")
+        
+        # Now all processors will launch simultaneously
+        # The spawn() method returns immediately without waiting
+        
+        # Give a moment for all processors to initialize
+        time.sleep(2)
+        
+        # Verify processors are starting (optional status check)
+        active_count = 0
+        try:
+            cur.execute("""
+                SELECT COUNT(*) FROM processing_locks 
+                WHERE processor_id LIKE 'labeler-%' 
+                AND status = 'in_progress' 
+                AND expires_at > NOW()
+                AND created_at > NOW() - INTERVAL '2 minutes'
+            """)
+            active_count = cur.fetchone()[0]
+            print(f"📊 Verification: {active_count} processors now active (launched in last 2 minutes)")
+        except Exception as e:
+            print(f"⚠️ Could not verify processor status: {e}")
+        
+        # Release coordinator lock
+        try:
+            cur.execute("""
+                DELETE FROM processing_locks 
+                WHERE user_id = 'label-coordinator' AND event_id = 0 AND processor_id = %s
+            """, (coordinator_id,))
+            conn.commit()
+            print(f"🔓 Released labeling coordinator lock: {coordinator_id}")
+        except Exception as unlock_error:
+            print(f"❌ Failed to release coordinator lock: {unlock_error}")
             
-        return { "success": True, "launched_processors": len(users_to_process) }
+        return { 
+            "success": True, 
+            "users_found": len(users_to_process),
+            "processors_dispatched": len(remote_calls),
+            "processors_active": active_count,
+            "launch_method": "spawn_parallel"
+        }
 
     except Exception as e:
         print(f"❌ Error in Labeling Coordinator: {e}")
+        
+        # Release coordinator lock on error
+        try:
+            if cur and conn:
+                cur.execute("""
+                    DELETE FROM processing_locks 
+                    WHERE user_id = 'label-coordinator' AND event_id = 0 AND processor_id = %s
+                """, (coordinator_id,))
+                conn.commit()
+                print(f"🔓 Released coordinator lock on error: {coordinator_id}")
+        except Exception as unlock_error:
+            print(f"❌ Failed to release coordinator lock on error: {unlock_error}")
+        
         return { "success": False, "error": str(e) }
     finally:
         if cur: cur.close()
@@ -354,11 +494,37 @@ def trigger_labeling_for_all_users():
         
 @app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
-    schedule=modal.Period(minutes=30),
+    schedule=modal.Period(minutes=90),  # Increased from 30 to 90 minutes to prevent overlaps
     timeout=600
 )
 def scheduled_labeling_processing():
-    """Periodically triggers the labeling process for all users."""
+    """Periodically triggers the labeling process for all users every 90 minutes."""
     print("⏰ Starting scheduled labeling processing...")
-    result = trigger_labeling_for_all_users.remote()
-    return result 
+    
+    try:
+        # Check if any labeling coordinators are already running to prevent conflicts
+        conn = get_database_connection()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT COUNT(*) FROM processing_locks 
+            WHERE processor_id LIKE 'label-coordinator-%' 
+            AND status = 'in_progress' 
+            AND expires_at > NOW()
+        """)
+        coordinator_count = cur.fetchone()[0]
+        
+        if coordinator_count > 0:
+            print(f"⏸️  Labeling coordinator already running ({coordinator_count} active), skipping to prevent conflicts")
+            cur.close()
+            conn.close()
+            return {"success": True, "message": "Skipped due to active coordinator", "active_coordinators": coordinator_count}
+        
+        cur.close()
+        conn.close()
+        
+        result = trigger_labeling_for_all_users.remote()
+        return result
+    except Exception as e:
+        print(f"❌ Error in scheduled labeling processing: {e}")
+        return {"success": False, "error": str(e)} 
