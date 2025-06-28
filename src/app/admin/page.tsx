@@ -229,12 +229,16 @@ function AuthenticatedAdminPage({
     steps: number;
     workflows: number;
     processed: number;
+    llmLabeled: number;
+    humanAnnotated: number;
   }>>({});
   const [deltas, setDeltas] = useState<Record<string, {
     events: number;
     steps: number;
     workflows: number;
     processed: number;
+    llmLabeled: number;
+    humanAnnotated: number;
   }>>({});
 
   // Column widths state and localStorage persistence
@@ -370,6 +374,8 @@ function AuthenticatedAdminPage({
       steps: number;
       workflows: number;
       processed: number;
+      llmLabeled: number;
+      humanAnnotated: number;
     }> = {};
     
     Object.entries(sessionData as Record<string, UserSessionData>).forEach(([userId, userData]) => {
@@ -378,6 +384,8 @@ function AuthenticatedAdminPage({
       const currentSteps = userData.sessions.reduce((sum: number, s) => sum + (s.total_ui_steps || 0), 0);
       const currentProcessed = userData.sessions.reduce((sum: number, s) => sum + (s.processed_event_count || 0), 0);
       const currentWorkflows = userData.workflowCount || 0;
+      const currentLlmLabeled = userData.sessions.reduce((sum: number, s) => sum + (s.llm_labeled_steps || 0), 0);
+      const currentHumanAnnotated = userData.sessions.reduce((sum: number, s) => sum + (s.human_annotated_steps || 0), 0);
       
       const previous = previousData.current[userId];
       if (previous) {
@@ -386,6 +394,8 @@ function AuthenticatedAdminPage({
           steps: Math.max(0, currentSteps - previous.steps),
           workflows: Math.max(0, currentWorkflows - previous.workflows),
           processed: Math.max(0, currentProcessed - previous.processed),
+          llmLabeled: Math.max(0, currentLlmLabeled - previous.llmLabeled),
+          humanAnnotated: Math.max(0, currentHumanAnnotated - previous.humanAnnotated),
         };
         
         // Mark user as LIVE if they have any events increase
@@ -401,12 +411,14 @@ function AuthenticatedAdminPage({
         steps: currentSteps,
         workflows: currentWorkflows,
         processed: currentProcessed,
+        llmLabeled: currentLlmLabeled,
+        humanAnnotated: currentHumanAnnotated,
       };
     });
     
     // Debug logging for deltas
     const hasAnyDeltas = Object.values(newDeltas).some(delta => 
-      delta.events > 0 || delta.steps > 0 || delta.workflows > 0 || delta.processed > 0
+      delta.events > 0 || delta.steps > 0 || delta.workflows > 0 || delta.processed > 0 || delta.llmLabeled > 0 || delta.humanAnnotated > 0
     );
     if (hasAnyDeltas) {
       console.log('[Admin] 🔥 Number deltas detected:', newDeltas);
@@ -899,7 +911,11 @@ function AuthenticatedAdminPage({
                       {totalProcessedEvents} / {totalUiSteps}
                       <FloatingDelta value={deltas[userId]?.processed || 0} delay={100} />
                     </td>
-                    <td className="px-1 py-1">{totalLlmLabeledSteps} / {totalHumanAnnotatedSteps}</td>
+                    <td className="px-1 py-1 relative">
+                      {totalLlmLabeledSteps} / {totalHumanAnnotatedSteps}
+                      <FloatingDelta value={deltas[userId]?.llmLabeled || 0} delay={150} />
+                      <FloatingDelta value={deltas[userId]?.humanAnnotated || 0} delay={250} />
+                    </td>
                     <td className="px-1 py-1 relative">
                       {userData.workflowCount}
                       <FloatingDelta value={deltas[userId]?.workflows || 0} delay={200} />
