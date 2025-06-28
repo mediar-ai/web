@@ -7,62 +7,67 @@ import {
 } from '@/lib/timelineMappingTypes';
 import { TIMELINE_MAPPING_ANALYSIS_PROMPT } from '@/lib/prompts';
 import { FlattenedWorkflowAnalysis } from '@/types';
+import { getVertexGenAI } from '@/lib/vertexai';
+import { HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
 
+const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThreshold}> = [
+    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+];
+
 // =============================================================================
 // LLM Analysis Function
 // =============================================================================
 
-async function callLLMForAnalysis(prompt: string, modelName: string = 'gemini-pro'): Promise<{ workflow_mappings?: WorkflowMappingAnalysisResult[]; unrelated_events?: UnrelatedEventAnalysisResult[] }> {
-  // For now, this is a placeholder. In a real implementation, you would:
-  // 1. Call your LLM service (OpenAI, Anthropic, Gemini, etc.)
-  // 2. Parse the JSON response
-  // 3. Handle errors appropriately
+async function callLLMForAnalysis(prompt: string, modelName: string = 'gemini-2.5-pro-preview-06-05'): Promise<{ workflow_mappings?: WorkflowMappingAnalysisResult[]; unrelated_events?: UnrelatedEventAnalysisResult[] }> {
+  // 🔥 SWITCHED TO VERTEX AI 🔥
+  console.log('🚀 Using Vertex AI for timeline analysis with model:', modelName);
   
-  // Using Gemini as per your env vars
   try {
-    const modelToUse = modelName.includes('gemini') ? modelName : 'gemini-pro';
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=` + process.env.GEMINI_API_KEY, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: prompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 8192,
-        }
-      })
+    const genAI = getVertexGenAI();
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      safetySettings,
     });
 
-    if (!response.ok) {
-      throw new Error(`LLM API error: ${response.status}`);
-    }
+    const result = await model.generateContent(prompt);
 
-    const data = await response.json();
-    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!textResponse) {
-      throw new Error('No response from LLM');
+    // 🔥 VERTEX AI RESPONSE HANDLING 🔥
+    const response = result.response;
+    if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const rawText = response.candidates[0].content.parts[0].text;
+        console.log('📄 Raw Vertex AI response:', rawText.substring(0, 200) + '...');
+        
+        // Handle markdown-formatted JSON (remove ```json and ``` markers)
+        let cleanedText = rawText.trim();
+        if (cleanedText.startsWith('```json')) {
+          cleanedText = cleanedText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanedText.startsWith('```')) {
+          cleanedText = cleanedText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
+        try {
+          const parsed = JSON.parse(cleanedText);
+          console.log('✅ Vertex AI timeline analysis successful');
+          return parsed;
+        } catch (parseError) {
+          console.error('❌ Failed to parse Vertex AI response as JSON:', parseError);
+          console.log('🔍 Cleaned text:', cleanedText.substring(0, 300));
+          throw new Error(`Invalid JSON response from Vertex AI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+        }
     }
-
-    // Extract JSON from the response (handle cases where LLM wraps JSON in markdown)
-    const jsonMatch = textResponse.match(/```json\n([\s\S]*?)\n```/) || textResponse.match(/```\n([\s\S]*?)\n```/);
-    const jsonString = jsonMatch ? jsonMatch[1] : textResponse;
     
-    return JSON.parse(jsonString.trim());
-    
+    console.error("No valid response from Vertex AI model:", response);
+    throw new Error('Failed to get valid response from Vertex AI model');
   } catch (error) {
-    console.error('LLM Analysis Error:', error);
+    console.error('Vertex AI Timeline Analysis Error:', error);
     throw error;
   }
 }
