@@ -206,9 +206,40 @@ def process_all_labels_for_user(user_id: str):
                         "neighborAnalyses": neighbor_analyses
                     }
 
-                    # New, more detailed context logging
-                    print(f"🧠 Full context for LLM (analysis ID: {analysis_id}):")
-                    print(json.dumps(context, indent=2))
+                    # Generate context statistics for logging
+                    neighbor_count = len(neighbor_analyses)
+                    if neighbor_count > 0:
+                        # Calculate average character counts per field
+                        field_stats = {}
+                        common_fields = ['step_title', 'step_summary', 'user_intent', 'what_was_clicked', 'what_was_typed', 'how_content_changed', 'events_that_happened', 'results_if_any']
+                        
+                        for field in common_fields:
+                            values = []
+                            for neighbor in neighbor_analyses:
+                                if 'analysis' in neighbor and field in neighbor['analysis'] and neighbor['analysis'][field]:
+                                    if neighbor['analysis'][field] != "Not available in data":
+                                        values.append(len(str(neighbor['analysis'][field])))
+                            
+                            if values:
+                                field_stats[field] = {
+                                    'count': len(values),
+                                    'avg_chars': round(sum(values) / len(values), 1),
+                                    'min_chars': min(values),
+                                    'max_chars': max(values)
+                                }
+                        
+                        print(f"🧠 Context stats for LLM (analysis ID: {analysis_id}):")
+                        print(f"   📊 Neighbors: {neighbor_count} analyses")
+                        print(f"   📈 Field statistics (avg/min/max chars, count):")
+                        for field, stats in field_stats.items():
+                            print(f"      • {field}: {stats['avg_chars']}/{stats['min_chars']}/{stats['max_chars']} chars ({stats['count']} samples)")
+                        
+                        # Show target analysis summary
+                        target_title = target_analysis_data.get('step_title', 'N/A') if target_analysis_data else 'N/A'
+                        target_summary_len = len(target_analysis_data.get('step_summary', '')) if target_analysis_data and target_analysis_data.get('step_summary') else 0
+                        print(f"   🎯 Target analysis: '{target_title}' ({target_summary_len} chars summary)")
+                    else:
+                        print(f"🧠 Context for LLM (analysis ID: {analysis_id}): No neighbor analyses available")
 
                     # Call the updated API to get the single best label
                     response = requests.post(

@@ -12,9 +12,15 @@ type AnalysisContext = {
   eventsSincePreviousUiTreeBySameWindow?: string[];
   uiTreeDiffLatestVsPreviousForTheSameWindow?: string;
   previousAnalyses?: Array<{
-    created_at: string,
-    step: string,
-    description: string
+    step_title: string,
+    step_summary: string,
+    user_intent: string,
+    what_was_clicked: string,
+    what_was_typed: string,
+    how_content_changed: string,
+    events_that_happened: string,
+    results_if_any: string,
+    client_timestamp: string | null
   }>;
   screenshotBefore?: string;
   screenshotAfter?: string;
@@ -111,7 +117,7 @@ export async function generateWorkflowStepAnalysis(prompt: string, modelName: st
         contextParts.push({ text: `\n\nEvents (Since Same Window UI Tree):\n${eventsText}` });
     }
     if (context.previousAnalyses && context.previousAnalyses.length > 0) {
-        const analysesText = context.previousAnalyses.map((a: { created_at: string, step: string, description: string }) => `[${new Date(a.created_at).toISOString()}] ${a.step}: ${a.description}`).join('\n');
+        const analysesText = context.previousAnalyses.map((a) => `[${a.client_timestamp ? new Date(a.client_timestamp).toISOString() : 'No timestamp'}] ${a.step_title}: ${a.step_summary}`).join('\n');
         contextParts.push({ text: `\n\nRecent Workflow Steps:\n${analysesText}` });
     }
     
@@ -263,7 +269,7 @@ export async function generateWorkflowStepAnalysisWithSchema(
         contextParts.push({ text: `\n\nEvents (Since Same Window UI Tree):\n${eventsText}` });
     }
     if (context.previousAnalyses && context.previousAnalyses.length > 0) {
-        const analysesText = context.previousAnalyses.map((a: { created_at: string, step: string, description: string }) => `[${new Date(a.created_at).toISOString()}] ${a.step}: ${a.description}`).join('\n');
+        const analysesText = context.previousAnalyses.map((a) => `[${a.client_timestamp ? new Date(a.client_timestamp).toISOString() : 'No timestamp'}] ${a.step_title}: ${a.step_summary}`).join('\n');
         contextParts.push({ text: `\n\nRecent Workflow Steps:\n${analysesText}` });
     }
     
