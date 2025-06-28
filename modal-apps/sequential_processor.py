@@ -17,6 +17,19 @@ app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
 INCLUDE_SCREENSHOTS_IN_CONTEXT = False
 # --- END FEATURE FLAGS ---
 
+# --- CANCELLATION PREVENTION NOTES ---
+# Modal cancellation requests occur when:
+# 1. Scheduled functions overlap due to long-running processors (2hr timeout) vs short schedule (15min)
+# 2. Multiple coordinators try to run simultaneously
+# 3. Resource limits are exceeded causing Modal to cancel older instances
+# 
+# Prevention strategies implemented:
+# - Increased schedule from 15min to 60min to prevent overlaps
+# - Reduced concurrent processor limit from 50 to 20
+# - Added coordinator locking to prevent multiple instances
+# - Added coordinator conflict detection in scheduled_processing
+# --- END CANCELLATION NOTES ---
+
 # Database connection configuration
 DB_CONFIG = {
     'host': 'aws-0-us-west-1.pooler.supabase.com',
@@ -1001,7 +1014,7 @@ def log_truncated_context(context, context_name="LLM Context"):
         modal.Secret.from_name("supabase-secret"),
         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
     ],
-    timeout=7200,  # 120 minutes for processing all events for a user
+    timeout=3600,  # 60 minutes for processing all events for a user (reduced to prevent overlaps)
     retries=0  # No automatic retries to prevent duplicates
 )
 def process_all_events_for_user(user_id: str):
@@ -1378,13 +1391,13 @@ def process_next_event_for_user_deprecated(user_id: str):
         modal.Secret.from_name("supabase-secret"),
         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
     ],
-    schedule=modal.Period(minutes=15),  # Run every 32 minutes
+    schedule=modal.Period(minutes=60),  # Run every 60 minutes to prevent overlaps
     timeout=1800
 )
 def scheduled_processing():
     """
-    Automatically find and process ALL events for all users every 15 minutes.
-    Uses the efficient full parallel processing approach.
+    Automatically find and process ALL events for all users every 60 minutes.
+    Uses the efficient full parallel processing approach with better conflict prevention.
     """
     print("🔄 Starting scheduled FULL parallel processing...")
     try:
@@ -1400,14 +1413,29 @@ def scheduled_processing():
         """)
         active_count = cur.fetchone()[0]
         
-        # Limit concurrent processors to prevent overload
-        MAX_CONCURRENT_PROCESSORS = 50  # Reasonable limit for scheduled processing
+        # More conservative limit to prevent Modal cancellations
+        MAX_CONCURRENT_PROCESSORS = 20  # Reduced from 50 to prevent resource conflicts
         
         if active_count >= MAX_CONCURRENT_PROCESSORS:
             print(f"⏸️  {active_count} processors already active (max: {MAX_CONCURRENT_PROCESSORS}), skipping this cycle")
             return {"success": True, "message": "Skipped due to active processors", "active_processors": active_count}
         
         print(f"📊 Active processors: {active_count}/{MAX_CONCURRENT_PROCESSORS}")
+        
+        # Check if any scheduled processing is already running
+        cur.execute("""
+            SELECT COUNT(*) FROM processing_locks 
+            WHERE processor_id LIKE 'full-coordinator-%' 
+            AND status = 'in_progress' 
+            AND expires_at > NOW()
+        """)
+        coordinator_count = cur.fetchone()[0]
+        
+        if coordinator_count > 0:
+            print(f"⏸️  Coordinator already running ({coordinator_count} active), skipping to prevent conflicts")
+            cur.close()
+            conn.close()
+            return {"success": True, "message": "Skipped due to active coordinator", "active_coordinators": coordinator_count}
         
         cur.close()
         conn.close()
@@ -1435,6 +1463,25 @@ def trigger_full_parallel_processing():
     try:
         conn = get_database_connection()
         cur = conn.cursor()
+        
+        # Acquire coordinator lock to prevent multiple instances
+        try:
+            cur.execute("""
+                INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
+                VALUES ('coordinator', 0, %s, %s, NOW() + INTERVAL '30 minutes')
+                ON CONFLICT (user_id, event_id) DO NOTHING
+                RETURNING id
+            """, (coordinator_id, PROCESSING_STATUS['IN_PROGRESS']))
+            
+            if not cur.fetchone():
+                print(f"⏸️  Another coordinator is already running, skipping")
+                return {"success": True, "message": "Skipped due to active coordinator", "coordinator_id": coordinator_id}
+            
+            conn.commit()
+            print(f"🔒 Acquired coordinator lock: {coordinator_id}")
+        except Exception as lock_error:
+            print(f"❌ Failed to acquire coordinator lock: {lock_error}")
+            return {"success": False, "error": f"Failed to acquire coordinator lock: {lock_error}"}
         
         # Clean up expired locks (table already exists in production)
         cur.execute("DELETE FROM processing_locks WHERE expires_at < NOW();")
@@ -1504,6 +1551,17 @@ def trigger_full_parallel_processing():
                     "error": str(e)
                 })
         
+        # Release coordinator lock
+        try:
+            cur.execute("""
+                DELETE FROM processing_locks 
+                WHERE user_id = 'coordinator' AND event_id = 0 AND processor_id = %s
+            """, (coordinator_id,))
+            conn.commit()
+            print(f"🔓 Released coordinator lock: {coordinator_id}")
+        except Exception as unlock_error:
+            print(f"❌ Failed to release coordinator lock: {unlock_error}")
+        
         return {
             "success": True,
             "message": f"Launched FULL parallel processing for {len(users)} users",
@@ -1515,6 +1573,19 @@ def trigger_full_parallel_processing():
         
     except Exception as e:
         print(f"❌ Error in FULL parallel coordinator: {e}")
+        
+        # Release coordinator lock on error
+        try:
+            if 'cur' in locals() and cur and 'conn' in locals() and conn:
+                cur.execute("""
+                    DELETE FROM processing_locks 
+                    WHERE user_id = 'coordinator' AND event_id = 0 AND processor_id = %s
+                """, (coordinator_id,))
+                conn.commit()
+                print(f"🔓 Released coordinator lock on error: {coordinator_id}")
+        except Exception as unlock_error:
+            print(f"❌ Failed to release coordinator lock on error: {unlock_error}")
+        
         return {
             "success": False,
             "error": str(e),
