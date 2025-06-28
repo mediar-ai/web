@@ -139,6 +139,7 @@ const UserLayoutContent = ({
               <TabsTrigger value="steps">Steps</TabsTrigger>
               <TabsTrigger value="labeling">Labeling</TabsTrigger>
               <TabsTrigger value="workflow">Workflow</TabsTrigger>
+              <TabsTrigger value="deployment">Deployment</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
