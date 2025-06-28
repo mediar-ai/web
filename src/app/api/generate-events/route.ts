@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { analyzeMultiActivityEvent, ActivitySummary } from '@/lib/analysis';
+import { generateMultiActivityEventAnalysis } from '@/lib/analysis';
 import { EVENTS_PROMPT } from '@/lib/prompts';
 import type { ActivityItem, Event } from '@/types';
 
@@ -40,29 +40,19 @@ export async function POST(request: Request) {
     const activityItems = activityData.map(item => ({ ...item.item_data, id: item.client_item_id })) as ActivityItem[];
     const latestActivitySource = activityData[0].source || 'unknown';
     
-    // 2. Fetch the last few generated events for context.
-    const { data: eventData, error: eventError } = await supabaseAdmin
-      .from('user_activity_data')
-      .select('item_data')
-      .eq('session_id', sessionId)
-      .eq('item_type', 'event')
-      .order('client_timestamp', { ascending: false })
-      .limit(5);
-
-    if (eventError) throw eventError;
-    const previousEvents = eventData.map(item => (item.item_data as Event));
+    // Note: Previous events context was removed since new function doesn't use it
     
     // 3. Convert activities to summaries for the LLM prompt.
-    const activitiesSummary: ActivitySummary[] = activityItems.map(item => ({
+    const activitiesSummary = activityItems.map(item => ({
       type: item.type,
       timestamp: new Date(item.timestamp).toLocaleString(),
       change_detected: item.type === 'ui_diff' ? item.change_detected : undefined,
       change_description: item.type === 'ui_diff' ? item.change_description : undefined,
-      content_preview: item.type === 'initial_dump' ? item.raw_content.slice(0, 200) : undefined,
+      content_preview: item.type === 'initial_dump' ? item.raw_content?.slice(0, 200) : undefined,
     }));
     
     // 4. Call the analysis function.
-    const analysis = await analyzeMultiActivityEvent(activitiesSummary, previousEvents, EVENTS_PROMPT);
+    const analysis = await generateMultiActivityEventAnalysis(activitiesSummary, EVENTS_PROMPT);
 
     // 5. If it's a distinct event, save it to the database.
     if (analysis && analysis.is_distinct_event === 'yes') {

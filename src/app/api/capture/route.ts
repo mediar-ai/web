@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { 
-    analyzeMultiActivityEvent, 
-    analyzeUIDiff, 
-    analyzeWorkflow, 
-    performInitialFrameDump
+    generateMultiActivityEventAnalysis, 
+    generateUiDiffAnalysis, 
+    generateMainAnalysis
 } from '@/lib/analysis';
 
 export async function POST(request: Request) {
@@ -14,32 +13,39 @@ export async function POST(request: Request) {
         image1_dataUrl, 
         image2_dataUrl, 
         prompt, 
-        history, 
         analysisType,
-        activitiesSummary,
-        previousEvents 
+        activitiesSummary
     } = body;
 
     switch (analysisType) {
       case 'multi_activity_event':
         if (!activitiesSummary) return NextResponse.json({ error: 'No activities provided for analysis.' }, { status: 400 });
-        const eventAnalysis = await analyzeMultiActivityEvent(activitiesSummary, previousEvents || [], prompt);
+        const eventAnalysis = await generateMultiActivityEventAnalysis(activitiesSummary, prompt);
         return NextResponse.json({ analysis: eventAnalysis });
       
       case 'ui_diff':
         if (!image1_dataUrl || !image2_dataUrl) return NextResponse.json({ error: 'Missing images for UI Diff.' }, { status: 400 });
-        const diffAnalysis = await analyzeUIDiff(image1_dataUrl, image2_dataUrl, prompt);
+        const diffAnalysis = await generateUiDiffAnalysis(image1_dataUrl, image2_dataUrl, prompt);
         return NextResponse.json({ analysis: diffAnalysis });
 
       case 'workflow':
         if (!image) return NextResponse.json({ error: 'No image provided for workflow analysis.' }, { status: 400 });
-        const workflowAnalysis = await analyzeWorkflow(image, history || [], prompt);
+        const workflowAnalysis = await generateMainAnalysis(image, '', prompt); // Empty UI tree since we only have image
         return NextResponse.json({ analysis: workflowAnalysis });
         
       case 'initial_frame_dump':
         if (!image) return NextResponse.json({ error: 'No image provided for frame dump.' }, { status: 400 });
-        const dumpStream = await performInitialFrameDump(image);
-        return new NextResponse(dumpStream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+        // Use the main analysis function to extract text content from the image
+        const dumpAnalysis = await generateMainAnalysis(image, '', prompt || 'Extract all visible text and UI elements from this image in maximum detail. Describe layout and objects.') as {
+          step_title?: string;
+          step_summary?: string;
+          events_that_happened?: string;
+          how_content_changed?: string;
+          results_if_any?: string;
+        };
+        // Convert to a text stream for backwards compatibility
+        const textContent = `Step: ${dumpAnalysis.step_title || 'Unknown'}\nSummary: ${dumpAnalysis.step_summary || 'No summary'}\nUI Elements: ${dumpAnalysis.events_that_happened || 'No events detected'}\nContent Changes: ${dumpAnalysis.how_content_changed || 'No changes detected'}\nResults: ${dumpAnalysis.results_if_any || 'No results'}`;
+        return new NextResponse(textContent, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 
       default:
         return NextResponse.json({ error: 'Invalid analysis type.' }, { status: 400 });
