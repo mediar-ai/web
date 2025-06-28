@@ -961,8 +961,9 @@ def estimate_cost_usd(model_name, tokens_input, tokens_output):
     """Estimate cost based on model pricing (approximate)"""
     # Pricing per 1M tokens (as of 2024)
     pricing = {
-        'gemini-2.5-pro-preview-06-05': {'input': 3.50, 'output': 10.50},  # Per 1M tokens
-        'gemini-2.5-flash-preview-05-20': {'input': 0.075, 'output': 0.30},
+        'gemini-2.5-pro': {'input': 3.50, 'output': 10.50},  # Per 1M tokens (was: gemini-2.5-pro-preview-06-05)
+        'gemini-2.5-flash': {'input': 0.075, 'output': 0.30},  # Per 1M tokens
+        'gemini-2.5-flash-preview-05-20': {'input': 0.075, 'output': 0.30},  # Legacy pricing
         'gpt-4o': {'input': 2.50, 'output': 10.00},
         'gpt-4o-mini': {'input': 0.15, 'output': 0.60},
     }
@@ -1055,7 +1056,7 @@ def process_all_events_for_user(user_id: str):
                     log_truncated_context(context, f"Context for Event {event_id}")
 
                     # Prepare LLM API call
-                    model_name = 'gemini-2.5-pro-preview-06-05'
+                    model_name = 'gemini-2.5-pro'  # Default model (was: gemini-2.5-pro-preview-06-05)
                     api_payload = {
                         'prompt': 'WORKFLOW_STEP_ANALYSIS_V2_PROMPT',  # This will be overridden by the API
                         'model': model_name,
@@ -1235,7 +1236,7 @@ def process_next_event_for_user_deprecated(user_id: str):
         log_truncated_context(context, f"Context for Event {event_id}")
         
         # Prepare LLM API call
-        model_name = 'gemini-2.5-pro-preview-06-05'
+        model_name = 'gemini-2.5-pro'  # Default model (was: gemini-2.5-pro-preview-06-05)
         api_payload = {
             'prompt': 'WORKFLOW_STEP_ANALYSIS_V2_PROMPT',  # This will be overridden by the API
             'model': model_name,

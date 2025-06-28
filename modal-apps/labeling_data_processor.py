@@ -213,7 +213,7 @@ def process_all_labels_for_user(user_id: str):
                     # Call the updated API to get the single best label
                     response = requests.post(
                         "https://app.mediar.ai/api/suggest-workflow-labels",
-                        json={ 'model': 'gemini-2.5-pro-preview-06-05', 'context': context },
+                        json={ 'model': 'gemini-2.5-pro', 'context': context },  # Default model (was: gemini-2.5-pro-preview-06-05)
                         headers={'Content-Type': 'application/json'},
                         timeout=300
                     )
