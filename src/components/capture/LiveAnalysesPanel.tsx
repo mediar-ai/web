@@ -182,7 +182,7 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
                 </TableCell>
                 <TableCell>{analysis.startTime ? new Date(analysis.startTime).toLocaleTimeString() : 'N/A'}</TableCell>
                 <TableCell className="font-medium">{analysis.type} [{analysis.payloadType}]</TableCell>
-                <TableCell>{analysis.model ? analysis.model.replace('gemini-2.5-flash-preview-05-20', 'Flash') : 'N/A'}</TableCell>
+                <TableCell>{analysis.model ? analysis.model.replace('gemini-2.5-flash', 'Flash').replace('gemini-2.5-pro', 'Pro') : 'N/A'}</TableCell>
                 <TableCell>
                   {analysis.payloadSize 
                     ? (analysis.payloadType === 'text' 

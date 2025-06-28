@@ -26,7 +26,7 @@ const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThresho
 // LLM Analysis Function
 // =============================================================================
 
-async function callLLMForAnalysis(prompt: string, modelName: string = 'gemini-2.5-pro-preview-06-05'): Promise<{ workflow_mappings?: WorkflowMappingAnalysisResult[]; unrelated_events?: UnrelatedEventAnalysisResult[] }> {
+async function callLLMForAnalysis(prompt: string, modelName: string = 'gemini-2.5-pro'): Promise<{ workflow_mappings?: WorkflowMappingAnalysisResult[]; unrelated_events?: UnrelatedEventAnalysisResult[] }> { // 🔥 Updated to stable Vertex AI model name
   // 🔥 SWITCHED TO VERTEX AI 🔥
   console.log('🚀 Using Vertex AI for timeline analysis with model:', modelName);
   

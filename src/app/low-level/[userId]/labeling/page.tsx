@@ -136,7 +136,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   const [userSelections, ] = useState<Record<string, string[]>>({});
   const [isProcessingLabels, setIsProcessingLabels] = useState(false);
   const [processingRowId, setProcessingRowId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro'); // 🔥 Updated to stable Vertex AI model name
   const [selectedEvent, setSelectedEvent] = useState<LowLevelEvent | null>(null);
 
   // -- New state for event generation and feedback --
@@ -838,8 +838,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                             value={selectedModel}
                             onValueChange={setSelectedModel}
                         >
-                            <DropdownMenuRadioItem value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</DropdownMenuRadioItem>
-                            <DropdownMenuRadioItem value="gemini-2.5-pro-preview-06-05">gemini-2.5-pro-preview-06-05</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="gemini-2.5-flash">gemini-2.5-flash</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="gemini-2.5-pro">gemini-2.5-pro</DropdownMenuRadioItem>
                         </DropdownMenuRadioGroup>
                     </DropdownMenuContent>
                 </DropdownMenu>
