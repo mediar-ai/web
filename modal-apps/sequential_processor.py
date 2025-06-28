@@ -878,16 +878,16 @@ def build_fresh_context(cur, user_id, current_event):
             # analysis structure: id, user_id, session_id, llm_structured_output, created_at, client_timestamp
             llm_output = analysis[3] if analysis[3] else {}  # llm_structured_output JSONB
             
-            # Extract fields from JSONB, falling back to 'Not available in data'
+            # Use the NEW structured output format directly
             context['previousAnalyses'].append({
-                'workflow': llm_output.get('workflow', 'Not available in data'),
-                'step': llm_output.get('step', 'Not available in data'), 
-                'description': llm_output.get('description', 'Not available in data'),
-                'facts': llm_output.get('facts', 'Not available in data'),
-                'logic': llm_output.get('logic', 'Not available in data'),
-                'tech': llm_output.get('tech', 'Not available in data'),
-                'apps': llm_output.get('apps', 'Not available in data'),
-                'context': llm_output.get('context', 'Not available in data'),
+                'step_title': llm_output.get('step_title', 'Not available in data'),
+                'step_summary': llm_output.get('step_summary', 'Not available in data'),
+                'user_intent': llm_output.get('user_intent', 'Not available in data'),
+                'what_was_clicked': llm_output.get('what_was_clicked', 'Not available in data'),
+                'what_was_typed': llm_output.get('what_was_typed', 'Not available in data'),
+                'how_content_changed': llm_output.get('how_content_changed', 'Not available in data'),
+                'events_that_happened': llm_output.get('events_that_happened', 'Not available in data'),
+                'results_if_any': llm_output.get('results_if_any', 'Not available in data'),
                 'client_timestamp': analysis[5].isoformat() if analysis[5] else None  # client_timestamp
             })
     
