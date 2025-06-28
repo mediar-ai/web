@@ -12,18 +12,11 @@ const getVertexAIConfig = () => {
   const hasBase64Credentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
   const hasDirectCredentials = !!(process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY);
   
-  console.log('🔧 Vertex AI Environment Detection:', {
-    isVercel,
-    hasFileCredentials,
-    hasBase64Credentials,
-    hasDirectCredentials,
-    project,
-    location
-  });
+  // Environment detection (debug logs removed for cleaner output)
 
   // Method 1: File-based credentials (prioritize for local development)
   if (hasFileCredentials && !isVercel) {
-    console.log('🔑 Using file-based credentials for Vertex AI');
+    // Using file-based credentials
     
     return new VertexAI({
       project,
@@ -39,7 +32,7 @@ const getVertexAIConfig = () => {
 
   // Method 2: Direct credentials (recommended for Vercel)
   if (hasDirectCredentials) {
-    console.log('🔑 Using direct credentials for Vertex AI');
+    // Using direct credentials
     
     return new VertexAI({
       project,
@@ -59,7 +52,7 @@ const getVertexAIConfig = () => {
 
   // Method 3: Base64 credentials (fallback)
   if (hasBase64Credentials) {
-    console.log('🔑 Using base64 credentials for Vertex AI');
+    // Using base64 credentials
     
     try {
       const base64Credentials = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64!;
@@ -92,7 +85,7 @@ const getVertexAIConfig = () => {
   }
 
   // Fallback: Default credentials
-  console.log('🔑 Using default credentials for Vertex AI');
+  // Using default credentials
   return new VertexAI({
     project,
     location,
@@ -110,7 +103,7 @@ let vertexAI: VertexAI;
 
 try {
   vertexAI = getVertexAIConfig();
-  console.log('✅ Vertex AI initialized successfully');
+  // Vertex AI initialized successfully
 } catch (error) {
   console.error('❌ Failed to initialize Vertex AI:', error);
   throw error;
@@ -122,7 +115,7 @@ export function getVertexGenAI() {
     getGenerativeModel: (config: { model: string; safetySettings?: SafetySetting[] }) => {
       // 🔄 Automatically map model names to Vertex AI equivalents
       const vertexModelName = getVertexModelName(config.model);
-      console.log(`🤖 Using Vertex AI model: ${vertexModelName}`);
+      // Using Vertex AI model: ${vertexModelName}
       
       return vertexAI.getGenerativeModel({
         model: vertexModelName,
@@ -173,7 +166,7 @@ export function getVertexModelName(inputModelName: string): string {
     return 'gemini-2.5-flash'; // Safe default
   }
   
-  console.log(`🔄 Model mapping: ${inputModelName} → ${mappedModel}`);
+  // Model mapping: ${inputModelName} → ${mappedModel}
   return mappedModel;
 }
 
