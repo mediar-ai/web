@@ -763,7 +763,7 @@ def process_and_filter_intermediate_events(events):
     """
     Filters and processes a list of raw database event rows for context.
     - Skips screenshot_diff events.
-    - Truncates ui_tree strings in ui_tree events to 200 characters.
+    - Truncates ui_tree strings in ui_tree events to 300 characters.
     """
     processed_payloads = []
     for event in events:
@@ -777,10 +777,10 @@ def process_and_filter_intermediate_events(events):
         if event_type == 'ui_tree':
             try:
                 ui_tree_str = original_payload.get('event', {}).get('screen', {}).get('ui_tree')
-                if ui_tree_str and isinstance(ui_tree_str, str) and len(ui_tree_str) > 200:
+                if ui_tree_str and isinstance(ui_tree_str, str) and len(ui_tree_str) > 300:
                     import copy
                     payload_to_add = copy.deepcopy(original_payload)
-                    truncated_tree = ui_tree_str[:200] + '... (truncated)'
+                    truncated_tree = ui_tree_str[:300] + '... (truncated)'
                     payload_to_add['event']['screen']['ui_tree'] = truncated_tree
                     processed_payloads.append(payload_to_add)
                 else:
@@ -873,13 +873,13 @@ def build_fresh_context(cur, user_id, current_event):
     # includePreviousAnalyses: true
     recent_analyses = get_recent_analyses(cur, user_id, 10)
     if recent_analyses:
-        context['previousAnalyses'] = []
+        # Build the full previousAnalyses first
+        full_previous_analyses = []
         for analysis in recent_analyses[:3]:  # Limit to 3 most recent
             # analysis structure: id, user_id, session_id, llm_structured_output, created_at, client_timestamp
             llm_output = analysis[3] if analysis[3] else {}  # llm_structured_output JSONB
             
-            # Use the NEW structured output format directly
-            context['previousAnalyses'].append({
+            full_previous_analyses.append({
                 'step_title': llm_output.get('step_title', 'Not available in data'),
                 'step_summary': llm_output.get('step_summary', 'Not available in data'),
                 'user_intent': llm_output.get('user_intent', 'Not available in data'),
@@ -890,6 +890,13 @@ def build_fresh_context(cur, user_id, current_event):
                 'results_if_any': llm_output.get('results_if_any', 'Not available in data'),
                 'client_timestamp': analysis[5].isoformat() if analysis[5] else None  # client_timestamp
             })
+        
+        # Convert to string and truncate the TOTAL length to 300 characters
+        analyses_str = str(full_previous_analyses)
+        if len(analyses_str) > 300:
+            context['previousAnalyses'] = analyses_str[:300] + '... (truncated)'
+        else:
+            context['previousAnalyses'] = full_previous_analyses
     
     # Note: The following are NOT included because frontend contextConfig has them as false:
     # - includePreviousUiTree: false (so no previousUiTree field)
@@ -979,8 +986,8 @@ def log_truncated_context(context, context_name="LLM Context"):
     """Logs the context dictionary with long string values truncated."""
     print(f"--- {context_name.upper()} REVIEW ---")
     for key, value in context.items():
-        if isinstance(value, str) and len(value) > 100:
-            print(f"  -> {key}: {value[:100]}... (truncated, total length: {len(value)})")
+        if isinstance(value, str) and len(value) > 300:
+            print(f"  -> {key}: {value[:300]}... (truncated, total length: {len(value)})")
         elif isinstance(value, list) and len(value) > 3:
              print(f"  -> {key}: (list of {len(value)} items, showing first 3)")
              for i, item in enumerate(value[:3]):

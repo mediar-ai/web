@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         }).join('\n');
         promptText += `\n\nNEIGHBORING STEPS (for context):\n${analysesText}`;
     }
-
+    
     // Use structured output for label suggestion
     const result = await callVertexWithStructuredOutput(
         promptText,

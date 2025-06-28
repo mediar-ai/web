@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
     const { analyses, labels, workflow_context, draft_workflow_names, model } = await req.json();
 
     if (!model || !analyses || !workflow_context || !draft_workflow_names) {
-      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
-    }
+    return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
+  }
 
     console.log('Refining workflow list with', analyses.length, 'analyses and', draft_workflow_names.length, 'draft workflows');
 
@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
       {
         analyses: processedAnalyses,
         labels: labels,
-        workflow_context: workflow_context,
-        workflow_names: draft_workflow_names,
+      workflow_context: workflow_context,
+      workflow_names: draft_workflow_names,
       }, 
       model,
       WORKFLOW_REFINEMENT_SCHEMA
