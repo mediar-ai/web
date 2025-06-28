@@ -94,6 +94,22 @@ Return a single JSON object with the following fields:
 - "user_intent": (String) The user's likely goal or intention behind this action - what were they trying to accomplish?
 `;
 
+// Schema for WORKFLOW_STEP_ANALYSIS_V2_PROMPT
+export const WORKFLOW_STEP_ANALYSIS_SCHEMA = {
+  type: "object",
+  properties: {
+    step_title: { type: "string" },
+    step_summary: { type: "string" },
+    events_that_happened: { type: "string" },
+    how_content_changed: { type: "string" },
+    results_if_any: { type: "string" },
+    what_was_clicked: { type: "string" },
+    what_was_typed: { type: "string" },
+    user_intent: { type: "string" }
+  },
+  required: ["step_title", "step_summary", "events_that_happened", "how_content_changed", "results_if_any", "what_was_clicked", "what_was_typed", "user_intent"]
+};
+
 export const CONTEXT_AWARE_STEP_LABEL_PROMPT = `You are an expert analyst. Your task is to re-evaluate a single 'target' analysis step using the context of its neighboring steps to create a single, highly descriptive, and context-aware label.
 
 The goal is to produce a label for the target step that is more meaningful than its original summary, by using the neighbors to understand its purpose.
@@ -114,6 +130,15 @@ EXAMPLE:
   "label": "Entered password for user 'john.doe@email.com'"
 }
 `;
+
+// Schema for CONTEXT_AWARE_STEP_LABEL_PROMPT
+export const WORKFLOW_LABEL_SUGGESTION_SCHEMA = {
+  type: "object",
+  properties: {
+    label: { type: "string" }
+  },
+  required: ["label"]
+};
 
 // This prompt is deprecated in favor of CONTEXT_AWARE_STEP_LABEL_PROMPT
 export const WORKFLOW_LABEL_SUGGESTION_PROMPT_DEPRECATED = `You are an expert workflow analyst. Your task is to analyze a specific workflow step within the context of the 20 surrounding steps (10 before, 10 after) to suggest potential high-level workflows it might belong to.
@@ -165,6 +190,40 @@ Return a single JSON object with a single key, "workflows". The value should be 
 - "businessLogic": (Array of Strings) A list of inferred business rules, constraints, or conditions.
 `;
 
+// Schema for WORKFLOW_SYNTHESIS_PROMPT
+export const WORKFLOW_SYNTHESIS_SCHEMA = {
+  type: "object",
+  properties: {
+    workflows: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          inputs: {
+            type: "array",
+            items: { type: "string" }
+          },
+          outputs: {
+            type: "array",
+            items: { type: "string" }
+          },
+          steps: {
+            type: "array",
+            items: { type: "string" }
+          },
+          businessLogic: {
+            type: "array",
+            items: { type: "string" }
+          }
+        },
+        required: ["title", "inputs", "outputs", "steps", "businessLogic"]
+      }
+    }
+  },
+  required: ["workflows"]
+};
+
 export const WORKFLOW_EDIT_PROMPT = `You are an AI assistant helping a user edit a structured workflow document. The user will provide an instruction, and you will return the complete, updated workflow document in the exact same JSON format as the original.
 
 CRITICAL INSTRUCTIONS:
@@ -210,6 +269,18 @@ EXAMPLE:
 }
 `;
 
+// Schema for WORKFLOW_IDENTIFICATION_PROMPT
+export const WORKFLOW_IDENTIFICATION_SCHEMA = {
+  type: "object",
+  properties: {
+    workflow_names: {
+      type: "array",
+      items: { type: "string" }
+    }
+  },
+  required: ["workflow_names"]
+};
+
 export const WORKFLOW_BOUNDARY_PROMPT = `You are a business process analyst. Given a sequence of user events and a specific 'target_workflow_name', your task is to identify the precise start and end points of that workflow.
 
 CRITICAL INSTRUCTIONS:
@@ -235,6 +306,58 @@ EXAMPLE:
 }
 `;
 
+// Schema for WORKFLOW_BOUNDARY_PROMPT
+export const WORKFLOW_BOUNDARY_SCHEMA = {
+  type: "object",
+  properties: {
+    trigger: { type: "string" },
+    terminator: { type: "string" }
+  },
+  required: ["trigger", "terminator"]
+};
+
+// For multiple workflows, we need a different prompt and schema
+export const WORKFLOW_BOUNDARIES_PROMPT = `You are a business process analyst. Given a sequence of user events and multiple workflow names, your task is to identify the precise start and end points for each workflow.
+
+CRITICAL INSTRUCTIONS:
+1. **Analyze Each Workflow:** For each provided workflow name, find its boundaries in the event sequence
+2. **Define Triggers and Terminators:** For each workflow, describe the specific events that mark the beginning and end
+3. **Return Structured JSON:** Your output must ALWAYS be a JSON object with a "workflows" array containing objects with "workflow_name", "trigger", and "terminator"
+4. **Handle Missing Data:** If no event sequence is provided or boundaries are unclear, state 'boundary not clearly defined in data' for both trigger and terminator
+5. **Never Return Text:** Do not return explanatory text or ask for more data - always return the JSON structure
+
+EXAMPLE:
+{
+  "workflows": [
+    {
+      "workflow_name": "Process Vendor Invoice",
+      "trigger": "The workflow begins when an email with 'invoice' in the subject arrives from a known vendor.",
+      "terminator": "The workflow ends when the payment status is marked as 'Scheduled' in the accounting software."
+    }
+  ]
+}
+`;
+
+// Schema for WORKFLOW_BOUNDARIES_PROMPT (multiple workflows)
+export const WORKFLOW_BOUNDARIES_SCHEMA = {
+  type: "object",
+  properties: {
+    workflows: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          workflow_name: { type: "string" },
+          trigger: { type: "string" },
+          terminator: { type: "string" }
+        },
+        required: ["workflow_name", "trigger", "terminator"]
+      }
+    }
+  },
+  required: ["workflows"]
+};
+
 export const PROMPT_SYNTHESIZE_CONTEXT = `You are a senior business process consultant. Your task is to analyze a list of user workflow events and generate a first draft of the user's high-level context.
 
 CRITICAL INSTRUCTIONS:
@@ -255,6 +378,19 @@ EXAMPLE:
   "overall_project_description": "The user is working on a critical data pipeline responsible for ingesting user events for a large-scale analytics platform. The stability of this service is crucial for business intelligence and product development."
 }
 `;
+
+// Schema for PROMPT_SYNTHESIZE_CONTEXT
+export const CONTEXT_SYNTHESIS_SCHEMA = {
+  type: "object",
+  properties: {
+    user_job_role: { type: "string" },
+    project_name: { type: "string" },
+    user_goal_from_recordings: { type: "string" },
+    overall_project_goal: { type: "string" },
+    overall_project_description: { type: "string" }
+  },
+  required: ["user_job_role", "project_name", "user_goal_from_recordings", "overall_project_goal", "overall_project_description"]
+};
 
 export const PROMPT_REFINE_WORKFLOWS_AND_CONTEXT = `You are a senior business process consultant performing an iterative analysis. You will be given the original user events, a draft high-level context, and a draft list of workflow names.
 
@@ -296,6 +432,23 @@ EXAMPLE:
   ]
 }
 `;
+
+// Schema for PROMPT_REFINE_WORKFLOWS_AND_CONTEXT
+export const WORKFLOW_REFINEMENT_SCHEMA = {
+  type: "object",
+  properties: {
+    user_job_role: { type: "string" },
+    project_name: { type: "string" },
+    user_goal_from_recordings: { type: "string" },
+    overall_project_goal: { type: "string" },
+    overall_project_description: { type: "string" },
+    refined_workflow_names: {
+      type: "array",
+      items: { type: "string" }
+    }
+  },
+  required: ["user_job_role", "project_name", "user_goal_from_recordings", "overall_project_goal", "overall_project_description", "refined_workflow_names"]
+};
 
 export const TIMELINE_MAPPING_ANALYSIS_PROMPT = `You are analyzing timeline events to map them to confirmed workflows with detailed hierarchy.
 

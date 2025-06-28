@@ -1,37 +1,16 @@
 import { NextRequest } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import {
   WORKFLOW_IDENTIFICATION_PROMPT,
+  WORKFLOW_IDENTIFICATION_SCHEMA,
   PROMPT_SYNTHESIZE_CONTEXT,
+  CONTEXT_SYNTHESIS_SCHEMA,
   PROMPT_REFINE_WORKFLOWS_AND_CONTEXT,
+  WORKFLOW_REFINEMENT_SCHEMA,
 } from '@/lib/prompts';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
-
-// Helper function to call the generative model and parse the JSON response
-async function callGenerativeModel(prompt: string, context: object, modelName: string) {
-  const model = genAI.getGenerativeModel({ model: modelName });
-  const fullPrompt = `${prompt}\n\nContext:\n${JSON.stringify(context, null, 2)}`;
-  
-  try {
-    const result = await model.generateContent(fullPrompt);
-    const response = await result.response;
-    const text = response.text();
-    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-    if (jsonMatch && jsonMatch[1]) {
-      return JSON.parse(jsonMatch[1]);
-    }
-    // Fallback for when the model doesn't use markdown
-    return JSON.parse(text);
-  } catch (error) {
-    console.error('Error in callGenerativeModel:', error);
-    throw new Error('Failed to parse generative model response');
-  }
-}
-
-// Helper function to create a JSON string for SSE
-function toSSE(data: object): string {
-  return `data: ${JSON.stringify(data)}\n\n`;
+function toSSE(data: object): Uint8Array {
+  return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
 }
 
 export async function POST(req: NextRequest) {
@@ -50,31 +29,48 @@ export async function POST(req: NextRequest) {
       try {
         const context = { analyses, labels };
 
-        // Step 1: Initial Workflow Identification
+        // Step 1: Initial Workflow Identification with structured output
         controller.enqueue(toSSE({ status: 'Identifying initial workflows...', progress: 25 }));
-        const initialIdentification = await callGenerativeModel(WORKFLOW_IDENTIFICATION_PROMPT, context, model);
+        const initialIdentification = await callVertexWithStructuredOutput(
+          WORKFLOW_IDENTIFICATION_PROMPT, 
+          context, 
+          model, 
+          WORKFLOW_IDENTIFICATION_SCHEMA
+        );
         let workflowNames = initialIdentification.workflow_names || [];
         controller.enqueue(toSSE({ status: 'Initial workflows identified.', progress: 33, data: { workflowNames } }));
 
-
-        // Step 2: Initial Context Synthesis (Bottom-Up)
+        // Step 2: Initial Context Synthesis with structured output
         controller.enqueue(toSSE({ status: 'Synthesizing user context...', progress: 50 }));
-        let workflowContext = await callGenerativeModel(PROMPT_SYNTHESIZE_CONTEXT, context, model);
+        let workflowContext = await callVertexWithStructuredOutput(
+          PROMPT_SYNTHESIZE_CONTEXT, 
+          context, 
+          model, 
+          CONTEXT_SYNTHESIS_SCHEMA
+        );
         controller.enqueue(toSSE({ status: 'User context synthesized.', progress: 66, data: { workflowContext } }));
 
-        // Step 3: Iterative Refinement Loop
+        // Step 3: Iterative Refinement Loop with structured output
         controller.enqueue(toSSE({ status: 'Refining workflows with context (2 cycles)...', progress: 75 }));
         for (let i = 0; i < 2; i++) {
-          const refinementResult = await callGenerativeModel(PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, {
-            ...context,
-            workflow_context: workflowContext,
-            workflow_names: workflowNames,
-          }, model);
+          const refinementResult = await callVertexWithStructuredOutput(
+            PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, 
+            {
+              ...context,
+              workflow_context: workflowContext,
+              workflow_names: workflowNames,
+            }, 
+            model, 
+            WORKFLOW_REFINEMENT_SCHEMA
+          );
 
+          // Update context with all fields from refinement
           workflowContext = {
-            user_job_role: refinementResult.user_job_role,
-            project_name: refinementResult.project_name,
-            project_goal: refinementResult.project_goal,
+            user_job_role: refinementResult.user_job_role || workflowContext.user_job_role,
+            project_name: refinementResult.project_name || workflowContext.project_name,
+            user_goal_from_recordings: refinementResult.user_goal_from_recordings || workflowContext.user_goal_from_recordings,
+            overall_project_goal: refinementResult.overall_project_goal || workflowContext.overall_project_goal,
+            overall_project_description: refinementResult.overall_project_description || workflowContext.overall_project_description,
           };
           workflowNames = refinementResult.refined_workflow_names;
           controller.enqueue(toSSE({ status: `Refinement cycle ${i + 1} complete.`, progress: 75 + ((i+1)*10) }));
@@ -97,7 +93,7 @@ export async function POST(req: NextRequest) {
       } finally {
         controller.close();
       }
-    },
+    }
   });
 
   return new Response(stream, {

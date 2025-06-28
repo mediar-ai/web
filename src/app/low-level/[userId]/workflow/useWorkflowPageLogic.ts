@@ -41,7 +41,7 @@ export function useWorkflowPageLogic(userId: string) {
     }
   ]);
   const [userInput, setUserInput] = useState('');
-  const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro');
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [itemRefs, setItemRefs] = useState<Record<string, React.RefObject<HTMLTextAreaElement | null>[]>>({});
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -457,15 +457,35 @@ export function useWorkflowPageLogic(userId: string) {
 
       if (!response.ok) throw new Error('Failed to define workflow boundaries');
       
-      const boundaries = await response.json();
-      setWorkflowBoundaries(boundaries);
+      const boundariesResponse = await response.json();
+      
+      // Transform from API format { workflows: [{ workflow_name, trigger, terminator }] }
+      // to UI format { [workflowName]: { trigger, terminator } }
+      const transformedBoundaries: WorkflowBoundaries = {};
+      if (boundariesResponse.workflows) {
+        boundariesResponse.workflows.forEach((workflow: { workflow_name: string; trigger: string; terminator: string }) => {
+          transformedBoundaries[workflow.workflow_name] = {
+            trigger: workflow.trigger,
+            terminator: workflow.terminator
+          };
+        });
+      } else {
+        // Handle case where API returns object format directly (fallback)
+        Object.keys(boundariesResponse).forEach((workflowName) => {
+          if (boundariesResponse[workflowName] && typeof boundariesResponse[workflowName] === 'object') {
+            transformedBoundaries[workflowName] = boundariesResponse[workflowName];
+          }
+        });
+      }
+      
+      setWorkflowBoundaries(transformedBoundaries);
       setSynthesisStep('boundaries_editing');
       
       const boundariesMessage: Message = { 
         id: `${Date.now()}`, sender: 'ai', text: "I've defined boundaries for your workflows. Please review and approve them above."
       };
       setMessages(prev => [...prev.slice(0, -1), boundariesMessage]);
-      await saveSynthesisSession(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, boundaries, draftWorkflowNames);
+      await saveSynthesisSession(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, transformedBoundaries, draftWorkflowNames);
 
     } catch (error) {
       console.error("Error defining workflow boundaries:", error);

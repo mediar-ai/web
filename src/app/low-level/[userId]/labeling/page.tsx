@@ -358,7 +358,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
 
         if (response.ok) {
             const result = await response.json();
-            const summary = result.event_summary || '';
+            const summary = result.step_summary || '';
             setWorkflowEvents(prev => ({ ...prev, [targetRow.id]: { generated_output: summary, feedback: null, feedback_reason: null } }));
             saveEventAndFeedback(targetRow.id, summary, null, null);
         }
@@ -424,7 +424,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             }).then(async response => {
                 if (response.ok) {
                     const result = await response.json();
-                    const summary = result.event_summary || '';
+                    const summary = result.step_summary || '';
                     
                     setWorkflowEvents(prev => ({ ...prev, [targetRow.id]: { generated_output: summary, feedback: null, feedback_reason: null } }));
                     await saveEventAndFeedback(targetRow.id, summary, null, null);

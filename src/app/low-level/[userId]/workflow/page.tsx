@@ -189,6 +189,8 @@ const StepperItem = memo(({
         (id === 'define-boundaries' && synthesisStep === 'boundaries_editing') ||
         (id === 'synthesize-workflows' && synthesisStep === 'synthesizing');
 
+
+
     useEffect(() => {
         if (shouldBeExpanded) {
             setIsCollapsed(false);
@@ -329,73 +331,72 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
     }
   }, [synthesisStep]);
 
-  if (synthesisStep === 'idle') {
-    return (
-      <div className="w-full p-8 text-center">
-        <Card>
-          <CardContent>
-            {logic.userStats && (
-                <div className="mb-4 text-left">
-                    <h3 className="text-lg font-semibold mb-2">User Stats</h3>
-                    <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div className="bg-muted p-3 rounded-lg">
-                            <p className="text-muted-foreground">Total Events</p>
-                            <p className="font-bold text-2xl">{logic.userStats.totalEvents}</p>
-                        </div>
-                        <div className="bg-muted p-3 rounded-lg">
-                            <p className="text-muted-foreground">Timeline Steps Processed</p>
-                            <p className="font-bold text-2xl">{logic.userStats.stepsProcessed} / {logic.userStats.totalSteps}</p>
-                        </div>
-                        <div className="bg-muted p-3 rounded-lg">
-                            <p className="text-muted-foreground">LLM Labeled / Human Labeled</p>
-                            <p className="font-bold text-2xl">{logic.userStats.labelingTotal} / {logic.userStats.humanLabeled}</p>
-                        </div>
-                    </div>
-                </div>
-            )}
-            <div className="mb-4 text-left">
-              <h3 className="text-lg font-semibold mb-2">Loaded Data Stats</h3>
-              {isFetchingEvents ? (
-                <div className="flex items-center justify-center h-24">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="bg-muted p-3 rounded-lg">
-                    <p className="text-muted-foreground">Timeline Steps Loaded</p>
-                    <p className="font-bold text-2xl">{logic.rawAnalyses.length}</p>
-                  </div>
-                  <div className="bg-muted p-3 rounded-lg">
-                    <p className="text-muted-foreground">LLM Labeled</p>
-                    <p className="font-bold text-2xl">{logic.llmLabels.length}</p>
-                  </div>
-                  {logic.rawAnalyses.length > 0 && (
-                    <>
-                      <div className="bg-muted p-3 rounded-lg">
-                        <p className="text-muted-foreground">From</p>
-                        <p className="font-bold text-xl">{new Date(logic.rawAnalyses[logic.rawAnalyses.length - 1].client_timestamp).toLocaleString()}</p>
-                      </div>
-                      <div className="bg-muted p-3 rounded-lg">
-                        <p className="text-muted-foreground">To</p>
-                        <p className="font-bold text-xl">{new Date(logic.rawAnalyses[0].client_timestamp).toLocaleString()}</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-            <Button size="lg" onClick={logic.runInitialAnalysis} disabled={logic.isLoading || isFetchingEvents}>
-              {logic.isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <RefreshCw className="mr-2 h-5 w-5" />}
-              Start Analysis ({logic.rawAnalyses.length} timeline steps)
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // Show stats above the stepper when in idle state
+  const showStatsCard = synthesisStep === 'idle' && !isFetchingEvents;
 
   return (
     <div className="w-full">
+      {/* Stats Card - shown when in idle state */}
+      {showStatsCard && (
+        <div className="w-full p-8 text-center mb-6">
+          <Card>
+            <CardContent>
+              {logic.userStats && (
+                  <div className="mb-4 text-left">
+                      <h3 className="text-lg font-semibold mb-2">User Stats</h3>
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                          <div className="bg-muted p-3 rounded-lg">
+                              <p className="text-muted-foreground">Total Events</p>
+                              <p className="font-bold text-2xl">{logic.userStats.totalEvents}</p>
+                          </div>
+                          <div className="bg-muted p-3 rounded-lg">
+                              <p className="text-muted-foreground">Timeline Steps Processed</p>
+                              <p className="font-bold text-2xl">{logic.userStats.stepsProcessed} / {logic.userStats.totalSteps}</p>
+                          </div>
+                          <div className="bg-muted p-3 rounded-lg">
+                              <p className="text-muted-foreground">LLM Labeled / Human Labeled</p>
+                              <p className="font-bold text-2xl">{logic.userStats.labelingTotal} / {logic.userStats.humanLabeled}</p>
+                          </div>
+                      </div>
+                  </div>
+              )}
+              <div className="mb-4 text-left">
+                <h3 className="text-lg font-semibold mb-2">Loaded Data Stats</h3>
+                {isFetchingEvents ? (
+                  <div className="flex items-center justify-center h-24">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="bg-muted p-3 rounded-lg">
+                      <p className="text-muted-foreground">Timeline Steps Loaded</p>
+                      <p className="font-bold text-2xl">{logic.rawAnalyses.length}</p>
+                    </div>
+                    <div className="bg-muted p-3 rounded-lg">
+                      <p className="text-muted-foreground">LLM Labeled</p>
+                      <p className="font-bold text-2xl">{logic.llmLabels.length}</p>
+                    </div>
+                    {logic.rawAnalyses.length > 0 && (
+                      <>
+                        <div className="bg-muted p-3 rounded-lg">
+                          <p className="text-muted-foreground">From</p>
+                          <p className="font-bold text-xl">{new Date(logic.rawAnalyses[logic.rawAnalyses.length - 1].client_timestamp).toLocaleString()}</p>
+                        </div>
+                        <div className="bg-muted p-3 rounded-lg">
+                          <p className="text-muted-foreground">To</p>
+                          <p className="font-bold text-xl">{new Date(logic.rawAnalyses[0].client_timestamp).toLocaleString()}</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Collapsible header for completed workflows */}
       {synthesisStep === 'done' && logic.workflows.length > 0 && (
         <div className="mx-auto border-b pb-1 mb-1">
           <div
@@ -409,6 +410,8 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
           </div>
         </div>
       )}
+
+      {/* Always show the stepper unless collapsed */}
       {!isStepperCollapsed && (
         <div className="max-w-4xl mx-auto py-6">
           <div className="space-y-8">
@@ -466,8 +469,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                     value={selectedModel}
                                     onValueChange={setSelectedModel}
                                 >
-                                    <DropdownMenuRadioItem value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</DropdownMenuRadioItem>
-                                    <DropdownMenuRadioItem value="gemini-2.5-pro-preview-06-05">gemini-2.5-pro-preview-06-05</DropdownMenuRadioItem>
+                                    <DropdownMenuRadioItem value="gemini-2.5-flash">gemini-2.5-flash</DropdownMenuRadioItem>
+                                    <DropdownMenuRadioItem value="gemini-2.5-pro">gemini-2.5-pro</DropdownMenuRadioItem>
                                 </DropdownMenuRadioGroup>
                             </DropdownMenuContent>
                         </DropdownMenu>
