@@ -97,7 +97,8 @@ async def test_sync():
     """
     print("🧪 Starting test sync process (10 iterations)...")
     
-    base_url = "https://browser-workflow-capture-app.vercel.app"
+    # Use localhost for testing, production for real runs
+    base_url = "http://localhost:3001"  # Use local dev server for testing
     endpoint = f"{base_url}/api/sync-processed-counts"
     
     async with aiohttp.ClientSession() as session:
@@ -120,6 +121,38 @@ async def test_sync():
                 print(f"💥 Test sync error: {str(e)}")
     
     print(f"🏁 Test sync completed")
+
+def test_sync_local():
+    """
+    Synchronous wrapper for local testing - tests the sync endpoint once
+    """
+    import requests
+    
+    print("🧪 Testing sync endpoint locally...")
+    
+    # Use localhost for testing
+    base_url = "http://localhost:3001"  
+    endpoint = f"{base_url}/api/sync-processed-counts"
+    
+    try:
+        print(f"🔄 [{datetime.now().isoformat()}] Making sync request to {endpoint}")
+        
+        response = requests.post(endpoint, timeout=10)
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"✅ Local sync test successful: {result.get('message', 'OK')}")
+            return True
+        else:
+            print(f"❌ Local sync test failed with status {response.status_code}: {response.text}")
+            return False
+            
+    except requests.exceptions.ConnectionError:
+        print("❌ Connection error - make sure local dev server is running on port 3001")
+        return False
+    except Exception as e:
+        print(f"💥 Local sync test error: {str(e)}")
+        return False
 
 if __name__ == "__main__":
     # For local testing
