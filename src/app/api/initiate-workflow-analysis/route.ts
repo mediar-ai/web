@@ -57,8 +57,8 @@ export async function POST(req: NextRequest) {
             PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, 
             {
               ...context,
-              workflow_context: workflowContext,
-              workflow_names: workflowNames,
+            workflow_context: workflowContext,
+            workflow_names: workflowNames,
             }, 
             model, 
             WORKFLOW_REFINEMENT_SCHEMA

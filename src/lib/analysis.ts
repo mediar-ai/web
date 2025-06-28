@@ -41,19 +41,19 @@ export async function generateMultiActivityEventAnalysis(
     };
 
     try {
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: multiActivityPrompt }] }],
-            generationConfig,
-        });
+    const result = await model.generateContent({ 
+        contents: [{ role: "user", parts: [{ text: multiActivityPrompt }] }], 
+        generationConfig,
+    });
 
-        const response = result.response;
-        if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+    const response = result.response;
+    if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
             let responseText = response.candidates[0].content.parts[0].text;
             // Remove markdown code blocks if present
             responseText = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
             const analysisResult = JSON.parse(responseText);
             return analysisResult;
-        }
+    }
 
         throw new Error('No valid response from model');
     } catch (error) {
@@ -117,9 +117,9 @@ export async function generateUiDiffAnalysis(
             contents: [{ role: "user", parts }],
             generationConfig,
         });
-
-        const response = result.response;
-        if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+    
+    const response = result.response;
+    if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
             let responseText = response.candidates[0].content.parts[0].text;
             // Remove markdown code blocks if present
             responseText = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
@@ -174,13 +174,13 @@ export async function generateMainAnalysis(
     }
 
     try {
-        const result = await model.generateContent({
+    const result = await model.generateContent({
             contents: [{ role: "user", parts }],
             generationConfig,
-        });
+    });
 
-        const response = result.response;
-        if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+    const response = result.response;
+    if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
             let responseText = response.candidates[0].content.parts[0].text;
             // Remove markdown code blocks if present
             responseText = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
