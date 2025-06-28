@@ -61,7 +61,7 @@ import { Input } from '@/components/ui/input';
 import LowLevelLogsTabContent from '@/components/tabs/LowLevelLogsTabContent';
 
 function HomeComponent() {
-  const EVENTS_MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
+  const EVENTS_MODEL_NAME = 'gemini-2.5-flash'; // 🔥 Updated to stable Vertex AI model name
   const MAX_PARALLEL_ANALYSES = 5;
 
   const viewingMode = useViewingMode();

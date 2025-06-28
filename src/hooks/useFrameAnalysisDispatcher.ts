@@ -53,7 +53,7 @@ export const useFrameAnalysisDispatcher = ({
         id: analysisId, 
         type: 'Initial Frame Dump', 
         startTime: Date.now(),
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: 'gemini-2.5-flash', // 🔥 Updated to stable Vertex AI model name
         status: 'running',
         payloadType: 'image',
         payloadSize: analysisPayload.image.length,
@@ -166,7 +166,7 @@ export const useFrameAnalysisDispatcher = ({
         id: analysisId, 
         type: 'UI Difference Analysis', 
         startTime: Date.now(),
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: 'gemini-2.5-flash', // 🔥 Updated to stable Vertex AI model name
         status: 'running',
         payloadType: 'image',
         payloadSize: analysisPayload.image1_dataUrl.length + analysisPayload.image2_dataUrl.length,

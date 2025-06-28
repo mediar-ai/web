@@ -131,7 +131,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [detailSelection, setDetailSelection] = useState<'expand' | 'collapse' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro-preview-06-05');
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro'); // 🔥 Updated to stable Vertex AI model name
   const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
   const [pendingJobCount, setPendingJobCount] = useState(0);
   const [rawLlmInputForDisplay, setRawLlmInputForDisplay] = useState<string | null>(null);
@@ -1236,11 +1236,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                       value={selectedModel}
                       onValueChange={setSelectedModel}
                     >
-                      <DropdownMenuRadioItem value="gemini-2.5-flash-preview-05-20">
-                        gemini-2.5-flash-preview-05-20
+                      <DropdownMenuRadioItem value="gemini-2.5-flash">
+                        gemini-2.5-flash
                       </DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="gemini-2.5-pro-preview-06-05">
-                        gemini-2.5-pro-preview-06-05
+                      <DropdownMenuRadioItem value="gemini-2.5-pro">
+                        gemini-2.5-pro
                       </DropdownMenuRadioItem>
                     </DropdownMenuRadioGroup>
                   </DropdownMenuContent>
