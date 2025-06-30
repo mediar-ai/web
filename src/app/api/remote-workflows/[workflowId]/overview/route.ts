@@ -61,11 +61,11 @@ export async function GET(
 
     // Parse automation sequence to extract step information
     const steps = workflow.automation_sequence?.steps || [];
-    const stepOverview = steps.map((step: any, index: number) => ({
+    const stepOverview = steps.map((step: Record<string, unknown>, index: number) => ({
       step_number: index + 1,
-      action: step.action,
-      description: step.description,
-      estimated_duration: step.estimated_duration || 5 // default 5 seconds per step
+      action: typeof step.action === 'string' ? step.action : 'unknown',
+      description: typeof step.description === 'string' ? step.description : '',
+      estimated_duration: typeof step.estimated_duration === 'number' ? step.estimated_duration : 5
     }));
 
     // Calculate reliability metrics
@@ -74,16 +74,18 @@ export async function GET(
       : null;
 
     const reliabilityScore = workflow.total_executions >= 10 
-      ? successRate >= 90 ? 'excellent' :
-        successRate >= 80 ? 'good' :
-        successRate >= 70 ? 'fair' : 'poor'
+      ? (successRate !== null && successRate >= 90) ? 'excellent' :
+        (successRate !== null && successRate >= 80) ? 'good' :
+        (successRate !== null && successRate >= 70) ? 'fair' : 'poor'
       : 'insufficient_data';
 
     // Extract required applications from steps
     const requiredApps = new Set<string>();
-    steps.forEach((step: any) => {
+    steps.forEach((step: Record<string, unknown>) => {
       if (step.action === 'navigate_browser') requiredApps.add('browser');
-      if (step.action === 'open_application') requiredApps.add(step.application);
+      if (step.action === 'open_application' && typeof step.application === 'string') {
+        requiredApps.add(step.application);
+      }
       // Add more app detection logic as needed
     });
 

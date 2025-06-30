@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import { WORKFLOW_SYNTHESIS_PROMPT } from '@/lib/prompts';
-import { WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/workflow-schemas';
+import { WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/prompts';
 
 interface WorkflowSynthesisInput {
   name: string;
   trigger?: string;
   terminator?: string;
-  events: unknown[]; // Events can have varying structures
+  // No events property - events are now global in context.analyses
 }
 
 // Helper function to process events by extracting useful fields
@@ -15,6 +15,27 @@ function processEvents(events: unknown[]): unknown[] {
   return events.map((event: unknown) => {
     if (event && typeof event === 'object') {
       const eventObj = event as Record<string, unknown>;
+      
+      // Handle new combined structure with analysis object and labels array
+      if (eventObj.analysis && typeof eventObj.analysis === 'object') {
+        const analysis = eventObj.analysis as Record<string, unknown>;
+        return {
+          id: eventObj.id,
+          timestamp: eventObj.timestamp,
+          window_title: eventObj.window_title,
+          step_title: analysis.step_title,
+          step_summary: analysis.step_summary,
+          user_intent: analysis.user_intent,
+          events_that_happened: analysis.events_that_happened,
+          how_content_changed: analysis.how_content_changed,
+          results_if_any: analysis.results_if_any,
+          what_was_clicked: analysis.what_was_clicked,
+          what_was_typed: analysis.what_was_typed,
+          labels: eventObj.labels || []
+        };
+      }
+      
+      // Fallback for legacy structure
       return {
         id: eventObj.id,
         timestamp: eventObj.client_timestamp || eventObj.timestamp,
@@ -35,21 +56,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    console.log('🚀 Using Vertex AI for workflow synthesis with model:', modelName);
-
-    // Check if this is multiple workflows synthesis
+    // Check if this is multiple workflows synthesis  
     const isMultipleWorkflows = context.workflows && Array.isArray(context.workflows);
+    
+    console.log('Synthesizing workflows:', isMultipleWorkflows ? 
+      `${context.workflows.length} workflows with ${context.analyses?.length || 0} global events` :
+      `single workflow with ${context.events?.length || 0} events`);
     
     let prompt: string;
     
     if (isMultipleWorkflows && context.workflows) {
-      // Multiple workflows synthesis
+      // Multiple workflows synthesis - events are now global
+      const processedGlobalEvents = context.analyses ? processEvents(context.analyses) : [];
+      
       const workflowDetails = context.workflows.map((workflow: WorkflowSynthesisInput) => {
-        const processedWorkflowEvents = processEvents(workflow.events);
         return `WORKFLOW: ${workflow.name}
 TRIGGER: ${workflow.trigger || 'Not specified'}
-TERMINATOR: ${workflow.terminator || 'Not specified'}
-EVENTS: ${JSON.stringify(processedWorkflowEvents, null, 2)}`;
+TERMINATOR: ${workflow.terminator || 'Not specified'}`;
       }).join('\n\n---\n\n');
       
       const workflowNames = context.workflows.map((w: WorkflowSynthesisInput) => w.name).join(', ');
@@ -61,7 +84,13 @@ IMPORTANT: You must synthesize workflows for EXACTLY these workflow names (do no
 User's High-Level Context:
 ${JSON.stringify(context.workflowContext, null, 2)}
 
-${workflowDetails}`;
+WORKFLOW DEFINITIONS:
+${workflowDetails}
+
+ALL EVENTS (determine which events belong to which workflows based on the triggers/terminators above):
+${JSON.stringify(processedGlobalEvents, null, 2)}
+
+Note: Each event contains embedded labels where available.`;
     } else {
       // Single workflow synthesis (legacy support)
       const processedSingleEvents = context.events ? processEvents(context.events) : [];

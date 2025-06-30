@@ -14,7 +14,7 @@ function toSSE(data: object): Uint8Array {
 }
 
 export async function POST(req: NextRequest) {
-  const { analyses, labels, model } = await req.json();
+  const { analyses, model } = await req.json();
 
   if (!model) {
     return new Response(JSON.stringify({ error: 'Missing required "model" parameter' }), {
@@ -23,11 +23,13 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  console.log('Initiating workflow analysis with', analyses?.length || 0, 'analyses using model:', model);
+
   // Use a ReadableStream to send events as they happen
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const context = { analyses, labels };
+        const context = { combinedAnalyses: analyses };
 
         // Step 1: Initial Workflow Identification with structured output
         controller.enqueue(toSSE({ status: 'Identifying initial workflows...', progress: 25 }));

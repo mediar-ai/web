@@ -48,6 +48,7 @@ export async function GET(
     const now = new Date();
     const queuedAt = new Date(execution.queued_at);
     const startedAt = execution.started_at ? new Date(execution.started_at) : null;
+    const workflow = Array.isArray(execution.workflow) ? execution.workflow[0] : execution.workflow;
     
     let estimatedCompletion = null;
     let progressPercent = null;
@@ -55,7 +56,7 @@ export async function GET(
 
     if (execution.status === 'running' && startedAt) {
       elapsedSeconds = Math.floor((now.getTime() - startedAt.getTime()) / 1000);
-      const estimatedDuration = execution.workflow?.estimated_duration_seconds || 120;
+      const estimatedDuration = workflow?.estimated_duration_seconds || 120;
       progressPercent = Math.min(Math.floor((elapsedSeconds / estimatedDuration) * 100), 95);
       
       const remainingSeconds = Math.max(estimatedDuration - elapsedSeconds, 5);
@@ -70,7 +71,7 @@ export async function GET(
     const status = {
       execution_id: execution.id,
       workflow_id: execution.workflow_id,
-      workflow_name: execution.workflow?.name,
+      workflow_name: workflow?.name,
       status: execution.status,
       
       // Timing information

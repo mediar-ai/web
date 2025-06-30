@@ -1,265 +1,249 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import {
-  TimelineEventAnalysisResponse,
-  WorkflowMappingAnalysisResult,
-  UnrelatedEventAnalysisResult
-} from '@/lib/timelineMappingTypes';
-import { TIMELINE_MAPPING_ANALYSIS_PROMPT } from '@/lib/prompts';
-import { FlattenedWorkflowAnalysis } from '@/types';
-import { getVertexGenAI } from '@/lib/vertexai';
-import { HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
+import { callVertexWithStructuredOutput } from '@/lib/vertexai';
+import { TIMELINE_MAPPING_ANALYSIS_PROMPT, TIMELINE_MAPPING_ANALYSIS_SCHEMA } from '@/lib/prompts';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
-
-const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThreshold}> = [
-    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-];
-
-// =============================================================================
-// LLM Analysis Function
-// =============================================================================
-
-async function callLLMForAnalysis(prompt: string, modelName: string = 'gemini-2.5-pro'): Promise<{ workflow_mappings?: WorkflowMappingAnalysisResult[]; unrelated_events?: UnrelatedEventAnalysisResult[] }> { // 🔥 Updated to stable Vertex AI model name
-  // 🔥 SWITCHED TO VERTEX AI 🔥
-  console.log('🚀 Using Vertex AI for timeline analysis with model:', modelName);
-  
-  try {
-    const genAI = getVertexGenAI();
-    const model = genAI.getGenerativeModel({
-      model: modelName,
-      safetySettings,
-    });
-
-    const result = await model.generateContent(prompt);
-
-    // 🔥 VERTEX AI RESPONSE HANDLING 🔥
-    const response = result.response;
-    if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        const rawText = response.candidates[0].content.parts[0].text;
-        console.log('📄 Raw Vertex AI response:', rawText.substring(0, 200) + '...');
-        
-        // Handle markdown-formatted JSON (remove ```json and ``` markers)
-        let cleanedText = rawText.trim();
-        if (cleanedText.startsWith('```json')) {
-          cleanedText = cleanedText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-        } else if (cleanedText.startsWith('```')) {
-          cleanedText = cleanedText.replace(/^```\s*/, '').replace(/\s*```$/, '');
-        }
-        
-        try {
-          const parsed = JSON.parse(cleanedText);
-          console.log('✅ Vertex AI timeline analysis successful');
-          return parsed;
-        } catch (parseError) {
-          console.error('❌ Failed to parse Vertex AI response as JSON:', parseError);
-          console.log('🔍 Cleaned text:', cleanedText.substring(0, 300));
-          throw new Error(`Invalid JSON response from Vertex AI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
-        }
-    }
-    
-    console.error("No valid response from Vertex AI model:", response);
-    throw new Error('Failed to get valid response from Vertex AI model');
-  } catch (error) {
-    console.error('Vertex AI Timeline Analysis Error:', error);
-    throw error;
-  }
+interface WorkflowComponentWithId {
+  id: number;
+  type_name: string;
+  type_description: string;
+  conditions: Record<string, unknown>;
 }
 
-// =============================================================================
-// POST: Analyze timeline events and map to workflows
-// =============================================================================
+interface WorkflowInstanceWithId {
+  id: number;
+  instance_name: string;
+  instance_data: Record<string, unknown>;
+}
 
-export async function POST(request: NextRequest) {
+interface WorkflowStepWithId {
+  id: number;
+  step_name: string;
+  substeps: WorkflowSubstepWithId[];
+}
+
+interface WorkflowSubstepWithId {
+  id: number;
+  substep_name: string;
+  inputs: string[];
+  outputs: string[];
+  business_logic: string[];
+}
+
+interface ExistingWorkflow {
+  id: number;
+  title: string;
+  description: string;
+  workflow_types: Array<{
+    type_name: string;
+    type_description: string;
+    conditions: Record<string, unknown>;
+  }>;
+  workflow_instances: Array<{
+    instance_name: string;
+    instance_data: Record<string, unknown>;
+  }>;
+  steps: Array<{
+    step_name: string;
+    substeps: Array<{
+      substep_name: string;
+      inputs: string[];
+      outputs: string[];
+      business_logic: string[];
+    }>;
+  }>;
+  trigger: string;
+  terminator: string;
+  // Enhanced with IDs
+  workflow_components_with_ids?: {
+    workflow_types: WorkflowComponentWithId[];
+    workflow_instances: WorkflowInstanceWithId[];
+    steps: WorkflowStepWithId[];
+  };
+}
+
+interface AnalysisEvent {
+  analysis_id: string;
+  timestamp: string;
+  window_title?: string;
+  step_title?: string;
+  step_summary?: string;
+  user_intent?: string;
+  events_that_happened?: string;
+  how_content_changed?: string;
+  results_if_any?: string;
+  what_was_clicked?: string;
+  what_was_typed?: string;
+  labels?: string[];
+  workflow?: string;
+  step?: string;
+  description?: string;
+}
+
+// Simplified function to process events - no complex timeline mapping needed!
+function processEvents(events: unknown[]): AnalysisEvent[] {
+  const analysisEvents = events.map((event: unknown) => {
+    if (event && typeof event === 'object') {
+      const eventObj = event as Record<string, unknown>;
+      
+      // Handle new combined structure with analysis object and labels array
+      if (eventObj.analysis_data && typeof eventObj.analysis_data === 'object') {
+        const analysis = eventObj.analysis_data as Record<string, unknown>;
+        return {
+          analysis_id: String(eventObj.id), // Use analysis ID directly!
+          timestamp: eventObj.client_timestamp as string,
+          window_title: eventObj.window_title as string,
+          step_title: analysis.step_title as string,
+          step_summary: analysis.step_summary as string,
+          user_intent: analysis.user_intent as string,
+          events_that_happened: analysis.events_that_happened as string,
+          how_content_changed: analysis.how_content_changed as string,
+          results_if_any: analysis.results_if_any as string,
+          what_was_clicked: analysis.what_was_clicked as string,
+          what_was_typed: analysis.what_was_typed as string,
+          labels: (eventObj.selected_labels as string[]) || []
+        } as AnalysisEvent;
+      }
+      
+      // Fallback for legacy structure
+      return {
+        analysis_id: String(eventObj.id),
+        timestamp: (eventObj.client_timestamp || eventObj.timestamp) as string,
+        workflow: (eventObj.workflow as string) || 'Unknown',
+        step: (eventObj.step as string) || 'Unknown',
+        description: (eventObj.description as string) || 'No description'
+      } as AnalysisEvent;
+    }
+    return null;
+  }).filter((event): event is AnalysisEvent => event !== null);
+  
+  return analysisEvents;
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    const { user_id, analyses, labels, existing_workflows, model = 'gemini-pro' } = body;
+    const { model: modelName, user_id, analyses, userContext, existing_workflows } = await req.json();
 
-    if (!user_id || !analyses || analyses.length === 0) {
-      return NextResponse.json({ error: 'user_id and analyses are required' }, { status: 400 });
+    if (!modelName || !user_id || !analyses || !existing_workflows) {
+      return NextResponse.json({ 
+        error: 'Missing required parameters', 
+        details: 'model, user_id, analyses, and existing_workflows are required' 
+      }, { status: 400 });
     }
 
-    if (!existing_workflows || existing_workflows.length === 0) {
-      return NextResponse.json({ error: 'existing_workflows are required' }, { status: 400 });
-    }
+    console.log(`🎯 Analyzing ${analyses.length} analysis events against ${existing_workflows.length} workflows (direct analysis mapping)`);
 
-    // Build the analysis prompt using the raw analyses
-    const analysesContext = analyses.map((analysis: FlattenedWorkflowAnalysis) => ({
-      id: analysis.id,
-      timestamp: analysis.client_timestamp,
-      workflow: analysis.workflow || 'Unknown',
-      step: analysis.step || 'Unknown',
-      description: analysis.description || 'No description',
-      summary: `${analysis.workflow}: ${analysis.step} - ${analysis.description}`.substring(0, 200)
-    }));
-
-    const workflowsContext = existing_workflows.map((workflow: { id: string; title: string; steps: string[]; inputs: string[]; outputs: string[]; business_logic: string[] }) => ({
-      id: workflow.id,
-      title: workflow.title,
-      steps: workflow.steps,
-      inputs: workflow.inputs,
-      outputs: workflow.outputs,
-      business_logic: workflow.business_logic
-    }));
-
-    const analysisPrompt = TIMELINE_MAPPING_ANALYSIS_PROMPT
-      .replace('{{TIMELINE_EVENTS}}', JSON.stringify(analysesContext, null, 2))
-      .replace('{{EXISTING_WORKFLOWS}}', JSON.stringify(workflowsContext, null, 2))
-      .replace('{{LABELS_CONTEXT}}', JSON.stringify(labels, null, 2));
-
-    console.log('Starting timeline event analysis for user:', user_id);
-    console.log('Analyzing', analyses.length, 'analyses against', existing_workflows.length, 'workflows');
-    console.log('With', labels?.length || 0, 'labels');
-
-    // Call LLM for analysis
-    const analysisResult = await callLLMForAnalysis(analysisPrompt, model);
+    // ✅ SIMPLIFIED: Process events directly - no complex timeline mapping!
+    const processedEvents = processEvents(analyses);
     
-    // Validate response structure
-    if (!analysisResult || typeof analysisResult !== 'object') {
-      throw new Error('Invalid LLM response format');
-    }
+    console.log(`✅ Processed ${processedEvents.length} analysis events (no complex ID lookup needed)`);
 
-    // Ensure required fields exist
-    const workflow_mappings: WorkflowMappingAnalysisResult[] = analysisResult.workflow_mappings || [];
-    const unrelated_events: UnrelatedEventAnalysisResult[] = analysisResult.unrelated_events || [];
+    // Format existing workflows for the AI prompt with component IDs
+    const workflowDetails = existing_workflows.map((workflow: ExistingWorkflow) => {
+      // Use component IDs if available, otherwise fall back to names
+      const hasComponentIds = workflow.workflow_components_with_ids;
+      
+      if (hasComponentIds) {
+        const typesInfo = workflow.workflow_components_with_ids!.workflow_types.map(type => 
+          `    • ID: ${type.id}, Name: "${type.type_name}", Description: "${type.type_description}"`
+        ).join('\n');
+        
+        const instancesInfo = workflow.workflow_components_with_ids!.workflow_instances.map(instance =>
+          `    • ID: ${instance.id}, Name: "${instance.instance_name}"`
+        ).join('\n');
+        
+        const stepsInfo = workflow.workflow_components_with_ids!.steps.map(step => {
+          const substepsInfo = step.substeps.map(substep => 
+            `      - ID: ${substep.id}, Name: "${substep.substep_name}"`
+          ).join('\n');
+          return `    • ID: ${step.id}, Name: "${step.step_name}"\n${substepsInfo}`;
+        }).join('\n');
 
-    // Validate workflow mappings
-    const validatedMappings = workflow_mappings.filter(mapping => {
-      return mapping.timeline_event_id && 
-             mapping.workflow_template_id && 
-             mapping.workflow_type_name && 
-             mapping.workflow_instance_name && 
-             mapping.workflow_step &&
-             typeof mapping.confidence_score === 'number';
-    });
+        return `WORKFLOW ID: ${workflow.id}
+TITLE: ${workflow.title}
+DESCRIPTION: ${workflow.description}
+TRIGGER: ${workflow.trigger}
+TERMINATOR: ${workflow.terminator}
 
-    // Validate unrelated events
-    const validatedUnrelated = unrelated_events.filter(unrelated => {
-      return unrelated.timeline_event_id && 
-             unrelated.unrelated_reason && 
-             typeof unrelated.confidence_score === 'number';
-    });
+WORKFLOW TYPES (USE THESE IDs):
+${typesInfo}
 
-    const response: TimelineEventAnalysisResponse = {
-      analysis_timestamp: new Date().toISOString(),
-      model_used: model,
-      workflow_mappings: validatedMappings,
-      unrelated_events: validatedUnrelated,
-      total_events_analyzed: analyses.length,
-      total_workflow_mappings: validatedMappings.length,
-      total_unrelated_events: validatedUnrelated.length
-    };
+WORKFLOW INSTANCES (USE THESE IDs):
+${instancesInfo}
 
-    console.log('Analysis complete:', {
-      total_analyses: analyses.length,
-      workflow_mappings: validatedMappings.length,
-      unrelated_events: validatedUnrelated.length,
-      unmapped_events: analyses.length - validatedMappings.length - validatedUnrelated.length
-    });
+STEPS & SUBSTEPS (USE THESE IDs):
+${stepsInfo}`;
+      } else {
+        // Fallback to text-based format for backwards compatibility
+        const typesInfo = workflow.workflow_types.map(type => 
+          `    • ${type.type_name}: ${type.type_description}`
+        ).join('\n');
+        
+        const instancesInfo = workflow.workflow_instances.map(instance =>
+          `    • ${instance.instance_name}`
+        ).join('\n');
+        
+        const stepsInfo = workflow.steps.map(step => {
+          const substepsInfo = step.substeps.map(substep => 
+            `      - ${substep.substep_name}`
+          ).join('\n');
+          return `    • ${step.step_name}\n${substepsInfo}`;
+        }).join('\n');
 
-    return NextResponse.json(response);
+        return `WORKFLOW ID: ${workflow.id}
+TITLE: ${workflow.title}
+DESCRIPTION: ${workflow.description}
+TRIGGER: ${workflow.trigger}
+TERMINATOR: ${workflow.terminator}
+
+WORKFLOW TYPES:
+${typesInfo}
+
+WORKFLOW INSTANCES:
+${instancesInfo}
+
+STEPS & SUBSTEPS:
+${stepsInfo}`;
+      }
+    }).join('\n\n---\n\n');
+
+    // Build the complete prompt
+    const prompt = `${TIMELINE_MAPPING_ANALYSIS_PROMPT}
+
+User's High-Level Context:
+${JSON.stringify(userContext, null, 2)}
+
+CONFIRMED WORKFLOWS TO MAP TO:
+${workflowDetails}
+
+ANALYSIS EVENTS TO MAP:
+${JSON.stringify(processedEvents, null, 2)}
+
+IMPORTANT REMINDERS:
+- analysis_id MUST be one of the valid IDs from the events above (${processedEvents.map(e => e.analysis_id).join(', ')})
+- workflow_template_id MUST match one of the confirmed workflow IDs above (${existing_workflows.map((w: ExistingWorkflow) => w.id).join(', ')})
+- Use the component IDs provided in the workflow definitions above
+- If no component IDs are available, the mapping will fail - ensure workflows have been properly synthesized with IDs
+- If an event doesn't clearly fit any workflow, mark it as unrelated
+- If an event fits multiple workflows, create separate mappings for each`;
+
+    // Use structured output for timeline mapping analysis
+    const result = await callVertexWithStructuredOutput(
+        prompt,
+        {}, // Empty context since prompt already includes all needed data
+        modelName,
+        TIMELINE_MAPPING_ANALYSIS_SCHEMA
+    );
+
+    console.log('✅ Vertex AI analysis mapping successful');
+    console.log(`📊 Mapped ${result.workflow_mappings?.length || 0} events, ${result.unrelated_events?.length || 0} unrelated`);
+    
+    return NextResponse.json(result);
 
   } catch (error) {
     console.error('Error in POST /api/analyze-timeline-events:', error);
     return NextResponse.json({ 
-      error: 'Analysis failed', 
-      details: error instanceof Error ? error.message : 'Unknown error' 
+        error: 'Analysis mapping failed', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
     }, { status: 500 });
   }
-}
-
-// =============================================================================
-// GET: Get analysis status or trigger analysis for a session
-// =============================================================================
-
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const user_id = searchParams.get('user_id');
-    const session_id = searchParams.get('session_id');
-
-    if (!user_id) {
-      return NextResponse.json({ error: 'user_id is required' }, { status: 400 });
-    }
-
-    // Fetch recent timeline events for this user/session
-    let eventsQuery = supabase
-      .from('low_level_events')
-      .select('id, timestamp, event_type, payload')
-      .eq('user_id', user_id)
-      .order('timestamp', { ascending: false })
-      .limit(100);
-
-    if (session_id) {
-      eventsQuery = eventsQuery.eq('session_id', session_id);
-    }
-
-    const { data: events, error: eventsError } = await eventsQuery;
-
-    if (eventsError) {
-      return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
-    }
-
-    // Fetch existing workflows for this user
-    const { data: workflows, error: workflowsError } = await supabase
-      .from('low_level_workflows')
-      .select('id, title, steps, inputs, outputs, business_logic')
-      .eq('user_id', user_id);
-
-    if (workflowsError) {
-      return NextResponse.json({ error: 'Failed to fetch workflows' }, { status: 500 });
-    }
-
-    // Check how many events already have mappings
-    if (events && events.length > 0) {
-      const eventIds = events.map(e => e.id);
-      
-      const { data: mappings } = await supabase
-        .from('timeline_event_workflow_mappings')
-        .select('timeline_event_id')
-        .in('timeline_event_id', eventIds);
-
-      const { data: unrelated } = await supabase
-        .from('timeline_event_unrelated')
-        .select('timeline_event_id')
-        .in('timeline_event_id', eventIds);
-
-      const mappedEventIds = new Set([
-        ...(mappings || []).map(m => m.timeline_event_id),
-        ...(unrelated || []).map(u => u.timeline_event_id)
-      ]);
-
-      const unmappedEvents = events.filter(e => !mappedEventIds.has(e.id));
-
-      return NextResponse.json({
-        ready_for_analysis: true,
-        total_events: events.length,
-        total_workflows: workflows?.length || 0,
-        mapped_events: mappedEventIds.size,
-        unmapped_events: unmappedEvents.length,
-        events: unmappedEvents.slice(0, 10), // Return sample for preview
-        workflows: workflows || []
-      });
-    }
-
-    return NextResponse.json({
-      ready_for_analysis: false,
-      total_events: 0,
-      total_workflows: workflows?.length || 0,
-      mapped_events: 0,
-      unmapped_events: 0,
-      events: [],
-      workflows: workflows || []
-    });
-
-  } catch (error) {
-    console.error('Error in GET /api/analyze-timeline-events:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+} 

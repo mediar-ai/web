@@ -6,7 +6,7 @@
 interface ModalExecutionResult {
   success: boolean;
   execution_id: number;
-  results?: any;
+  results?: Record<string, unknown>;
   error?: string;
   execution_logs?: string[];
   screenshots?: Array<{
@@ -30,8 +30,8 @@ interface QueueStatus {
  */
 export async function triggerModalExecution(
   executionId: number,
-  workflowDefinition: any,
-  executionParams: any
+  workflowDefinition: Record<string, unknown>,
+  executionParams: Record<string, unknown>
 ): Promise<{ success: boolean; modalCallId?: string; error?: string }> {
   try {
     const modalApiUrl = process.env.MODAL_API_URL || 'https://api.modal.com';
@@ -120,7 +120,6 @@ export async function getModalQueueStatus(): Promise<QueueStatus> {
  */
 export async function cancelModalExecution(modalCallId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const modalApiUrl = process.env.MODAL_API_URL || 'https://api.modal.com';
     const modalToken = process.env.MODAL_TOKEN;
     
     if (!modalToken) {
@@ -145,11 +144,13 @@ export async function cancelModalExecution(modalCallId: string): Promise<{ succe
 /**
  * Mock Modal execution for development/testing
  */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 export async function mockModalExecution(
   executionId: number,
-  workflowDefinition: any,
-  executionParams: any
+  _workflowDefinition: Record<string, unknown>,
+  _executionParams: Record<string, unknown>
 ): Promise<ModalExecutionResult> {
+/* eslint-enable @typescript-eslint/no-unused-vars */
   // Simulate execution delay
   await new Promise(resolve => setTimeout(resolve, 5000));
   

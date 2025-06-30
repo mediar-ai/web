@@ -110,6 +110,7 @@ export interface FlattenedWorkflowAnalysis {
   // Additional metadata
   schema_version?: string;
   raw_llm_output?: LLMStructuredOutput;
+  human_label?: string | null;
 }
 
 export interface InitialFrameDumpAnalysis {

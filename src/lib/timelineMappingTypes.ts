@@ -75,8 +75,29 @@ export interface TimelineEventUnrelated {
 // Enhanced timeline event with workflow mapping data
 // =============================================================================
 
+export interface TimelineEventAnnotation {
+  id: number;
+  timeline_event_id: number;
+  is_workflow_related: boolean;
+  workflow_id?: number | null;
+  workflow_type_name?: string | null;
+  workflow_instance_name?: string | null;
+  step_name?: string | null;
+  substep_name?: string | null;
+  inputs?: string[] | null;
+  outputs?: string[] | null;
+  business_logic?: string[] | null;
+  unrelated_reason?: string | null;
+  confidence_score?: number | null;
+  model_used?: string | null;
+  user_id: string;
+  session_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EnhancedTimelineEvent {
-  // Original timeline event data
+  // Original timeline event data from low_level_events
   id: number;
   user_id: string;
   timestamp: string;
@@ -84,13 +105,11 @@ export interface EnhancedTimelineEvent {
   payload: Record<string, unknown>;
   session_id?: string;
   
-  // Enhanced workflow mapping data
-  workflow_mappings: TimelineEventWorkflowMappingWithDetails[];
-  unrelated_info?: TimelineEventUnrelated;
+  // A single, comprehensive annotation object for this event
+  annotation: TimelineEventAnnotation | null;
   
-  // Computed fields
+  // Computed fields (can be derived from annotation)
   is_workflow_related: boolean;
-  total_mappings: number;
   confidence_score?: number;
 }
 
@@ -140,6 +159,7 @@ export interface TimelineEventAnalysisRequest {
 export interface WorkflowMappingAnalysisResult {
   timeline_event_id: number;
   workflow_template_id: number;
+  workflow_template_title: string;
   workflow_type_name: string;
   workflow_type_description?: string;
   workflow_instance_name: string;
@@ -195,14 +215,12 @@ export interface SaveTimelineEventMappingsRequest {
   user_id: string;
   session_id?: string;
   analysis_result: TimelineEventAnalysisResponse;
+  workflow_id_map: { [key: string]: number };
 }
 
 export interface SaveTimelineEventMappingsResponse {
   success: boolean;
-  workflow_types_created: number;
-  workflow_instances_created: number;
-  timeline_mappings_created: number;
-  unrelated_events_created: number;
+  annotations_created: number;
   errors?: string[];
 }
 
