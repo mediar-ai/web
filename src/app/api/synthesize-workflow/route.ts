@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import { WORKFLOW_SYNTHESIS_PROMPT } from '@/lib/prompts';
-import { WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/prompts';
+import { WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/workflow-schemas';
 
 interface WorkflowSynthesisInput {
   name: string;

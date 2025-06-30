@@ -122,14 +122,14 @@ const StepperItem = memo(({
         const completedStates: Record<StepId, SynthesisStep[]> = {
   'define-context': ['context_editing', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
   'select-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
-  'define-boundaries': ['synthesizing', 'done'],
+  'define-boundaries': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
   'synthesize-workflows': ['done'],
 };
 
         const enabledStates = {
             'define-context': !isFetchingEvents,
             'select-workflows': synthesisStep === 'context_editing',
-            'define-boundaries': ['workflow_editing', 'defining_boundaries', 'boundaries_editing'].includes(synthesisStep) && identifiedWorkflowNames.length > 0,
+            'define-boundaries': synthesisStep === 'workflow_editing' && identifiedWorkflowNames.length > 0,
         };
         
         // Active states should only be true when actual processing is happening (for spinning animation)
@@ -438,19 +438,18 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
     const { userId } = use(params);
     const logic: WorkflowPageLogicType = useWorkflowPageLogic(userId);
 
+    // Destructure only the state and functions needed for rendering the page
     const {
-        view, setView, workflows, setWorkflows, activeWorkflowIndex, setActiveWorkflowIndex,
-        messages, setMessages, userInput, setUserInput, selectedModel, setSelectedModel,
-        identifiedWorkflowNames, workflowContext, collapsedSections, toggleSection,
-        isAnalyzingEvents, isLoading, synthesisStep, setSynthesisStep,
-        rawAnalyses, workflowBoundaries,
-        processAllWorkflows, proceedToSynthesis, handleSendMessage, handleListChange,
-        draftWorkflowNames, setDraftWorkflowNames, confirmBoundaries,
-        elapsedTime, isFetchingEvents,
-        // New timeline mapping state
-        timelineMappingMode, setTimelineMappingMode, timelineEvents,
-        // Timeline view mode functions
-        convertTimelineMappingsToWorkflows, updateCanvasWithTimelineMappings
+        workflows,
+        activeWorkflowIndex,
+        setActiveWorkflowIndex,
+        messages,
+        userInput,
+        setUserInput,
+        selectedModel,
+        synthesisStep,
+        isFetchingEvents,
+        handleSendMessage,
     } = logic;
 
     return (
@@ -468,7 +467,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                             <DropdownMenuContent>
                                 <DropdownMenuRadioGroup
                                     value={selectedModel}
-                                    onValueChange={setSelectedModel}
+                                    onValueChange={logic.setSelectedModel}
                                 >
                                     <DropdownMenuRadioItem value="gemini-2.5-flash">gemini-2.5-flash</DropdownMenuRadioItem>
                                     <DropdownMenuRadioItem value="gemini-2.5-pro">gemini-2.5-pro</DropdownMenuRadioItem>
@@ -683,246 +682,109 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                         {workflows.map((wf, index) => (
                                             <TabsTrigger key={index} value={String(index)} className="group relative">
                                                 <span className="truncate">{wf.title || 'Untitled'}</span>
-                                                 <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <div className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "absolute top-1/2 right-1 -translate-y-1/2 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity")}>
-                                                            <X className="h-3 w-3" />
-                                                        </div>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Delete Workflow</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                    Are you sure you want to delete the current workflow &ldquo;{wf.title || 'Untitled'}&rdquo;? This action cannot be undone.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => logic.handleDeleteWorkflow(wf.id)}>Delete</AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
                                             </TabsTrigger>
                                         ))}
                                     </TabsList>
                                     
                                     {/* Active Workflow Content */}
-                                    {logic.activeContent && (
+                                    {logic.workflows[logic.activeWorkflowIndex] && (
                                         <div className="border rounded-lg p-6 bg-background mt-4">
                                             <div className="mb-6">
+                                                {/* The title remains editable at the top level */}
                                                 <Textarea 
-                                                    value={logic.activeContent.title || 'Untitled Workflow'}
-                                                    onChange={(e) => logic.handleTitleChange(e.target.value)}
+                                                    value={logic.workflows[logic.activeWorkflowIndex].title || 'Untitled Workflow'}
+                                                    readOnly // Title is not editable in this view
                                                     className="text-2xl font-bold border-0 p-0 h-auto focus-visible:ring-0 resize-none bg-transparent"
                                                 />
+                                                {/* Display the new description field */}
+                                                <p className="text-sm text-muted-foreground mt-1">{logic.workflows[logic.activeWorkflowIndex].description}</p>
                                             </div>
                                             
+                                            {/* New Rendering for Detailed Structure */}
                                             <div className="space-y-8">
-                                                {/* Timeline Event Details (when in timeline mode) */}
-                                                {logic.timelineMappingMode && logic.timelineEvents?.length > 0 && (
-                                                    <div className="border rounded-lg p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30">
-                                                        <h3 className="text-lg font-semibold flex items-center mb-4">
-                                                            🕒 Timeline Event Mapping
-                                                            <span className="ml-2 text-sm text-muted-foreground">
-                                                                ({logic.timelineEvents.filter(e => e.is_workflow_related).length} workflow events)
-                                                            </span>
-                                                        </h3>
-                                                        
-                                                        <div className="space-y-3 max-h-60 overflow-y-auto">
-                                                            {logic.timelineEvents
-                                                                .filter(event => event.is_workflow_related)
-                                                                .slice(0, 10) // Show first 10 events
-                                                                .map((event, index) => {
-                                                                    const firstMapping = event.workflow_mappings?.[0];
-                                                                    return (
-                                                                        <div key={event.id} className="border rounded p-3 bg-white dark:bg-gray-900/50">
-                                                                            <div className="flex items-start justify-between mb-2">
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200">
-                                                                                        Step {firstMapping?.workflow_step || 'N/A'}
-                                                                                    </span>
-                                                                                    {event.confidence_score && (
-                                                                                        <span className={`text-xs px-2 py-1 rounded ${
-                                                                                            event.confidence_score > 0.8 ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200' :
-                                                                                            event.confidence_score > 0.6 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200' :
-                                                                                            'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200'
-                                                                                        }`}>
-                                                                                            {Math.round(event.confidence_score * 100)}% confident
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
-                                                                                <span className="text-xs text-muted-foreground">
-                                                                                    {new Date(event.timestamp).toLocaleTimeString()}
-                                                                                </span>
-                                                                            </div>
-                                                                            
-                                                                            <div className="text-sm mb-2">
-                                                                                <strong>Event:</strong> {event.event_type} 
-                                                                                {event.payload?.app_name && typeof event.payload.app_name === 'string' ? ` - ${event.payload.app_name}` : ''}
-                                                                                {event.payload?.window_name && typeof event.payload.window_name === 'string' ? ` - ${event.payload.window_name}` : ''}
-                                                                            </div>
-                                                                            
-                                                                            {firstMapping?.event_inputs && firstMapping.event_inputs.length > 0 && (
-                                                                                <div className="text-xs text-muted-foreground mb-1">
-                                                                                    <strong>Inputs:</strong> {firstMapping.event_inputs.join(', ')}
-                                                                                </div>
-                                                                            )}
-                                                                            
-                                                                            {firstMapping?.event_outputs && firstMapping.event_outputs.length > 0 && (
-                                                                                <div className="text-xs text-muted-foreground mb-1">
-                                                                                    <strong>Outputs:</strong> {firstMapping.event_outputs.join(', ')}
-                                                                                </div>
-                                                                            )}
-                                                                            
-                                                                            {firstMapping?.business_logics && firstMapping.business_logics.length > 0 && (
-                                                                                <div className="text-xs text-blue-600 dark:text-blue-400">
-                                                                                    <strong>Logic:</strong> {firstMapping.business_logics[0]}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            
-                                                            {logic.timelineEvents.filter(e => e.is_workflow_related).length > 10 && (
-                                                                <div className="text-center text-sm text-muted-foreground">
-                                                                    ... and {logic.timelineEvents.filter(e => e.is_workflow_related).length - 10} more events
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                
-                                                {/* Inputs */}
-                                                <div>
-                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => logic.toggleSection('inputs')}>
-                                                        {logic.collapsedSections.inputs ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-                                                        Inputs
-                                                    </h3>
-                                                    {!logic.collapsedSections.inputs && (
-                                                        <div className="space-y-2">
-                                                            <ul className="list-disc list-outside pl-5 space-y-1">
-                                                                {(logic.activeContent.inputs || []).map((item, index) => {
-                                                                    const fieldKey = `${activeWorkflowIndex}-inputs`;
-                                                                    const itemRef = logic.itemRefs[fieldKey]?.[index];
-                                                                    return (
-                                                                        <li key={index}>
-                                                                            <EditableListItem 
-                                                                                item={item} 
-                                                                                itemRef={itemRef}
-                                                                                onChange={(v) => logic.handleListChange('inputs', index, v)} 
-                                                                                onRemove={() => logic.handleRemoveItem('inputs', index)}
-                                                                                onEnter={() => logic.handleAddItem('inputs', index)}
-                                                                                onBackspaceEmpty={() => logic.handleRemoveItem('inputs', index)}
-                                                                            />
-                                                                        </li>
-                                                                    )
-                                                                })}
-                                                            </ul>
-                                                            <Button variant="ghost" size="sm" onClick={() => logic.handleAddItem('inputs', (logic.activeContent.inputs || []).length - 1)} className="text-muted-foreground">
-                                                                <PlusCircle className="h-4 w-4 mr-2" />Add Input
-                                                            </Button>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                               {/* Workflow Types and Instances Side-by-Side */}
+                                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                   <div>
+                                                       <h3 className="text-lg font-semibold flex items-center mb-3">
+                                                           <ChevronDown className="h-4 w-4 mr-1" />
+                                                           Workflow Types
+                                                       </h3>
+                                                       <div className="space-y-2">
+                                                           {(logic.workflows[logic.activeWorkflowIndex].workflow_types || []).map((type, typeIndex) => (
+                                                               <div key={typeIndex} className="p-3 bg-muted/50 rounded-lg border text-sm">
+                                                                   <p className="font-semibold">{type.type_name}</p>
+                                                                   <p className="text-muted-foreground">{type.type_description}</p>
+                                                                   <pre className="mt-2 p-2 bg-background rounded text-xs whitespace-pre-wrap">
+                                                                   {JSON.stringify(type.conditions, null, 2)}
+                                                                   </pre>
+                                                               </div>
+                                                           ))}
+                                                       </div>
+                                                   </div>
+                                                   <div>
+                                                       <h3 className="text-lg font-semibold flex items-center mb-3">
+                                                           <ChevronDown className="h-4 w-4 mr-1" />
+                                                           Workflow Instances
+                                                       </h3>
+                                                       <div className="space-y-2">
+                                                           {(logic.workflows[logic.activeWorkflowIndex].workflow_instances || []).map((instance, instIndex) => (
+                                                               <div key={instIndex} className="p-3 bg-muted/50 rounded-lg border text-sm">
+                                                                   <p className="font-semibold">{instance.instance_name}</p>
+                                                                   <pre className="mt-2 p-2 bg-background rounded text-xs whitespace-pre-wrap">
+                                                                   {JSON.stringify(instance.instance_data, null, 2)}
+                                                                   </pre>
+                                                               </div>
+                                                           ))}
+                                                       </div>
+                                                   </div>
+                                               </div>
 
-                                                {/* Outputs */}
-                                                <div>
-                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => logic.toggleSection('outputs')}>
-                                                        {logic.collapsedSections.outputs ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-                                                        Outputs
-                                                    </h3>
-                                                    {!logic.collapsedSections.outputs && (
-                                                        <div className="space-y-2">
-                                                            <ul className="list-disc list-outside pl-5 space-y-1">
-                                                                {(logic.activeContent.outputs || []).map((item, index) => {
-                                                                    const fieldKey = `${activeWorkflowIndex}-outputs`;
-                                                                    const itemRef = logic.itemRefs[fieldKey]?.[index];
-                                                                    return (
-                                                                        <li key={index}>
-                                                                            <EditableListItem 
-                                                                                item={item} 
-                                                                                itemRef={itemRef}
-                                                                                onChange={(v) => logic.handleListChange('outputs', index, v)} 
-                                                                                onRemove={() => logic.handleRemoveItem('outputs', index)}
-                                                                                onEnter={() => logic.handleAddItem('outputs', index)}
-                                                                                onBackspaceEmpty={() => logic.handleRemoveItem('outputs', index)}
-                                                                            />
-                                                                        </li>
-                                                                    )
-                                                                })}
-                                                            </ul>
-                                                            <Button variant="ghost" size="sm" onClick={() => logic.handleAddItem('outputs', (logic.activeContent.outputs || []).length - 1)} className="text-muted-foreground">
-                                                                <PlusCircle className="h-4 w-4 mr-2" />Add Output
-                                                            </Button>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Steps */}
-                                                <div>
-                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => logic.toggleSection('steps')}>
-                                                        {logic.collapsedSections.steps ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-                                                        Steps
-                                                    </h3>
-                                                    {!logic.collapsedSections.steps && (
-                                                        <div className="space-y-2">
-                                                            <ol className="list-decimal list-outside pl-5 space-y-1">
-                                                                {(logic.activeContent.steps || []).map((item, index) => {
-                                                                    const fieldKey = `${activeWorkflowIndex}-steps`;
-                                                                    const itemRef = logic.itemRefs[fieldKey]?.[index];
-                                                                    return (
-                                                                        <li key={index}>
-                                                                            <EditableListItem 
-                                                                                item={item} 
-                                                                                itemRef={itemRef}
-                                                                                onChange={(v) => logic.handleListChange('steps', index, v)} 
-                                                                                onRemove={() => logic.handleRemoveItem('steps', index)}
-                                                                                onEnter={() => logic.handleAddItem('steps', index)}
-                                                                                onBackspaceEmpty={() => logic.handleRemoveItem('steps', index)}
-                                                                            />
-                                                                        </li>
-                                                                    )
-                                                                })}
-                                                            </ol>
-                                                            <Button variant="ghost" size="sm" onClick={() => logic.handleAddItem('steps', (logic.activeContent.steps || []).length - 1)} className="text-muted-foreground">
-                                                                <PlusCircle className="h-4 w-4 mr-2" />Add Step
-                                                            </Button>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Business Logic */}
-                                                <div>
-                                                    <h3 className="text-lg font-semibold flex items-center cursor-pointer mb-3" onClick={() => logic.toggleSection('businessLogic')}>
-                                                        {logic.collapsedSections.businessLogic ? <ChevronRight className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-                                                        Business Logic
-                                                    </h3>
-                                                    {!logic.collapsedSections.businessLogic && (
-                                                        <div className="space-y-2">
-                                                            <ul className="list-disc list-outside pl-5 space-y-1">
-                                                                {(logic.activeContent.businessLogic || []).map((item, index) => {
-                                                                    const fieldKey = `${activeWorkflowIndex}-businessLogic`;
-                                                                    const itemRef = logic.itemRefs[fieldKey]?.[index];
-                                                                    return (
-                                                                        <li key={index}>
-                                                                            <EditableListItem 
-                                                                                item={item} 
-                                                                                itemRef={itemRef}
-                                                                                onChange={(v) => logic.handleListChange('businessLogic', index, v)} 
-                                                                                onRemove={() => logic.handleRemoveItem('businessLogic', index)}
-                                                                                onEnter={() => logic.handleAddItem('businessLogic', index)}
-                                                                                onBackspaceEmpty={() => logic.handleRemoveItem('businessLogic', index)}
-                                                                            />
-                                                                        </li>
-                                                                    )
-                                                                })}
-                                                            </ul>
-                                                            <Button variant="ghost" size="sm" onClick={() => logic.handleAddItem('businessLogic', (logic.activeContent.businessLogic || []).length - 1)} className="text-muted-foreground">
-                                                                <PlusCircle className="h-4 w-4 mr-2" />Add Item
-                                                            </Button>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                               {/* Steps and Substeps Section */}
+                                               <div>
+                                                   <h3 className="text-lg font-semibold flex items-center mb-3">
+                                                       <ChevronDown className="h-4 w-4 mr-1" />
+                                                       Steps
+                                                   </h3>
+                                                    <div className="space-y-4">
+                                                       {(logic.workflows[logic.activeWorkflowIndex].steps || []).map((step, stepIndex) => (
+                                                           <div key={stepIndex} className="p-4 border-2 rounded-lg bg-muted/20">
+                                                               <p className="font-semibold text-lg mb-3 flex items-center">
+                                                                   <span className="text-sm font-bold bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center mr-3">{stepIndex + 1}</span>
+                                                                   {step.step_name}
+                                                               </p>
+                                                               <div className="pl-9 space-y-4">
+                                                                   {step.substeps.map((substep, subIndex) => (
+                                                                   <div key={subIndex} className="relative pl-6">
+                                                                       <div className="absolute left-0 top-2 h-full border-l-2 border-dashed"></div>
+                                                                       <div className="absolute left-0 top-2 w-2 h-2 rounded-full bg-primary -translate-x-1/2"></div>
+                                                                       <p className="font-medium text-md">{substep.substep_name}</p>
+                                                                       <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                                                           <div>
+                                                                               <span className="font-semibold text-gray-500">Inputs:</span>
+                                                                               <ul className="list-disc pl-5 mt-1 space-y-1">
+                                                                                   {substep.inputs.map((input, i) => <li key={i} className="text-muted-foreground">{input}</li>)}
+                                                                               </ul>
+                                                                           </div>
+                                                                           <div>
+                                                                               <span className="font-semibold text-gray-500">Outputs:</span>
+                                                                               <ul className="list-disc pl-5 mt-1 space-y-1">
+                                                                                   {substep.outputs.map((output, i) => <li key={i} className="text-muted-foreground">{output}</li>)}
+                                                                               </ul>
+                                                                           </div>
+                                                                           <div>
+                                                                               <span className="font-semibold text-gray-500">Business Logic:</span>
+                                                                               <ul className="list-disc pl-5 mt-1 space-y-1">
+                                                                                   {substep.business_logic.map((logic, i) => <li key={i} className="text-muted-foreground">{logic}</li>)}
+                                                                               </ul>
+                                                                           </div>
+                                                                       </div>
+                                                                   </div>
+                                                                   ))}
+                                                               </div>
+                                                           </div>
+                                                       ))}
+                                                   </div>
+                                               </div>
                                             </div>
                                         </div>
                                     )}
