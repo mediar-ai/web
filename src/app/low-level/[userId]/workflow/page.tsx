@@ -753,7 +753,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                                                    {step.step_name}
                                                                </p>
                                                                <div className="pl-9 space-y-4">
-                                                                   {step.substeps.map((substep, subIndex) => (
+                                                                   {(step.substeps || []).map((substep, subIndex) => (
                                                                    <div key={subIndex} className="relative pl-6">
                                                                        <div className="absolute left-0 top-2 h-full border-l-2 border-dashed"></div>
                                                                        <div className="absolute left-0 top-2 w-2 h-2 rounded-full bg-primary -translate-x-1/2"></div>
