@@ -64,7 +64,8 @@ export async function GET(
 
     // Parse and structure results
     const results = execution.results || {};
-    const expectedOutputs = execution.workflow?.expected_outputs || {};
+    const workflow = Array.isArray(execution.workflow) ? execution.workflow[0] : execution.workflow;
+    const expectedOutputs = workflow?.expected_outputs || {};
 
     // Validate results against expected schema
     const validationResult = validateResults(results, expectedOutputs);
@@ -72,7 +73,7 @@ export async function GET(
     const response = {
       execution_id: execution.id,
       workflow_id: execution.workflow_id,
-      workflow_name: execution.workflow?.name,
+      workflow_name: workflow?.name,
       status: execution.status,
       
       // Timing information
@@ -118,16 +119,16 @@ export async function GET(
 }
 
 // Validate results against expected output schema
-function validateResults(results: any, expectedSchema: any): { valid: boolean; warnings: string[]; summary: { [key: string]: any } } {
+function validateResults(results: Record<string, unknown>, expectedSchema: Record<string, unknown>): { valid: boolean; warnings: string[]; summary: Record<string, unknown> } {
   const warnings: string[] = [];
-  const summary: { [key: string]: any } = {};
+  const summary: Record<string, unknown> = {};
 
   if (!expectedSchema || Object.keys(expectedSchema).length === 0) {
     return { valid: true, warnings: ['No output schema defined'], summary: {} };
   }
 
   for (const [key, definition] of Object.entries(expectedSchema)) {
-    const def = definition as any;
+    const def = definition as Record<string, unknown>;
     const value = results[key];
 
     summary[key] = {
@@ -159,11 +160,12 @@ function validateResults(results: any, expectedSchema: any): { valid: boolean; w
 
       // Array length validation
       if (def.type === 'array' && Array.isArray(value)) {
-        summary[key].count = value.length;
-        if (def.min_items && value.length < def.min_items) {
+        const summaryObj = summary[key] as Record<string, unknown>;
+        summaryObj.count = value.length;
+        if (typeof def.min_items === 'number' && value.length < def.min_items) {
           warnings.push(`Output '${key}' has ${value.length} items but expected at least ${def.min_items}`);
         }
-        if (def.max_items && value.length > def.max_items) {
+        if (typeof def.max_items === 'number' && value.length > def.max_items) {
           warnings.push(`Output '${key}' has ${value.length} items but expected at most ${def.max_items}`);
         }
       }

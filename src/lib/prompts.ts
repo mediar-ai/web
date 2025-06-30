@@ -1,3 +1,13 @@
+// Schema types extracted as plain objects to avoid bundling @google-cloud/vertexai for client-side
+// Valid JSON Schema types: 'object' | 'array' | 'string' | 'number' | 'boolean'
+type FunctionDeclarationSchema = {
+  type: 'object' | 'array' | 'string' | 'number' | 'boolean';
+  properties?: Record<string, unknown>;
+  items?: FunctionDeclarationSchema;
+  description?: string;
+  required?: string[];
+};
+
 export const TEXT_EXTRACTION_PROMPT = `Extract and organize all visible text from screenshots. Focus on:
 
 text_extraction: [Extract ALL visible text including buttons, labels, headings, body text, form fields, menu items, error messages, tooltips, navigation elements]
@@ -182,6 +192,114 @@ Please adhere to the following rules:
 8.  **Do Not Hallucinate**: Base all synthesized information directly on the provided context and event data. Do not invent steps, inputs, or outputs that are not supported by the evidence.
 `;
 
+export const WORKFLOW_SYNTHESIS_SCHEMA: FunctionDeclarationSchema = {
+  type: 'object',
+  properties: {
+    workflows: {
+      type: 'array',
+      description: 'An array of synthesized workflows.',
+      items: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'The high-level, descriptive name of the workflow.',
+          },
+          description: {
+            type: 'string',
+            description: 'A brief, one-sentence summary of what this workflow accomplishes.',
+          },
+          workflow_types: {
+            type: 'array',
+            description: 'Different variations or classifications of this workflow.',
+            items: {
+              type: 'object',
+              properties: {
+                type_name: {
+                  type: 'string',
+                  description: 'The name of the workflow variation, e.g., "Standard Path" or "Exception Case".'
+                },
+                type_description: {
+                  type: 'string',
+                  description: 'A brief description of what defines this workflow type.'
+                },
+                conditions: {
+                  type: 'object',
+                  description: 'A set of key-value pairs describing the conditions that trigger this workflow type.'
+                }
+              },
+              required: ['type_name', 'type_description', 'conditions']
+            }
+          },
+          workflow_instances: {
+            type: 'array',
+            description: 'Specific, concrete examples of this workflow being executed, derived from the event log.',
+            items: {
+              type: 'object',
+              properties: {
+                instance_name: {
+                  type: 'string',
+                  description: 'A descriptive name for the specific instance, e.g., "Order #12345" or "John Doe - Initial Onboarding".'
+                },
+                instance_data: {
+                  type: 'object',
+                  description: 'A set of key-value pairs with structured data about this specific instance.'
+                }
+              },
+              required: ['instance_name', 'instance_data']
+            }
+          },
+          steps: {
+            type: 'array',
+            description: 'The sequence of high-level steps that make up the entire workflow.',
+            items: {
+              type: 'object',
+              properties: {
+                step_name: {
+                  type: 'string',
+                  description: 'The descriptive name of the high-level step.',
+                },
+                substeps: {
+                  type: 'array',
+                  description: 'The granular, detailed sub-steps that compose this high-level step.',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      substep_name: {
+                        type: 'string',
+                        description: 'The descriptive name of the granular action or sub-step.'
+                      },
+                      inputs: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'The specific inputs, data, or user actions that trigger this sub-step.',
+                      },
+                      outputs: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'The specific outputs, results, or system changes that occur after this sub-step.',
+                      },
+                      business_logic: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'The rules, conditions, or logic governing this sub-step.',
+                      },
+                    },
+                    required: ['substep_name', 'inputs', 'outputs', 'business_logic'],
+                  },
+                },
+              },
+              required: ['step_name', 'substeps'],
+            },
+          },
+        },
+        required: ['title', 'description', 'workflow_types', 'workflow_instances', 'steps'],
+      },
+    },
+  },
+  required: ['workflows'],
+};
+
 export const WORKFLOW_EDIT_PROMPT = `You are an AI assistant helping a user edit a structured workflow document. The user will provide an instruction, and you will return the complete, updated workflow document in the exact same JSON format as the original.
 
 CRITICAL INSTRUCTIONS:
@@ -204,8 +322,15 @@ EXAMPLE:
 
 export const WORKFLOW_IDENTIFICATION_PROMPT = `You are an expert business process analyst. Your task is to analyze a complete, ordered sequence of user actions (workflow events) and identify the distinct, high-level business workflows contained within.
 
+The data provided includes a 'combinedAnalyses' array where each item contains:
+- id: Unique identifier for the event
+- timestamp: When the event occurred  
+- window_title: The application/window title
+- analysis: Object containing detailed analysis fields (step_title, step_summary, user_intent, events_that_happened, etc.)
+- labels: Array of LLM-provided labels for this event (may be empty)
+
 CRITICAL INSTRUCTIONS:
-1.  **Analyze the Sequence:** Review the provided list of event summaries.
+1.  **Analyze the Sequence:** Review the provided combinedAnalyses array, focusing on the analysis.step_title, analysis.step_summary, and analysis.user_intent fields to understand the user's actions.
 2.  **Identify Logical Groups:** Group the events into logical, end-to-end business processes. A single recording may contain multiple, unrelated workflows.
 3.  **Return Only Names:** Your entire output must be a single JSON object with one key, "workflow_names", which is an array of strings. Each string should be the concise, goal-oriented name of a distinct workflow you have identified.
 4.  **Concrete, Goal-Oriented Title:** The title must be concrete, factual, and describe a specific business goal. 
@@ -215,9 +340,8 @@ EXAMPLES:
 ❌ BAD: "Refactoring and Debugging Rust Code with an AI Assistant"  WHY: Too generic
 ✅ GOOD: "Refactor Serialization Logic in a Rust Application to Prevent Data Loss."
 
-
 EXAMPLE:
-- Input: A list of events including "User opens invoice email," "User logs into Salesforce," "User creates new contact."
+- Input: combinedAnalyses with events including analysis.step_title like "Open invoice email," "Log into Salesforce," "Create new contact."
 - Good Output:
 {
   "workflow_names": [
@@ -318,15 +442,22 @@ export const WORKFLOW_BOUNDARIES_SCHEMA = {
 
 export const PROMPT_SYNTHESIZE_CONTEXT = `You are a senior business process consultant. Your task is to analyze a list of user workflow events and generate a first draft of the user's high-level context.
 
+The data provided includes a 'combinedAnalyses' array where each item contains:
+- id: Unique identifier for the event
+- timestamp: When the event occurred
+- window_title: The application/window title  
+- analysis: Object containing detailed analysis fields (step_title, step_summary, user_intent, events_that_happened, etc.)
+- labels: Array of LLM-provided labels for this event (may be empty)
+
 CRITICAL INSTRUCTIONS:
 - Your output must be a single JSON object.
 - The JSON object must have keys: "user_job_role", "project_name", "user_goal_from_recordings", "overall_project_goal", "overall_project_description".
-- Base "user_job_role", "project_name", and "user_goal_from_recordings" *only* on the provided 'events'.
+- Base "user_job_role", "project_name", and "user_goal_from_recordings" *only* on the provided combinedAnalyses, focusing on analysis.step_title, analysis.step_summary, analysis.user_intent, and window_title fields.
 - For "overall_project_goal" and "overall_project_description", you must infer the high-level, long-term purpose. Think about the company, the larger project, and what the user is trying to achieve beyond the scope of the immediate recordings.
 If job role, project name, or goals cannot be clearly determined from the events, use 'Not evident from recordings' rather than making assumptions.
 
 EXAMPLE:
-- Input Events: [Events showing coding in Rust, running tests, and debugging serialization issues for a data pipeline.]
+- Input: combinedAnalyses with events showing analysis.step_title like "Debug Rust code", "Run tests", "Fix serialization issues" with window_title containing code editor names.
 - Your Output (JSON):
 {
   "user_job_role": "Software Engineer",
@@ -352,6 +483,13 @@ export const CONTEXT_SYNTHESIS_SCHEMA = {
 
 export const PROMPT_REFINE_WORKFLOWS_AND_CONTEXT = `You are a senior business process consultant performing an iterative analysis. You will be given the original user events, a draft high-level context, and a draft list of workflow names.
 
+The data provided includes a 'combinedAnalyses' array where each item contains:
+- id: Unique identifier for the event
+- timestamp: When the event occurred
+- window_title: The application/window title
+- analysis: Object containing detailed analysis fields (step_title, step_summary, user_intent, events_that_happened, etc.)
+- labels: Array of LLM-provided labels for this event (may be empty)
+
 Your task is to perform a two-way reasoning process to refine both the context and the workflow list.
 
 CRITICAL INSTRUCTIONS:
@@ -367,7 +505,7 @@ REASONING PROCESS:
 When refining context or workflows, only use information clearly supported by the events - mark uncertain fields as 'Requires additional data' if not evident.
 
 2.  **Bottom-Up Analysis (Events -> Context):**
-    - Now, look again at the raw 'events' and your newly refined list of workflow names.
+    - Now, look again at the combinedAnalyses array (focusing on analysis.step_title, analysis.step_summary, analysis.user_intent fields) and your newly refined list of workflow names.
     - Does this new, clearer view of the workflows give you a more precise understanding of the user's role, project, or ultimate goals?
     - Refine all context fields based on this bottom-up synthesis.
 
@@ -375,7 +513,7 @@ When refining context or workflows, only use information clearly supported by th
     - Populate the final, refined values into the specified JSON structure.
 
 EXAMPLE:
-- Input Events: [Events showing user refactoring Rust code to fix a serialization bug.]
+- Input: combinedAnalyses with events showing analysis.step_title like "Refactor Rust code", "Run tests", "Fix serialization bug."
 - Draft Context: { "user_job_role": "Developer", "project_name": "App Maintenance", "user_goal_from_recordings": "Fixing Code", "overall_project_goal": "Improve App Stability", "overall_project_description": "General maintenance on the main app." }
 - Draft Names: ["Coding in Rust", "Running Tests"]
 - Your Output (JSON):
@@ -408,66 +546,101 @@ export const WORKFLOW_REFINEMENT_SCHEMA = {
   required: ["user_job_role", "project_name", "user_goal_from_recordings", "overall_project_goal", "overall_project_description", "refined_workflow_names"]
 };
 
-export const TIMELINE_MAPPING_ANALYSIS_PROMPT = `You are analyzing timeline events to map them to confirmed workflows with detailed hierarchy.
+export const TIMELINE_MAPPING_ANALYSIS_PROMPT = `You are analyzing user analysis events to map them to confirmed workflows with detailed hierarchy.
 
 **ANALYSIS INSTRUCTIONS:**
 
-For each timeline event, determine:
+For each analysis event, determine:
 
-1. **IF RELATED TO WORKFLOWS** - Map to confirmed workflows:
+1. **IF RELATED TO WORKFLOWS** - Map to confirmed workflows using IDs:
+   - analysis_id: Must match one of the analysis IDs provided
    - workflow_template_id: Must match one of the confirmed workflow IDs provided
-   - workflow_type_name: Branch/path name (e.g., "Premium Customer Path", "Express Order", "Standard Process")
-   - workflow_instance_name: Specific entity being processed (e.g., "Customer: John Doe", "Order: #12345", "Document: Contract_ABC.pdf")
-   - workflow_step: Step name within the workflow
-   - workflow_substep: Optional granular action within the step
+   - workflow_type_id: Must match one of the workflow type IDs provided
+   - workflow_instance_id: Must match one of the workflow instance IDs provided
+   - workflow_step_id: Must match one of the workflow step IDs provided
+   - workflow_substep_id: Optional, must match one of the substep IDs if provided
    - event_inputs: Array of what led to this event (only include if clearly identifiable from context)
    - event_outputs: Array of what this event produced (only include if clearly identifiable from context)
    - business_logics: Array of business rules governing this event (only include if clearly identifiable from context)
-   - confidence: 0.0 to 1.0 based on how certain you are about this mapping
+   - confidence_score: 0.0 to 1.0 based on how certain you are about this mapping
 
 2. **IF UNRELATED** - Mark as unrelated:
-   - reason: Clear explanation why this doesn't belong to any business workflow
-   - confidence: 0.0 to 1.0 based on how certain you are it's unrelated
+   - analysis_id: Must match one of the analysis IDs provided
+   - unrelated_reason: Clear explanation why this doesn't belong to any business workflow
+   - confidence_score: 0.0 to 1.0 based on how certain you are it's unrelated
 
 **IMPORTANT GUIDELINES:**
+- ONLY use the exact IDs provided in the workflow definitions
 - Only include inputs/outputs/business_logics if they are clearly identifiable from the event context
 - Use empty arrays [] if no clear inputs/outputs/business_logics can be determined
 - Be truthful about what you can determine vs. what you're guessing
-- Look for entity identifiers (customer names, order numbers, document titles, user names) to create meaningful instances
-- Infer workflow types based on patterns you observe (premium vs standard, express vs regular, different user paths, etc.)
 - Focus on business-relevant events - ignore pure navigation, system operations, or personal activities
 - If an event seems to span multiple workflows, create separate mappings for each
 
 **OUTPUT FORMAT (Valid JSON only):**
 {
-  "timeline_mappings": [
+  "workflow_mappings": [
     {
       "timeline_event_id": 12345,
-      "mappings": [
-        {
-          "workflow_template_id": 101,
-          "workflow_type_name": "Premium Customer Path",
-          "workflow_instance_name": "Customer: John Doe",
-          "workflow_step": "Verify Identity",
-          "workflow_substep": "Check Government ID",
-          "event_inputs": ["Government ID document uploaded"],
-          "event_outputs": ["ID verification completed"],
-          "business_logics": ["Must verify against government database"],
-          "confidence": 0.95
-        }
-      ]
-    },
-    {
-      "timeline_event_id": 12346,
-      "unrelated": {
-        "reason": "Personal web browsing unrelated to business workflows",
-        "confidence": 0.88
-      }
+      "workflow_template_id": 101,
+      "workflow_type_id": 201,
+      "workflow_instance_id": 301,
+      "workflow_step_id": 401,
+      "workflow_substep_id": 501,
+      "event_inputs": ["Government ID document uploaded"],
+      "event_outputs": ["ID verification completed"],
+      "business_logics": ["Must verify against government database"],
+      "confidence_score": 0.95
     }
   ],
-  "analysis_metadata": {
-    "total_events_analyzed": 2,
-    "events_mapped": 1,
-    "events_unrelated": 1
-  }
+  "unrelated_events": [
+    {
+      "timeline_event_id": 12346,
+      "unrelated_reason": "Personal web browsing unrelated to business workflows",
+      "confidence_score": 0.88
+    }
+  ]
 }`;
+
+export const TIMELINE_MAPPING_ANALYSIS_SCHEMA: FunctionDeclarationSchema = {
+  type: 'object',
+  properties: {
+    workflow_mappings: {
+      type: 'array',
+      description: "A list of analysis events that have been successfully mapped to a workflow step.",
+      items: {
+        type: 'object',
+        properties: {
+          analysis_id: { type: 'number' },
+          workflow_template_id: { type: 'number' },
+          workflow_type_id: { type: 'number' },
+          workflow_instance_id: { type: 'number' },
+          workflow_step_id: { type: 'number' },
+          workflow_substep_id: { type: 'number' },
+          event_inputs: { type: 'array', items: { type: 'string' } },
+          event_outputs: { type: 'array', items: { type: 'string' } },
+          business_logics: { type: 'array', items: { type: 'string' } },
+          confidence_score: { type: 'number' },
+        },
+        required: [
+          'analysis_id', 'workflow_template_id', 'workflow_type_id', 
+          'workflow_instance_id', 'workflow_step_id', 'confidence_score'
+        ]
+      }
+    },
+    unrelated_events: {
+      type: 'array',
+      description: "A list of analysis events that were determined to be unrelated to any defined workflow.",
+      items: {
+        type: 'object',
+        properties: {
+          analysis_id: { type: 'number' },
+          unrelated_reason: { type: 'string' },
+          confidence_score: { type: 'number' },
+        },
+        required: ['analysis_id', 'unrelated_reason', 'confidence_score']
+      }
+    }
+  },
+  required: ['workflow_mappings', 'unrelated_events'],
+};

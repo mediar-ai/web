@@ -91,12 +91,13 @@ export type WorkflowDataObject = {
 
 export type DatabaseWorkflow = {
     id: number;
+    user_id: string;
     title: string | null;
-    inputs: string[];
-    outputs: string[];
-    steps: string[];
-    business_logic: string[];
+    created_at: string;
     chat_history: Message[];
+    workflow_context: Record<string, unknown> | null;
+    synthesis_session_id: number | null;
+    detailed_workflow_data: DetailedSynthesizedWorkflow | null;
 };
 
 export type SynthesisSession = {

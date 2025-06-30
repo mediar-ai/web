@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_BOUNDARIES_PROMPT, WORKFLOW_BOUNDARIES_SCHEMA } from '@/lib/prompts';
-import { FlattenedWorkflowAnalysis } from '@/types';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 
 
@@ -46,16 +45,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    // Process analyses to match expected format
-    const processedAnalyses = context.analyses ? context.analyses.map((analysis: FlattenedWorkflowAnalysis) => ({
-      id: analysis.id,
-      timestamp: analysis.client_timestamp,
-      workflow: analysis.workflow || 'Unknown',
-      step: analysis.step || 'Unknown', 
-      description: analysis.description || 'No description',
-      summary: `${analysis.workflow}: ${analysis.step} - ${analysis.description}`.substring(0, 200)
-    })) : [];
-
     // Handle both single workflow (legacy) and multiple workflows
     const workflowNames = context.workflows.map((w: { workflow_name: string }) => w.workflow_name);
     
@@ -63,8 +52,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No workflow names provided' }, { status: 400 });
     }
 
-    console.log('🚀 Using Vertex AI for workflow boundaries with model:', modelName);
-    
+    console.log('Defining workflow boundaries with', context.analyses?.length || 0, 'analyses and', workflowNames.length, 'workflows');
+
     const workflowList = workflowNames.map((name: string) => `- "${name}"`).join('\n');
     
     const prompt = `${WORKFLOW_BOUNDARIES_PROMPT}
@@ -75,11 +64,16 @@ ${workflowList}
 User's High-Level Context:
 ${JSON.stringify(context.userContext, null, 2)}
 
-Analyses Context:
-${JSON.stringify(processedAnalyses, null, 2)}
+Combined Analyses Data:
+The combinedAnalyses array contains events with the following structure:
+- id: Unique identifier
+- timestamp: When the event occurred  
+- window_title: Application/window title
+- analysis: Object with step_title, step_summary, user_intent, events_that_happened, etc.
+- labels: Array of human-provided labels
 
-Labels Context:
-${JSON.stringify(context.labels, null, 2)}`;
+Combined Analyses:
+${JSON.stringify(context.analyses, null, 2)}`;
 
     // Use structured output for workflow boundaries
     const result = await callVertexWithStructuredOutput(

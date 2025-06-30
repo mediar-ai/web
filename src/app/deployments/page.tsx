@@ -17,8 +17,8 @@ interface Workflow {
   estimated_duration_seconds: number;
   success_rate: number | null;
   deployment_status: string;
-  input_parameters: Record<string, any>;
-  expected_outputs: Record<string, any>;
+  input_parameters: Record<string, unknown>;
+  expected_outputs: Record<string, unknown>;
 }
 
 interface Execution {
@@ -34,11 +34,7 @@ interface Execution {
   error_message?: string;
 }
 
-interface ExecutionResult {
-  execution_id: number;
-  results: any;
-  compute_cost_cents: number;
-}
+
 
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -75,7 +76,7 @@ export default function TimelineMappingsPage() {
           user_id: userId,
           events: statusData.events,
           existing_workflows: statusData.workflows,
-          model: 'gemini-pro'
+          model: 'gemini-2.5-pro'
         })
       });
 
@@ -106,12 +107,17 @@ export default function TimelineMappingsPage() {
   }, [analysisStatus, userId, fetchAnalysisStatus, fetchMappedEvents]);
 
   const getEventStatusBadge = (event: EnhancedTimelineEvent) => {
+    const eventWithMappings = event as EnhancedTimelineEvent & { 
+      workflow_mappings?: unknown[]; 
+      unrelated_info?: { unrelated_reason: string } 
+    };
+    
     if (event.is_workflow_related) {
       return <Badge variant="default" className="bg-green-100 text-green-800">
         <CheckCircle className="w-3 h-3 mr-1" />
-        Mapped ({event.total_mappings})
+        Mapped ({eventWithMappings.workflow_mappings?.length || 0})
       </Badge>;
-    } else if (event.unrelated_info) {
+    } else if (eventWithMappings.unrelated_info) {
       return <Badge variant="secondary" className="bg-gray-100 text-gray-800">
         <XCircle className="w-3 h-3 mr-1" />
         Unrelated
@@ -251,9 +257,9 @@ export default function TimelineMappingsPage() {
                   </div>
 
                   {/* Workflow Mappings */}
-                  {event.workflow_mappings.length > 0 && (
+                  {(event as any).workflow_mappings?.length > 0 && (
                     <div className="ml-4 space-y-2">
-                      {event.workflow_mappings.map((mapping, idx) => (
+                      {(event as any).workflow_mappings.map((mapping: any, idx: number) => (
                         <div key={idx} className="bg-green-50 p-3 rounded border-l-4 border-green-400">
                           <div className="font-medium text-green-900">
                             {mapping.workflow_template?.title} → {mapping.workflow_step}
@@ -273,11 +279,11 @@ export default function TimelineMappingsPage() {
                   )}
 
                   {/* Unrelated Info */}
-                  {event.unrelated_info && (
+                  {(event as any).unrelated_info && (
                     <div className="ml-4">
                       <div className="bg-gray-50 p-3 rounded border-l-4 border-gray-400">
                         <div className="text-sm text-gray-700">
-                          <strong>Unrelated:</strong> {event.unrelated_info.unrelated_reason}
+                          <strong>Unrelated:</strong> {(event as any).unrelated_info.unrelated_reason}
                         </div>
                       </div>
                     </div>
