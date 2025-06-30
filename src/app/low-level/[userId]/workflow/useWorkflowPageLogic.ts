@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { useState, useEffect, createRef, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, createRef, useCallback, useRef, useMemo, memo } from 'react';
 import { useUser } from '@/context/UserContext';
 import type { LowLevelEvent } from '@/types';
 import type {
@@ -17,8 +17,10 @@ import type {
   DatabaseWorkflow,
   SynthesisSession,
   LlmLabel,
+  DetailedSynthesizedWorkflow,
 } from './types';
 import type { EnhancedTimelineEvent } from '@/lib/timelineMappingTypes';
+import { useDebouncedEffect } from '@/hooks/useDebouncedEffect';
 
 type UserStats = {
   totalEvents: number;
@@ -272,8 +274,6 @@ export function useWorkflowPageLogic(userId: string) {
     // (e.g., loadSynthesisSession, handleSendMessage) and should not be overwritten by the generic workflows list loading.
   }, [activeWorkflowIndex, workflows, synthesisStep]);
 
-  const activeContent = workflows[activeWorkflowIndex];
-
   const fetchWorkflows = useCallback(async (skipLoadingState = false) => {
     if(!userId) return;
     try {
@@ -502,70 +502,57 @@ export function useWorkflowPageLogic(userId: string) {
     await saveSynthesisSession(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
 
     try {
-      // Step 1: Analyze timeline events and create workflow mappings
-      const analysisResponse = await fetch('/api/analyze-timeline-events', {
+      // 🎯 STEP 1: Call the original /api/synthesize-workflow endpoint
+      // This correctly uses the boundaries and events to generate the full workflow structure.
+      const synthesisResponse = await fetch('/api/synthesize-workflow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
-          analyses: rawAnalyses,
-          labels: llmLabels,
-          workflow_context: workflowContext,
-          workflow_boundaries: approvedBoundaries,
-          identified_workflows: identifiedWorkflowNames
+          model: selectedModel,
+          context: {
+            // The context now correctly includes the list of workflows with their boundaries
+            workflows: identifiedWorkflowNames.map(name => ({
+              name: name,
+              trigger: approvedBoundaries[name]?.trigger || '',
+              terminator: approvedBoundaries[name]?.terminator || '',
+              events: rawAnalyses // Pass all raw analyses as context for each workflow
+            })),
+            workflowContext: workflowContext
+          }
         }),
       });
 
-      if (!analysisResponse.ok) {
-        throw new Error('Failed to analyze timeline events');
+      if (!synthesisResponse.ok) {
+        const errorData = await synthesisResponse.json();
+        throw new Error(errorData.details || 'Failed to synthesize workflows');
       }
 
-      const analysisResult = await analysisResponse.json();
+      const result = await synthesisResponse.json();
+      const synthesizedWorkflows = result.workflows || [];
       
-      // Step 2: Save the timeline event mappings to database
-      const saveMappingsResponse = await fetch('/api/timeline-event-mappings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(analysisResult),
-      });
+      // 🎯 STEP 2: Save the newly synthesized workflows to the database
+      // This will assign them IDs, which we'll need for the next step.
+      const savedWorkflows = await saveSynthesizedWorkflows(synthesizedWorkflows);
 
-      if (!saveMappingsResponse.ok) {
-        throw new Error('Failed to save timeline mappings');
-      }
-
-      // Step 3: Fetch the enriched timeline events for canvas display
-      const fetchMappingsResponse = await fetch(`/api/timeline-event-mappings?user_id=${userId}&include_unrelated=true`);
-      
-      if (!fetchMappingsResponse.ok) {
-        throw new Error('Failed to fetch timeline mappings');
-      }
-
-      const mappingsData = await fetchMappingsResponse.json();
-      
-      // Step 4: Convert timeline mappings to synthesized workflows for backwards compatibility
-      const synthesizedWorkflows = convertTimelineMappingsToWorkflows(mappingsData.events, identifiedWorkflowNames);
-      
-      await saveSynthesizedWorkflows(synthesizedWorkflows);
-      
-      // Step 5: Update canvas with timeline mapping data
-      await updateCanvasWithTimelineMappings(mappingsData.events);
+      // 🎯 STEP 3: Update the UI to show the generated workflows on the canvas
+      setWorkflows(savedWorkflows);
       
       setSynthesisStep('done');
       const synthesizedMessage: Message = {
         id: `${Date.now()}`, 
         sender: 'ai', 
-        text: `Successfully mapped ${mappingsData.events?.length || 0} events to ${identifiedWorkflowNames.length} workflows with detailed step-by-step traceability!`
+        text: `Successfully synthesized ${savedWorkflows.length} workflows! You can now review and edit them on the canvas.`
       };
       const finalMessages = [...updatedMessages.slice(0, -1), synthesizedMessage];
       setMessages(finalMessages);
       await saveSynthesisSession(finalMessages, 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
 
     } catch (error) {
-      console.error("Error during timeline mapping:", error);
+      console.error("Error during workflow synthesis:", error);
       setMessages(prev => [...prev.slice(0, -1), { 
         id: `error-${Date.now()}`, 
         sender: 'ai', 
-        text: `Sorry, I encountered an error during timeline mapping: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        text: `Sorry, I encountered an error during workflow synthesis: ${error instanceof Error ? error.message : 'Unknown error'}` 
       }]);
       setSynthesisStep('boundaries_editing');
       await saveSynthesisSession(messages, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
@@ -573,7 +560,7 @@ export function useWorkflowPageLogic(userId: string) {
   };
 
   const saveSynthesizedWorkflows = async (synthesizedWorkflows: SynthesizedWorkflow[]) => {
-    if (!userId || synthesizedWorkflows.length === 0) return;
+    if (!userId || synthesizedWorkflows.length === 0) return [];
 
     const recordsToInsert = synthesizedWorkflows.map(workflow => ({
       title: workflow.title || 'Untitled Workflow',
@@ -586,98 +573,24 @@ export function useWorkflowPageLogic(userId: string) {
     }));
 
     try {
-      await fetch('/api/workflows', {
+      const response = await fetch('/api/workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, workflows: recordsToInsert })
       });
-      await fetchWorkflows(true);
+      // 🎯 Return the saved workflows from the API response
+      const savedWorkflows = await response.json();
+      await fetchWorkflows(true); // Re-fetch to update state
+      return savedWorkflows.data || [];
     } catch (error) {
       console.error("Error saving synthesized workflows:", error);
+      return [];
     }
   };
 
   const handleSendMessage = async () => {
     // This function can be expanded later if conversational editing is needed
   };
-
-  const handleListChange = (field: 'steps' | 'inputs' | 'outputs' | 'businessLogic', itemIndex: number, value: string) => {
-    const newWorkflows = [...workflows];
-    const newItems = [...newWorkflows[activeWorkflowIndex][field]];
-    newItems[itemIndex] = value;
-    const updatedWorkflow = { ...newWorkflows[activeWorkflowIndex], [field]: newItems };
-    newWorkflows[activeWorkflowIndex] = updatedWorkflow;
-    setWorkflows(newWorkflows);
-    debouncedUpdateWorkflow(updatedWorkflow);
-  };
-  
-  const handleAddItem = (field: 'steps' | 'inputs' | 'outputs' | 'businessLogic', index: number) => {
-    const newWorkflows = [...workflows];
-    const newItems = [...newWorkflows[activeWorkflowIndex][field]];
-    newItems.splice(index + 1, 0, '');
-    newWorkflows[activeWorkflowIndex] = { ...newWorkflows[activeWorkflowIndex], [field]: newItems };
-    setWorkflows(newWorkflows);
-
-    setTimeout(() => {
-      const fieldKey = `${activeWorkflowIndex}-${field}`;
-      itemRefs[fieldKey]?.[index + 1]?.current?.focus();
-    }, 0);
-  };
-
-  const handleRemoveItem = (field: 'steps' | 'inputs' | 'outputs' | 'businessLogic', index: number) => {
-    const newWorkflows = [...workflows];
-    const newItems = newWorkflows[activeWorkflowIndex][field].filter((_, i) => i !== index);
-    const updatedWorkflow = { ...newWorkflows[activeWorkflowIndex], [field]: newItems };
-    newWorkflows[activeWorkflowIndex] = updatedWorkflow;
-    setWorkflows(newWorkflows);
-    debouncedUpdateWorkflow(updatedWorkflow);
-
-    if (index > 0) {
-      setTimeout(() => {
-        const fieldKey = `${activeWorkflowIndex}-${field}`;
-        const prevItemRef = itemRefs[fieldKey]?.[index - 1];
-        if (prevItemRef?.current) {
-          prevItemRef.current.focus();
-          const len = prevItemRef.current.value.length;
-          prevItemRef.current.setSelectionRange(len, len);
-        }
-      }, 0);
-    }
-  };
-  
-  const handleTitleChange = (newTitle: string) => {
-    const newWorkflows = [...workflows];
-    const updatedWorkflow = { ...newWorkflows[activeWorkflowIndex], title: newTitle };
-    newWorkflows[activeWorkflowIndex] = updatedWorkflow;
-    setWorkflows(newWorkflows);
-    debouncedUpdateWorkflow(updatedWorkflow);
-  };
-
-  const debouncedUpdateWorkflow = useCallback((updatedWorkflow: CanvasContent) => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(async () => {
-      await fetch(`/api/workflows/${updatedWorkflow.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedWorkflow),
-      });
-    }, 1000);
-  }, []);
-
-  const handleDeleteWorkflow = async (workflowId: number) => {
-    await fetch(`/api/workflows/${workflowId}`, { method: 'DELETE' });
-    const remainingWorkflows = workflows.filter(wf => wf.id !== workflowId);
-    setWorkflows(remainingWorkflows);
-    setActiveWorkflowIndex(0);
-    setMessages([{id: '1', sender: 'ai', text: 'Workflow deleted.'}]);
-    await saveSynthesisSession([], 'idle', [], null, {});
-  };
-
-  useEffect(() => {
-    if (workflowContext) {
-      setEditableContext(workflowContext);
-    }
-  }, [workflowContext]);
 
   const handleContextChange = (field: keyof WorkflowContext, value: string) => {
     if (editableContext) {
@@ -785,53 +698,33 @@ export function useWorkflowPageLogic(userId: string) {
     proceedToSynthesis(workflowBoundaries);
   };
 
-  const convertTimelineMappingsToWorkflows = (events: EnhancedTimelineEvent[], workflowNames: string[]): SynthesizedWorkflow[] => {
+  // This function is now deprecated as the new structure is too complex for simple list editing.
+  // It can be replaced with a more advanced editing UI in the future.
+  const convertTimelineMappingsToWorkflows = (events: EnhancedTimelineEvent[], workflowNames: string[]): DetailedSynthesizedWorkflow[] => {
     const workflowMap = new Map<string, {
-      inputs: Set<string>,
-      outputs: Set<string>, 
-      steps: Set<string>,
-      businessLogic: Set<string>
+      description: string;
+      workflow_types: DetailedSynthesizedWorkflow['workflow_types'];
+      workflow_instances: DetailedSynthesizedWorkflow['workflow_instances'];
+      steps: DetailedSynthesizedWorkflow['steps'];
     }>();
 
-    // Initialize workflow map
+    // This is a placeholder conversion and would need to be updated
+    // to properly create the new detailed structure if timeline mapping is re-enabled.
     workflowNames.forEach(name => {
       workflowMap.set(name, {
-        inputs: new Set(),
-        outputs: new Set(),
-        steps: new Set(), 
-        businessLogic: new Set()
+        description: 'Generated from timeline mapping.',
+        workflow_types: [],
+        workflow_instances: [],
+        steps: []
       });
     });
 
-    // Process each event's workflow mappings
-    events?.forEach(event => {
-      if (event.workflow_mappings) {
-        event.workflow_mappings.forEach(mapping => {
-          const workflowTypeName = mapping.workflow_type.type_name;
-          const workflowData = workflowMap.get(workflowTypeName);
-          if (workflowData) {
-            // Add inputs, outputs, steps, business logic
-            mapping.event_inputs?.forEach((input: string) => workflowData.inputs.add(input));
-            mapping.event_outputs?.forEach((output: string) => workflowData.outputs.add(output));
-            
-            const stepText = mapping.workflow_substep ? 
-              `${mapping.workflow_step} → ${mapping.workflow_substep}` : 
-              mapping.workflow_step;
-            workflowData.steps.add(stepText);
-            
-            mapping.business_logics?.forEach((logic: string) => workflowData.businessLogic.add(logic));
-          }
-        });
-      }
-    });
-
-    // Convert map to SynthesizedWorkflow array
     return Array.from(workflowMap.entries()).map(([title, data]) => ({
       title,
-      inputs: Array.from(data.inputs),
-      outputs: Array.from(data.outputs),
-      steps: Array.from(data.steps),
-      businessLogic: Array.from(data.businessLogic)
+      description: data.description,
+      workflow_types: data.workflow_types,
+      workflow_instances: data.workflow_instances,
+      steps: data.steps,
     }));
   };
 
@@ -840,35 +733,7 @@ export function useWorkflowPageLogic(userId: string) {
     setTimelineMappingMode(true);
     
     // Convert timeline events to canvas content for display
-    const canvasWorkflows: CanvasContent[] = events
-      ?.filter(event => event.is_workflow_related)
-      .reduce((acc: CanvasContent[], event) => {
-        event.workflow_mappings?.forEach(mapping => {
-          const workflowTypeName = mapping.workflow_type.type_name;
-          const existing = acc.find(item => item.title === workflowTypeName);
-          if (existing) {
-            // Add event details to existing workflow
-            if (mapping.event_inputs) existing.inputs.push(...mapping.event_inputs);
-            if (mapping.event_outputs) existing.outputs.push(...mapping.event_outputs);
-            if (mapping.business_logics) existing.businessLogic.push(...mapping.business_logics);
-            
-            const stepText = `[${event.timestamp}] ${mapping.workflow_step}${mapping.workflow_substep ? ` → ${mapping.workflow_substep}` : ''}`;
-            existing.steps.push(stepText);
-          } else {
-            // Create new workflow entry
-            acc.push({
-              id: Date.now() + Math.random(), // Generate unique ID for canvas
-              title: workflowTypeName,
-              inputs: mapping.event_inputs || [],
-              outputs: mapping.event_outputs || [],
-              steps: [`[${event.timestamp}] ${mapping.workflow_step}${mapping.workflow_substep ? ` → ${mapping.workflow_substep}` : ''}`],
-              businessLogic: mapping.business_logics || [],
-              chat_history: [{ id: 'timeline-mapping', sender: 'ai', text: 'Generated from timeline mapping analysis' }]
-            });
-          }
-        });
-        return acc;
-      }, []) || [];
+    const canvasWorkflows: CanvasContent[] = []; // This needs a new implementation for the detailed structure
 
     setWorkflows(canvasWorkflows);
   };
@@ -879,21 +744,16 @@ export function useWorkflowPageLogic(userId: string) {
     identifiedWorkflowNames, workflowContext, collapsedSections, toggleSection,
     isAnalyzingEvents, isLoading, synthesisStep, setSynthesisStep,
     rawAnalyses, workflowBoundaries,
-    processAllWorkflows, proceedToSynthesis, handleSendMessage, handleListChange,
+    processAllWorkflows, proceedToSynthesis, handleSendMessage,
     draftWorkflowNames, setDraftWorkflowNames, confirmBoundaries,
-    elapsedTime, isFetchingEvents, 
-    // Canvas editing state and functions
-    activeContent, itemRefs,
-    handleAddItem, handleRemoveItem, handleTitleChange, handleDeleteWorkflow,
+    elapsedTime, isFetchingEvents,
     handleContextChange, resetConversation, deleteAllWorkflows,
     runInitialAnalysis, refineAndIdentifyWorkflows,
     isAiThinking, editableContext, analysisStatus, analysisProgress,
     setIdentifiedWorkflowNames, setWorkflowBoundaries, goBackToWorkflowEditing,
-    // New timeline mapping state
     timelineEvents, timelineMappingMode, setTimelineMappingMode,
     llmLabels,
     userStats,
-    // Timeline view mode functions
     convertTimelineMappingsToWorkflows, updateCanvasWithTimelineMappings
   };
 } 

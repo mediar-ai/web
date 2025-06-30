@@ -7,22 +7,62 @@ export type Message = {
     text: string;
 };
 
-export type CanvasContent = {
-    id: number;
-    title: string | null;
-    inputs: string[];
-    outputs: string[];
-    steps: string[];
-    businessLogic: string[];
-    chat_history: Message[];
-};
+export interface WorkflowContext {
+    user_job_role: string;
+    project_name: string;
+    user_goal_from_recordings: string;
+    overall_project_goal: string;
+    overall_project_description: string;
+}
 
-export type SynthesizedWorkflow = {
+export interface WorkflowBoundary {
+    trigger: string;
+    terminator: string;
+}
+
+export interface WorkflowBoundaries {
+    [key: string]: WorkflowBoundary;
+}
+
+// Represents the full, detailed workflow object returned by the new synthesis process
+export interface DetailedSynthesizedWorkflow {
+    title: string;
+    description: string;
+    workflow_types: Array<{
+        type_name: string;
+        type_description: string;
+        conditions: Record<string, unknown>;
+    }>;
+    workflow_instances: Array<{
+        instance_name: string;
+        instance_data: Record<string, unknown>;
+    }>;
+    steps: Array<{
+        step_name: string;
+        substeps: Array<{
+            substep_name: string;
+            inputs: string[];
+            outputs: string[];
+            business_logic: string[];
+        }>;
+    }>;
+}
+
+// Kept for backwards compatibility if needed, but new synthesis should use the detailed version
+export interface SynthesizedWorkflow {
     title: string;
     inputs: string[];
     outputs: string[];
     steps: string[];
     businessLogic: string[];
+}
+
+export type CanvasContent = DetailedSynthesizedWorkflow & {
+    id: number;
+    chat_history: Message[];
+    // Note: The old fields like 'inputs', 'outputs', 'businessLogic' at the top level are deprecated
+    // in favor of the new nested structure within steps and substeps.
+    // They can be kept for a transitional period if necessary.
 };
 
 import { FlattenedWorkflowAnalysis } from '@/types';
@@ -36,21 +76,6 @@ export type FinalAnalysisData = {
 };
 
 export type SynthesisStep = 'idle' | 'context_editing' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_editing' | 'synthesizing' | 'done' | 'refining';
-
-export type WorkflowContext = {
-    user_job_role: string;
-    project_name: string;
-    user_goal_from_recordings: string;
-    overall_project_goal: string;
-    overall_project_description: string;
-};
-
-export type WorkflowBoundary = {
-    trigger: string;
-    terminator: string;
-};
-
-export type WorkflowBoundaries = Record<string, WorkflowBoundary>;
 
 export type WorkflowDataObject = {
     id: number;

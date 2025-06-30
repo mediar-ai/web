@@ -168,61 +168,19 @@ EXAMPLE:
 }
 `;
 
-export const WORKFLOW_SYNTHESIS_PROMPT = `You are an expert business process analyst. Your task is to analyze a complete, ordered sequence of user actions (workflow events) and synthesize them into one or more distinct, high-level business workflows.
+export const WORKFLOW_SYNTHESIS_PROMPT = `
+You are an expert business analyst and AI engineer. Your task is to analyze a timeline of user events and synthesize a set of structured, detailed, and logical business workflows.
 
-The user has provided a JSON object containing a list of 'events'. Each event has a detailed 'analysis' from a previous step and a 'generated_output' which is a human-readable summary of the action.
-
-CRITICAL INSTRUCTIONS:
-1.  **Identify Distinct Workflows:** The sequence may contain multiple unrelated workflows. Group the events into logical, end-to-end business processes. A workflow should have a clear start and end and accomplish a specific business objective.
-2.  **Synthesize, Don't Just List:** Your goal is to abstract the events into a coherent summary.
-3.  **Factual Inputs & Outputs:** Inputs and outputs must be factual and concrete, material items. For example, a bad input is "A need to refactor data structures" (a need is not an input). A good input is "A list of serialization issues." A bad output is "Corrective feedback provided to the AI" (this is a process, not a final output). A good output is "A refactored Rust module with improved data structures."
-4.  **Action-Oriented Steps:** The steps should read like a list of instructions or a description of the process from start to finish.
-5.  **Identify Business Logic:** Explicitly list any constraints or conditions identified from the user's actions (e.g., 'All leads must have a valid phone number to be qualified').
-6.  **Concrete, Goal-Oriented Title:** The title must be concrete, factual, and describe a specific business goal. For example, a bad title is "Refactoring and Debugging Rust Code with an AI Assistant" (too generic). A good title would be "Refactor Serialization Logic in a Rust Application to Prevent Data Loss."
-Base all inputs, outputs, and business logic strictly on observable actions from the events - if details are unclear, explicitly state 'insufficient data' rather than inferring.
-
-OUTPUT FORMAT:
-Return a single JSON object with a single key, "workflows". The value should be an array of workflow objects. Each object must have the following structure:
-- "title": (String) A concise, descriptive title for the business workflow.
-- "inputs": (Array of Strings) A list of items required to start the workflow.
-- "outputs": (Array of Strings) A list of the final results or outcomes of the workflow.
-- "steps": (Array of Strings) An ordered list of the human-readable event summaries ('generated_output') that constitute this workflow.
-- "businessLogic": (Array of Strings) A list of inferred business rules, constraints, or conditions.
+Please adhere to the following rules:
+1.  **Analyze the Entire Context**: Review the high-level user context and the complete timeline of events to understand the user's goals and actions.
+2.  **Strictly Adhere to the Schema**: Generate a JSON object that strictly follows the provided schema. The output must be a single JSON object containing a 'workflows' array.
+3.  **Synthesize Hierarchical Steps**: For each workflow, break it down into high-level 'steps'. Each step must be further broken down into granular 'substeps'.
+4.  **Detail Each Sub-step**: For every single sub-step, you must define its 'inputs' (what triggers it), 'outputs' (what results from it), and 'business_logic' (the rules governing it).
+5.  **Define Workflow Variations (Types)**: Based on the events, identify and define different variations or paths the workflow can take. Describe the conditions for each type.
+6.  **Identify Concrete Examples (Instances)**: Extract specific, concrete examples of the workflow being executed from the event log. Name them descriptively.
+7.  **Be Concise and Logical**: Ensure the generated text is clear, concise, and logically sound. The goal is to create a machine-readable and human-readable workflow definition.
+8.  **Do Not Hallucinate**: Base all synthesized information directly on the provided context and event data. Do not invent steps, inputs, or outputs that are not supported by the evidence.
 `;
-
-// Schema for WORKFLOW_SYNTHESIS_PROMPT
-export const WORKFLOW_SYNTHESIS_SCHEMA = {
-  type: "object",
-  properties: {
-    workflows: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          inputs: {
-            type: "array",
-            items: { type: "string" }
-          },
-          outputs: {
-            type: "array",
-            items: { type: "string" }
-          },
-          steps: {
-            type: "array",
-            items: { type: "string" }
-          },
-          businessLogic: {
-            type: "array",
-            items: { type: "string" }
-          }
-        },
-        required: ["title", "inputs", "outputs", "steps", "businessLogic"]
-      }
-    }
-  },
-  required: ["workflows"]
-};
 
 export const WORKFLOW_EDIT_PROMPT = `You are an AI assistant helping a user edit a structured workflow document. The user will provide an instruction, and you will return the complete, updated workflow document in the exact same JSON format as the original.
 
