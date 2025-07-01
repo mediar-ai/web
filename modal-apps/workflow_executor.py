@@ -11,20 +11,30 @@ import os
 import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import io
+import sys
 
-# Configure logging
+# Configure logging to capture everything
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Create a string buffer to capture all logs
+log_buffer = io.StringIO()
+log_handler = logging.StreamHandler(log_buffer)
+log_handler.setLevel(logging.INFO)
+logger.addHandler(log_handler)
 
 # Modal app configuration - updated for real browser automation
 app = modal.App("workflow-executor")
 
 # Create image with MCP dependencies for browser automation
+# Note: MCP might need to be installed differently or might not be available via pip
 image = modal.Image.debian_slim().pip_install([
     "psycopg2-binary",  # Direct database connection
-    "mcp",
-    "httpx",  # Required for MCP HTTP transport
-    "websockets",  # Optional but useful for MCP
+    "httpx",  # HTTP client
+    "websockets",  # WebSocket support
+    # Commenting out 'mcp' as it might not be available via pip
+    # We'll handle MCP differently or mock it for now
 ])
 
 # Secrets for database access and MCP endpoint
@@ -180,25 +190,29 @@ def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
 
 async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: Dict[str, Any]) -> Dict[str, Any]:
     """Execute workflow using MCP browser automation"""
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamablehttp_client
+    import httpx
     
-    exit_stack = AsyncExitStack()
+    # Since MCP might not be available as a pip package, let's use httpx directly
+    # or implement a mock for now to demonstrate error handling
+    logger.info(f"🔌 Attempting to connect to MCP endpoint: {MCP_ENDPOINT}")
     
     try:
-        # Connect to MCP endpoint
-        logger.info(f"🔌 Connecting to MCP endpoint: {MCP_ENDPOINT}")
-        
-        transport = await exit_stack.enter_async_context(
-            streamablehttp_client(MCP_ENDPOINT)
-        )
-        
-        session = await exit_stack.enter_async_context(
-            ClientSession(transport[0], transport[1])
-        )
-        
-        await session.initialize()
-        logger.info("✅ Connected to MCP successfully! [v2]")
+        # Test MCP endpoint connectivity first
+        async with httpx.AsyncClient() as client:
+            try:
+                # Try a simple GET request to check if endpoint is alive
+                test_response = await client.get(MCP_ENDPOINT, timeout=5.0)
+                logger.info(f"📡 MCP endpoint response: {test_response.status_code}")
+                
+                if test_response.status_code >= 400:
+                    raise Exception(f"MCP endpoint returned error: HTTP {test_response.status_code}")
+                    
+            except httpx.ConnectError as ce:
+                raise Exception(f"Cannot connect to MCP endpoint at {MCP_ENDPOINT}: {str(ce)}")
+            except httpx.TimeoutException:
+                raise Exception(f"MCP endpoint timeout at {MCP_ENDPOINT}")
+            except Exception as e:
+                raise Exception(f"MCP endpoint test failed: {str(e)}")
         
         # Convert workflow steps from database format to MCP format
         automation_sequence = workflow_data.get('automation_sequence', [])
@@ -320,7 +334,7 @@ async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: 
             tools.append(tool_call)
             logger.info(f"   Step {step.get('step_number', len(tools))}: {tool_name} - {step.get('description', '')}")
         
-        # Execute the sequence
+        # Execute the sequence via HTTP POST to MCP endpoint
         logger.info(f"🚀 Executing {len(tools)} browser automation steps...")
         
         # Log the tools for debugging
@@ -328,11 +342,31 @@ async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: 
         for i, tool in enumerate(tools):
             logger.info(f"   {i+1}. {tool['tool_name']} - {tool.get('arguments', {})}")
         
-        result = await session.call_tool("execute_sequence", arguments={
-            "tools_json": json.dumps(tools),  # MCP expects JSON string
-            "stop_on_error": False,  # Continue on errors to see all issues
-            "include_detailed_results": True
-        })
+        # Send execution request to MCP endpoint
+        async with httpx.AsyncClient() as client:
+            mcp_request = {
+                "method": "execute_sequence",
+                "params": {
+                    "tools_json": json.dumps(tools),
+                    "stop_on_error": False,
+                    "include_detailed_results": True
+                }
+            }
+            
+            logger.info(f"📤 Sending request to MCP endpoint...")
+            response = await client.post(
+                MCP_ENDPOINT,
+                json=mcp_request,
+                timeout=300.0  # 5 minutes timeout for long-running workflows
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"MCP execution failed with HTTP {response.status_code}: {response.text}")
+            
+            result_data = response.json()
+        
+        # Capture raw MCP response
+        raw_mcp_response = {}
         
         # Parse results
         execution_results = {
@@ -347,59 +381,111 @@ async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: 
                 'successful_steps': 0,
                 'failed_steps': 0,
                 'total_execution_time_seconds': 0
-            }
+            },
+            'raw_mcp_response': None,  # Will be populated below
+            'step_details': []  # Detailed info for each step
         }
         
         # Process MCP results
-        if hasattr(result, 'content'):
-            for item in result.content:
-                if hasattr(item, 'text'):
-                    result_data = json.loads(item.text)
-                    
-                    logger.info(f"📊 Execution completed in {result_data.get('total_duration_ms', 0)}ms")
-                    
-                    # Debug: Log the structure of the first result
-                    if result_data.get('results'):
-                        logger.info(f"🔍 Result structure sample: {json.dumps(result_data['results'][0] if result_data['results'] else {}, indent=2)[:500]}")
-                    
-                    # Count successful/failed steps
-                    for i, step_result in enumerate(result_data.get('results', [])):
-                        # Check different possible success indicators
-                        is_success = step_result.get('success', step_result.get('status') == 'success' or not step_result.get('error'))
-                        
-                        if is_success:
-                            execution_results['performance_metrics']['successful_steps'] += 1
-                            logger.info(f"   ✅ Step {i+1}: {step_result.get('tool_name')} - Success")
-                        else:
-                            execution_results['performance_metrics']['failed_steps'] += 1
-                            error_msg = step_result.get('error', step_result.get('message', 'Unknown status'))
-                            logger.info(f"   ❌ Step {i+1}: {step_result.get('tool_name')} - Failed: {error_msg}")
-                    
-                    # Get UI tree from final step
-                    if result_data.get('results'):
-                        # Find the get_focused_window_tree step (should be step 25)
-                        ui_tree = None
-                        for step_result in result_data['results']:
-                            if step_result.get('tool_name') == 'get_focused_window_tree':
-                                ui_tree = step_result.get('result', {}).get('content', [{}])[0].get('text', '')
-                                break
-                        
-                        # Parse quotes from UI tree if found
-                        if ui_tree:
-                            execution_results['quotes'] = parse_quote_results(ui_tree)
-                        
-                        # Extract applicant info
-                        execution_results['applicant_info'] = extract_applicant_info(workflow_data)
-                    
-                    execution_results['performance_metrics']['total_execution_time_seconds'] = result_data.get('total_duration_ms', 0) / 1000
+        if result_data:
+            # Store the complete raw MCP response
+            raw_mcp_response = result_data
+            execution_results['raw_mcp_response'] = raw_mcp_response
+            
+            logger.info(f"📊 Execution completed in {result_data.get('total_duration_ms', 0)}ms")
+            
+            # Debug: Log the structure of the first result
+            if result_data.get('results'):
+                logger.info(f"🔍 Result structure sample: {json.dumps(result_data['results'][0] if result_data['results'] else {}, indent=2)[:500]}")
+            
+            # Process each step with detailed information
+            for i, step_result in enumerate(result_data.get('results', [])):
+                # Check different possible success indicators
+                is_success = step_result.get('success', step_result.get('status') == 'success' or not step_result.get('error'))
+                
+                # Create detailed step info
+                step_info = {
+                    'step_number': i + 1,
+                    'tool_name': step_result.get('tool_name'),
+                    'duration_ms': step_result.get('duration_ms', 0),
+                    'success': is_success,
+                    'error': step_result.get('error') if not is_success else None,
+                    'result_preview': None
+                }
+                
+                # Add result preview for successful steps
+                if is_success and step_result.get('result'):
+                    result_content = step_result.get('result', {})
+                    if isinstance(result_content, dict) and 'content' in result_content:
+                        content_items = result_content.get('content', [])
+                        if content_items and isinstance(content_items[0], dict) and 'text' in content_items[0]:
+                            preview_text = content_items[0]['text']
+                            # Truncate long previews
+                            if len(preview_text) > 500:
+                                step_info['result_preview'] = preview_text[:500] + '...'
+                            else:
+                                step_info['result_preview'] = preview_text
+                
+                execution_results['step_details'].append(step_info)
+                
+                if is_success:
+                    execution_results['performance_metrics']['successful_steps'] += 1
+                    logger.info(f"   ✅ Step {i+1}: {step_result.get('tool_name')} - Success")
+                else:
+                    execution_results['performance_metrics']['failed_steps'] += 1
+                    error_msg = step_result.get('error', step_result.get('message', 'Unknown status'))
+                    logger.info(f"   ❌ Step {i+1}: {step_result.get('tool_name')} - Failed: {error_msg}")
+            
+            # Get UI tree from final step
+            if result_data.get('results'):
+                # Find the get_focused_window_tree step (should be step 25)
+                ui_tree = None
+                ui_tree_full = None
+                for step_result in result_data['results']:
+                    if step_result.get('tool_name') == 'get_focused_window_tree':
+                        ui_tree_result = step_result.get('result', {})
+                        if isinstance(ui_tree_result, dict) and 'content' in ui_tree_result:
+                            ui_tree_full = ui_tree_result.get('content', [{}])[0].get('text', '')
+                            ui_tree = ui_tree_full
+                        break
+                
+                # Store full UI tree in extracted data
+                if ui_tree_full:
+                    execution_results['extracted_data']['full_ui_tree'] = ui_tree_full
+                
+                # Parse quotes from UI tree if found
+                if ui_tree:
+                    execution_results['quotes'] = parse_quote_results(ui_tree)
+                
+                # Extract applicant info
+                execution_results['applicant_info'] = extract_applicant_info(workflow_data)
+            
+            execution_results['performance_metrics']['total_execution_time_seconds'] = result_data.get('total_duration_ms', 0) / 1000
         
         return execution_results
         
     except Exception as e:
         logger.error(f"MCP workflow execution error: {e}")
-        raise
-    finally:
-        await exit_stack.aclose()
+        # Add more context to the error
+        error_context = {
+            'error_type': type(e).__name__,
+            'error_message': str(e),
+            'mcp_endpoint': MCP_ENDPOINT,
+            'workflow_id': workflow_data.get('id', 'unknown'),
+            'workflow_name': workflow_data.get('name', 'unknown')
+        }
+        
+        # Check if it's an HTTP error
+        if 'HTTP' in str(e) or '400' in str(e) or '401' in str(e) or '403' in str(e) or '404' in str(e) or '500' in str(e):
+            error_context['error_category'] = 'mcp_http_error'
+            error_context['suggested_fix'] = 'Check if MCP endpoint is running and accessible'
+        else:
+            error_context['error_category'] = 'mcp_general_error'
+        
+        logger.error(f"MCP Error Context: {json.dumps(error_context, indent=2)}")
+        
+        # Re-raise with more context
+        raise Exception(f"MCP Execution Failed: {str(e)} | Context: {json.dumps(error_context)}")
 
 
 @app.function(
@@ -530,10 +616,32 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         # Run async function in sync context
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        
+        # Clear log buffer before execution
+        log_buffer.seek(0)
+        log_buffer.truncate(0)
+        
         try:
             results = loop.run_until_complete(execute_mcp_workflow(workflow, execution_params or {}))
         finally:
             loop.close()
+        
+        # Capture all logs
+        raw_logs = log_buffer.getvalue()
+        
+        # Extract raw MCP response from results (if present)
+        raw_mcp_response = results.pop('raw_mcp_response', None)
+        
+        # Create structured logs array
+        execution_logs = []
+        for line in raw_logs.split('\n'):
+            if line.strip():
+                log_entry = {
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'message': line,
+                    'level': 'INFO' if 'INFO:' in line else ('ERROR' if 'ERROR:' in line else 'DEBUG')
+                }
+                execution_logs.append(log_entry)
         
         # Calculate final metrics
         end_time = time.time()
@@ -550,11 +658,12 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             'execution_message': f"Found {len(results.get('quotes', []))} insurance quotes"
         }
         
-        # Update execution with final results
+        # Update execution with final results and raw data
         cur.execute("""
             UPDATE workflow_executions 
             SET status = %s, completed_at = %s, execution_duration_seconds = %s, 
-                results = %s, progress_percentage = %s, current_step_index = %s 
+                results = %s, progress_percentage = %s, current_step_index = %s,
+                raw_logs = %s, raw_mcp_response = %s, execution_logs = %s
             WHERE id = %s
         """, (
             'completed' if results['execution_summary']['workflow_completed'] else 'failed',
@@ -563,6 +672,9 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             json.dumps(results),
             100,
             total_steps,
+            raw_logs,
+            json.dumps(raw_mcp_response) if raw_mcp_response else None,
+            json.dumps(execution_logs),
             execution_id
         ))
         conn.commit()
@@ -598,18 +710,63 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         error_msg = str(e)
         logger.error(f"❌ Real workflow execution failed: {error_msg}")
         
+        # Capture any logs that were generated before the error
+        raw_logs = log_buffer.getvalue()
+        
+        # Create error execution logs
+        execution_logs = []
+        
+        # Add captured logs
+        for line in raw_logs.split('\n'):
+            if line.strip():
+                log_entry = {
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'message': line,
+                    'level': 'INFO' if 'INFO:' in line else ('ERROR' if 'ERROR:' in line else 'DEBUG')
+                }
+                execution_logs.append(log_entry)
+        
+        # Add the main error
+        execution_logs.append({
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'message': f'FATAL ERROR: {error_msg}',
+            'level': 'ERROR',
+            'error_type': type(e).__name__,
+            'error_details': str(e)
+        })
+        
+        # Create error results with detailed information
+        error_results = {
+            'execution_type': 'real_browser_automation',
+            'workflow_name': workflow.get('name', 'Unknown') if 'workflow' in locals() else 'Unknown',
+            'error': error_msg,
+            'error_type': type(e).__name__,
+            'error_stage': 'mcp_connection' if 'MCP' in error_msg or '400 Bad Request' in error_msg else 'unknown',
+            'executed_steps': [],
+            'performance_metrics': {
+                'total_steps': 0,
+                'successful_steps': 0,
+                'failed_steps': 0,
+                'total_execution_time_seconds': int(time.time() - start_time)
+            }
+        }
+        
         # Update execution with error if we have execution_id
         if execution_id and conn and cur:
             try:
                 cur.execute("""
                     UPDATE workflow_executions 
-                    SET status = %s, completed_at = %s, execution_duration_seconds = %s, error_message = %s 
+                    SET status = %s, completed_at = %s, execution_duration_seconds = %s, 
+                        error_message = %s, raw_logs = %s, execution_logs = %s, results = %s
                     WHERE id = %s
                 """, (
                     'failed',
                     datetime.now(timezone.utc).isoformat(),
                     int(time.time() - start_time),
                     error_msg,
+                    raw_logs if raw_logs else f"Error occurred before logging started: {error_msg}",
+                    json.dumps(execution_logs),
+                    json.dumps(error_results),
                     execution_id
                 ))
                 conn.commit()
@@ -630,7 +787,8 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             'workflow_id': workflow_id,
             'execution_duration_seconds': int(time.time() - start_time),
             'timestamp': datetime.now(timezone.utc).isoformat(),
-            'execution_type': 'real_browser_automation'
+            'execution_type': 'real_browser_automation',
+            'error_details': error_results
         }
         
     finally:
@@ -832,7 +990,17 @@ def check_and_process_queued_jobs():
                 logger.info(f"🚀 Processing execution {execution_id} for workflow {workflow_id}")
                 
                 # Call the execute_workflow function with the existing execution_id
-                result = execute_workflow.local(workflow_id, execution_params, client_id, execution_id)
+                # Wrap in try-catch to capture early-stage errors
+                try:
+                    result = execute_workflow.local(workflow_id, execution_params, client_id, execution_id)
+                except Exception as exec_error:
+                    # Capture early-stage execution errors
+                    logger.error(f"❌ Early-stage execution error for {execution_id}: {str(exec_error)}")
+                    result = {
+                        'success': False,
+                        'error': str(exec_error),
+                        'error_type': 'early_stage_failure'
+                    }
                 
                 if result.get('success'):
                     logger.info(f"✅ Successfully processed execution {execution_id}")
