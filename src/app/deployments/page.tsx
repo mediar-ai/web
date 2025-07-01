@@ -406,11 +406,14 @@ export default function WorkflowsPage() {
                     <div className="mb-4">
                       <h4 className="text-sm font-bold font-mono mb-2 text-black">EXECUTIONS ({allExecutions.length})</h4>
                       <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {allExecutions.slice(0, 10).map((execution) => {
+                        {allExecutions.slice(0, 10).map((execution, index) => {
                           const isLive = 'progress_percentage' in execution;
                           const executionId = isLive ? execution.id : execution.execution_id;
+                          const uniqueKey = executionId 
+                            ? (isLive ? `live-${executionId}` : `exec-${executionId}`)
+                            : `${isLive ? 'live' : 'exec'}-idx-${index}`;
                           return (
-                            <div key={executionId} className="bg-white p-3 border border-black rounded">
+                            <div key={uniqueKey} className="bg-white p-3 border border-black rounded">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs font-mono text-black font-semibold">ID: {executionId}</span>
