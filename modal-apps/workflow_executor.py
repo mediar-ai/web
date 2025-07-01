@@ -133,6 +133,115 @@ def extract_applicant_info(workflow_data: Dict[str, Any]) -> Dict[str, str]:
     return info
 
 
+def calculate_age(date_of_birth: str) -> int:
+    """Calculate age from date of birth string (MM/DD/YYYY format)"""
+    try:
+        from datetime import datetime
+        dob = datetime.strptime(date_of_birth, "%m/%d/%Y")
+        today = datetime.now()
+        age = today.year - dob.year
+        if (today.month, today.day) < (dob.month, dob.day):
+            age -= 1
+        return age
+    except:
+        return 0  # Default if parsing fails
+
+
+def generate_formatted_summary(quotes: List[Dict[str, Any]], applicant_info: Dict[str, str], execution_metrics: Dict[str, Any]) -> str:
+    """Generate human-friendly formatted summary with emojis and visual formatting"""
+    
+    # Calculate derived values
+    age = calculate_age(applicant_info.get('date_of_birth', ''))
+    eligible_quotes = [q for q in quotes if q.get('eligible', False)]
+    ineligible_quotes = [q for q in quotes if not q.get('eligible', False)]
+    
+    # Start building the summary
+    summary_lines = [
+        "✅ Workflow execution completed!",
+        "",
+        "📊 Insurance Quote Summary",
+        "=" * 60,
+        "",
+        "👤 Applicant Profile:",
+        f"  Age: {age}" if age > 0 else "  Age: Unknown",
+        f"  Height: {applicant_info.get('height', 'Unknown')}",
+        f"  Weight: {applicant_info.get('weight', 'Unknown')}",
+        f"  Gender: {applicant_info.get('gender', 'Unknown')}",
+        f"  State: {applicant_info.get('state', 'Unknown')}, {applicant_info.get('zip', 'Unknown')}",
+        f"  Coverage: {applicant_info.get('face_value', 'Unknown')}",
+        ""
+    ]
+    
+    # Add eligible quotes section
+    if eligible_quotes:
+        summary_lines.extend([
+            f"✅ Eligible Quotes ({len(eligible_quotes)})",
+            "-" * 60
+        ])
+        
+        for quote in eligible_quotes:
+            summary_lines.extend([
+                f"  {quote.get('carrier', 'Unknown Carrier')}",
+                f"  Product: {quote.get('product', 'Unknown Product')}",
+                f"  Monthly Premium: {quote.get('monthly_price', 'N/A')}",
+                f"  Status: {', '.join(quote.get('status', []))}",
+                ""
+            ])
+    else:
+        summary_lines.extend([
+            "❌ No Eligible Quotes Found",
+            "-" * 60,
+            ""
+        ])
+    
+    # Add ineligible carriers section
+    if ineligible_quotes:
+        summary_lines.extend([
+            f"❌ Ineligible Carriers ({len(ineligible_quotes)})",
+            "-" * 60
+        ])
+        
+        for quote in ineligible_quotes:
+            status_str = ', '.join(quote.get('status', ['Unknown']))
+            summary_lines.append(f"  • {quote.get('carrier', 'Unknown')} - {quote.get('product', 'Unknown')}")
+            summary_lines.append(f"    Status: {status_str}")
+        
+        summary_lines.append("")
+    
+    # Add price summary if there are eligible quotes
+    if eligible_quotes:
+        prices = []
+        for quote in eligible_quotes:
+            price_str = quote.get('monthly_price', '').replace('$', '').replace(',', '')
+            try:
+                prices.append(float(price_str))
+            except:
+                pass
+        
+        if prices:
+            summary_lines.extend([
+                "💰 Price Summary",
+                "-" * 60,
+                f"  Lowest Premium: ${min(prices):,.2f}/month",
+                f"  Highest Premium: ${max(prices):,.2f}/month",
+                f"  Average Premium: ${sum(prices)/len(prices):,.2f}/month",
+                ""
+            ])
+    
+    # Add execution metrics
+    summary_lines.extend([
+        "📈 Execution Metrics",
+        "-" * 60,
+        f"  Total Steps: {execution_metrics.get('total_steps', 0)}",
+        f"  Successful Steps: {execution_metrics.get('successful_steps', 0)}",
+        f"  Failed Steps: {execution_metrics.get('failed_steps', 0)}",
+        f"  Execution Time: {execution_metrics.get('total_execution_time_seconds', 0):.1f}s",
+        ""
+    ])
+    
+    return '\n'.join(summary_lines)
+
+
 def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
     """Parse insurance quotes from the UI tree text"""
     quotes = []
@@ -658,12 +767,28 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             'execution_message': f"Found {len(results.get('quotes', []))} insurance quotes"
         }
         
+        # Generate formatted summary for successful executions
+        formatted_output = None
+        if results.get('quotes') is not None:  # If we have quotes data (even if empty)
+            try:
+                formatted_output = generate_formatted_summary(
+                    quotes=results.get('quotes', []),
+                    applicant_info=results.get('applicant_info', {}),
+                    execution_metrics=results.get('performance_metrics', {})
+                )
+                logger.info("📋 Generated formatted summary")
+                # Also log the formatted output for debugging
+                logger.info(f"\n{formatted_output}")
+            except Exception as format_error:
+                logger.warning(f"Failed to generate formatted summary: {format_error}")
+        
         # Update execution with final results and raw data
         cur.execute("""
             UPDATE workflow_executions 
             SET status = %s, completed_at = %s, execution_duration_seconds = %s, 
                 results = %s, progress_percentage = %s, current_step_index = %s,
-                raw_logs = %s, raw_mcp_response = %s, execution_logs = %s
+                raw_logs = %s, raw_mcp_response = %s, execution_logs = %s,
+                formatted_output = %s
             WHERE id = %s
         """, (
             'completed' if results['execution_summary']['workflow_completed'] else 'failed',
@@ -675,6 +800,7 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             raw_logs,
             json.dumps(raw_mcp_response) if raw_mcp_response else None,
             json.dumps(execution_logs),
+            formatted_output,
             execution_id
         ))
         conn.commit()
@@ -751,13 +877,38 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             }
         }
         
+        # Generate formatted error summary
+        formatted_error_output = f"""❌ Workflow execution failed!
+
+📊 Execution Error Summary
+{'=' * 60}
+
+🚨 Error Details:
+  Type: {type(e).__name__}
+  Stage: {error_results.get('error_stage', 'Unknown')}
+  Message: {error_msg}
+
+📈 Execution Metrics
+{'-' * 60}
+  Total Steps Attempted: {error_results['performance_metrics']['total_steps']}
+  Successful Steps: {error_results['performance_metrics']['successful_steps']}
+  Failed Steps: {error_results['performance_metrics']['failed_steps']}
+  Execution Time: {error_results['performance_metrics']['total_execution_time_seconds']}s
+
+💡 Troubleshooting:
+  • Check if MCP endpoint is running and accessible
+  • Verify browser automation dependencies are installed
+  • Review the raw logs for detailed error trace
+"""
+        
         # Update execution with error if we have execution_id
         if execution_id and conn and cur:
             try:
                 cur.execute("""
                     UPDATE workflow_executions 
                     SET status = %s, completed_at = %s, execution_duration_seconds = %s, 
-                        error_message = %s, raw_logs = %s, execution_logs = %s, results = %s
+                        error_message = %s, raw_logs = %s, execution_logs = %s, results = %s,
+                        formatted_output = %s
                     WHERE id = %s
                 """, (
                     'failed',
@@ -767,6 +918,7 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
                     raw_logs if raw_logs else f"Error occurred before logging started: {error_msg}",
                     json.dumps(execution_logs),
                     json.dumps(error_results),
+                    formatted_error_output,
                     execution_id
                 ))
                 conn.commit()

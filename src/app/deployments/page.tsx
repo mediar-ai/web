@@ -226,9 +226,19 @@ export default function WorkflowsPage() {
           <h1 className="text-3xl font-bold">Remote Workflow Execution</h1>
           <p className="text-muted-foreground">Execute and monitor automated workflows remotely</p>
         </div>
-        <Button onClick={fetchWorkflows} variant="outline" size="sm" className="bg-white text-black border-black hover:bg-black hover:text-white">
-          REFRESH
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => window.open('https://www.postman.com/matt-3648038/mediar-deployed-workflows-workspace/overview', '_blank')}
+            variant="outline" 
+            size="sm" 
+            className="bg-white text-black border-black hover:bg-black hover:text-white"
+          >
+            📮 POSTMAN COLLECTION
+          </Button>
+          <Button onClick={fetchWorkflows} variant="outline" size="sm" className="bg-white text-black border-black hover:bg-black hover:text-white">
+            REFRESH
+          </Button>
+        </div>
       </div>
 
       {/* Key Metrics */}
@@ -312,7 +322,7 @@ export default function WorkflowsPage() {
                     {workflow.tags && workflow.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-3">
                         {workflow.tags.map((tag: string, index: number) => (
-                          <span key={index} className="text-xs px-2 py-1 bg-white text-black border border-black rounded font-mono">
+                          <span key={`${workflow.id}-tag-${index}`} className="text-xs px-2 py-1 bg-white text-black border border-black rounded font-mono">
                             #{tag}
                           </span>
                         ))}
@@ -353,7 +363,7 @@ export default function WorkflowsPage() {
                     <div className="bg-white p-3 rounded border border-black">
                       <div className="space-y-2 max-h-32 overflow-y-auto">
                         {workflow.automation_sequence.slice(0, 5).map((step: AutomationStep, index: number) => (
-                          <div key={index} className="flex items-center gap-2 text-xs font-mono">
+                          <div key={`${workflow.id}-step-${index}`} className="flex items-center gap-2 text-xs font-mono">
                             <span className="bg-black text-white px-2 py-1 rounded">{index + 1}</span>
                             <span className="text-black font-semibold">{step.action?.toUpperCase() || 'ACTION'}</span>
                             <span className="text-black truncate">{step.description || step.url || step.selector || 'Step'}</span>
@@ -375,7 +385,7 @@ export default function WorkflowsPage() {
                     <h4 className="text-sm font-bold font-mono mb-2 text-black">INPUT PARAMETERS</h4>
                     <div className="grid grid-cols-2 gap-2 text-xs font-mono">
                       {Object.entries(workflow.input_parameters).map(([key, value]: [string, InputParameter]) => (
-                        <div key={key} className="bg-white p-2 border border-black rounded">
+                        <div key={`${workflow.id}-param-${key}`} className="bg-white p-2 border border-black rounded">
                           <span className="text-black font-semibold">{key}:</span>
                           <span className="text-black ml-1">{value?.type || 'string'}</span>
                         </div>

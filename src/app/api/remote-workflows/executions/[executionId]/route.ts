@@ -19,10 +19,10 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Get execution with all details including raw logs
+    // Get execution with all details including raw logs and formatted output
     const { data: execution, error } = await supabase
       .from('workflow_executions')
-      .select('*, raw_logs, raw_mcp_response, execution_logs')
+      .select('*, raw_logs, raw_mcp_response, execution_logs, formatted_output')
       .eq('id', executionIdNum)
       .single();
 
@@ -107,6 +107,9 @@ export async function GET(
         
         // Results (only if completed or failed)
         results: isCompleted ? (execution.results || {}) : null,
+        
+        // Human-friendly formatted output (if available)
+        formatted_output: execution.formatted_output || null,
         
         // Raw data (for debugging)
         raw_data: {
