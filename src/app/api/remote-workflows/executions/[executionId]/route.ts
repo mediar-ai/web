@@ -1,0 +1,169 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ executionId: string }> }
+) {
+  try {
+    const { executionId } = await params;
+    const executionIdNum = parseInt(executionId);
+    console.log(`⚡ Unified execution details for ${executionIdNum}...`);
+    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables are not set');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Get execution with all details including raw logs
+    const { data: execution, error } = await supabase
+      .from('workflow_executions')
+      .select('*, raw_logs, raw_mcp_response, execution_logs')
+      .eq('id', executionIdNum)
+      .single();
+
+    if (error || !execution) {
+      console.error('❌ Error fetching execution:', error);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Execution ${executionIdNum} not found`,
+          timestamp: new Date().toISOString()
+        },
+        { status: 404 }
+      );
+    }
+
+    // Get workflow details
+    const { data: workflow } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, description, version, category')
+      .eq('id', execution.workflow_id)
+      .single();
+
+    // Calculate execution metrics
+    const startedAt = execution.started_at ? new Date(execution.started_at) : null;
+    const completedAt = execution.completed_at ? new Date(execution.completed_at) : null;
+    const createdAt = execution.created_at ? new Date(execution.created_at) : null;
+    
+    let runtimeSeconds = 0;
+    if (startedAt && completedAt) {
+      runtimeSeconds = Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000);
+    } else if (createdAt && completedAt) {
+      // If started_at is null, use created_at
+      runtimeSeconds = Math.floor((completedAt.getTime() - createdAt.getTime()) / 1000);
+    }
+
+    // Determine execution state accurately
+    const isRunning = execution.status === 'running' || execution.status === 'queued';
+    const isCompleted = execution.status === 'completed' || execution.status === 'failed' || execution.status === 'error';
+    const isSuccessful = execution.status === 'completed';
+    const hasFailed = execution.status === 'failed' || execution.status === 'error';
+    const hasError = hasFailed || !!execution.error_message;
+
+    // Build comprehensive response
+    const response = {
+      success: true,
+      execution: {
+        // Basic info
+        execution_id: execution.id,
+        workflow_id: execution.workflow_id,
+        workflow_name: workflow?.name || 'Unknown Workflow',
+        workflow_description: workflow?.description || 'No description available',
+        workflow_version: workflow?.version || '1.0.0',
+        workflow_category: workflow?.category || 'general',
+        
+        // Status info
+        status: execution.status,
+        is_running: isRunning,
+        is_completed: isCompleted,
+        is_successful: isSuccessful,
+        has_failed: hasFailed,
+        has_error: hasError,
+        
+        // Timing info
+        started_at: execution.started_at,
+        completed_at: execution.completed_at,
+        execution_duration_seconds: execution.execution_duration_seconds || runtimeSeconds,
+        runtime_seconds: runtimeSeconds,
+        
+        // Progress info
+        progress_percentage: execution.progress_percentage || (isCompleted ? 100 : 0),
+        current_step: execution.current_step || execution.current_step_index || 0,
+        total_steps: execution.total_steps || 0,
+        
+        // Error info (if any)
+        error_message: execution.error_message || null,
+        error_details: execution.results?.error_details || null,
+        
+        // Execution details
+        modal_call_id: execution.modal_call_id,
+        client_id: execution.client_id,
+        execution_params: execution.execution_params || {},
+        
+        // Results (only if completed or failed)
+        results: isCompleted ? (execution.results || {}) : null,
+        
+        // Raw data (for debugging)
+        raw_data: {
+          raw_logs: execution.raw_logs || null,
+          raw_mcp_response: execution.raw_mcp_response || null,
+          execution_logs: execution.execution_logs || [],
+          has_raw_logs: !!execution.raw_logs,
+          has_mcp_response: !!execution.raw_mcp_response,
+          has_execution_logs: !!(execution.execution_logs && execution.execution_logs.length > 0)
+        },
+        
+        // Summary
+        summary: {
+          execution_successful: isSuccessful,
+          workflow_completed: isSuccessful || (hasFailed && execution.results?.execution_summary?.workflow_completed),
+          steps_completed: execution.results?.performance_metrics?.successful_steps || 0,
+          steps_failed: execution.results?.performance_metrics?.failed_steps || 0,
+          total_steps_attempted: execution.results?.performance_metrics?.total_steps || execution.total_steps || 0,
+          quotes_found: execution.results?.quotes?.length || 0,
+          error_stage: execution.results?.error_stage || (hasError ? 'execution' : null)
+        },
+        
+        // Metadata
+        timestamps: {
+          created_at: execution.created_at,
+          updated_at: execution.updated_at,
+          started_at: execution.started_at,
+          completed_at: execution.completed_at,
+          checked_at: new Date().toISOString()
+        },
+        
+        // Navigation
+        related_endpoints: {
+          workflow_details: `/api/remote-workflows/${execution.workflow_id}`,
+          all_executions: `/api/remote-workflows/executions?workflow_id=${execution.workflow_id}`,
+          execute_workflow: `/api/remote-workflows/${execution.workflow_id}/execute`
+        },
+        
+        // Polling hint
+        next_poll_in_seconds: isRunning ? 2 : null
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    return NextResponse.json(response);
+    
+  } catch (error) {
+    console.error('❌ Error getting execution details:', error);
+    
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to retrieve execution details',
+        details: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      },
+      { status: 500 }
+    );
+  }
+} 

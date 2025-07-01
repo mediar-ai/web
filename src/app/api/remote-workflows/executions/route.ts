@@ -110,10 +110,7 @@ export async function GET(request: NextRequest) {
         
         // Quick access URLs
         endpoints: {
-          status: `/api/remote-workflows/executions/${execution.id}/status`,
-          results: execution.status === 'completed' 
-            ? `/api/remote-workflows/executions/${execution.id}/results` 
-            : null,
+          details: `/api/remote-workflows/executions/${execution.id}`,
           workflow_details: `/api/remote-workflows/${execution.workflow_id}`
         },
         
