@@ -19,49 +19,34 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Get execution with workflow details in a single optimized query
+    // Get execution first
     const { data: execution, error } = await supabase
       .from('workflow_executions')
-      .select(`
-        id,
-        workflow_id,
-        status,
-        started_at,
-        completed_at,
-        execution_duration_seconds,
-        execution_params,
-        results,
-        error_message,
-        modal_call_id,
-        progress_percentage,
-        current_step,
-        total_steps,
-        created_at,
-        updated_at,
-        deployed_workflows!inner(
-          id,
-          name,
-          description,
-          version,
-          category
-        )
-      `)
+      .select('*')
       .eq('id', executionIdNum)
       .single();
 
     if (error || !execution) {
-              return NextResponse.json(
-          {
-            success: false,
-            error: `Execution ${executionIdNum} not found`,
-            timestamp: new Date().toISOString()
-          },
-          { status: 404 }
-        );
-      }
+      console.error('❌ Error fetching execution:', error);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Execution ${executionIdNum} not found`,
+          timestamp: new Date().toISOString()
+        },
+        { status: 404 }
+      );
+    }
 
-      // Check if execution is completed
-      if (execution.status !== 'completed') {
+    // Get workflow details separately
+    const { data: workflow } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, description, version, category')
+      .eq('id', execution.workflow_id)
+      .single();
+
+      // Check if execution has results (both completed and failed executions can have results)
+      if (execution.status !== 'completed' && execution.status !== 'failed') {
         return NextResponse.json(
           {
             success: false,
@@ -69,8 +54,6 @@ export async function GET(
             current_status: execution.status,
             message: execution.status === 'running' 
               ? 'Execution is still running. Check status endpoint for progress.'
-              : execution.status === 'failed'
-              ? 'Execution failed. Check error details.'
               : `Execution is in ${execution.status} state.`,
             status_endpoint: `/api/remote-workflows/executions/${executionIdNum}/status`,
             timestamp: new Date().toISOString()
@@ -78,10 +61,6 @@ export async function GET(
           { status: 409 }
         );
       }
-
-    const workflow = Array.isArray(execution.deployed_workflows) 
-      ? execution.deployed_workflows[0] 
-      : execution.deployed_workflows;
 
     // Calculate execution metrics
     const startedAt = execution.started_at ? new Date(execution.started_at) : null;

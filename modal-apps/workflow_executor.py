@@ -198,21 +198,11 @@ async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: 
         )
         
         await session.initialize()
-        logger.info("✅ Connected to MCP successfully!")
+        logger.info("✅ Connected to MCP successfully! [v2]")
         
         # Convert workflow steps from database format to MCP format
         automation_sequence = workflow_data.get('automation_sequence', [])
         tools = []
-        
-        # Map execution params to form fields
-        param_mapping = {
-            'Date of Birth': execution_params.get('customer_info', {}).get('date_of_birth'),
-            'Weight (lbs)': execution_params.get('customer_info', {}).get('weight'),
-            'State': execution_params.get('customer_info', {}).get('state'),
-            'Zip Code': execution_params.get('customer_info', {}).get('zip'),
-            'Face Value ($)': str(execution_params.get('insurance_preferences', {}).get('coverage_amount', '')),
-            'Height': execution_params.get('customer_info', {}).get('height')
-        }
         
         for step in automation_sequence:
             # Map database action types to MCP tool names
@@ -223,13 +213,29 @@ async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: 
                 'wait': 'delay',
                 'wait_for_element': 'wait_for_element',
                 'screenshot': 'screenshot',
-                'extract_data': 'get_element_text',
+                'extract_data': 'get_focused_window_tree',  # Changed from get_element_text
                 'scroll': 'scroll_to_element'
             }
             
             # Database uses 'action' not 'action_type'
             action = step.get('action', '')
-            tool_name = action_mapping.get(action, action)
+            description = step.get('description', '').lower()
+            
+            # Special handling for different click types based on description
+            if action == 'click':
+                logger.info(f"   🔍 Processing click action with description: '{description}'")
+                if 'invoke' in description or 'run quote' in description:
+                    tool_name = 'invoke_element'
+                    logger.info(f"   → Mapped to invoke_element")
+                elif 'radio' in description or 'male' in description or 'no' in description:
+                    tool_name = 'set_selected'
+                    logger.info(f"   → Mapped to set_selected")
+                else:
+                    tool_name = 'click_element'
+                    logger.info(f"   → Mapped to click_element")
+            else:
+                tool_name = action_mapping.get(action, action)
+                logger.info(f"   🔍 Mapped {action} → {tool_name}")
             
             tool_call = {
                 "tool_name": tool_name,
@@ -239,37 +245,92 @@ async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: 
             # Map parameters based on action type
             if action == 'navigate':
                 tool_call['arguments']['url'] = step.get('url', '')
-            elif action in ['click', 'fill_input', 'extract_data', 'scroll']:
+            elif action in ['click', 'fill_input', 'scroll']:
                 tool_call['arguments']['selector'] = step.get('selector', '')
                 if 'alternative_selectors' in step:
-                    tool_call['arguments']['alternative_selectors'] = step['alternative_selectors']
-                if action == 'fill_input':
+                    # Convert array to string if needed (MCP expects string)
+                    alt_selectors = step['alternative_selectors']
+                    if isinstance(alt_selectors, list):
+                        # Join array elements with pipe separator
+                        tool_call['arguments']['alternative_selectors'] = '|'.join(alt_selectors)
+                    else:
+                        tool_call['arguments']['alternative_selectors'] = alt_selectors
+                
+                # Special handling for set_selected (radio buttons)
+                if tool_name == 'set_selected':
+                    tool_call['arguments']['state'] = True
+                    if 'timeout' in step:
+                        tool_call['arguments']['timeout_ms'] = step['timeout']
+                
+                # Special handling for invoke_element
+                elif tool_name == 'invoke_element':
+                    if 'timeout' in step:
+                        tool_call['arguments']['timeout_ms'] = step['timeout']
+                
+                elif action == 'fill_input':
                     # Handle both 'value' field and 'parameters' object
+                    text_value = ''
                     if 'value' in step:
-                        tool_call['arguments']['text_to_type'] = step['value']
+                        text_value = step['value']
                     elif 'parameters' in step:
-                        tool_call['arguments']['text_to_type'] = step['parameters'].get('value', '')
-            elif action == 'wait' and 'wait_after' in step:
-                tool_call['arguments']['seconds'] = step['wait_after'] / 1000  # Convert ms to seconds
+                        text_value = step['parameters'].get('value', '')
+                    
+                    # Replace placeholders with actual values from execution params
+                    if text_value.startswith('{{') and text_value.endswith('}}'):
+                        # Extract placeholder name
+                        placeholder = text_value[2:-2]  # Remove {{ and }}
+                        
+                        # Look up value based on placeholder
+                        if placeholder == 'height':
+                            text_value = execution_params.get('customer_info', {}).get('height', text_value)
+                        elif placeholder == 'date_of_birth':
+                            text_value = execution_params.get('customer_info', {}).get('date_of_birth', text_value)
+                        elif placeholder == 'weight':
+                            text_value = execution_params.get('customer_info', {}).get('weight', text_value)
+                        elif placeholder == 'state':
+                            text_value = execution_params.get('customer_info', {}).get('state', text_value)
+                        elif placeholder == 'zip_code':
+                            text_value = execution_params.get('customer_info', {}).get('zip_code', text_value)
+                        elif placeholder == 'face_value':
+                            text_value = execution_params.get('insurance_preferences', {}).get('face_value', text_value)
+                        elif placeholder == 'order_id':
+                            text_value = execution_params.get('credentials', {}).get('order_id', text_value)
+                        elif placeholder == 'email':
+                            text_value = execution_params.get('credentials', {}).get('email', text_value)
+                    
+                    tool_call['arguments']['text_to_type'] = text_value
+            elif action == 'wait' or action == 'delay':
+                # Handle both wait_after and delay_ms formats
+                if 'wait_after' in step:
+                    tool_call['arguments']['seconds'] = step['wait_after'] / 1000  # Convert ms to seconds
+                elif 'parameters' in step and 'delay_ms' in step['parameters']:
+                    tool_call['arguments']['seconds'] = step['parameters']['delay_ms'] / 1000  # Convert ms to seconds
+                elif 'parameters' in step and 'seconds' in step['parameters']:
+                    tool_call['arguments']['seconds'] = step['parameters']['seconds']
             elif action == 'wait_for_element':
                 tool_call['arguments']['selector'] = step.get('selector', '')
                 if 'timeout' in step:
-                    tool_call['arguments']['timeout'] = step['timeout']
+                    tool_call['arguments']['timeout_ms'] = step['timeout']
+                if 'condition' in step:
+                    tool_call['arguments']['condition'] = step['condition']
+            elif action == 'extract_data':
+                # get_focused_window_tree doesn't need parameters
+                pass
             
             tools.append(tool_call)
             logger.info(f"   Step {step.get('step_number', len(tools))}: {tool_name} - {step.get('description', '')}")
         
-        # Add final step to capture UI tree for results
-        tools.append({
-            "tool_name": "get_focused_window_tree",
-            "arguments": {}
-        })
-        
         # Execute the sequence
         logger.info(f"🚀 Executing {len(tools)} browser automation steps...")
+        
+        # Log the tools for debugging
+        logger.info("📋 Tools to execute:")
+        for i, tool in enumerate(tools):
+            logger.info(f"   {i+1}. {tool['tool_name']} - {tool.get('arguments', {})}")
+        
         result = await session.call_tool("execute_sequence", arguments={
             "tools_json": json.dumps(tools),  # MCP expects JSON string
-            "stop_on_error": True,
+            "stop_on_error": False,  # Continue on errors to see all issues
             "include_detailed_results": True
         })
         
@@ -295,24 +356,40 @@ async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: 
                 if hasattr(item, 'text'):
                     result_data = json.loads(item.text)
                     
+                    logger.info(f"📊 Execution completed in {result_data.get('total_duration_ms', 0)}ms")
+                    
+                    # Debug: Log the structure of the first result
+                    if result_data.get('results'):
+                        logger.info(f"🔍 Result structure sample: {json.dumps(result_data['results'][0] if result_data['results'] else {}, indent=2)[:500]}")
+                    
                     # Count successful/failed steps
-                    for step_result in result_data.get('results', []):
-                        if step_result.get('success'):
+                    for i, step_result in enumerate(result_data.get('results', [])):
+                        # Check different possible success indicators
+                        is_success = step_result.get('success', step_result.get('status') == 'success' or not step_result.get('error'))
+                        
+                        if is_success:
                             execution_results['performance_metrics']['successful_steps'] += 1
+                            logger.info(f"   ✅ Step {i+1}: {step_result.get('tool_name')} - Success")
                         else:
                             execution_results['performance_metrics']['failed_steps'] += 1
+                            error_msg = step_result.get('error', step_result.get('message', 'Unknown status'))
+                            logger.info(f"   ❌ Step {i+1}: {step_result.get('tool_name')} - Failed: {error_msg}")
                     
                     # Get UI tree from final step
                     if result_data.get('results'):
-                        last_result = result_data['results'][-1]
-                        if last_result.get('tool_name') == 'get_focused_window_tree':
-                            ui_tree = last_result.get('result', {}).get('content', [{}])[0].get('text', '')
-                            
-                            # Parse quotes from UI tree
+                        # Find the get_focused_window_tree step (should be step 25)
+                        ui_tree = None
+                        for step_result in result_data['results']:
+                            if step_result.get('tool_name') == 'get_focused_window_tree':
+                                ui_tree = step_result.get('result', {}).get('content', [{}])[0].get('text', '')
+                                break
+                        
+                        # Parse quotes from UI tree if found
+                        if ui_tree:
                             execution_results['quotes'] = parse_quote_results(ui_tree)
-                            
-                            # Extract applicant info
-                            execution_results['applicant_info'] = extract_applicant_info(workflow_data)
+                        
+                        # Extract applicant info
+                        execution_results['applicant_info'] = extract_applicant_info(workflow_data)
                     
                     execution_results['performance_metrics']['total_execution_time_seconds'] = result_data.get('total_duration_ms', 0) / 1000
         
@@ -332,7 +409,7 @@ async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: 
     memory=2048,   # 2GB memory for browser operations
     cpu=2.0        # 2 CPUs for better performance
 )
-def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, client_id: str = None) -> Dict[str, Any]:
+def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, client_id: str = None, execution_id: int = None) -> Dict[str, Any]:
     """
     🚀 REAL BROWSER AUTOMATION: Execute workflow using MCP browser control
     
@@ -347,6 +424,7 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         workflow_id: ID of workflow to execute
         execution_params: Input parameters for the workflow
         client_id: Optional client identifier
+        execution_id: Optional existing execution ID to update (instead of creating new)
         
     Returns:
         Dict with execution results and extracted data
@@ -375,57 +453,78 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         
         logger.info(f"📋 Loaded {workflow['name']} - {total_steps} steps to execute via browser")
         
-        # Create execution record
-        execution_data = {
-            'workflow_id': workflow_id,
-            'status': 'running',
-            'started_at': datetime.now(timezone.utc).isoformat(),
-            'execution_params': execution_params or {},
-            'modal_call_id': f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}",
-            'total_steps': total_steps,
-            'current_step_index': 0,
-            'progress_percentage': 0
-        }
-        
-        # Build INSERT query with optional client_id
-        if client_id:
+        # Either update existing execution or create new one
+        if execution_id:
+            # Update existing execution record
+            logger.info(f"📝 Updating existing execution record {execution_id}")
             cur.execute("""
-                INSERT INTO workflow_executions 
-                (workflow_id, status, started_at, execution_params, modal_call_id, total_steps, current_step_index, progress_percentage, client_id) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                RETURNING id
+                UPDATE workflow_executions 
+                SET status = %s, started_at = %s, total_steps = %s, 
+                    current_step_index = %s, progress_percentage = %s,
+                    modal_call_id = %s
+                WHERE id = %s
             """, (
-                execution_data['workflow_id'],
-                execution_data['status'],
-                execution_data['started_at'],
-                json.dumps(execution_data['execution_params']),
-                execution_data['modal_call_id'],
-                execution_data['total_steps'],
-                execution_data['current_step_index'],
-                execution_data['progress_percentage'],
-                client_id
+                'running',
+                datetime.now(timezone.utc).isoformat(),
+                total_steps,
+                0,
+                0,
+                f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}",
+                execution_id
             ))
+            conn.commit()
         else:
-            cur.execute("""
-                INSERT INTO workflow_executions 
-                (workflow_id, status, started_at, execution_params, modal_call_id, total_steps, current_step_index, progress_percentage) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
-                RETURNING id
-            """, (
-                execution_data['workflow_id'],
-                execution_data['status'],
-                execution_data['started_at'],
-                json.dumps(execution_data['execution_params']),
-                execution_data['modal_call_id'],
-                execution_data['total_steps'],
-                execution_data['current_step_index'],
-                execution_data['progress_percentage']
-            ))
-        
-        execution_id = cur.fetchone()['id']
-        conn.commit()
-        
-        logger.info(f"📝 Created execution record {execution_id}")
+            # Create new execution record
+            execution_data = {
+                'workflow_id': workflow_id,
+                'status': 'running',
+                'started_at': datetime.now(timezone.utc).isoformat(),
+                'execution_params': execution_params or {},
+                'modal_call_id': f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}",
+                'total_steps': total_steps,
+                'current_step_index': 0,
+                'progress_percentage': 0
+            }
+            
+            # Build INSERT query with optional client_id
+            if client_id:
+                cur.execute("""
+                    INSERT INTO workflow_executions 
+                    (workflow_id, status, started_at, execution_params, modal_call_id, total_steps, current_step_index, progress_percentage, client_id) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                    RETURNING id
+                """, (
+                    execution_data['workflow_id'],
+                    execution_data['status'],
+                    execution_data['started_at'],
+                    json.dumps(execution_data['execution_params']),
+                    execution_data['modal_call_id'],
+                    execution_data['total_steps'],
+                    execution_data['current_step_index'],
+                    execution_data['progress_percentage'],
+                    client_id
+                ))
+            else:
+                cur.execute("""
+                    INSERT INTO workflow_executions 
+                    (workflow_id, status, started_at, execution_params, modal_call_id, total_steps, current_step_index, progress_percentage) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
+                    RETURNING id
+                """, (
+                    execution_data['workflow_id'],
+                    execution_data['status'],
+                    execution_data['started_at'],
+                    json.dumps(execution_data['execution_params']),
+                    execution_data['modal_call_id'],
+                    execution_data['total_steps'],
+                    execution_data['current_step_index'],
+                    execution_data['progress_percentage']
+                ))
+            
+            execution_id = cur.fetchone()['id']
+            conn.commit()
+            
+            logger.info(f"📝 Created execution record {execution_id}")
         
         # Execute workflow through MCP browser automation
         # Run async function in sync context
@@ -471,9 +570,9 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         # Update workflow success metrics
         try:
             if results['execution_summary']['workflow_completed']:
-                cur.execute("UPDATE deployed_workflows SET successful_executions = COALESCE(successful_executions, 0) + 1 WHERE id = %s", (workflow_id,))
+                cur.execute("UPDATE deployed_workflows SET successful_runs = COALESCE(successful_runs, 0) + 1 WHERE id = %s", (workflow_id,))
             else:
-                cur.execute("UPDATE deployed_workflows SET failed_executions = COALESCE(failed_executions, 0) + 1 WHERE id = %s", (workflow_id,))
+                cur.execute("UPDATE deployed_workflows SET failed_runs = COALESCE(failed_runs, 0) + 1 WHERE id = %s", (workflow_id,))
             conn.commit()
         except Exception as metrics_error:
             logger.warning(f"Failed to update workflow metrics: {metrics_error}")
@@ -516,7 +615,7 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
                 conn.commit()
                 
                 try:
-                    cur.execute("UPDATE deployed_workflows SET failed_executions = COALESCE(failed_executions, 0) + 1 WHERE id = %s", (workflow_id,))
+                    cur.execute("UPDATE deployed_workflows SET failed_runs = COALESCE(failed_runs, 0) + 1 WHERE id = %s", (workflow_id,))
                     conn.commit()
                 except Exception as metrics_error:
                     logger.warning(f"Failed to update workflow failure metrics: {metrics_error}")
@@ -677,14 +776,14 @@ if __name__ == "__main__":
 @app.function(
     image=image,
     secrets=secrets,
-    schedule=modal.Period(seconds=30),  # Check every 30 seconds
+    schedule=modal.Period(seconds=10),  # Check every 10 seconds
     timeout=300  # 5 minutes max per check
 )
 def check_and_process_queued_jobs():
     """
     🔄 SCHEDULED JOB PROCESSOR: Check for queued executions and process them
     
-    This function runs every 30 seconds to:
+    This function runs every 10 seconds to:
     - Find executions with status='queued'
     - Process them by calling execute_workflow
     - Handle errors and update statuses
@@ -732,16 +831,8 @@ def check_and_process_queued_jobs():
             try:
                 logger.info(f"🚀 Processing execution {execution_id} for workflow {workflow_id}")
                 
-                # Update status to 'running'
-                cur.execute("""
-                    UPDATE workflow_executions
-                    SET status = 'running', started_at = NOW()
-                    WHERE id = %s
-                """, (execution_id,))
-                conn.commit()
-                
-                # Call the execute_workflow function directly
-                result = execute_workflow.local(workflow_id, execution_params, client_id)
+                # Call the execute_workflow function with the existing execution_id
+                result = execute_workflow.local(workflow_id, execution_params, client_id, execution_id)
                 
                 if result.get('success'):
                     logger.info(f"✅ Successfully processed execution {execution_id}")

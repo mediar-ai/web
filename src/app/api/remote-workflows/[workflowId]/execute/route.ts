@@ -91,7 +91,7 @@ export async function POST(
       created_at: new Date().toISOString(),
       execution_mode,
       client_id,
-      message: `Workflow execution queued successfully. Modal will process it within 30 seconds. Use execution ID ${execution.id} to monitor progress.`
+      message: `Workflow execution queued successfully. Modal will process it within 10 seconds. Use execution ID ${execution.id} to monitor progress.`
     }, { status: 200 });
     
   } catch (error) {
