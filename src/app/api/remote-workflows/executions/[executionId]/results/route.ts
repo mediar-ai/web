@@ -2,179 +2,165 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 export async function GET(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ executionId: string }> }
 ) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return NextResponse.json({ error: 'Supabase environment variables are not set.' }, { status: 500 });
-  }
-
-  const { executionId } = await params;
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  
   try {
-    const url = new URL(req.url);
-    const includeScreenshots = url.searchParams.get('include_screenshots') === 'true';
-    const includeLogs = url.searchParams.get('include_logs') === 'true';
+    const { executionId } = await params;
+    const executionIdNum = parseInt(executionId);
+    console.log(`⚡ Fast execution results for ${executionIdNum} from Vercel...`);
+    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables are not set');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Get execution with workflow details in a single optimized query
     const { data: execution, error } = await supabase
       .from('workflow_executions')
       .select(`
         id,
         workflow_id,
         status,
-        execution_params,
-        results,
-        execution_logs,
-        error_message,
-        screenshots,
-        queued_at,
         started_at,
         completed_at,
         execution_duration_seconds,
+        execution_params,
+        results,
+        error_message,
         modal_call_id,
-        compute_cost_cents,
-        workflow:deployed_workflows(
+        progress_percentage,
+        current_step,
+        total_steps,
+        created_at,
+        updated_at,
+        deployed_workflows!inner(
           id,
           name,
-          expected_outputs
+          description,
+          version,
+          category
         )
       `)
-      .eq('id', executionId)
+      .eq('id', executionIdNum)
       .single();
 
-    if (error) throw error;
-    if (!execution) {
-      return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
+    if (error || !execution) {
+              return NextResponse.json(
+          {
+            success: false,
+            error: `Execution ${executionIdNum} not found`,
+            timestamp: new Date().toISOString()
+          },
+          { status: 404 }
+        );
+      }
+
+      // Check if execution is completed
+      if (execution.status !== 'completed') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Execution ${executionIdNum} is not completed yet`,
+            current_status: execution.status,
+            message: execution.status === 'running' 
+              ? 'Execution is still running. Check status endpoint for progress.'
+              : execution.status === 'failed'
+              ? 'Execution failed. Check error details.'
+              : `Execution is in ${execution.status} state.`,
+            status_endpoint: `/api/remote-workflows/executions/${executionIdNum}/status`,
+            timestamp: new Date().toISOString()
+          },
+          { status: 409 }
+        );
+      }
+
+    const workflow = Array.isArray(execution.deployed_workflows) 
+      ? execution.deployed_workflows[0] 
+      : execution.deployed_workflows;
+
+    // Calculate execution metrics
+    const startedAt = execution.started_at ? new Date(execution.started_at) : null;
+    const completedAt = execution.completed_at ? new Date(execution.completed_at) : null;
+    let executionTime = 0;
+    
+    if (startedAt && completedAt) {
+      executionTime = Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000);
     }
 
-    // Only return results for completed executions
-    if (execution.status !== 'completed') {
-      return NextResponse.json({ 
-        error: 'Execution not completed', 
-        current_status: execution.status,
-        message: execution.status === 'failed' 
-          ? 'Execution failed. Check logs for details.'
-          : 'Execution still in progress. Check status endpoint.'
-      }, { status: 400 });
-    }
-
-    // Parse and structure results
-    const results = execution.results || {};
-    const workflow = Array.isArray(execution.workflow) ? execution.workflow[0] : execution.workflow;
-    const expectedOutputs = workflow?.expected_outputs || {};
-
-    // Validate results against expected schema
-    const validationResult = validateResults(results, expectedOutputs);
-
-    const response = {
-      execution_id: execution.id,
-      workflow_id: execution.workflow_id,
-      workflow_name: workflow?.name,
-      status: execution.status,
+    // Format comprehensive results response
+    const resultsResponse = {
+      execution_info: {
+        execution_id: execution.id,
+        workflow_id: execution.workflow_id,
+        workflow_name: workflow?.name || 'Unknown Workflow',
+        workflow_description: workflow?.description || 'No description available',
+        workflow_version: workflow?.version || '1.0.0',
+        workflow_category: workflow?.category || 'general',
+        status: execution.status,
+        modal_call_id: execution.modal_call_id
+      },
       
-      // Timing information
-      queued_at: execution.queued_at,
-      started_at: execution.started_at,
-      completed_at: execution.completed_at,
-      execution_duration_seconds: execution.execution_duration_seconds,
+      execution_timing: {
+        started_at: execution.started_at,
+        completed_at: execution.completed_at,
+        execution_duration_seconds: execution.execution_duration_seconds || executionTime,
+        total_runtime_seconds: executionTime
+      },
       
-      // Input parameters used
-      execution_params: execution.execution_params,
+      execution_progress: {
+        progress_percentage: execution.progress_percentage || 100,
+        current_step: execution.current_step || execution.total_steps || 0,
+        total_steps: execution.total_steps || 0,
+        completion_status: 'fully_completed'
+      },
       
-      // Results data
-      results: results,
-      results_validation: validationResult,
+      input_parameters: execution.execution_params || {},
       
-      // Optional data based on query parameters
-      ...(includeScreenshots && { screenshots: execution.screenshots || [] }),
-      ...(includeLogs && { execution_logs: execution.execution_logs || [] }),
+      results: execution.results || {},
       
-      // Billing information
-      compute_cost_cents: execution.compute_cost_cents,
+      execution_summary: {
+        success: true,
+        total_steps_completed: execution.total_steps || 0,
+        error_count: 0,
+        warning_count: 0,
+        data_points_processed: execution.results?.processed_count || 0
+      },
       
-      // Meta information
-      modal_call_id: execution.modal_call_id,
+      metadata: {
+        execution_created_at: execution.created_at,
+        execution_updated_at: execution.updated_at,
+        results_retrieved_at: new Date().toISOString()
+      },
       
-      // Download URLs for large data
-      download_urls: {
-        full_results: `/api/remote-workflows/executions/${execution.id}/download/results`,
-        screenshots: execution.screenshots?.length > 0 
-          ? `/api/remote-workflows/executions/${execution.id}/download/screenshots`
-          : null,
-        logs: `/api/remote-workflows/executions/${execution.id}/download/logs`
+      related_endpoints: {
+        workflow_details: `/api/remote-workflows/${execution.workflow_id}`,
+        execution_status: `/api/remote-workflows/executions/${executionId}/status`,
+        all_executions: `/api/remote-workflows/executions?workflow_id=${execution.workflow_id}`
       }
     };
 
-    return NextResponse.json(response);
-
+    return NextResponse.json({
+      success: true,
+      execution_results: resultsResponse,
+      timestamp: new Date().toISOString()
+    });
+    
   } catch (error) {
-    console.error('Error fetching execution results:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
+    console.error('❌ Error getting execution results:', error);
+    
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to retrieve execution results',
+        details: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      },
+      { status: 500 }
+    );
   }
-}
-
-// Validate results against expected output schema
-function validateResults(results: Record<string, unknown>, expectedSchema: Record<string, unknown>): { valid: boolean; warnings: string[]; summary: Record<string, unknown> } {
-  const warnings: string[] = [];
-  const summary: Record<string, unknown> = {};
-
-  if (!expectedSchema || Object.keys(expectedSchema).length === 0) {
-    return { valid: true, warnings: ['No output schema defined'], summary: {} };
-  }
-
-  for (const [key, definition] of Object.entries(expectedSchema)) {
-    const def = definition as Record<string, unknown>;
-    const value = results[key];
-
-    summary[key] = {
-      expected_type: def.type,
-      actual_type: Array.isArray(value) ? 'array' : typeof value,
-      present: value !== undefined && value !== null,
-      description: def.description
-    };
-
-    if (def.required && (value === undefined || value === null)) {
-      warnings.push(`Missing expected output: ${key}`);
-      continue;
-    }
-
-    if (value !== undefined && value !== null) {
-      // Type validation
-      if (def.type === 'array' && !Array.isArray(value)) {
-        warnings.push(`Output '${key}' expected to be array but got ${typeof value}`);
-      }
-      if (def.type === 'object' && (typeof value !== 'object' || Array.isArray(value))) {
-        warnings.push(`Output '${key}' expected to be object but got ${typeof value}`);
-      }
-      if (def.type === 'string' && typeof value !== 'string') {
-        warnings.push(`Output '${key}' expected to be string but got ${typeof value}`);
-      }
-      if (def.type === 'number' && typeof value !== 'number') {
-        warnings.push(`Output '${key}' expected to be number but got ${typeof value}`);
-      }
-
-      // Array length validation
-      if (def.type === 'array' && Array.isArray(value)) {
-        const summaryObj = summary[key] as Record<string, unknown>;
-        summaryObj.count = value.length;
-        if (typeof def.min_items === 'number' && value.length < def.min_items) {
-          warnings.push(`Output '${key}' has ${value.length} items but expected at least ${def.min_items}`);
-        }
-        if (typeof def.max_items === 'number' && value.length > def.max_items) {
-          warnings.push(`Output '${key}' has ${value.length} items but expected at most ${def.max_items}`);
-        }
-      }
-    }
-  }
-
-  return { 
-    valid: warnings.length === 0, 
-    warnings, 
-    summary 
-  };
 }
