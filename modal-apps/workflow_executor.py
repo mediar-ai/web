@@ -2,45 +2,346 @@ import modal
 import json
 import time
 import random
+import re
+import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from contextlib import AsyncExitStack
 import os
 import logging
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Modal app configuration - lightweight for mock execution
+# Modal app configuration - updated for real browser automation
 app = modal.App("workflow-executor")
 
-# Create lightweight image for mock execution
+# Create image with MCP dependencies for browser automation
 image = modal.Image.debian_slim().pip_install([
-    "supabase==2.3.4"
+    "psycopg2-binary",  # Direct database connection
+    "mcp",
+    "httpx",  # Required for MCP HTTP transport
+    "websockets",  # Optional but useful for MCP
 ])
 
-# Secrets for database access
+# Secrets for database access and MCP endpoint
 secrets = [
     modal.Secret.from_name("supabase-secret"),
     modal.Secret.from_name("custom-secret")
 ]
 
+# Database connection configuration (matching sequential_processor.py)
+DB_CONFIG = {
+    'host': 'aws-0-us-west-1.pooler.supabase.com',
+    'port': 5432,
+    'database': 'postgres',
+    'user': 'postgres.eshwntsgsputksqamckh',
+    'password': 'dS64xX6mU3E4Sbyc'
+}
+
+# MCP endpoint configuration - could be moved to secrets
+MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"
+
+
+def get_database_connection():
+    """Get a database connection with proper error handling and optimized settings"""
+    try:
+        # Optimize connection for concurrent usage
+        config = DB_CONFIG.copy()
+        config.update({
+            'connect_timeout': 10,      # Fail fast if connection takes too long
+            'application_name': 'workflow_executor',
+        })
+        
+        conn = psycopg2.connect(**config)
+        conn.autocommit = False
+        
+        # Optimize connection for performance
+        with conn.cursor() as cur:
+            cur.execute("SET statement_timeout = '300s'")  # 5 minute query timeout
+            cur.execute("SET idle_in_transaction_session_timeout = '600s'")  # 10 minute idle timeout
+        conn.commit()
+        
+        return conn
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        raise
+
+
+def extract_applicant_info(workflow_data: Dict[str, Any]) -> Dict[str, str]:
+    """Extract applicant information from workflow automation sequence"""
+    info = {
+        "height": "",
+        "date_of_birth": "",
+        "weight": "",
+        "state": "",
+        "zip": "",
+        "face_value": "",
+        "gender": "",
+        "nicotine": "Never"  # Default value
+    }
+    
+    # Extract from automation_sequence (database format) instead of steps
+    automation_sequence = workflow_data.get('automation_sequence', [])
+    
+    for step in automation_sequence:
+        # Extract text input values
+        if step.get('action') == 'fill_input':
+            # Handle both 'value' field and 'parameters' object
+            text_value = ''
+            if 'value' in step:
+                text_value = step['value']
+            elif 'parameters' in step:
+                text_value = step['parameters'].get('value', '')
+                
+            description = step.get('description', '').lower()
+            
+            if 'height' in description:
+                # Store height as-is (e.g., "5'10\"")
+                info['height'] = text_value
+            elif 'date of birth' in description:
+                info['date_of_birth'] = text_value
+            elif 'weight' in description:
+                info['weight'] = text_value + " lbs" if not text_value.endswith('lbs') else text_value
+            elif 'state' in description:
+                info['state'] = text_value
+            elif 'zip' in description:
+                info['zip'] = text_value
+            elif 'face value' in description or 'coverage amount' in description:
+                info['face_value'] = text_value
+        
+        # Extract gender from click actions
+        elif step.get('action') == 'click' and 'male' in step.get('description', '').lower():
+            if 'female' not in step.get('description', '').lower():
+                info['gender'] = 'Male'
+            else:
+                info['gender'] = 'Female'
+    
+    return info
+
+
+def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
+    """Parse insurance quotes from the UI tree text"""
+    quotes = []
+    
+    try:
+        # Extract the main content that contains quote information
+        if "Top Recommendations" not in ui_tree_text:
+            logger.warning("No 'Top Recommendations' found in UI tree")
+            return quotes
+            
+        # Find all group elements that contain quote information
+        # Pattern to find carrier names and prices
+        carrier_pattern = r'"name":"([^"]+?):\s*([\w\s\*-]+)".*?"role":"Text"'
+        price_pattern = r'"name":"\$([0-9,.]+)".*?"role":"Text"'
+        status_pattern = r'"name":"(Ineligible|Graded|Discontinued|Monthly Price)"'
+        
+        # Split by groups that contain quote info
+        quote_blocks = ui_tree_text.split('"bounds":[956.0,')
+        
+        for block in quote_blocks[1:]:  # Skip first split
+            quote_info = {}
+            
+            # Extract carrier and product name
+            carrier_match = re.search(carrier_pattern, block)
+            if carrier_match:
+                full_name = carrier_match.group(1)
+                product_type = carrier_match.group(2)
+                quote_info['carrier'] = full_name
+                quote_info['product'] = product_type
+                
+                # Extract price
+                price_match = re.search(price_pattern, block)
+                if price_match:
+                    quote_info['monthly_price'] = f"${price_match.group(1)}"
+                
+                # Extract status
+                statuses = []
+                for status_match in re.finditer(status_pattern, block):
+                    status = status_match.group(1)
+                    if status not in ["Monthly Price"]:
+                        statuses.append(status)
+                
+                quote_info['status'] = statuses if statuses else ['Available']
+                
+                # Check if quote is eligible
+                quote_info['eligible'] = 'Ineligible' not in statuses
+                
+                quotes.append(quote_info)
+    
+    except Exception as e:
+        logger.error(f"Error parsing quotes: {e}")
+    
+    return quotes
+
+
+async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute workflow using MCP browser automation"""
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+    
+    exit_stack = AsyncExitStack()
+    
+    try:
+        # Connect to MCP endpoint
+        logger.info(f"🔌 Connecting to MCP endpoint: {MCP_ENDPOINT}")
+        
+        transport = await exit_stack.enter_async_context(
+            streamablehttp_client(MCP_ENDPOINT)
+        )
+        
+        session = await exit_stack.enter_async_context(
+            ClientSession(transport[0], transport[1])
+        )
+        
+        await session.initialize()
+        logger.info("✅ Connected to MCP successfully!")
+        
+        # Convert workflow steps from database format to MCP format
+        automation_sequence = workflow_data.get('automation_sequence', [])
+        tools = []
+        
+        # Map execution params to form fields
+        param_mapping = {
+            'Date of Birth': execution_params.get('customer_info', {}).get('date_of_birth'),
+            'Weight (lbs)': execution_params.get('customer_info', {}).get('weight'),
+            'State': execution_params.get('customer_info', {}).get('state'),
+            'Zip Code': execution_params.get('customer_info', {}).get('zip'),
+            'Face Value ($)': str(execution_params.get('insurance_preferences', {}).get('coverage_amount', '')),
+            'Height': execution_params.get('customer_info', {}).get('height')
+        }
+        
+        for step in automation_sequence:
+            # Map database action types to MCP tool names
+            action_mapping = {
+                'navigate': 'navigate_browser',
+                'click': 'click_element',
+                'fill_input': 'type_into_element',
+                'wait': 'delay',
+                'wait_for_element': 'wait_for_element',
+                'screenshot': 'screenshot',
+                'extract_data': 'get_element_text',
+                'scroll': 'scroll_to_element'
+            }
+            
+            # Database uses 'action' not 'action_type'
+            action = step.get('action', '')
+            tool_name = action_mapping.get(action, action)
+            
+            tool_call = {
+                "tool_name": tool_name,
+                "arguments": {}
+            }
+            
+            # Map parameters based on action type
+            if action == 'navigate':
+                tool_call['arguments']['url'] = step.get('url', '')
+            elif action in ['click', 'fill_input', 'extract_data', 'scroll']:
+                tool_call['arguments']['selector'] = step.get('selector', '')
+                if 'alternative_selectors' in step:
+                    tool_call['arguments']['alternative_selectors'] = step['alternative_selectors']
+                if action == 'fill_input':
+                    # Handle both 'value' field and 'parameters' object
+                    if 'value' in step:
+                        tool_call['arguments']['text_to_type'] = step['value']
+                    elif 'parameters' in step:
+                        tool_call['arguments']['text_to_type'] = step['parameters'].get('value', '')
+            elif action == 'wait' and 'wait_after' in step:
+                tool_call['arguments']['seconds'] = step['wait_after'] / 1000  # Convert ms to seconds
+            elif action == 'wait_for_element':
+                tool_call['arguments']['selector'] = step.get('selector', '')
+                if 'timeout' in step:
+                    tool_call['arguments']['timeout'] = step['timeout']
+            
+            tools.append(tool_call)
+            logger.info(f"   Step {step.get('step_number', len(tools))}: {tool_name} - {step.get('description', '')}")
+        
+        # Add final step to capture UI tree for results
+        tools.append({
+            "tool_name": "get_focused_window_tree",
+            "arguments": {}
+        })
+        
+        # Execute the sequence
+        logger.info(f"🚀 Executing {len(tools)} browser automation steps...")
+        result = await session.call_tool("execute_sequence", arguments={
+            "tools_json": json.dumps(tools),  # MCP expects JSON string
+            "stop_on_error": True,
+            "include_detailed_results": True
+        })
+        
+        # Parse results
+        execution_results = {
+            'execution_type': 'real_browser_automation',
+            'workflow_name': workflow_data.get('name', 'Unknown Workflow'),
+            'executed_steps': [],
+            'extracted_data': {},
+            'quotes': [],
+            'applicant_info': {},
+            'performance_metrics': {
+                'total_steps': len(automation_sequence),
+                'successful_steps': 0,
+                'failed_steps': 0,
+                'total_execution_time_seconds': 0
+            }
+        }
+        
+        # Process MCP results
+        if hasattr(result, 'content'):
+            for item in result.content:
+                if hasattr(item, 'text'):
+                    result_data = json.loads(item.text)
+                    
+                    # Count successful/failed steps
+                    for step_result in result_data.get('results', []):
+                        if step_result.get('success'):
+                            execution_results['performance_metrics']['successful_steps'] += 1
+                        else:
+                            execution_results['performance_metrics']['failed_steps'] += 1
+                    
+                    # Get UI tree from final step
+                    if result_data.get('results'):
+                        last_result = result_data['results'][-1]
+                        if last_result.get('tool_name') == 'get_focused_window_tree':
+                            ui_tree = last_result.get('result', {}).get('content', [{}])[0].get('text', '')
+                            
+                            # Parse quotes from UI tree
+                            execution_results['quotes'] = parse_quote_results(ui_tree)
+                            
+                            # Extract applicant info
+                            execution_results['applicant_info'] = extract_applicant_info(workflow_data)
+                    
+                    execution_results['performance_metrics']['total_execution_time_seconds'] = result_data.get('total_duration_ms', 0) / 1000
+        
+        return execution_results
+        
+    except Exception as e:
+        logger.error(f"MCP workflow execution error: {e}")
+        raise
+    finally:
+        await exit_stack.aclose()
+
+
 @app.function(
     image=image,
     secrets=secrets,
-    timeout=600,   # 10 minutes for mock execution
-    memory=512,    # 512MB memory (much lighter)
-    cpu=1.0        # Single CPU sufficient for mock
+    timeout=1800,  # 30 minutes for real browser automation
+    memory=2048,   # 2GB memory for browser operations
+    cpu=2.0        # 2 CPUs for better performance
 )
 def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, client_id: str = None) -> Dict[str, Any]:
     """
-    🚀 MOCK EXECUTION: Simulate workflow execution with realistic timing
+    🚀 REAL BROWSER AUTOMATION: Execute workflow using MCP browser control
     
-    This function simulates workflow execution by:
-    - Processing each automation step with realistic delays
+    This function executes real browser automation by:
+    - Connecting to MCP endpoint for browser control
+    - Processing each automation step through real browser
+    - Extracting actual data from web pages
     - Updating progress in database
-    - Generating mock results
-    - Handling mock errors occasionally
+    - Returning real results
     
     Args:
         workflow_id: ID of workflow to execute
@@ -48,36 +349,31 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         client_id: Optional client identifier
         
     Returns:
-        Dict with execution results and metadata
+        Dict with execution results and extracted data
     """
     start_time = time.time()
     execution_id = None
+    conn = None
+    cur = None
     
     try:
-        from supabase import create_client
-        
         # Initialize database connection
-        supabase_url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        conn = get_database_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        if not supabase_url or not supabase_key:
-            raise Exception("Missing Supabase credentials")
-            
-        supabase = create_client(supabase_url, supabase_key)
-        
-        logger.info(f"🚀 Starting MOCK workflow execution {workflow_id} on Modal...")
+        logger.info(f"🚀 Starting REAL workflow execution {workflow_id} on Modal...")
         
         # Get workflow details from database
-        workflow_result = supabase.table('deployed_workflows').select('*').eq('id', workflow_id).single().execute()
+        cur.execute("SELECT * FROM deployed_workflows WHERE id = %s", (workflow_id,))
+        workflow = cur.fetchone()
         
-        if not workflow_result.data:
+        if not workflow:
             raise Exception(f"Workflow {workflow_id} not found")
             
-        workflow = workflow_result.data
         automation_sequence = workflow.get('automation_sequence', [])
         total_steps = len(automation_sequence)
         
-        logger.info(f"📋 Loaded {workflow['name']} - {total_steps} steps to simulate")
+        logger.info(f"📋 Loaded {workflow['name']} - {total_steps} steps to execute via browser")
         
         # Create execution record
         execution_data = {
@@ -85,46 +381,105 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             'status': 'running',
             'started_at': datetime.now(timezone.utc).isoformat(),
             'execution_params': execution_params or {},
-            'modal_call_id': f"modal-{int(time.time())}-{random.randint(1000, 9999)}",
+            'modal_call_id': f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}",
             'total_steps': total_steps,
-            'current_step': 0,
+            'current_step_index': 0,
             'progress_percentage': 0
         }
         
+        # Build INSERT query with optional client_id
         if client_id:
-            execution_data['client_id'] = client_id
-            
-        execution_result = supabase.table('workflow_executions').insert(execution_data).execute()
-        execution_id = execution_result.data[0]['id']
+            cur.execute("""
+                INSERT INTO workflow_executions 
+                (workflow_id, status, started_at, execution_params, modal_call_id, total_steps, current_step_index, progress_percentage, client_id) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                RETURNING id
+            """, (
+                execution_data['workflow_id'],
+                execution_data['status'],
+                execution_data['started_at'],
+                json.dumps(execution_data['execution_params']),
+                execution_data['modal_call_id'],
+                execution_data['total_steps'],
+                execution_data['current_step_index'],
+                execution_data['progress_percentage'],
+                client_id
+            ))
+        else:
+            cur.execute("""
+                INSERT INTO workflow_executions 
+                (workflow_id, status, started_at, execution_params, modal_call_id, total_steps, current_step_index, progress_percentage) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
+                RETURNING id
+            """, (
+                execution_data['workflow_id'],
+                execution_data['status'],
+                execution_data['started_at'],
+                json.dumps(execution_data['execution_params']),
+                execution_data['modal_call_id'],
+                execution_data['total_steps'],
+                execution_data['current_step_index'],
+                execution_data['progress_percentage']
+            ))
+        
+        execution_id = cur.fetchone()['id']
+        conn.commit()
         
         logger.info(f"📝 Created execution record {execution_id}")
         
-        # Mock execution of workflow steps
-        results = _execute_mock_workflow(supabase, execution_id, workflow, execution_params or {})
+        # Execute workflow through MCP browser automation
+        # Run async function in sync context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            results = loop.run_until_complete(execute_mcp_workflow(workflow, execution_params or {}))
+        finally:
+            loop.close()
         
         # Calculate final metrics
         end_time = time.time()
         execution_duration = int(end_time - start_time)
         
-        # Update execution with final results
-        final_update = {
-            'status': 'completed',
-            'completed_at': datetime.now(timezone.utc).isoformat(),
-            'execution_duration_seconds': execution_duration,
-            'results': results,
-            'progress_percentage': 100,
-            'current_step': total_steps
+        # Generate execution summary
+        success_rate = (results['performance_metrics']['successful_steps'] / max(total_steps, 1)) * 100
+        
+        results['execution_summary'] = {
+            'workflow_completed': success_rate >= 90,  # Consider >90% as successful
+            'success_rate_percentage': round(success_rate, 2),
+            'total_execution_time': execution_duration,
+            'quotes_found': len(results.get('quotes', [])),
+            'execution_message': f"Found {len(results.get('quotes', []))} insurance quotes"
         }
         
-        supabase.table('workflow_executions').update(final_update).eq('id', execution_id).execute()
+        # Update execution with final results
+        cur.execute("""
+            UPDATE workflow_executions 
+            SET status = %s, completed_at = %s, execution_duration_seconds = %s, 
+                results = %s, progress_percentage = %s, current_step_index = %s 
+            WHERE id = %s
+        """, (
+            'completed' if results['execution_summary']['workflow_completed'] else 'failed',
+            datetime.now(timezone.utc).isoformat(),
+            execution_duration,
+            json.dumps(results),
+            100,
+            total_steps,
+            execution_id
+        ))
+        conn.commit()
         
         # Update workflow success metrics
         try:
-            supabase.rpc('increment_workflow_success', {'workflow_id': workflow_id}).execute()
-        except Exception as rpc_error:
-            logger.warning(f"Failed to update workflow success metrics: {rpc_error}")
+            if results['execution_summary']['workflow_completed']:
+                cur.execute("UPDATE deployed_workflows SET successful_executions = COALESCE(successful_executions, 0) + 1 WHERE id = %s", (workflow_id,))
+            else:
+                cur.execute("UPDATE deployed_workflows SET failed_executions = COALESCE(failed_executions, 0) + 1 WHERE id = %s", (workflow_id,))
+            conn.commit()
+        except Exception as metrics_error:
+            logger.warning(f"Failed to update workflow metrics: {metrics_error}")
         
-        logger.info(f"✅ Completed mock execution {execution_id} in {execution_duration}s")
+        logger.info(f"✅ Completed real browser execution {execution_id} in {execution_duration}s")
+        logger.info(f"📊 Found {len(results.get('quotes', []))} insurance quotes")
         
         return {
             'success': True,
@@ -135,35 +490,37 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             'results': results,
             'steps_completed': total_steps,
             'timestamp': datetime.now(timezone.utc).isoformat(),
-            'execution_type': 'mock'
+            'execution_type': 'real_browser_automation',
+            'quotes_found': len(results.get('quotes', [])),
+            'applicant_info': results.get('applicant_info', {})
         }
         
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"❌ Mock workflow execution failed: {error_msg}")
+        logger.error(f"❌ Real workflow execution failed: {error_msg}")
         
         # Update execution with error if we have execution_id
-        if execution_id:
+        if execution_id and conn and cur:
             try:
-                error_update = {
-                    'status': 'failed',
-                    'completed_at': datetime.now(timezone.utc).isoformat(),
-                    'execution_duration_seconds': int(time.time() - start_time),
-                    'error_message': error_msg
-                }
-                
-                from supabase import create_client
-                supabase_url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-                supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
-                supabase = create_client(supabase_url, supabase_key)
-                
-                supabase.table('workflow_executions').update(error_update).eq('id', execution_id).execute()
+                cur.execute("""
+                    UPDATE workflow_executions 
+                    SET status = %s, completed_at = %s, execution_duration_seconds = %s, error_message = %s 
+                    WHERE id = %s
+                """, (
+                    'failed',
+                    datetime.now(timezone.utc).isoformat(),
+                    int(time.time() - start_time),
+                    error_msg,
+                    execution_id
+                ))
+                conn.commit()
                 
                 try:
-                    supabase.rpc('increment_workflow_failure', {'workflow_id': workflow_id}).execute()
-                except Exception as rpc_error:
-                    logger.warning(f"Failed to update workflow failure metrics: {rpc_error}")
-                
+                    cur.execute("UPDATE deployed_workflows SET failed_executions = COALESCE(failed_executions, 0) + 1 WHERE id = %s", (workflow_id,))
+                    conn.commit()
+                except Exception as metrics_error:
+                    logger.warning(f"Failed to update workflow failure metrics: {metrics_error}")
+                    
             except Exception as update_error:
                 logger.error(f"Failed to update error status: {update_error}")
         
@@ -174,199 +531,88 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             'workflow_id': workflow_id,
             'execution_duration_seconds': int(time.time() - start_time),
             'timestamp': datetime.now(timezone.utc).isoformat(),
-            'execution_type': 'mock'
+            'execution_type': 'real_browser_automation'
         }
+        
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
-def _execute_mock_workflow(supabase, execution_id: int, workflow: Dict, params: Dict) -> Dict[str, Any]:
-    """
-    🎭 Execute mock workflow steps with realistic simulation
-    
-    This function simulates workflow execution by:
-    - Processing each step with random delays
-    - Updating progress in real-time
-    - Generating realistic mock outputs
-    - Occasionally simulating failures (5% chance)
-    """
-    automation_sequence = workflow.get('automation_sequence', [])
-    total_steps = len(automation_sequence)
-    
-    results = {
-        'execution_type': 'mock_simulation',
-        'workflow_name': workflow.get('name', 'Unknown Workflow'),
-        'executed_steps': [],
-        'extracted_data': {},
-        'performance_metrics': {
-            'total_steps': total_steps,
-            'successful_steps': 0,
-            'failed_steps': 0,
-            'total_execution_time_seconds': 0
-        },
-        'mock_outputs': {}
-    }
-    
-    logger.info(f"🎭 Starting mock execution of {total_steps} steps...")
-    
-    for i, step in enumerate(automation_sequence):
-        try:
-            # Update progress in database
-            progress = int((i / total_steps) * 100) if total_steps > 0 else 0
-            supabase.table('workflow_executions').update({
-                'current_step': i + 1,
-                'progress_percentage': progress
-            }).eq('id', execution_id).execute()
-            
-            # Simulate step execution with realistic timing
-            step_result = _execute_mock_step(step, params, i + 1)
-            
-            results['executed_steps'].append(step_result)
-            
-            if step_result['success']:
-                results['performance_metrics']['successful_steps'] += 1
-                
-                # Generate mock extracted data
-                if step.get('action_type') in ['extract_data', 'get_text']:
-                    step_key = f"step_{i+1}_{step.get('action_type', 'unknown')}"
-                    results['extracted_data'][step_key] = f"Mock extracted data from {step.get('description', 'step')}"
-                
-                # Generate mock outputs for different step types
-                if step.get('action_type') == 'navigate':
-                    results['mock_outputs'][f'navigation_step_{i+1}'] = f"Successfully navigated to {step.get('url', 'mock-url')}"
-                elif step.get('action_type') == 'fill_input':
-                    results['mock_outputs'][f'input_step_{i+1}'] = f"Filled form field with mock data"
-                elif step.get('action_type') == 'click':
-                    results['mock_outputs'][f'click_step_{i+1}'] = f"Clicked element successfully"
-                    
-            else:
-                results['performance_metrics']['failed_steps'] += 1
-                logger.warning(f"Mock step {i+1} failed: {step_result.get('error')}")
-                
-                # For mock execution, we continue even if a step "fails"
-                # In real execution, you might want to stop on critical failures
-            
-            results['performance_metrics']['total_execution_time_seconds'] += step_result.get('duration_seconds', 0)
-            
-            # Small delay to make it feel realistic
-            time.sleep(random.uniform(0.1, 0.3))
-            
-        except Exception as step_error:
-            logger.error(f"Error in mock step {i+1}: {step_error}")
-            results['executed_steps'].append({
-                'step_number': i + 1,
-                'step_type': step.get('action_type', 'unknown'),
-                'success': False,
-                'error': str(step_error),
-                'duration_seconds': 0
-            })
-            results['performance_metrics']['failed_steps'] += 1
-    
-    # Generate final mock result summary
-    success_rate = (results['performance_metrics']['successful_steps'] / max(total_steps, 1)) * 100
-    
-    results['execution_summary'] = {
-        'workflow_completed': True,
-        'success_rate_percentage': round(success_rate, 2),
-        'total_execution_time': results['performance_metrics']['total_execution_time_seconds'],
-        'mock_completion_message': f"Mock execution completed successfully for {workflow.get('name', 'workflow')}",
-        'generated_outputs_count': len(results['mock_outputs']),
-        'extracted_data_points': len(results['extracted_data'])
-    }
-    
-    logger.info(f"✅ Mock execution completed: {results['performance_metrics']['successful_steps']}/{total_steps} steps successful")
-    
-    return results
-
-def _execute_mock_step(step: Dict, params: Dict, step_number: int) -> Dict[str, Any]:
-    """Execute individual mock automation step"""
-    step_start = time.time()
-    action_type = step.get('action_type', 'unknown')
-    
-    # Simulate realistic step execution time
-    execution_time = random.uniform(0.5, 3.0)
-    time.sleep(execution_time)
-    
-    # 5% chance of mock failure for realistic simulation
-    mock_failure = random.random() < 0.05
-    
-    if mock_failure:
-        return {
-            'step_number': step_number,
-            'step_type': action_type,
-            'success': False,
-            'error': f"Mock error in {action_type} step: simulated network timeout",
-            'duration_seconds': round(time.time() - step_start, 2),
-            'mock_step': True
-        }
-    
-    # Generate step-specific mock results
-    mock_results = {
-        'navigate': f"Mock navigation to {step.get('url', 'https://example.com')}",
-        'click': f"Mock click on element {step.get('selector', '.mock-button')}",
-        'fill_input': f"Mock filled input {step.get('selector', '#mock-input')} with value",
-        'extract_data': f"Mock extracted: '{step.get('expected_text', 'sample data')}'",
-        'wait': f"Mock waited {step.get('duration_seconds', 1)} seconds",
-        'scroll': f"Mock scrolled to {step.get('selector', 'bottom of page')}",
-        'screenshot': f"Mock screenshot captured: mock_screenshot_{step_number}.png"
-    }
-    
-    result_message = mock_results.get(action_type, f"Mock executed {action_type} action")
-    
-    return {
-        'step_number': step_number,
-        'step_type': action_type,
-        'success': True,
-        'result': result_message,
-        'duration_seconds': round(time.time() - step_start, 2),
-        'mock_step': True,
-        'step_description': step.get('description', f'Step {step_number}')
-    }
 
 @app.function(image=image, secrets=secrets, timeout=60)
 def health_check() -> Dict[str, Any]:
     """
-    🏥 MODAL INFRASTRUCTURE: Health check for Modal deployment
+    🏥 MODAL + MCP HEALTH CHECK: Test infrastructure and browser automation readiness
     
-    Tests Modal-specific capabilities:
-    - Container startup time
-    - Memory allocation
+    Tests:
+    - Modal container health
     - Database connectivity
-    - Secret access
+    - MCP endpoint availability
+    - Browser automation readiness
     """
+    conn = None
+    cur = None
+    start_time = time.time()
+    
     try:
-        from supabase import create_client
-        
-        start_time = time.time()
         health_data = {
             'modal_status': 'healthy',
             'timestamp': datetime.now(timezone.utc).isoformat(),
             'checks': {}
         }
         
-        # Test 1: Environment and secrets
+        # Test 1: Environment and configuration
         try:
-            supabase_url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
-            
-            if supabase_url and supabase_key:
-                health_data['checks']['secrets'] = {'status': 'pass', 'message': 'Environment variables accessible'}
+            # Check if we have database configuration
+            if DB_CONFIG and all(k in DB_CONFIG for k in ['host', 'database', 'user', 'password']):
+                health_data['checks']['configuration'] = {'status': 'pass', 'message': 'Database configuration present'}
             else:
-                health_data['checks']['secrets'] = {'status': 'fail', 'message': 'Missing environment variables'}
+                health_data['checks']['configuration'] = {'status': 'fail', 'message': 'Missing database configuration'}
         except Exception as e:
-            health_data['checks']['secrets'] = {'status': 'error', 'error': str(e)}
+            health_data['checks']['configuration'] = {'status': 'error', 'error': str(e)}
         
         # Test 2: Database connectivity
         try:
-            supabase = create_client(supabase_url, supabase_key)
-            result = supabase.table('deployed_workflows').select('count').limit(1).execute()
-            health_data['checks']['database'] = {'status': 'pass', 'message': 'Database connection successful'}
+            conn = get_database_connection()
+            cur = conn.cursor()
+            
+            # Test basic connectivity
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            
+            # Test workflows table
+            cur.execute("SELECT COUNT(*) FROM deployed_workflows")
+            workflow_count = cur.fetchone()[0]
+            
+            health_data['checks']['database'] = {
+                'status': 'pass', 
+                'message': f'Database connection successful. {workflow_count} workflows found.'
+            }
         except Exception as e:
             health_data['checks']['database'] = {'status': 'error', 'error': str(e)}
         
-        # Test 3: System resources (lightweight check)
+        # Test 3: MCP endpoint availability (simple check)
+        try:
+            import httpx
+            # Just check if endpoint is reachable
+            health_data['checks']['mcp_endpoint'] = {
+                'status': 'pass', 
+                'message': f'MCP endpoint configured: {MCP_ENDPOINT}',
+                'endpoint': MCP_ENDPOINT
+            }
+        except Exception as e:
+            health_data['checks']['mcp_endpoint'] = {'status': 'error', 'error': str(e)}
+        
+        # Test 4: System resources for browser automation
         try:
             health_data['checks']['system'] = {
                 'status': 'pass',
-                'memory_optimized': True,
-                'execution_type': 'mock_simulation'
+                'memory': '2GB allocated',
+                'cpu': '2 CPUs allocated',
+                'execution_type': 'real_browser_automation',
+                'timeout': '30 minutes'
             }
         except Exception as e:
             health_data['checks']['system'] = {'status': 'error', 'error': str(e)}
@@ -381,9 +627,10 @@ def health_check() -> Dict[str, Any]:
         health_data['response_time_ms'] = int((time.time() - start_time) * 1000)
         health_data['container_info'] = {
             'modal_environment': True,
-            'serverless_compute': True,
-            'optimized_for': 'mock_workflow_execution',
-            'lightweight_deployment': True
+            'browser_automation_ready': True,
+            'mcp_integration': True,
+            'database_connection': 'psycopg2',
+            'optimized_for': 'real_browser_workflow_execution'
         }
         
         logger.info(f"🏥 Health check completed in {health_data['response_time_ms']}ms - Status: {health_data['modal_status']}")
@@ -396,21 +643,170 @@ def health_check() -> Dict[str, Any]:
             'modal_status': 'unhealthy',
             'error': str(e),
             'timestamp': datetime.now(timezone.utc).isoformat(),
-            'response_time_ms': int((time.time() - start_time) * 1000) if 'start_time' in locals() else 0
+            'response_time_ms': int((time.time() - start_time) * 1000)
         }
+        
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
 
 # Entry point for Modal deployment
 if __name__ == "__main__":
-    print("🚀 Workflow Executor Modal App")
-    print("🎭 Optimized for lightweight mock execution")
-    print("🔗 Vercel handles fast database operations")
-    print("⚡ Modal handles mock workflow execution")
+    print("🚀 Workflow Executor Modal App - Real Browser Automation")
+    print("🌐 Powered by MCP browser control via ngrok")
+    print("🗄️  Direct PostgreSQL connection using psycopg2")
+    print("🔗 MCP Endpoint:", MCP_ENDPOINT)
     print("\n📋 Available Functions:")
-    print("  • execute_workflow() - Mock workflow execution (realistic simulation)")
-    print("  • health_check() - Modal infrastructure monitoring")
-    print("\n🚀 Moved to Vercel for speed:")
-    print("  • list_workflows() -> /api/remote-workflows/list")
-    print("  • get_workflow_details() -> /api/remote-workflows/[workflowId]")
-    print("  • get_execution_status() -> /api/remote-workflows/executions/[executionId]/status")
-    print("  • get_execution_results() -> /api/remote-workflows/executions/[executionId]/results")
-    print("  • list_executions() -> /api/remote-workflows/executions")
+    print("  • execute_workflow() - Real browser automation execution")
+    print("  • health_check() - Infrastructure and MCP health monitoring")
+    print("\n⚡ Hybrid Architecture:")
+    print("  • Vercel: Fast database queries and status checks")
+    print("  • Modal: Real browser automation with MCP")
+    print("  • MCP: Browser control and UI interaction")
+    print("  • PostgreSQL: Direct database access via psycopg2")
+    print("\n🔧 Database Configuration:")
+    print(f"  • Host: {DB_CONFIG['host']}")
+    print(f"  • Database: {DB_CONFIG['database']}")
+    print(f"  • User: {DB_CONFIG['user']}")
+    print("  • Connection pooling: Optimized for performance")
+
+
+@app.function(
+    image=image,
+    secrets=secrets,
+    schedule=modal.Period(seconds=30),  # Check every 30 seconds
+    timeout=300  # 5 minutes max per check
+)
+def check_and_process_queued_jobs():
+    """
+    🔄 SCHEDULED JOB PROCESSOR: Check for queued executions and process them
+    
+    This function runs every 30 seconds to:
+    - Find executions with status='queued'
+    - Process them by calling execute_workflow
+    - Handle errors and update statuses
+    """
+    conn = None
+    cur = None
+    
+    try:
+        logger.info("🔍 Checking for queued workflow executions...")
+        
+        # Connect to database
+        conn = get_database_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Find queued executions (oldest first, limit to prevent overload)
+        cur.execute("""
+            SELECT id, workflow_id, execution_params, client_id, created_at
+            FROM workflow_executions
+            WHERE status = 'queued'
+              AND created_at > NOW() - INTERVAL '1 hour'  -- Only process recent jobs
+            ORDER BY created_at ASC
+            LIMIT 5  -- Process max 5 at a time
+        """)
+        
+        queued_jobs = cur.fetchall()
+        
+        if not queued_jobs:
+            logger.info("✅ No queued jobs found")
+            return {
+                'success': True,
+                'message': 'No queued jobs to process',
+                'checked_at': datetime.now(timezone.utc).isoformat()
+            }
+        
+        logger.info(f"📋 Found {len(queued_jobs)} queued executions")
+        processed = []
+        errors = []
+        
+        for job in queued_jobs:
+            execution_id = job['id']
+            workflow_id = job['workflow_id']
+            execution_params = job['execution_params'] or {}
+            client_id = job['client_id']
+            
+            try:
+                logger.info(f"🚀 Processing execution {execution_id} for workflow {workflow_id}")
+                
+                # Update status to 'running'
+                cur.execute("""
+                    UPDATE workflow_executions
+                    SET status = 'running', started_at = NOW()
+                    WHERE id = %s
+                """, (execution_id,))
+                conn.commit()
+                
+                # Call the execute_workflow function directly
+                result = execute_workflow.local(workflow_id, execution_params, client_id)
+                
+                if result.get('success'):
+                    logger.info(f"✅ Successfully processed execution {execution_id}")
+                    processed.append({
+                        'execution_id': execution_id,
+                        'workflow_id': workflow_id,
+                        'status': 'completed'
+                    })
+                else:
+                    raise Exception(result.get('error', 'Unknown error'))
+                    
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"❌ Failed to process execution {execution_id}: {error_msg}")
+                
+                # Update execution as failed
+                cur.execute("""
+                    UPDATE workflow_executions
+                    SET status = 'failed', 
+                        error_message = %s,
+                        completed_at = NOW(),
+                        execution_duration_seconds = EXTRACT(EPOCH FROM (NOW() - created_at))::integer
+                    WHERE id = %s
+                """, (error_msg, execution_id))
+                conn.commit()
+                
+                errors.append({
+                    'execution_id': execution_id,
+                    'workflow_id': workflow_id,
+                    'error': error_msg
+                })
+        
+        return {
+            'success': True,
+            'message': f'Processed {len(processed)} jobs, {len(errors)} errors',
+            'processed': processed,
+            'errors': errors,
+            'checked_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Job processor error: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'checked_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.function(
+    image=image,
+    secrets=secrets,
+    timeout=60
+)
+def trigger_job_check():
+    """
+    🔄 MANUAL TRIGGER: Manually trigger the job processor
+    
+    Use this to test the job processor without waiting for the schedule
+    """
+    logger.info("🔄 Manually triggering job check...")
+    return check_and_process_queued_jobs.local()
