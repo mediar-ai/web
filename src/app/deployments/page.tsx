@@ -957,13 +957,23 @@ export default function WorkflowsPage() {
           {workflows.map((workflow) => (
             <Card key={workflow.id} className="border-black">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-lg font-bold font-mono">{workflow.name}</h3>
                       <span className="text-xs font-mono px-2 py-1 bg-black text-white rounded">
                         v{workflow.version || '1.0.0'}
                       </span>
+                      <Button 
+                        onClick={() => fetchWorkflowOverview(workflow.id)}
+                        variant="outline"
+                        size="sm"
+                        className="font-mono text-xs h-6"
+                        disabled={loadingDetails}
+                      >
+                        {loadingDetails ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                        <span className="ml-1">DETAILS</span>
+                      </Button>
                     </div>
                     <p className="text-black text-sm mb-2">{workflow.description}</p>
                     
@@ -997,40 +1007,28 @@ export default function WorkflowsPage() {
                     </div>
                   </div>
                   
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="flex flex-col items-end">
                     <Badge className={getStatusBadge(workflow.deployment_status)}>
                       {workflow.deployment_status.toUpperCase()}
                     </Badge>
-                    <div className="flex gap-2">
-                      <Button 
-                        onClick={() => fetchWorkflowOverview(workflow.id)}
-                        variant="outline"
-                        size="sm"
-                        className="font-mono text-xs"
-                        disabled={loadingDetails}
-                      >
-                        {loadingDetails ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-                        <span className="ml-1">DETAILS</span>
-                      </Button>
-                      <Button 
-                        onClick={() => executeWorkflow(workflow)}
-                        className="bg-black text-white hover:bg-gray-800 font-mono text-xs"
-                        disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
-                        size="sm"
-                      >
-                        {executingWorkflows.has(workflow.id) ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                            RUNNING...
-                          </>
-                        ) : (
-                          <>
-                            <PlayCircle className="w-3 h-3 mr-1" />
-                            TEST RUN
-                          </>
-                        )}
-                      </Button>
-                    </div>
+                    <Button 
+                      onClick={() => executeWorkflow(workflow)}
+                      className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-16"
+                      disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
+                      size="sm"
+                    >
+                      {executingWorkflows.has(workflow.id) ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                          RUNNING...
+                        </>
+                      ) : (
+                        <>
+                          <PlayCircle className="w-3 h-3 mr-1" />
+                          TEST RUN
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
