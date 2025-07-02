@@ -20,6 +20,7 @@ interface LiveExecutionStatus {
   client_id: string;
   estimated_seconds_remaining: number | null;
   steps_per_minute: number | null;
+  runtime_seconds: number;
 }
 
 export async function GET(request: NextRequest) {
