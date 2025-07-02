@@ -192,6 +192,7 @@ export default function WorkflowsPage() {
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [expandedExecutions, setExpandedExecutions] = useState<Set<number>>(new Set());
+  const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
 
   // Toggle execution history expansion
   const toggleExecutionHistory = (workflowId: number) => {
@@ -281,9 +282,12 @@ export default function WorkflowsPage() {
         return;
       }
       const data = await response.json();
-      if (data.success) {
-        setLiveExecutions(data.executions || []);
-        setLiveStats(data.summary || { total_active: 0, running: 0, queued: 0, average_progress: 0 });
+      if (data.success && data.data) {
+        setLiveExecutions(data.data.executions || []);
+        setLiveStats(data.data.summary || { total_active: 0, running: 0, queued: 0, average_progress: 0 });
+      } else {
+        setLiveExecutions([]);
+        setLiveStats({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
       }
     } catch (error) {
       console.error('Failed to fetch live executions:', error);
@@ -352,6 +356,28 @@ export default function WorkflowsPage() {
     }, 2000); // Refresh every 2 seconds for live updates
     return () => clearInterval(interval);
   }, [fetchExecutions, fetchLiveExecutions]);
+
+  // Local timer for smooth second updates on running executions
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLocalTimeOffsets(prev => {
+        const newMap = new Map(prev);
+        liveExecutions.forEach(exec => {
+          if (exec.status === 'running' && exec.started_at) {
+            const startTime = new Date(exec.started_at).getTime();
+            const now = Date.now();
+            const runtimeSeconds = Math.floor((now - startTime) / 1000);
+            newMap.set(exec.id, runtimeSeconds);
+          } else {
+            newMap.delete(exec.id);
+          }
+        });
+        return newMap;
+      });
+    }, 1000); // Update every second
+    
+    return () => clearInterval(timer);
+  }, [liveExecutions]);
 
   const getStatusBadge = (status: string) => {
     const colors = {
@@ -1029,6 +1055,7 @@ export default function WorkflowsPage() {
                     
                   const recentExecutions = executions
                     .filter(exec => exec.workflow_id === workflow.id)
+                    .filter(exec => !['running', 'queued'].includes(exec.status)) // Exclude running/queued since they're in live section
                     .sort((a, b) => statusPriority(a.status) - statusPriority(b.status));
                   
                   const hasExecutions = workflowLiveExecutions.length > 0 || recentExecutions.length > 0;
@@ -1099,16 +1126,36 @@ export default function WorkflowsPage() {
                                             })}
                                           </span>
                                         )}
-                                        {execution.runtime_seconds !== undefined && (
+                                        {(execution.runtime_seconds !== undefined || localTimeOffsets.has(execution.id)) && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span>Running for {formatDuration(execution.runtime_seconds)}</span>
+                                            <span className="font-mono">
+                                              {(() => {
+                                                const seconds = localTimeOffsets.get(execution.id) ?? execution.runtime_seconds ?? 0;
+                                                if (execution.status === 'running') {
+                                                  // For running executions, show both raw seconds and formatted
+                                                  return (
+                                                    <>
+                                                      <span className="text-black font-bold">{seconds}s</span>
+                                                      {seconds >= 60 && (
+                                                        <span className="text-gray-500 ml-1">({formatDuration(seconds)})</span>
+                                                      )}
+                                                    </>
+                                                  );
+                                                } else {
+                                                  // For completed/failed, just show formatted
+                                                  return formatDuration(seconds);
+                                                }
+                                              })()}
+                                            </span>
                                           </>
                                         )}
-                                        <>
-                                          <span className="text-gray-400">•</span>
-                                          <span>{execution.progress_percentage ?? 0}%</span>
-                                        </>
+                                        {execution.progress_percentage !== undefined && (
+                                          <>
+                                            <span className="text-gray-400">•</span>
+                                            <span>{execution.progress_percentage}%</span>
+                                          </>
+                                        )}
                                         {execution.current_step_description && (
                                           <>
                                             <span className="text-gray-400">•</span>
