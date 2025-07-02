@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       input_parameters: workflow.input_parameters || {},
       sample_inputs: workflow.sample_inputs || {},
       
-      // Performance metrics
+      // Performance metrics (nested format for new code)
       performance_metrics: {
         successful_runs: workflow.successful_runs || 0,
         failed_runs: workflow.failed_runs || 0,
@@ -88,6 +88,14 @@ export async function GET(request: NextRequest) {
           ? Math.round(((workflow.successful_runs || 0) / workflow.total_executions) * 100) 
           : 0
       },
+      
+      // Performance metrics (flat format for backward compatibility)
+      successful_runs: workflow.successful_runs || 0,
+      failed_runs: workflow.failed_runs || 0,
+      total_executions: workflow.total_executions || 0,
+      success_rate: workflow.total_executions > 0 
+        ? Math.round(((workflow.successful_runs || 0) / workflow.total_executions) * 100) 
+        : null,
       
       // Execution info
       is_executable: workflow.deployment_status === 'deployed' && workflow.status === 'active',
