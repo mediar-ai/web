@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     // Build base query - use only existing database fields
     let query = supabase
       .from('workflow_executions')
-      .select('id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, deployed_workflows!inner(id, name, description, category)')
+      .select('id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, deployed_workflows!inner(id, name, description, category)')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -84,9 +84,9 @@ export async function GET(request: NextRequest) {
         workflow_category: workflow?.category || 'general',
         
         status: execution.status,
-        progress_percentage: execution.status === 'completed' ? 100 : execution.status === 'running' ? 50 : 0,
-        current_step: execution.status === 'completed' ? 1 : 0,
-        total_steps: 1, // Will be updated when we add these columns
+        progress_percentage: execution.progress_percentage || 0,
+        current_step_index: execution.current_step_index || 0,
+        total_steps: execution.total_steps || 0,
         
         // Timing
         started_at: execution.started_at,

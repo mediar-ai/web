@@ -939,7 +939,6 @@ export default function WorkflowsPage() {
                     
                     {/* Workflow Metadata */}
                     <div className="flex flex-wrap gap-4 text-xs font-mono text-black mb-3">
-                      <span>CATEGORY: {workflow.category?.toUpperCase() || 'GENERAL'}</span>
                       <span>DIFFICULTY: {workflow.difficulty_level?.toUpperCase() || 'MEDIUM'}</span>
                       {workflow.estimated_duration_seconds && (
                         <span>EST. DURATION: {formatDuration(workflow.estimated_duration_seconds)}</span>
