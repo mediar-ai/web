@@ -48,10 +48,11 @@ interface ValidationCheck {
 }
 
 interface ErrorHandlingRule {
-  error_type: string;
-  action: string;
-  retry_count?: number;
-  fallback?: string;
+  error_condition: string;
+  recovery_actions: Array<{
+    action: string;
+    description: string;
+  }>;
 }
 
 interface WorkflowOverview {
@@ -63,31 +64,22 @@ interface WorkflowOverview {
   tags: string[];
   difficulty_level: string;
   estimated_duration_seconds: number;
-  total_steps: number;
-  step_overview: Array<{
-    step_number: number;
-    action: string;
-    description: string;
-    estimated_duration: number;
-  }>;
-  required_applications: string[];
+  total_steps?: number;
+  automation_sequence: AutomationStep[];
   input_parameters: Record<string, InputParameter>;
   expected_outputs: Record<string, unknown>;
   sample_inputs: Record<string, unknown>;
-  statistics: {
-    total_executions: number;
+  performance_metrics?: {
     successful_runs: number;
     failed_runs: number;
-    success_rate_percent: number | null;
-    reliability_score: string;
-    last_successful_execution: string | null;
-    last_failed_execution: string | null;
+    total_executions: number;
+    success_rate: number;
   };
   validation_checks: ValidationCheck[];
   error_handling: ErrorHandlingRule[];
   deployment_status: string;
   modal_function_name: string;
-  last_updated: string;
+  last_updated?: string;
 }
 
 interface Workflow {
@@ -238,10 +230,10 @@ export default function WorkflowsPage() {
   const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
     try {
       setLoadingDetails(true);
-      const response = await fetch(`/api/remote-workflows/${workflowId}/overview`);
+      const response = await fetch(`/api/remote-workflows/${workflowId}`);
       const data = await response.json();
-      if (response.ok) {
-        setSelectedWorkflow(data);
+      if (response.ok && data.success) {
+        setSelectedWorkflow(data.workflow);
         setWorkflowDetailsOpen(true);
       }
     } catch (error) {
@@ -485,16 +477,7 @@ export default function WorkflowsPage() {
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
   };
 
-  const getReliabilityBadge = (score: string) => {
-    const colors = {
-      excellent: 'bg-black text-white',
-      good: 'bg-gray-700 text-white',
-      fair: 'bg-gray-500 text-white',
-      poor: 'bg-gray-300 text-black',
-      insufficient_data: 'bg-gray-100 text-gray-600'
-    };
-    return colors[score as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-  };
+
 
   if (loading) {
     return (
@@ -585,7 +568,7 @@ export default function WorkflowsPage() {
 
       {/* Workflow Details Dialog */}
       <Dialog open={workflowDetailsOpen} onOpenChange={setWorkflowDetailsOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto !mt-8 !mb-8 !top-8 !transform-none !translate-y-0">
           {selectedWorkflow && (
             <>
               <DialogHeader>
@@ -635,38 +618,25 @@ export default function WorkflowsPage() {
                       <dl className="space-y-1 text-sm">
                         <div className="flex justify-between">
                           <dt className="text-muted-foreground">Total Runs:</dt>
-                          <dd className="font-mono">{selectedWorkflow.statistics.total_executions}</dd>
+                          <dd className="font-mono">{selectedWorkflow.performance_metrics?.total_executions || 0}</dd>
                         </div>
                         <div className="flex justify-between">
                           <dt className="text-muted-foreground">Success Rate:</dt>
                           <dd className="font-mono">
-                            {selectedWorkflow.statistics.success_rate_percent !== null 
-                              ? `${selectedWorkflow.statistics.success_rate_percent}%` 
+                            {selectedWorkflow.performance_metrics?.success_rate !== undefined
+                              ? `${selectedWorkflow.performance_metrics.success_rate}%` 
                               : '—'}
                           </dd>
                         </div>
                         <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Reliability:</dt>
-                          <dd>
-                            <Badge className={getReliabilityBadge(selectedWorkflow.statistics.reliability_score)}>
-                              {selectedWorkflow.statistics.reliability_score.replace('_', ' ')}
-                            </Badge>
-                          </dd>
+                          <dt className="text-muted-foreground">Successful:</dt>
+                          <dd className="font-mono">{selectedWorkflow.performance_metrics?.successful_runs || 0}</dd>
                         </div>
                       </dl>
                     </div>
                   </div>
                   
-                  {selectedWorkflow.required_applications.length > 0 && (
-                    <div>
-                      <h4 className="font-semibold mb-2">Required Applications</h4>
-                      <div className="flex gap-2">
-                        {selectedWorkflow.required_applications.map((app, idx) => (
-                          <Badge key={idx} variant="secondary">{app}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+
                   
                   {selectedWorkflow.tags.length > 0 && (
                     <div>
@@ -685,17 +655,19 @@ export default function WorkflowsPage() {
                 <TabsContent value="steps" className="space-y-4">
                   <ScrollArea className="h-[400px] w-full rounded-md border p-4">
                     <div className="space-y-3">
-                      {selectedWorkflow.step_overview.map((step) => (
-                        <div key={step.step_number} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      {selectedWorkflow.automation_sequence.map((step, idx) => (
+                        <div key={step.step_number || idx + 1} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                           <div className="flex-shrink-0 w-8 h-8 bg-black text-white rounded-full flex items-center justify-center text-sm font-mono">
-                            {step.step_number}
+                            {step.step_number || idx + 1}
                           </div>
                           <div className="flex-1">
-                            <div className="font-semibold text-sm">{step.action.toUpperCase()}</div>
-                            <div className="text-sm text-muted-foreground">{step.description}</div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              Est. duration: {formatDuration(step.estimated_duration)}
-                            </div>
+                            <div className="font-semibold text-sm">{(step.action || 'unknown').toUpperCase()}</div>
+                            <div className="text-sm text-muted-foreground">{step.description || 'No description'}</div>
+                            {step.selector && (
+                              <div className="text-xs font-mono bg-gray-200 px-2 py-1 rounded mt-1">
+                                {step.selector}
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -778,33 +750,30 @@ export default function WorkflowsPage() {
                   
                   <Separator />
                   
-                  <div>
-                    <h4 className="font-semibold mb-3">Error Handling Rules</h4>
-                    {selectedWorkflow.error_handling.length > 0 ? (
-                      <div className="space-y-2">
-                        {selectedWorkflow.error_handling.map((rule, idx) => (
-                          <div key={idx} className="border rounded-lg p-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-medium text-sm">{rule.error_type}</span>
-                              <Badge variant="secondary" className="text-xs">{rule.action}</Badge>
+                                      <div>
+                      <h4 className="font-semibold mb-3">Error Handling Rules</h4>
+                      {selectedWorkflow.error_handling.length > 0 ? (
+                        <div className="space-y-2">
+                          {selectedWorkflow.error_handling.map((rule, idx) => (
+                            <div key={idx} className="border rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-medium text-sm">{rule.error_condition}</span>
+                              </div>
+                              <div className="space-y-1">
+                                {rule.recovery_actions.map((recovery, recoveryIdx) => (
+                                  <div key={recoveryIdx} className="flex items-center gap-2">
+                                    <Badge variant="secondary" className="text-xs">{recovery.action}</Badge>
+                                    <span className="text-sm text-muted-foreground">{recovery.description}</span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            {rule.retry_count && (
-                              <p className="text-sm text-muted-foreground">
-                                Retry count: {rule.retry_count}
-                              </p>
-                            )}
-                            {rule.fallback && (
-                              <p className="text-sm text-muted-foreground">
-                                Fallback: {rule.fallback}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No error handling rules defined</p>
-                    )}
-                  </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No error handling rules defined</p>
+                      )}
+                    </div>
                 </TabsContent>
                 
                 <TabsContent value="usage" className="space-y-4">
@@ -848,7 +817,7 @@ export default function WorkflowsPage() {
 
       {/* Execution Details Dialog */}
       <Dialog open={executionDetailsOpen} onOpenChange={setExecutionDetailsOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto !mt-8 !mb-8 !top-8 !transform-none !translate-y-0">
           {selectedExecution && (
             <>
               <DialogHeader>
