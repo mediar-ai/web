@@ -560,7 +560,9 @@ export default function WorkflowsPage() {
           <CardContent className="p-4">
             <div>
               <p className="text-sm font-mono text-black">TOTAL EXECUTIONS</p>
-              <p className="text-3xl font-mono font-bold text-black">{executions.length}</p>
+              <p className="text-3xl font-mono font-bold text-black">
+                {workflows.reduce((total, workflow) => total + (workflow.total_executions || 0), 0)}
+              </p>
             </div>
           </CardContent>
         </Card>

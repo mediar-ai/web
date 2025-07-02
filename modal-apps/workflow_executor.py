@@ -805,15 +805,8 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         ))
         conn.commit()
         
-        # Update workflow success metrics
-        try:
-            if results['execution_summary']['workflow_completed']:
-                cur.execute("UPDATE deployed_workflows SET successful_runs = COALESCE(successful_runs, 0) + 1 WHERE id = %s", (workflow_id,))
-            else:
-                cur.execute("UPDATE deployed_workflows SET failed_runs = COALESCE(failed_runs, 0) + 1 WHERE id = %s", (workflow_id,))
-            conn.commit()
-        except Exception as metrics_error:
-            logger.warning(f"Failed to update workflow metrics: {metrics_error}")
+        # Note: Workflow success/failure metrics are automatically updated by database trigger
+        # when the workflow_executions status changes to 'completed' or 'failed'
         
         logger.info(f"✅ Completed real browser execution {execution_id} in {execution_duration}s")
         logger.info(f"📊 Found {len(results.get('quotes', []))} insurance quotes")
@@ -923,11 +916,8 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
                 ))
                 conn.commit()
                 
-                try:
-                    cur.execute("UPDATE deployed_workflows SET failed_runs = COALESCE(failed_runs, 0) + 1 WHERE id = %s", (workflow_id,))
-                    conn.commit()
-                except Exception as metrics_error:
-                    logger.warning(f"Failed to update workflow failure metrics: {metrics_error}")
+                # Note: Workflow failure metrics are automatically updated by database trigger
+                # when the workflow_executions status changes to 'failed'
                     
             except Exception as update_error:
                 logger.error(f"Failed to update error status: {update_error}")
