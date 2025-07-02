@@ -149,6 +149,9 @@ interface Execution {
     level: string;
     message: string;
   }>;
+  progress_percentage?: number;
+  current_step_index?: number;
+  total_steps?: number;
 }
 
 interface LiveExecutionStatus {
@@ -1159,6 +1162,18 @@ export default function WorkflowsPage() {
                                           <>
                                             <span className="text-gray-400">•</span>
                                             <span>{formatDuration(execution.execution_duration_seconds)}</span>
+                                          </>
+                                        )}
+                                        {execution.progress_percentage !== undefined && (
+                                          <>
+                                            <span className="text-gray-400">•</span>
+                                            <span>{execution.progress_percentage}% complete</span>
+                                          </>
+                                        )}
+                                        {execution.current_step_index !== undefined && execution.total_steps !== undefined && execution.total_steps > 0 && (
+                                          <>
+                                            <span className="text-gray-400">•</span>
+                                            <span>Step {execution.current_step_index}/{execution.total_steps}</span>
                                           </>
                                         )}
                                         {execution.results?.performance_metrics && (
