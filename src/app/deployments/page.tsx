@@ -152,6 +152,7 @@ interface Execution {
   progress_percentage?: number;
   current_step_index?: number;
   total_steps?: number;
+  current_step_description?: string;
 }
 
 interface LiveExecutionStatus {
@@ -1106,12 +1107,14 @@ export default function WorkflowsPage() {
                                         )}
                                         <>
                                           <span className="text-gray-400">•</span>
-                                          <span>{execution.progress_percentage ?? 0}% complete</span>
+                                          <span>{execution.progress_percentage ?? 0}%</span>
                                         </>
-                                        {execution.current_step_index !== null && execution.current_step_index !== undefined && (
+                                        {execution.current_step_description && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span>Step {execution.current_step_index}{execution.total_steps ? `/${execution.total_steps}` : ''}</span>
+                                            <span className="text-blue-600 truncate inline-block max-w-[200px]" title={execution.current_step_description}>
+                                              {execution.current_step_description}
+                                            </span>
                                           </>
                                         )}
                                       </div>
@@ -1164,22 +1167,36 @@ export default function WorkflowsPage() {
                                             <span>{formatDuration(execution.execution_duration_seconds)}</span>
                                           </>
                                         )}
-                                        {execution.progress_percentage !== undefined && (
+                                        {/* Show contextual info based on status */}
+                                        {execution.status === 'failed' && execution.error_message && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span>{execution.progress_percentage}% complete</span>
+                                            <span className="text-red-600 truncate inline-block max-w-[300px]" title={execution.error_message}>
+                                              {execution.error_message}
+                                            </span>
                                           </>
                                         )}
-                                        {execution.current_step_index !== undefined && execution.total_steps !== undefined && execution.total_steps > 0 && (
+                                        {execution.status === 'completed' && execution.formatted_output && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span>Step {execution.current_step_index}/{execution.total_steps}</span>
+                                            <span className="text-green-700 truncate inline-block max-w-[300px]" title={execution.formatted_output}>
+                                              {execution.formatted_output.split('\n')[0]}
+                                            </span>
                                           </>
                                         )}
-                                        {execution.results?.performance_metrics && (
+                                        {execution.status === 'running' && execution.current_step_description && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span>{execution.results.performance_metrics.successful_steps}/{execution.results.performance_metrics.total_steps} steps</span>
+                                            <span className="text-blue-600 truncate inline-block max-w-[300px]" title={execution.current_step_description}>
+                                              {execution.current_step_description}
+                                            </span>
+                                          </>
+                                        )}
+                                        {/* Show progress for running/queued */}
+                                        {['running', 'queued'].includes(execution.status) && execution.progress_percentage !== undefined && (
+                                          <>
+                                            <span className="text-gray-400">•</span>
+                                            <span>{execution.progress_percentage}%</span>
                                           </>
                                         )}
                                       </div>
