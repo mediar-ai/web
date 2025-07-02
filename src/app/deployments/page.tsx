@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, Code, FileText, Terminal, Activity } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Terminal, Activity, ChevronDown, ChevronRight } from 'lucide-react';
 
 // Types for workflow system
 interface AutomationStep {
@@ -186,6 +187,20 @@ export default function WorkflowsPage() {
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [expandedExecutions, setExpandedExecutions] = useState<Set<number>>(new Set());
+
+  // Toggle execution history expansion
+  const toggleExecutionHistory = (workflowId: number) => {
+    setExpandedExecutions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(workflowId)) {
+        newSet.delete(workflowId);
+      } else {
+        newSet.add(workflowId);
+      }
+      return newSet;
+    });
+  };
 
   // Fetch workflows
   const fetchWorkflows = useCallback(async () => {
@@ -351,18 +366,18 @@ export default function WorkflowsPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'running':
-        return <Loader2 className="w-4 h-4 animate-spin" />;
+        return <Loader2 className="w-2.5 h-2.5 animate-spin" />;
       case 'completed':
-        return <CheckCircle className="w-4 h-4" />;
+        return <CheckCircle className="w-2.5 h-2.5" />;
       case 'failed':
       case 'error':
-        return <XCircle className="w-4 h-4" />;
+        return <XCircle className="w-2.5 h-2.5" />;
       case 'cancelled':
-        return <AlertCircle className="w-4 h-4" />;
+        return <AlertCircle className="w-2.5 h-2.5" />;
       case 'queued':
-        return <Clock className="w-4 h-4" />;
+        return <Clock className="w-2.5 h-2.5" />;
       default:
-        return <Activity className="w-4 h-4" />;
+        return <Activity className="w-2.5 h-2.5" />;
     }
   };
 
@@ -992,122 +1007,177 @@ export default function WorkflowsPage() {
               </CardHeader>
               
               <CardContent>
-                {/* Live Executions for this workflow */}
+                {/* Execution History Dropdown */}
                 {(() => {
-                  const workflowLiveExecutions = liveExecutions.filter(exec => exec.workflow_id === workflow.id);
+                  // Sort function to prioritize running executions
+                  const statusPriority = (status: string) => {
+                    switch (status) {
+                      case 'running': return 0;
+                      case 'queued': return 1;
+                      case 'failed':
+                      case 'error': return 2;
+                      default: return 3;
+                    }
+                  };
                   
-                  if (workflowLiveExecutions.length > 0) {
-                    return (
-                      <div className="mb-4">
-                        <h4 className="text-sm font-bold font-mono mb-2 text-black flex items-center gap-2">
-                          <Activity className="w-4 h-4" />
-                          LIVE EXECUTIONS ({workflowLiveExecutions.length})
-                        </h4>
-                        <div className="space-y-2">
-                          {workflowLiveExecutions.map((execution) => (
-                            <div key={`live-${execution.id}`} className="bg-gray-50 p-3 border border-gray-200 rounded">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-mono text-black font-semibold">ID: {execution.id}</span>
-                                  <Badge className={getStatusBadge(execution.status)}>
-                                    {getStatusIcon(execution.status)}
-                                    <span className="ml-1">{execution.status.toUpperCase()}</span>
-                                  </Badge>
-                                  {execution.status === 'running' && (
-                                    <div className="w-2 h-2 bg-black rounded-full animate-pulse"></div>
-                                  )}
-                                </div>
-                                <Button
-                                  onClick={() => fetchExecutionDetails(execution.id)}
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-xs"
-                                >
-                                  <Code className="w-3 h-3" />
-                                </Button>
-                              </div>
-                              
-                              {/* Live execution progress */}
-                              {execution.progress_percentage !== null && (
-                                <div className="mb-2">
-                                  <div className="flex justify-between items-center mb-1">
-                                    <span className="text-xs font-mono text-black">Progress: {execution.progress_percentage}%</span>
-                                    {execution.current_step_index && execution.total_steps && (
-                                      <span className="text-xs font-mono text-black">
-                                        Step {execution.current_step_index}/{execution.total_steps}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div 
-                                      className="bg-black h-2 rounded-full transition-all duration-300" 
-                                      style={{ width: `${execution.progress_percentage}%` }}
-                                    ></div>
-                                  </div>
-                                  {execution.current_step_description && (
-                                    <div className="text-xs font-mono text-black mt-1 truncate">
-                                      {execution.current_step_description}
-                                    </div>
-                                  )}
-                                  {execution.estimated_seconds_remaining && (
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                      Est. time remaining: {formatDuration(execution.estimated_seconds_remaining)}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  }
-                  
-                  return null;
-                })()}
-                
-                {/* Recent Completed Executions */}
-                {(() => {
+                  const workflowLiveExecutions = liveExecutions
+                    .filter(exec => exec.workflow_id === workflow.id)
+                    .sort((a, b) => statusPriority(a.status) - statusPriority(b.status));
+                    
                   const recentExecutions = executions
                     .filter(exec => exec.workflow_id === workflow.id)
-                    .slice(0, 3);
+                    .sort((a, b) => statusPriority(a.status) - statusPriority(b.status));
                   
-                  if (recentExecutions.length === 0) return null;
+                  const hasExecutions = workflowLiveExecutions.length > 0 || recentExecutions.length > 0;
+                  
+                  if (!hasExecutions) return null;
                   
                   return (
-                    <div>
-                      <h4 className="text-sm font-bold font-mono mb-2 text-black">RECENT EXECUTIONS</h4>
-                      <div className="space-y-2">
-                        {recentExecutions.map((execution) => (
-                          <div key={`exec-${execution.execution_id}`} className="bg-white p-3 border border-black rounded">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-mono text-black font-semibold">
-                                  #{execution.execution_id}
-                                </span>
-                                <Badge className={getStatusBadge(execution.status)}>
-                                  {getStatusIcon(execution.status)}
-                                  <span className="ml-1">{execution.status.toUpperCase()}</span>
+                    <Collapsible open={expandedExecutions.has(workflow.id)}>
+                      <CollapsibleTrigger 
+                        onClick={() => toggleExecutionHistory(workflow.id)}
+                        className="w-full"
+                      >
+                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors cursor-pointer">
+                          <div className="flex items-center gap-2">
+                            {expandedExecutions.has(workflow.id) ? 
+                              <ChevronDown className="w-4 h-4" /> : 
+                              <ChevronRight className="w-4 h-4" />
+                            }
+                            <span className="text-sm font-bold font-mono text-black">EXECUTION HISTORY</span>
+                            <div className="flex gap-2">
+                              {workflowLiveExecutions.length > 0 && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {workflowLiveExecutions.length} LIVE
                                 </Badge>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">
-                                  {formatDuration(execution.execution_duration_seconds)}
-                                </span>
-                                <Button
-                                  onClick={() => fetchExecutionDetails(execution.execution_id)}
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-xs"
-                                >
-                                  <Code className="w-3 h-3" />
-                                </Button>
-                              </div>
+                              )}
+                              {recentExecutions.length > 0 && (
+                                <Badge variant="outline" className="text-xs">
+                                  {recentExecutions.length} RECENT
+                                </Badge>
+                              )}
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      
+                      <CollapsibleContent>
+                        <div className="mt-2 max-h-[300px] overflow-y-auto p-2 border rounded-lg bg-white">
+                          {/* Live Executions */}
+                          {workflowLiveExecutions.length > 0 && (
+                            <div className="mb-2">
+                              <h4 className="text-sm font-bold font-mono mb-1 text-black flex items-center gap-2">
+                                <Activity className="w-4 h-4" />
+                                LIVE EXECUTIONS ({workflowLiveExecutions.length})
+                              </h4>
+                              <div className="space-y-1">
+                                {workflowLiveExecutions.map((execution) => (
+                                  <div 
+                                    key={`live-${execution.id}`} 
+                                    className="bg-gray-50 px-2 py-1 border border-gray-200 rounded hover:bg-gray-100 hover:border-gray-400 cursor-pointer transition-colors"
+                                    onClick={() => fetchExecutionDetails(execution.id)}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-mono text-black font-semibold">#{execution.id}</span>
+                                      <Badge className={`${getStatusBadge(execution.status)} h-5 px-1.5 text-xs`}>
+                                        {getStatusIcon(execution.status)}
+                                        <span className="ml-0.5">{execution.status.toUpperCase()}</span>
+                                      </Badge>
+                                      {execution.status === 'running' && (
+                                        <div className="w-1.5 h-1.5 bg-black rounded-full animate-pulse"></div>
+                                      )}
+                                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                        {execution.started_at && (
+                                          <span className="flex items-center gap-0.5">
+                                            <Clock className="w-2.5 h-2.5" />
+                                            Started {new Date(execution.started_at).toLocaleTimeString('en-US', { 
+                                              hour: '2-digit', 
+                                              minute: '2-digit'
+                                            })}
+                                          </span>
+                                        )}
+                                        {execution.runtime_seconds !== undefined && (
+                                          <>
+                                            <span className="text-gray-400">•</span>
+                                            <span>Running for {formatDuration(execution.runtime_seconds)}</span>
+                                          </>
+                                        )}
+                                        <>
+                                          <span className="text-gray-400">•</span>
+                                          <span>{execution.progress_percentage ?? 0}% complete</span>
+                                        </>
+                                        {execution.current_step_index !== null && execution.current_step_index !== undefined && (
+                                          <>
+                                            <span className="text-gray-400">•</span>
+                                            <span>Step {execution.current_step_index}{execution.total_steps ? `/${execution.total_steps}` : ''}</span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Separator if both sections exist */}
+                          {workflowLiveExecutions.length > 0 && recentExecutions.length > 0 && (
+                            <Separator className="my-2" />
+                          )}
+                          
+                          {/* Recent Completed Executions */}
+                          {recentExecutions.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-bold font-mono mb-1 text-black">RECENT EXECUTIONS</h4>
+                              <div className="space-y-1">
+                                {recentExecutions.map((execution) => (
+                                  <div 
+                                    key={`exec-${execution.execution_id}`} 
+                                    className="bg-white px-2 py-1 border border-black rounded hover:bg-gray-50 hover:border-gray-600 cursor-pointer transition-colors"
+                                    onClick={() => fetchExecutionDetails(execution.execution_id)}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-mono text-black font-semibold">
+                                        #{execution.execution_id}
+                                      </span>
+                                      <Badge className={`${getStatusBadge(execution.status)} h-5 px-1.5 text-xs`}>
+                                        {getStatusIcon(execution.status)}
+                                        <span className="ml-0.5">{execution.status.toUpperCase()}</span>
+                                      </Badge>
+                                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                        {execution.completed_at && (
+                                          <span className="flex items-center gap-0.5">
+                                            <Clock className="w-2.5 h-2.5" />
+                                            {new Date(execution.completed_at).toLocaleString('en-US', { 
+                                              month: 'short', 
+                                              day: 'numeric', 
+                                              hour: '2-digit', 
+                                              minute: '2-digit'
+                                            })}
+                                          </span>
+                                        )}
+                                        {execution.execution_duration_seconds !== undefined && execution.execution_duration_seconds !== null && (
+                                          <>
+                                            <span className="text-gray-400">•</span>
+                                            <span>{formatDuration(execution.execution_duration_seconds)}</span>
+                                          </>
+                                        )}
+                                        {execution.results?.performance_metrics && (
+                                          <>
+                                            <span className="text-gray-400">•</span>
+                                            <span>{execution.results.performance_metrics.successful_steps}/{execution.results.performance_metrics.total_steps} steps</span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   );
                 })()}
               </CardContent>
