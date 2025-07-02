@@ -818,7 +818,7 @@ export default function WorkflowsPage() {
                         </div>
                         <div className="flex justify-between">
                           <dt className="text-muted-foreground">Modal Call ID:</dt>
-                          <dd className="font-mono text-xs truncate max-w-[200px]" title={selectedExecution.modal_call_id}>
+                          <dd className="font-mono text-xs truncate max-w-[400px]" title={selectedExecution.modal_call_id}>
                             {selectedExecution.modal_call_id}
                           </dd>
                         </div>
@@ -1159,7 +1159,7 @@ export default function WorkflowsPage() {
                                         {execution.current_step_description && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span className="text-blue-600 truncate inline-block max-w-[200px]" title={execution.current_step_description}>
+                                            <span className="text-blue-600 truncate inline-block max-w-[550px]" title={execution.current_step_description}>
                                               {execution.current_step_description}
                                             </span>
                                           </>
@@ -1218,7 +1218,7 @@ export default function WorkflowsPage() {
                                         {execution.status === 'failed' && execution.error_message && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span className="text-red-600 truncate inline-block max-w-[300px]" title={execution.error_message}>
+                                            <span className="text-red-600 truncate inline-block max-w-[550px]" title={execution.error_message}>
                                               {execution.error_message}
                                             </span>
                                           </>
@@ -1226,7 +1226,7 @@ export default function WorkflowsPage() {
                                         {execution.status === 'completed' && execution.formatted_output && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span className="text-green-700 truncate inline-block max-w-[300px]" title={execution.formatted_output}>
+                                            <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>
                                               {execution.formatted_output.split('\n')[0]}
                                             </span>
                                           </>
@@ -1234,7 +1234,7 @@ export default function WorkflowsPage() {
                                         {execution.status === 'running' && execution.current_step_description && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span className="text-blue-600 truncate inline-block max-w-[300px]" title={execution.current_step_description}>
+                                            <span className="text-blue-600 truncate inline-block max-w-[550px]" title={execution.current_step_description}>
                                               {execution.current_step_description}
                                             </span>
                                           </>
