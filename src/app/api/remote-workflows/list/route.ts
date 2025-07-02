@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
         failed_runs,
         total_executions,
         deployment_status,
+        input_parameters,
+        sample_inputs,
         created_at,
         updated_at
       `)
@@ -72,6 +74,10 @@ export async function GET(request: NextRequest) {
       tags: workflow.tags || [],
       difficulty_level: workflow.difficulty_level,
       estimated_duration_seconds: workflow.estimated_duration_seconds,
+      
+      // Parameter configuration
+      input_parameters: workflow.input_parameters || {},
+      sample_inputs: workflow.sample_inputs || {},
       
       // Performance metrics
       performance_metrics: {

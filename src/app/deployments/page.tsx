@@ -11,6 +11,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Terminal, Activity, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 // Types for workflow system
 interface AutomationStep {
@@ -28,6 +35,8 @@ interface InputParameter {
   required?: boolean;
   default?: unknown;
   description?: string;
+  example?: unknown;
+  values?: unknown[];
   [key: string]: unknown;
 }
 
@@ -181,7 +190,7 @@ export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
-  const [liveStats, setLiveStats] = useState<{ total_active: number; running: number; queued: number; average_progress: number }>({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
+  const [liveStats, setLiveStats] = useState({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
   const [loading, setLoading] = useState(true);
   const [executingWorkflows, setExecutingWorkflows] = useState<Set<number>>(new Set());
   
@@ -193,6 +202,8 @@ export default function WorkflowsPage() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [expandedExecutions, setExpandedExecutions] = useState<Set<number>>(new Set());
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
+  const [executionParams, setExecutionParams] = useState<Record<number, Record<string, unknown>>>({});
+  const [showParamsDropdown, setShowParamsDropdown] = useState<Record<number, boolean>>({});
 
   // Toggle execution history expansion
   const toggleExecutionHistory = (workflowId: number) => {
@@ -296,18 +307,20 @@ export default function WorkflowsPage() {
     }
   }, []);
 
-  // Execute workflow directly
-  const executeWorkflow = async (workflow: Workflow) => {
+  // Execute workflow with optional custom parameters
+  const executeWorkflow = async (workflow: Workflow, customParams?: Record<string, unknown>) => {
     setExecutingWorkflows(prev => new Set([...prev, workflow.id]));
     
     try {
+      const params = customParams || executionParams[workflow.id] || workflow.sample_inputs || {};
+      
       const response = await fetch(`/api/remote-workflows/${workflow.id}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           client_id: `web-${Date.now()}`,
           execution_mode: 'async',
-          parameters: {} // Execute with default/empty parameters
+          parameters: params
         })
       });
 
@@ -339,6 +352,60 @@ export default function WorkflowsPage() {
       newSet.delete(workflow.id);
       return newSet;
     });
+  };
+
+  // Generate sample inputs from input_parameters
+  const generateSampleInputs = (inputParams: Record<string, InputParameter>): Record<string, unknown> => {
+    const samples: Record<string, unknown> = {};
+    Object.entries(inputParams).forEach(([key, param]) => {
+      if (param.example) {
+        samples[key] = param.example;
+      } else if (param.default !== undefined) {
+        samples[key] = param.default;
+      } else {
+        // Generate default based on type
+        switch (param.type) {
+          case 'string':
+          case 'enum':
+            samples[key] = param.values?.[0] || 'example';
+            break;
+          case 'number':
+            samples[key] = 0;
+            break;
+          case 'boolean':
+            samples[key] = false;
+            break;
+          default:
+            samples[key] = '';
+        }
+      }
+    });
+    return samples;
+  };
+
+  // Initialize execution parameters for a workflow
+  const initializeParams = (workflow: Workflow) => {
+    if (!executionParams[workflow.id]) {
+      // Use sample_inputs if available, otherwise generate from input_parameters
+      const params = workflow.sample_inputs && Object.keys(workflow.sample_inputs).length > 0
+        ? workflow.sample_inputs
+        : generateSampleInputs(workflow.input_parameters || {});
+      setExecutionParams(prev => ({
+        ...prev,
+        [workflow.id]: params
+      }));
+    }
+  };
+
+  // Update parameter value
+  const updateParam = (workflowId: number, key: string, value: string) => {
+    setExecutionParams(prev => ({
+      ...prev,
+      [workflowId]: {
+        ...prev[workflowId],
+        [key]: value
+      }
+    }));
   };
 
   // Initial load
@@ -1011,24 +1078,104 @@ export default function WorkflowsPage() {
                     <Badge className={getStatusBadge(workflow.deployment_status)}>
                       {workflow.deployment_status.toUpperCase()}
                     </Badge>
-                    <Button 
-                      onClick={() => executeWorkflow(workflow)}
-                      className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-16"
-                      disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
-                      size="sm"
-                    >
-                      {executingWorkflows.has(workflow.id) ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                          RUNNING...
-                        </>
-                      ) : (
-                        <>
-                          <PlayCircle className="w-3 h-3 mr-1" />
-                          TEST RUN
-                        </>
-                      )}
-                    </Button>
+                    {/* Check input_parameters instead of sample_inputs for dropdown */}
+                    {workflow.input_parameters && Object.keys(workflow.input_parameters).length > 0 ? (
+                      <DropdownMenu open={showParamsDropdown[workflow.id]} onOpenChange={(open) => {
+                        if (open) {
+                          initializeParams(workflow);
+                        }
+                        setShowParamsDropdown(prev => ({ ...prev, [workflow.id]: open }));
+                      }}>
+                        <DropdownMenuTrigger asChild>
+                          <Button 
+                            className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-16"
+                            disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
+                            size="sm"
+                          >
+                            {executingWorkflows.has(workflow.id) ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                RUNNING...
+                              </>
+                            ) : (
+                              <>
+                                <PlayCircle className="w-3 h-3 mr-1" />
+                                TEST RUN
+                                <ChevronDown className="w-3 h-3 ml-1" />
+                              </>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-80 p-4" align="end">
+                          <div className="space-y-4">
+                            <div className="font-mono text-sm font-bold">EXECUTION PARAMETERS</div>
+                            
+                            <div className="space-y-3">
+                              {Object.entries(workflow.input_parameters).map(([key, param]) => (
+                                <div key={key} className="space-y-1">
+                                  <Label htmlFor={`${workflow.id}-${key}`} className="text-xs font-mono">
+                                    {key}
+                                    {param.required && <span className="text-red-500 ml-1">*</span>}
+                                  </Label>
+                                  <Input
+                                    id={`${workflow.id}-${key}`}
+                                    value={String(executionParams[workflow.id]?.[key] ?? param.example ?? param.default ?? '')}
+                                    onChange={(e) => updateParam(workflow.id, key, e.target.value)}
+                                    className="h-8 text-xs font-mono"
+                                    placeholder={String(param.example || param.default || `Enter ${param.type || 'value'}`)}
+                                  />
+                                  {param.description && (
+                                    <p className="text-xs text-muted-foreground">{param.description}</p>
+                                  )}
+                                </div>
+                              ))}
+                              
+                              <div className="flex gap-2 pt-2">
+                                <Button
+                                  onClick={() => {
+                                    executeWorkflow(workflow);
+                                    setShowParamsDropdown(prev => ({ ...prev, [workflow.id]: false }));
+                                  }}
+                                  className="bg-black text-white hover:bg-gray-800 font-mono text-xs flex-1"
+                                  size="sm"
+                                  disabled={executingWorkflows.has(workflow.id)}
+                                >
+                                  <PlayCircle className="w-3 h-3 mr-1" />
+                                  RUN WITH PARAMS
+                                </Button>
+                                <Button
+                                  onClick={() => setShowParamsDropdown(prev => ({ ...prev, [workflow.id]: false }))}
+                                  variant="outline"
+                                  className="font-mono text-xs"
+                                  size="sm"
+                                >
+                                  CANCEL
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : (
+                      <Button 
+                        onClick={() => executeWorkflow(workflow)}
+                        className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-16"
+                        disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
+                        size="sm"
+                      >
+                        {executingWorkflows.has(workflow.id) ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            RUNNING...
+                          </>
+                        ) : (
+                          <>
+                            <PlayCircle className="w-3 h-3 mr-1" />
+                            TEST RUN
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardHeader>
