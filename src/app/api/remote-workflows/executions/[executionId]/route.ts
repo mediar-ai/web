@@ -93,7 +93,7 @@ export async function GET(
         
         // Progress info
         progress_percentage: execution.progress_percentage || (isCompleted ? 100 : 0),
-        current_step: execution.current_step || execution.current_step_index || 0,
+        current_step_index: execution.current_step_index || 0,
         total_steps: execution.total_steps || 0,
         
         // Error info (if any)
