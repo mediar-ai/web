@@ -64,7 +64,7 @@ interface WorkflowOverview {
   tags: string[];
   difficulty_level: string;
   estimated_duration_seconds: number;
-  total_steps?: number;
+  total_steps: number;
   automation_sequence: AutomationStep[];
   input_parameters: Record<string, InputParameter>;
   expected_outputs: Record<string, unknown>;
@@ -511,7 +511,7 @@ export default function WorkflowsPage() {
             className="bg-white text-black border-black hover:bg-black hover:text-white"
           >
             POSTMAN COLLECTION
-          </Button>
+        </Button>
         </div>
       </div>
 
@@ -1058,11 +1058,11 @@ export default function WorkflowsPage() {
                         setShowParamsDropdown(prev => ({ ...prev, [workflow.id]: open }));
                       }}>
                         <DropdownMenuTrigger asChild>
-                          <Button 
+                    <Button 
                             className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-16"
-                            disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
+                      disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
                             size="sm"
-                          >
+                    >
                             {executingWorkflows.has(workflow.id) ? (
                               <>
                                 <Loader2 className="w-3 h-3 animate-spin mr-1" />
@@ -1075,7 +1075,7 @@ export default function WorkflowsPage() {
                                 <ChevronDown className="w-3 h-3 ml-1" />
                               </>
                             )}
-                          </Button>
+                    </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="w-80 p-4" align="end">
                           <div className="space-y-4">
@@ -1098,8 +1098,8 @@ export default function WorkflowsPage() {
                                   {param.description && (
                                     <p className="text-xs text-muted-foreground">{param.description}</p>
                                   )}
-                                </div>
-                              ))}
+                          </div>
+                        ))}
                               
                               <div className="flex gap-2 pt-2">
                                 <Button
@@ -1122,9 +1122,9 @@ export default function WorkflowsPage() {
                                 >
                                   CANCEL
                                 </Button>
-                              </div>
-                            </div>
                           </div>
+                      </div>
+                    </div>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     ) : (
@@ -1147,10 +1147,10 @@ export default function WorkflowsPage() {
                         )}
                       </Button>
                     )}
-                  </div>
-                </div>
+                        </div>
+                    </div>
               </CardHeader>
-              
+                
               <CardContent>
                 {/* Execution History Dropdown */}
                 {(() => {
@@ -1185,7 +1185,7 @@ export default function WorkflowsPage() {
                         className="w-full"
                       >
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors cursor-pointer">
-                          <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2">
                             {expandedExecutions.has(workflow.id) ? 
                               <ChevronDown className="w-4 h-4" /> : 
                               <ChevronRight className="w-4 h-4" />
@@ -1195,15 +1195,15 @@ export default function WorkflowsPage() {
                               {workflowLiveExecutions.length > 0 && (
                                 <Badge variant="secondary" className="text-xs">
                                   {workflowLiveExecutions.length} LIVE
-                                </Badge>
+                                  </Badge>
                               )}
                               {recentExecutions.length > 0 && (
                                 <Badge variant="outline" className="text-xs">
                                   {recentExecutions.length} RECENT
                                 </Badge>
-                              )}
-                            </div>
-                          </div>
+                                  )}
+                                </div>
+                              </div>
                         </div>
                       </CollapsibleTrigger>
                       
@@ -1211,7 +1211,7 @@ export default function WorkflowsPage() {
                         <div className="mt-2 max-h-[300px] overflow-y-auto p-2 border rounded-lg bg-white">
                           {/* Live Executions */}
                           {workflowLiveExecutions.length > 0 && (
-                            <div className="mb-2">
+                                <div className="mb-2">
                               <h4 className="text-sm font-bold font-mono mb-1 text-black flex items-center gap-2">
                                 <Activity className="w-4 h-4" />
                                 LIVE EXECUTIONS ({workflowLiveExecutions.length})
@@ -1272,22 +1272,22 @@ export default function WorkflowsPage() {
                                             <span>{execution.progress_percentage}%</span>
                                           </>
                                         )}
-                                        {execution.current_step_description && (
+                                  {execution.current_step_description && (
                                           <>
                                             <span className="text-gray-400">•</span>
                                             <span className="text-blue-600 truncate inline-block max-w-[550px]" title={execution.current_step_description}>
-                                              {execution.current_step_description}
+                                      {execution.current_step_description}
                                             </span>
                                           </>
-                                        )}
+                                  )}
                                       </div>
                                     </div>
                                   </div>
                                 ))}
                               </div>
-                            </div>
-                          )}
-                          
+                                </div>
+                              )}
+                              
                           {/* Separator if both sections exist */}
                           {workflowLiveExecutions.length > 0 && recentExecutions.length > 0 && (
                             <Separator className="my-2" />
@@ -1323,7 +1323,7 @@ export default function WorkflowsPage() {
                                               minute: '2-digit'
                                             })}
                                           </span>
-                                        )}
+                                )}
                                         {execution.execution_duration_seconds !== undefined && execution.execution_duration_seconds !== null && (
                                           <>
                                             <span className="text-gray-400">•</span>
@@ -1361,12 +1361,12 @@ export default function WorkflowsPage() {
                                             <span className="text-gray-400">•</span>
                                             <span>{execution.progress_percentage}%</span>
                                           </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
+                              )}
+                            </div>
+                          </div>
+                      </div>
                                 ))}
-                              </div>
+                    </div>
                             </div>
                           )}
                         </div>
