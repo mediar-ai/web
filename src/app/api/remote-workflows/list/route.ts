@@ -5,15 +5,15 @@ export async function GET(request: NextRequest) {
   try {
     console.log('⚡ Fast workflow list from Vercel...');
     
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
-    if (!supabaseUrl || !supabaseServiceKey) {
+  if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Supabase environment variables are not set');
-    }
+  }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  
     // Get URL parameters for filtering and pagination
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
       },
       timestamp: new Date().toISOString()
     });
-    
+
   } catch (error) {
     console.error('❌ Error listing workflows:', error);
     
