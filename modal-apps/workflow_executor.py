@@ -14,15 +14,26 @@ from psycopg2.extras import RealDictCursor
 import io
 import sys
 
+# Add contextlib for stdout/stderr capture
+import contextlib
+
 # Configure logging to capture everything
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Create a string buffer to capture all logs
 log_buffer = io.StringIO()
 log_handler = logging.StreamHandler(log_buffer)
-log_handler.setLevel(logging.INFO)
+log_handler.setLevel(logging.DEBUG)  # Capture DEBUG level too
+log_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 logger.addHandler(log_handler)
+
+# Also capture root logger
+root_logger = logging.getLogger()
+root_logger.addHandler(log_handler)
+
+# Create a separate buffer for stdout/stderr capture
+stdout_buffer = io.StringIO()
 
 # Modal app configuration - updated for real browser automation
 app = modal.App("workflow-executor")
@@ -53,8 +64,30 @@ DB_CONFIG = {
 }
 
 # MCP endpoint configuration - could be moved to secrets
-# MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"
-MCP_ENDPOINT = "https://willingly-settling-husky.ngrok-free.app/mcp"
+MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"
+# MCP_ENDPOINT = "https://willingly-settling-husky.ngrok-free.app/mcp"
+
+
+class CaptureOutput:
+    """Context manager to capture stdout/stderr along with regular logs"""
+    def __init__(self, stdout_buffer, include_stderr=True):
+        self.stdout_buffer = stdout_buffer
+        self.include_stderr = include_stderr
+        self._stdout = None
+        self._stderr = None
+    
+    def __enter__(self):
+        self._stdout = sys.stdout
+        sys.stdout = self.stdout_buffer
+        if self.include_stderr:
+            self._stderr = sys.stderr
+            sys.stderr = self.stdout_buffer
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout = self._stdout
+        if self.include_stderr and self._stderr:
+            sys.stderr = self._stderr
 
 
 
@@ -300,280 +333,186 @@ def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
 
 
 async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute workflow using MCP browser automation"""
+    """Execute workflow using the working MCP HTTP approach"""
     import httpx
     
-    # Since MCP might not be available as a pip package, let's use httpx directly
-    # or implement a mock for now to demonstrate error handling
     logger.info(f"🔌 Attempting to connect to MCP endpoint: {MCP_ENDPOINT}")
     
     try:
-        # Test MCP endpoint connectivity first
-        async with httpx.AsyncClient() as client:
-            try:
-                # Try a simple GET request to check if endpoint is alive
-                test_response = await client.get(MCP_ENDPOINT, timeout=5.0)
-                logger.info(f"📡 MCP endpoint response: {test_response.status_code}")
-                
-                if test_response.status_code >= 400:
-                    raise Exception(f"MCP endpoint returned error: HTTP {test_response.status_code}")
-                    
-            except httpx.ConnectError as ce:
-                raise Exception(f"Cannot connect to MCP endpoint at {MCP_ENDPOINT}: {str(ce)}")
-            except httpx.TimeoutException:
-                raise Exception(f"MCP endpoint timeout at {MCP_ENDPOINT}")
-            except Exception as e:
-                raise Exception(f"MCP endpoint test failed: {str(e)}")
+        # Use the automation sequence from the database
+        automation_sequence = workflow_data.get('automation_sequence')
         
-        # Convert workflow steps from database format to MCP format
-        automation_sequence = workflow_data.get('automation_sequence', [])
-        tools = []
+        # --- START TROUBLESHOOTING LOGS ---
+        logger.info("--- TROUBLESHOOTING: Raw automation_sequence from DB ---")
+        logger.info(f"Type: {type(automation_sequence)}")
+        logger.info(f"Content: {automation_sequence}")
+        # --- END TROUBLESHOOTING LOGS ---
+
+        if not automation_sequence or not isinstance(automation_sequence, list) or len(automation_sequence) == 0:
+            raise ValueError("automation_sequence is missing, not a list, or empty in the workflow data")
+
+        workflow_data_to_use = automation_sequence[0]
         
-        for step in automation_sequence:
-            # Map database action types to MCP tool names
-            action_mapping = {
-                'navigate': 'navigate_browser',
-                'click': 'click_element',
-                'fill_input': 'type_into_element',
-                'wait': 'delay',
-                'wait_for_element': 'wait_for_element',
-                'screenshot': 'screenshot',
-                'extract_data': 'get_focused_window_tree',  # Changed from get_element_text
-                'scroll': 'scroll_to_element'
-            }
-            
-            # Database uses 'action' not 'action_type'
-            action = step.get('action', '')
-            description = step.get('description', '').lower()
-            
-            # Special handling for different click types based on description
-            if action == 'click':
-                logger.info(f"   🔍 Processing click action with description: '{description}'")
-                if 'invoke' in description or 'run quote' in description:
-                    tool_name = 'invoke_element'
-                    logger.info(f"   → Mapped to invoke_element")
-                elif 'radio' in description or 'male' in description or 'no' in description:
-                    tool_name = 'set_selected'
-                    logger.info(f"   → Mapped to set_selected")
-                else:
-                    tool_name = 'click_element'
-                    logger.info(f"   → Mapped to click_element")
-            else:
-                tool_name = action_mapping.get(action, action)
-                logger.info(f"   🔍 Mapped {action} → {tool_name}")
-            
-            tool_call = {
-                "tool_name": tool_name,
-                "arguments": {}
-            }
-            
-            # Map parameters based on action type
-            if action == 'navigate':
-                tool_call['arguments']['url'] = step.get('url', '')
-            elif action in ['click', 'fill_input', 'scroll']:
-                tool_call['arguments']['selector'] = step.get('selector', '')
-                if 'alternative_selectors' in step:
-                    # Convert array to string if needed (MCP expects string)
-                    alt_selectors = step['alternative_selectors']
-                    if isinstance(alt_selectors, list):
-                        # Join array elements with pipe separator
-                        tool_call['arguments']['alternative_selectors'] = '|'.join(alt_selectors)
-                    else:
-                        tool_call['arguments']['alternative_selectors'] = alt_selectors
-                
-                # Special handling for set_selected (radio buttons)
-                if tool_name == 'set_selected':
-                    tool_call['arguments']['state'] = True
-                    if 'timeout' in step:
-                        tool_call['arguments']['timeout_ms'] = step['timeout']
-                
-                # Special handling for invoke_element
-                elif tool_name == 'invoke_element':
-                    if 'timeout' in step:
-                        tool_call['arguments']['timeout_ms'] = step['timeout']
-                
-                elif action == 'fill_input':
-                    # Handle both 'value' field and 'parameters' object
-                    text_value = ''
-                    if 'value' in step:
-                        text_value = step['value']
-                    elif 'parameters' in step:
-                        text_value = step['parameters'].get('value', '')
-                    
-                    # Replace placeholders with actual values from execution params
-                    if text_value.startswith('{{') and text_value.endswith('}}'):
-                        # Extract placeholder name
-                        placeholder = text_value[2:-2]  # Remove {{ and }}
-                        
-                        # Look up value based on placeholder
-                        if placeholder == 'height':
-                            text_value = execution_params.get('customer_info', {}).get('height', text_value)
-                        elif placeholder == 'date_of_birth':
-                            text_value = execution_params.get('customer_info', {}).get('date_of_birth', text_value)
-                        elif placeholder == 'weight':
-                            text_value = execution_params.get('customer_info', {}).get('weight', text_value)
-                        elif placeholder == 'state':
-                            text_value = execution_params.get('customer_info', {}).get('state', text_value)
-                        elif placeholder == 'zip_code':
-                            text_value = execution_params.get('customer_info', {}).get('zip_code', text_value)
-                        elif placeholder == 'face_value':
-                            text_value = execution_params.get('insurance_preferences', {}).get('face_value', text_value)
-                        elif placeholder == 'order_id':
-                            text_value = execution_params.get('credentials', {}).get('order_id', text_value)
-                        elif placeholder == 'email':
-                            text_value = execution_params.get('credentials', {}).get('email', text_value)
-                    
-                    tool_call['arguments']['text_to_type'] = text_value
-            elif action == 'wait' or action == 'delay':
-                # Handle both wait_after and delay_ms formats
-                if 'wait_after' in step:
-                    tool_call['arguments']['seconds'] = step['wait_after'] / 1000  # Convert ms to seconds
-                elif 'parameters' in step and 'delay_ms' in step['parameters']:
-                    tool_call['arguments']['seconds'] = step['parameters']['delay_ms'] / 1000  # Convert ms to seconds
-                elif 'parameters' in step and 'seconds' in step['parameters']:
-                    tool_call['arguments']['seconds'] = step['parameters']['seconds']
-            elif action == 'wait_for_element':
-                tool_call['arguments']['selector'] = step.get('selector', '')
-                if 'timeout' in step:
-                    tool_call['arguments']['timeout_ms'] = step['timeout']
-                if 'condition' in step:
-                    tool_call['arguments']['condition'] = step['condition']
-            elif action == 'extract_data':
-                # get_focused_window_tree doesn't need parameters
-                pass
-            
-            tools.append(tool_call)
-            logger.info(f"   Step {step.get('step_number', len(tools))}: {tool_name} - {step.get('description', '')}")
+        # --- START TROUBLESHOOTING LOGS ---
+        logger.info("--- TROUBLESHOOTING: Parsed workflow_data_to_use ---")
+        logger.info(f"Type: {type(workflow_data_to_use)}")
+        logger.info(f"Content: {workflow_data_to_use}")
+        # --- END TROUBLESHOOTING LOGS ---
+
+        tool_name = workflow_data_to_use.get("tool_name")
+        arguments = workflow_data_to_use.get("arguments", {})
         
-        # Execute the sequence via HTTP POST to MCP endpoint
-        logger.info(f"🚀 Executing {len(tools)} browser automation steps...")
+        # --- START TROUBLESHOOTING LOGS ---
+        logger.info("--- TROUBLESHOOTING: Extracted tool_name and arguments ---")
+        logger.info(f"Tool Name: {tool_name}")
+        logger.info(f"Arguments: {arguments}")
+        logger.info("--- END TROUBLESHOOTING LOGS ---")
         
-        # Log the tools for debugging
-        logger.info("📋 Tools to execute:")
-        for i, tool in enumerate(tools):
-            logger.info(f"   {i+1}. {tool['tool_name']} - {tool.get('arguments', {})}")
+        logger.info(f"📋 Workflow: {tool_name}")
+        logger.info(f"   Items: {len(arguments.get('items', []))}")
         
-        # Send execution request to MCP endpoint
-        async with httpx.AsyncClient() as client:
-            mcp_request = {
-                "method": "execute_sequence",
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # Step 1: Initialize MCP session
+            logger.info("🔌 Initializing MCP session...")
+            init_request = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
                 "params": {
-                    "tools_json": json.dumps(tools),
-                    "stop_on_error": False,
-                    "include_detailed_results": True
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "roots": {"listChanged": False},
+                        "sampling": {}
+                    },
+                    "clientInfo": {
+                        "name": "modal-workflow-executor",
+                        "version": "1.0.0"
+                    }
                 }
             }
             
-            logger.info(f"📤 Sending request to MCP endpoint...")
             response = await client.post(
                 MCP_ENDPOINT,
-                json=mcp_request,
-                timeout=300.0  # 5 minutes timeout for long-running workflows
+                json=init_request,
+                headers={'Accept': 'application/json, text/event-stream'}
             )
             
             if response.status_code != 200:
-                raise Exception(f"MCP execution failed with HTTP {response.status_code}: {response.text}")
+                raise Exception(f"Failed to initialize MCP session: {response.status_code}")
             
-            result_data = response.json()
-        
-        # Capture raw MCP response
-        raw_mcp_response = {}
-        
-        # Parse results
-        execution_results = {
-            'execution_type': 'real_browser_automation',
-            'workflow_name': workflow_data.get('name', 'Unknown Workflow'),
-            'executed_steps': [],
-            'extracted_data': {},
-            'quotes': [],
-            'applicant_info': {},
-            'performance_metrics': {
-                'total_steps': len(automation_sequence),
-                'successful_steps': 0,
-                'failed_steps': 0,
-                'total_execution_time_seconds': 0
-            },
-            'raw_mcp_response': None,  # Will be populated below
-            'step_details': []  # Detailed info for each step
-        }
-        
-        # Process MCP results
-        if result_data:
-            # Store the complete raw MCP response
-            raw_mcp_response = result_data
-            execution_results['raw_mcp_response'] = raw_mcp_response
+            # Extract session ID from response headers
+            session_id = response.headers.get('Mcp-Session-Id')
+            if not session_id:
+                raise Exception("No session ID received from MCP server")
             
-            logger.info(f"📊 Execution completed in {result_data.get('total_duration_ms', 0)}ms")
+            logger.info(f"✅ MCP session initialized: {session_id}")
             
-            # Debug: Log the structure of the first result
-            if result_data.get('results'):
-                logger.info(f"🔍 Result structure sample: {json.dumps(result_data['results'][0] if result_data['results'] else {}, indent=2)[:500]}")
+            # Step 1.5: Send initialized notification (required by MCP protocol)
+            logger.info("📤 Sending initialized notification...")
+            initialized_request = {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+                "params": {}
+            }
             
-            # Process each step with detailed information
-            for i, step_result in enumerate(result_data.get('results', [])):
-                # Check different possible success indicators
-                is_success = step_result.get('success', step_result.get('status') == 'success' or not step_result.get('error'))
+            response = await client.post(
+                MCP_ENDPOINT,
+                json=initialized_request,
+                headers={
+                    'Accept': 'application/json, text/event-stream',
+                    'Mcp-Session-Id': session_id
+                }
+            )
+            
+            if response.status_code not in [200, 202]:
+                logger.warning(f"⚠️ Initialized notification failed: {response.status_code}")
+            else:
+                logger.info("✅ Session initialized successfully")
+            
+            # Step 2: Execute the workflow
+            logger.info(f"🚀 Executing workflow: {tool_name}...")
+            start_time = time.time()
+            
+            tool_request = {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": tool_name,
+                    "arguments": arguments
+                }
+            }
+            
+            response = await client.post(
+                MCP_ENDPOINT,
+                json=tool_request,
+                headers={
+                    'Accept': 'application/json, text/event-stream',
+                    'Mcp-Session-Id': session_id
+                }
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Workflow execution failed: {response.status_code} - {response.text}")
+            
+            # Parse the response (handle SSE format)
+            response_text = response.text
+            if not response_text:
+                raise Exception("Empty response from MCP server")
+            
+            logger.info("✅ Workflow execution completed!")
+            execution_time = time.time() - start_time
+            logger.info(f"⏱️ Execution time: {execution_time:.1f}s")
+            
+            # Parse and display results (handle SSE format)
+            try:
+                # Handle Server-Sent Events format
+                if response_text.startswith("data: "):
+                    # Split by lines and find the data line
+                    lines = response_text.split('\n')
+                    json_text = None
+                    for line in lines:
+                        if line.startswith("data: "):
+                            json_text = line[6:]  # Remove "data: " prefix
+                            break
+                    
+                    if not json_text:
+                        raise Exception("No data found in SSE response")
+                else:
+                    json_text = response_text
                 
-                # Create detailed step info
-                step_info = {
-                    'step_number': i + 1,
-                    'tool_name': step_result.get('tool_name'),
-                    'duration_ms': step_result.get('duration_ms', 0),
-                    'success': is_success,
-                    'error': step_result.get('error') if not is_success else None,
-                    'result_preview': None
+                result_data = json.loads(json_text)
+                
+                # Build execution results in the expected format
+                execution_results = {
+                    'execution_type': 'real_browser_automation',
+                    'workflow_name': 'Insurance Quote Workflow',
+                    'executed_steps': [],
+                    'extracted_data': {},
+                    'quotes': [],
+                    'applicant_info': {},
+                    'performance_metrics': {
+                        'total_steps': len(arguments.get('items', [])),
+                        'successful_steps': 0,
+                        'failed_steps': 0,
+                        'total_execution_time_seconds': execution_time
+                    },
+                    'raw_mcp_response': result_data,
+                    'step_details': []
                 }
                 
-                # Add result preview for successful steps
-                if is_success and step_result.get('result'):
-                    result_content = step_result.get('result', {})
-                    if isinstance(result_content, dict) and 'content' in result_content:
-                        content_items = result_content.get('content', [])
-                        if content_items and isinstance(content_items[0], dict) and 'text' in content_items[0]:
-                            preview_text = content_items[0]['text']
-                            # Truncate long previews
-                            if len(preview_text) > 500:
-                                step_info['result_preview'] = preview_text[:500] + '...'
-                            else:
-                                step_info['result_preview'] = preview_text
+                logger.info(f"📋 Sequence Execution Result:")
+                logger.info(f"Tool: {tool_name}")
+                logger.info(f"Status: ✅ Completed")
+                logger.info(f"Result length: {len(json_text)} characters")
+                logger.info(f"🎉 {tool_name} executed successfully!")
                 
-                execution_results['step_details'].append(step_info)
+                return execution_results
                 
-                if is_success:
-                    execution_results['performance_metrics']['successful_steps'] += 1
-                    logger.info(f"   ✅ Step {i+1}: {step_result.get('tool_name')} - Success")
-                else:
-                    execution_results['performance_metrics']['failed_steps'] += 1
-                    error_msg = step_result.get('error', step_result.get('message', 'Unknown status'))
-                    logger.info(f"   ❌ Step {i+1}: {step_result.get('tool_name')} - Failed: {error_msg}")
-            
-            # Get UI tree from final step
-            if result_data.get('results'):
-                # Find the get_focused_window_tree step (should be step 25)
-                ui_tree = None
-                ui_tree_full = None
-                for step_result in result_data['results']:
-                    if step_result.get('tool_name') == 'get_focused_window_tree':
-                        ui_tree_result = step_result.get('result', {})
-                        if isinstance(ui_tree_result, dict) and 'content' in ui_tree_result:
-                            ui_tree_full = ui_tree_result.get('content', [{}])[0].get('text', '')
-                            ui_tree = ui_tree_full
-                        break
-                
-                # Store full UI tree in extracted data
-                if ui_tree_full:
-                    execution_results['extracted_data']['full_ui_tree'] = ui_tree_full
-                
-                # Parse quotes from UI tree if found
-                if ui_tree:
-                    execution_results['quotes'] = parse_quote_results(ui_tree)
-                
-                # Extract applicant info
-                execution_results['applicant_info'] = extract_applicant_info(workflow_data)
-            
-            execution_results['performance_metrics']['total_execution_time_seconds'] = result_data.get('total_duration_ms', 0) / 1000
-        
-        return execution_results
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ Failed to parse response JSON: {e}")
+                logger.error(f"Raw response: {response_text[:500]}...")
+                raise Exception(f"Failed to parse MCP response: {e}")
         
     except Exception as e:
         logger.error(f"MCP workflow execution error: {e}")
@@ -627,7 +566,6 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         Dict with execution results and extracted data
     """
     start_time = time.time()
-    execution_id = None
     conn = None
     cur = None
     
@@ -645,10 +583,11 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         if not workflow:
             raise Exception(f"Workflow {workflow_id} not found")
             
-        automation_sequence = workflow.get('automation_sequence', [])
-        total_steps = len(automation_sequence)
+        # Calculate total steps from the automation sequence
+        automation_sequence = workflow.get('automation_sequence', [{}])[0]
+        total_steps = len(automation_sequence.get('arguments', {}).get('items', []))
         
-        logger.info(f"📋 Loaded {workflow['name']} - {total_steps} steps to execute via browser")
+        logger.info(f"📋 Loaded {workflow['name']} - {total_steps} groups to execute via browser")
         
         # Either update existing execution or create new one
         if execution_id:
@@ -728,17 +667,43 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        # Clear log buffer before execution
-        log_buffer.seek(0)
-        log_buffer.truncate(0)
+        # Don't clear log buffer - instead add execution boundary marker
+        logger.info(f"{'='*60}")
+        logger.info(f"🚀 EXECUTION {execution_id} STARTING")
+        logger.info(f"{'='*60}")
         
-        try:
-            results = loop.run_until_complete(execute_mcp_workflow(workflow, execution_params or {}))
-        finally:
-            loop.close()
+        # Clear stdout buffer for this execution
+        stdout_buffer.seek(0)
+        stdout_buffer.truncate(0)
         
-        # Capture all logs
+        # Capture stdout/stderr during execution
+        with CaptureOutput(stdout_buffer):
+            try:
+                # Log system information
+                logger.info(f"📍 Modal Function: execute_workflow")
+                logger.info(f"🔗 MCP Endpoint: {MCP_ENDPOINT}")
+                logger.info(f"📦 Workflow ID: {workflow_id}")
+                logger.info(f"🏷️ Execution ID: {execution_id}")
+                logger.info(f"⏰ Start Time: {datetime.now(timezone.utc).isoformat()}")
+                
+                results = loop.run_until_complete(execute_mcp_workflow(workflow, execution_params or {}))
+            finally:
+                loop.close()
+        
+        # Capture all logs from both buffers
         raw_logs = log_buffer.getvalue()
+        stdout_logs = stdout_buffer.getvalue()
+        
+        # Combine logs with clear sections
+        combined_logs = f"""
+=== LOGGER OUTPUT ===
+{raw_logs}
+
+=== STDOUT/STDERR OUTPUT ===
+{stdout_logs}
+
+=== END OF EXECUTION {execution_id} ===
+"""
         
         # Extract raw MCP response from results (if present)
         raw_mcp_response = results.pop('raw_mcp_response', None)
@@ -799,7 +764,7 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
             json.dumps(results),
             100,
             total_steps,
-            raw_logs,
+            combined_logs,  # Use combined logs instead of just raw_logs
             json.dumps(raw_mcp_response) if raw_mcp_response else None,
             json.dumps(execution_logs),
             formatted_output,
@@ -833,6 +798,18 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         
         # Capture any logs that were generated before the error
         raw_logs = log_buffer.getvalue()
+        stdout_logs = stdout_buffer.getvalue()
+        
+        # Combine logs for error case
+        combined_logs = f"""
+=== LOGGER OUTPUT ===
+{raw_logs}
+
+=== STDOUT/STDERR OUTPUT ===
+{stdout_logs}
+
+=== ERROR OCCURRED IN EXECUTION {execution_id} ===
+"""
         
         # Create error execution logs
         execution_logs = []
@@ -910,7 +887,7 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
                     datetime.now(timezone.utc).isoformat(),
                     int(time.time() - start_time),
                     error_msg,
-                    raw_logs if raw_logs else f"Error occurred before logging started: {error_msg}",
+                    combined_logs if combined_logs else f"Error occurred before logging started: {error_msg}",
                     json.dumps(execution_logs),
                     json.dumps(error_results),
                     formatted_error_output,
@@ -936,6 +913,7 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         }
         
     finally:
+        # Database cleanup
         if cur:
             cur.close()
         if conn:
@@ -1073,6 +1051,10 @@ if __name__ == "__main__":
     print(f"  • Database: {DB_CONFIG['database']}")
     print(f"  • User: {DB_CONFIG['user']}")
     print("  • Connection pooling: Optimized for performance")
+    
+    # Also log to logger so it's captured
+    logger.info("Modal app initialized with enhanced logging")
+    logger.info(f"Using ngrok endpoint: {MCP_ENDPOINT}")
 
 
 @app.function(
@@ -1213,3 +1195,7 @@ def trigger_job_check():
     """
     logger.info("🔄 Manually triggering job check...")
     return check_and_process_queued_jobs.local()
+
+
+
+
