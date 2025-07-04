@@ -725,13 +725,19 @@ def execute_workflow(workflow_id: int, execution_params: Dict[str, Any] = None, 
         
         # Generate execution summary
         success_rate = (results['performance_metrics']['successful_steps'] / max(total_steps, 1)) * 100
+        quotes_found = len(results.get('quotes', []))
+        
+        # A workflow is only truly successful if:
+        # 1. ALL steps completed (100% success rate)
+        # 2. AND it achieved its business goal (found at least one quote)
+        workflow_completed = success_rate == 100 and quotes_found > 0
         
         results['execution_summary'] = {
-            'workflow_completed': success_rate >= 90,  # Consider >90% as successful
+            'workflow_completed': workflow_completed,
             'success_rate_percentage': round(success_rate, 2),
             'total_execution_time': execution_duration,
-            'quotes_found': len(results.get('quotes', [])),
-            'execution_message': f"Found {len(results.get('quotes', []))} insurance quotes"
+            'quotes_found': quotes_found,
+            'execution_message': f"Found {quotes_found} insurance quotes"
         }
         
         # Generate formatted summary for successful executions

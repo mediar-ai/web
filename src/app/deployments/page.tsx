@@ -1015,6 +1015,25 @@ export default function WorkflowsPage() {
                     </div>
                     <p className="text-black text-sm mb-2">{workflow.description}</p>
                     
+                    {/* Success Criteria */}
+                    <div className="bg-gray-50 border border-gray-300 rounded-md p-3 mb-3">
+                      <h4 className="text-xs font-mono font-bold text-black mb-1">SUCCESS CRITERIA</h4>
+                      <ul className="text-xs space-y-1">
+                        <li className="flex items-start gap-2">
+                          <span className="text-green-600 mt-0.5">✓</span>
+                          <span className="text-gray-700">All workflow steps must complete successfully (100% completion)</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-green-600 mt-0.5">✓</span>
+                          <span className="text-gray-700">At least one insurance quote must be found and extracted</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-red-600 mt-0.5">✗</span>
+                          <span className="text-gray-700">Partial completion or no quotes found = FAILED</span>
+                        </li>
+                      </ul>
+                    </div>
+                    
                     {/* Workflow Metadata */}
                     <div className="flex flex-wrap gap-4 text-xs font-mono text-black mb-3">
                       <span>DIFFICULTY: {workflow.difficulty_level?.toUpperCase() || 'MEDIUM'}</span>
@@ -1331,11 +1350,54 @@ export default function WorkflowsPage() {
                                           </>
                                         )}
                                         {/* Show contextual info based on status */}
-                                        {execution.status === 'failed' && execution.error_message && (
+                                        {execution.status === 'failed' && (execution.error_message || execution.formatted_output) && (
                                           <>
                                             <span className="text-gray-400">•</span>
-                                            <span className="text-red-600 truncate inline-block max-w-[550px]" title={execution.error_message}>
-                                              {execution.error_message}
+                                            <span className="text-red-600 truncate inline-block max-w-[550px]" title={execution.error_message || execution.formatted_output}>
+                                              {(() => {
+                                                if (execution.error_message) {
+                                                  return execution.error_message;
+                                                } else if (execution.formatted_output) {
+                                                  // Extract meaningful error from formatted output
+                                                  const lines = execution.formatted_output.split('\n');
+                                                  
+                                                  // Check if it's a false positive (says completed but actually failed)
+                                                  const hasCompletedMessage = lines.some(line => line.includes('✅ Workflow execution completed!'));
+                                                  const hasNoQuotesFound = lines.some(line => line.includes('❌ No Eligible Quotes Found') || line.includes('No Eligible Quotes Found'));
+                                                  
+                                                  if (hasCompletedMessage && hasNoQuotesFound) {
+                                                    // Extract execution metrics to provide more context
+                                                    const successfulStepsLine = lines.find(line => line.includes('Successful Steps:'));
+                                                    
+                                                    if (successfulStepsLine && successfulStepsLine.includes('Successful Steps: 0')) {
+                                                      return 'Workflow failed - No steps completed successfully';
+                                                    } else if (hasNoQuotesFound) {
+                                                      return 'Workflow incomplete - No quotes found';
+                                                    }
+                                                  }
+                                                  
+                                                  // Look for actual error indicators
+                                                  const errorLine = lines.find(line => 
+                                                    line.includes('❌') || 
+                                                    line.includes('Message:') || 
+                                                    line.includes('Error:') || 
+                                                    line.includes('Failed:') ||
+                                                    line.includes('failed!')
+                                                  );
+                                                  
+                                                  if (errorLine) {
+                                                    return errorLine
+                                                      .replace(/^\s*Message:\s*/, '')
+                                                      .replace(/^\s*Error:\s*/, '')
+                                                      .replace(/^❌\s*/, '')
+                                                      .trim();
+                                                  }
+                                                  
+                                                  // Default to first non-empty, non-separator line
+                                                  return lines.find(line => line.trim() && !line.includes('===') && !line.includes('---')) || 'Workflow execution failed';
+                                                }
+                                                return 'Workflow execution failed';
+                                              })()}
                                             </span>
                                           </>
                                         )}
