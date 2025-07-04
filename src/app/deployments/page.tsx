@@ -1078,7 +1078,7 @@ export default function WorkflowsPage() {
                       }}>
                         <DropdownMenuTrigger asChild>
                     <Button 
-                            className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-16"
+                            className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-4"
                       disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
                             size="sm"
                     >
@@ -1149,7 +1149,7 @@ export default function WorkflowsPage() {
                     ) : (
                       <Button 
                         onClick={() => executeWorkflow(workflow)}
-                        className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-16"
+                        className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-4"
                         disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
                         size="sm"
                       >
