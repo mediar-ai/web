@@ -13,12 +13,12 @@ export async function POST(
     console.log(`🚀 Executing workflow ${workflowIdNum} with parameters:`, body);
     
     // Extract parameters from request body
-    const {
-      execution_params = {},
+    const { 
+      execution_params = {}, 
       client_id = `web-${Date.now()}`,
       execution_mode = 'async'
     } = body;
-    
+
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -57,7 +57,7 @@ export async function POST(
         { status: 400 }
       );
     }
-    
+
     // Create execution record in database with 'queued' status
     // Modal scheduled job will pick it up and process it
     const modal_call_id = `modal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -81,7 +81,7 @@ export async function POST(
     console.log(`✅ Created execution ${execution.id} for workflow "${workflow.name}" - will be processed by Modal scheduler`);
     
     // Return immediate response - Modal will process this asynchronously
-    return NextResponse.json({
+        return NextResponse.json({ 
       success: true,
       execution_id: execution.id,
       workflow_id: workflowIdNum,
@@ -93,7 +93,7 @@ export async function POST(
       client_id,
       message: `Workflow execution queued successfully. Modal will process it within 10 seconds. Use execution ID ${execution.id} to monitor progress.`
     }, { status: 200 });
-    
+
   } catch (error) {
     console.error('❌ Error executing workflow:', error);
     
@@ -106,7 +106,7 @@ export async function POST(
       },
       { status: 500 }
     );
+    }
   }
-}
 
 
