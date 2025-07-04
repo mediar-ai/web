@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     // Build base query - use only existing database fields
     let query = supabase
       .from('workflow_executions')
-      .select('id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, deployed_workflows!inner(id, name, description, category)')
+      .select('id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, deployed_workflows!inner(id, name, description, category)')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
         
         // Error info
         error_message: execution.error_message,
+        formatted_output: execution.formatted_output,
         
         // Metadata
         modal_call_id: execution.modal_call_id,
