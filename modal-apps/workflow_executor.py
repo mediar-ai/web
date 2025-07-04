@@ -64,8 +64,9 @@ DB_CONFIG = {
 }
 
 # MCP endpoint configuration - could be moved to secrets
-MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"
-# MCP_ENDPOINT = "https://willingly-settling-husky.ngrok-free.app/mcp"
+# MCP_ENDPOINT = "https://barely-honest-yak.ngrok-free.app" # virtual machine
+MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp" # Louis computer
+# MCP_ENDPOINT = "https://willingly-settling-husky.ngrok-free.app/mcp" # Matt computer
 
 
 class CaptureOutput:
@@ -295,33 +296,57 @@ def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
     
     logger.info(f"UI tree contains: View Details={has_view_details}, Monthly Price={has_monthly_price}, Prosperity={has_prosperity}")
     
+    # Detect which JSON format the UI tree is using
+    logger.info("\n=== DETECTING JSON FORMAT ===")
+    if '"name": "' in ui_tree_text[:1000]:
+        logger.info("✓ Detected Simple JSON format (e.g., \"name\": \"value\")")
+    elif '\\"name\\":\\"' in ui_tree_text[:1000]:
+        logger.info("✓ Detected 2-backslash escaped JSON format (e.g., \\\"name\\\":\\\"value\\\")")
+    elif '\\\\\\"name\\\\\\":\\\\\\"' in ui_tree_text[:1000]:
+        logger.info("✓ Detected 6-backslash escaped JSON format (e.g., \\\\\\\"name\\\\\\\":\\\\\\\"value\\\\\\\")")
+    else:
+        logger.warning("⚠️ Could not detect JSON format from first 1000 characters")
+    
     # Find all occurrences of "Price" (could be "Monthly Price", "Price", etc.)
-    # Using 2-backslash escaping pattern for UI tree text (not 6 like raw MCP)
-    price_label_pattern = r'\\"name\\":\\"([^"\\]*Price[^"\\]*)\\"'
-    price_label_matches = list(re.finditer(price_label_pattern, ui_tree_text))
+    # Try different patterns based on the JSON format
+    patterns_to_try = [
+        (r'"name": "([^"]*Price[^"]*)"', 'Simple JSON'),
+        (r'\\"name\\":\\"([^"\\]*Price[^"\\]*)\\"', '2-backslash'),
+        (r'\\\\\\"name\\\\\\":\\\\\\"([^"\\]*Price[^"\\]*)\\\\\\"', '6-backslash')
+    ]
     
-    logger.info(f"Price label pattern: {price_label_pattern}")
-    logger.info(f"Found {len(price_label_matches)} price labels in UI tree")
+    price_label_matches = []
+    price_pattern = None
+    for pattern, pattern_name in patterns_to_try:
+        matches = list(re.finditer(pattern, ui_tree_text))
+        logger.info(f"{pattern_name} pattern found {len(matches)} price labels")
+        if matches:
+            price_label_matches = matches
+            price_pattern = pattern
+            logger.info(f"Using {pattern_name} pattern for parsing")
+            break
     
-    # If no matches with 2 backslashes, try other patterns
-    if len(price_label_matches) == 0:
-        logger.warning("No price labels found with 2-backslash pattern, trying alternatives...")
-        
-        # Try 6-backslash pattern
-        alt_pattern = r'\\\\\\"name\\\\\\":\\\\\\"([^"\\]*Price[^"\\]*)\\\\\\"'
-        alt_matches = list(re.finditer(alt_pattern, ui_tree_text))
-        logger.info(f"6-backslash pattern found {len(alt_matches)} matches")
-        
-        # Try simple pattern
-        simple_pattern = r'"name":"([^"]*Price[^"]*)"'
-        simple_matches = list(re.finditer(simple_pattern, ui_tree_text))
-        logger.info(f"Simple pattern found {len(simple_matches)} matches")
-        
+    if not price_label_matches:
+        logger.warning("No price labels found with any pattern")
         # Show sample of what's around "Price" if it exists
         if 'Price' in ui_tree_text:
             price_pos = ui_tree_text.find('Price')
             context = ui_tree_text[max(0, price_pos-50):price_pos+50]
             logger.info(f"Context around 'Price': {repr(context)}")
+        return quotes
+    
+    # Determine which dollar and name patterns to use based on which price pattern worked
+    if '"name": "' in price_pattern:
+        dollar_pattern = r'"name": "\$(\d+(?:,\d{3})*(?:\.\d{2})?)"'
+        name_pattern = r'"name": "([^"]+)"'
+    elif '\\"name\\":\\"' in price_pattern:
+        dollar_pattern = r'\\"name\\":\\"\$(\d+(?:,\d{3})*(?:\.\d{2})?)\\"'
+        name_pattern = r'\\"name\\":\\"([^"\\]+)\\"'
+    else:
+        dollar_pattern = r'\\\\\\"name\\\\\\":\\\\\\"\$(\d+(?:,\d{3})*(?:\.\d{2})?)\\\\\\"'
+        name_pattern = r'\\\\\\"name\\\\\\":\\\\\\"([^"\\]+)\\\\\\"'
+    
+    logger.info(f"Using dollar pattern: {dollar_pattern}")
     
     for i, price_match in enumerate(price_label_matches):
         price_label = price_match.group(1)
@@ -334,7 +359,6 @@ def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
         backward_text = ui_tree_text[backward_start:price_label_pos]
         
         # Find the most recent dollar amount before "Price"
-        dollar_pattern = r'\\"name\\":\\"\$(\d+(?:,\d{3})*(?:\.\d{2})?)\\"'
         dollar_matches = list(re.finditer(dollar_pattern, backward_text))
         
         logger.info(f"  Looking for dollar amounts with pattern: {dollar_pattern}")
@@ -362,7 +386,6 @@ def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
         carrier_search_text = ui_tree_text[carrier_search_start:dollar_pos]
         
         # Find all name fields before the dollar amount
-        name_pattern = r'\\"name\\":\\"([^"\\]+)\\"'
         name_matches = list(re.finditer(name_pattern, carrier_search_text))
         
         logger.info(f"  Found {len(name_matches)} name fields before dollar amount")
@@ -424,6 +447,17 @@ def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
     if quotes:
         for i, quote in enumerate(quotes):
             logger.info(f"Quote {i+1}: {quote['carrier']} - {quote['product']} at {quote['monthly_price']}")
+    
+    # Log which JSON format was used
+    if price_pattern:
+        if '"name": "' in price_pattern:
+            logger.info("📋 Used Simple JSON format for parsing")
+        elif '\\"name\\":\\"' in price_pattern:
+            logger.info("📋 Used 2-backslash escaped JSON format for parsing")
+        elif '\\\\\\"name\\\\\\":\\\\\\"' in price_pattern:
+            logger.info("📋 Used 6-backslash escaped JSON format for parsing")
+    else:
+        logger.warning("📋 No JSON format matched - parsing failed")
     
     return quotes
 
