@@ -278,56 +278,152 @@ def generate_formatted_summary(quotes: List[Dict[str, Any]], applicant_info: Dic
 
 
 def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
-    """Parse insurance quotes from the UI tree text"""
+    """Parse insurance quotes from the UI tree text using Price-based backward search"""
     quotes = []
+    processed_positions = set()
     
-    try:
-        # Extract the main content that contains quote information
-        if "Top Recommendations" not in ui_tree_text:
-            logger.warning("No 'Top Recommendations' found in UI tree")
-            return quotes
-            
-        # Find all group elements that contain quote information
-        # Pattern to find carrier names and prices
-        carrier_pattern = r'"name":"([^"]+?):\s*([\w\s\*-]+)".*?"role":"Text"'
-        price_pattern = r'"name":"\$([0-9,.]+)".*?"role":"Text"'
-        status_pattern = r'"name":"(Ineligible|Graded|Discontinued|Monthly Price)"'
-        
-        # Split by groups that contain quote info
-        quote_blocks = ui_tree_text.split('"bounds":[956.0,')
-        
-        for block in quote_blocks[1:]:  # Skip first split
-            quote_info = {}
-            
-            # Extract carrier and product name
-            carrier_match = re.search(carrier_pattern, block)
-            if carrier_match:
-                full_name = carrier_match.group(1)
-                product_type = carrier_match.group(2)
-                quote_info['carrier'] = full_name
-                quote_info['product'] = product_type
-                
-                # Extract price
-                price_match = re.search(price_pattern, block)
-                if price_match:
-                    quote_info['monthly_price'] = f"${price_match.group(1)}"
-                
-                # Extract status
-                statuses = []
-                for status_match in re.finditer(status_pattern, block):
-                    status = status_match.group(1)
-                    if status not in ["Monthly Price"]:
-                        statuses.append(status)
-                
-                quote_info['status'] = statuses if statuses else ['Available']
-                
-                # Check if quote is eligible
-                quote_info['eligible'] = 'Ineligible' not in statuses
-                
-                quotes.append(quote_info)
+    logger.info("=== QUOTE PARSER STARTED ===")
+    logger.info(f"UI tree text length: {len(ui_tree_text)} characters")
     
-    except Exception as e:
-        logger.error(f"Error parsing quotes: {e}")
+    # Log first 500 chars to see the structure
+    logger.info(f"First 500 chars of UI tree: {ui_tree_text[:500]}")
+    
+    # Check for key indicators
+    has_view_details = 'View Details' in ui_tree_text
+    has_monthly_price = 'Monthly Price' in ui_tree_text
+    has_prosperity = 'Prosperity' in ui_tree_text
+    
+    logger.info(f"UI tree contains: View Details={has_view_details}, Monthly Price={has_monthly_price}, Prosperity={has_prosperity}")
+    
+    # Find all occurrences of "Price" (could be "Monthly Price", "Price", etc.)
+    # Using 2-backslash escaping pattern for UI tree text (not 6 like raw MCP)
+    price_label_pattern = r'\\"name\\":\\"([^"\\]*Price[^"\\]*)\\"'
+    price_label_matches = list(re.finditer(price_label_pattern, ui_tree_text))
+    
+    logger.info(f"Price label pattern: {price_label_pattern}")
+    logger.info(f"Found {len(price_label_matches)} price labels in UI tree")
+    
+    # If no matches with 2 backslashes, try other patterns
+    if len(price_label_matches) == 0:
+        logger.warning("No price labels found with 2-backslash pattern, trying alternatives...")
+        
+        # Try 6-backslash pattern
+        alt_pattern = r'\\\\\\"name\\\\\\":\\\\\\"([^"\\]*Price[^"\\]*)\\\\\\"'
+        alt_matches = list(re.finditer(alt_pattern, ui_tree_text))
+        logger.info(f"6-backslash pattern found {len(alt_matches)} matches")
+        
+        # Try simple pattern
+        simple_pattern = r'"name":"([^"]*Price[^"]*)"'
+        simple_matches = list(re.finditer(simple_pattern, ui_tree_text))
+        logger.info(f"Simple pattern found {len(simple_matches)} matches")
+        
+        # Show sample of what's around "Price" if it exists
+        if 'Price' in ui_tree_text:
+            price_pos = ui_tree_text.find('Price')
+            context = ui_tree_text[max(0, price_pos-50):price_pos+50]
+            logger.info(f"Context around 'Price': {repr(context)}")
+    
+    for i, price_match in enumerate(price_label_matches):
+        price_label = price_match.group(1)
+        price_label_pos = price_match.start()
+        
+        logger.info(f"\nProcessing price label {i+1}: '{price_label}' at position {price_label_pos}")
+        
+        # Step 1: Look backward for the dollar amount
+        backward_start = max(0, price_label_pos - 500)
+        backward_text = ui_tree_text[backward_start:price_label_pos]
+        
+        # Find the most recent dollar amount before "Price"
+        dollar_pattern = r'\\"name\\":\\"\$(\d+(?:,\d{3})*(?:\.\d{2})?)\\"'
+        dollar_matches = list(re.finditer(dollar_pattern, backward_text))
+        
+        logger.info(f"  Looking for dollar amounts with pattern: {dollar_pattern}")
+        logger.info(f"  Found {len(dollar_matches)} dollar amounts before this price label")
+        
+        if not dollar_matches:
+            logger.warning(f"  No dollar amounts found before price label '{price_label}'")
+            continue
+            
+        # Get the last (closest) dollar match
+        last_dollar_match = dollar_matches[-1]
+        dollar_amount = f"${last_dollar_match.group(1)}"
+        dollar_pos = backward_start + last_dollar_match.start()
+        
+        logger.info(f"  Found dollar amount: {dollar_amount} at position {dollar_pos}")
+        
+        # Skip if we've already processed this price
+        if dollar_pos in processed_positions:
+            logger.info(f"  Skipping already processed price at position {dollar_pos}")
+            continue
+        processed_positions.add(dollar_pos)
+        
+        # Step 2: Continue backward from the dollar amount to find carrier:product
+        carrier_search_start = max(0, dollar_pos - 1500)
+        carrier_search_text = ui_tree_text[carrier_search_start:dollar_pos]
+        
+        # Find all name fields before the dollar amount
+        name_pattern = r'\\"name\\":\\"([^"\\]+)\\"'
+        name_matches = list(re.finditer(name_pattern, carrier_search_text))
+        
+        logger.info(f"  Found {len(name_matches)} name fields before dollar amount")
+        
+        # Look for carrier:product pattern
+        carrier_product_found = False
+        for match in reversed(name_matches):
+            text = match.group(1)
+            
+            if ':' in text and not text.startswith('$'):
+                parts = text.split(':', 1)
+                if len(parts) == 2:
+                    potential_product = parts[1].upper()
+                    # Check for insurance keywords
+                    if any(kw in potential_product for kw in ['TERM', 'WHOLE', 'UNIVERSAL', 'LIFE', 'PRIMETERM', 'YEAR']):
+                        if 'logo' not in text.lower():
+                            carrier = parts[0].strip()
+                            product = parts[1].strip()
+                            
+                            logger.info(f"  ✓ Found carrier:product - {carrier}: {product}")
+                            
+                            # Check for status between carrier and price label
+                            status_section = ui_tree_text[dollar_pos:price_label_pos + 200]
+                            
+                            status = []
+                            if 'Graded' in status_section:
+                                status.append('Graded')
+                            if 'Discontinued' in status_section:
+                                status.append('Discontinued')
+                            if 'Ineligible' in status_section:
+                                status.append('Ineligible')
+                            
+                            if not status:
+                                status.append('Available')
+                            
+                            logger.info(f"  Status: {', '.join(status)}")
+                            
+                            quote = {
+                                'carrier': carrier,
+                                'product': product,
+                                'monthly_price': dollar_amount,
+                                'status': status,
+                                'eligible': not any(s in ['Discontinued', 'Ineligible'] for s in status)
+                            }
+                            
+                            quotes.append(quote)
+                            logger.info(f"  ✅ Successfully extracted quote: {carrier} - {product} at {dollar_amount}")
+                            carrier_product_found = True
+                            break
+        
+        if not carrier_product_found:
+            logger.warning(f"  Could not find carrier:product for price {dollar_amount}")
+            # Log some of the names we did find
+            if name_matches:
+                logger.info(f"  Last 3 names found: {[m.group(1) for m in name_matches[-3:]]}")
+    
+    logger.info(f"\n=== QUOTE PARSER COMPLETED ===")
+    logger.info(f"Total quotes extracted: {len(quotes)}")
+    if quotes:
+        for i, quote in enumerate(quotes):
+            logger.info(f"Quote {i+1}: {quote['carrier']} - {quote['product']} at {quote['monthly_price']}")
     
     return quotes
 
@@ -467,38 +563,101 @@ async def execute_mcp_workflow(workflow_data: Dict[str, Any], execution_params: 
             # Parse and display results (handle SSE format)
             try:
                 # Handle Server-Sent Events format
-                if response_text.startswith("data: "):
-                    # Split by lines and find the data line
-                    lines = response_text.split('\n')
-                    json_text = None
-                    for line in lines:
-                        if line.startswith("data: "):
-                            json_text = line[6:]  # Remove "data: " prefix
-                            break
-                    
-                    if not json_text:
-                        raise Exception("No data found in SSE response")
-                else:
-                    json_text = response_text
+                # Split by lines and find the data line (SSE can have empty keep-alive lines)
+                lines = response_text.split('\n')
+                json_text = None
+                
+                # Look for the data line, skipping empty lines and SSE comments
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("data: "):
+                        json_text = line[6:]  # Remove "data: " prefix
+                        break
+                    elif line and not line.startswith(":"):  # Non-SSE line that's not a comment
+                        json_text = line
+                        break
+                
+                if not json_text:
+                    logger.error(f"No data found in response. First 200 chars: {response_text[:200]}")
+                    raise Exception("No data found in SSE response")
                 
                 result_data = json.loads(json_text)
+                
+                # Extract the actual content from the MCP response
+                mcp_content = None
+                if isinstance(result_data, dict) and 'result' in result_data:
+                    result_content = result_data.get('result', {}).get('content', [])
+                    if result_content and isinstance(result_content, list):
+                        # The actual workflow result is in the text content
+                        for content_item in result_content:
+                            if content_item.get('type') == 'text':
+                                try:
+                                    mcp_content = json.loads(content_item.get('text', '{}'))
+                                    break
+                                except json.JSONDecodeError:
+                                    logger.warning("Failed to parse MCP content text as JSON")
+                
+                # Extract quotes and metrics from the MCP response
+                quotes = []
+                successful_steps = 0
+                failed_steps = 0
+                executed_steps = []
+                
+                if mcp_content:
+                    # Extract execution results
+                    if 'results' in mcp_content and isinstance(mcp_content['results'], list):
+                        for idx, step_result in enumerate(mcp_content['results']):
+                            step_info = {
+                                'index': idx,
+                                'duration_ms': step_result.get('duration_ms', 0),
+                                'success': 'error' not in step_result
+                            }
+                            executed_steps.append(step_info)
+                            
+                            if step_info['success']:
+                                successful_steps += 1
+                            else:
+                                failed_steps += 1
+                            
+                            # Look for quotes in the step results
+                            if 'result' in step_result and 'content' in step_result['result']:
+                                content = step_result['result']['content']
+                                if isinstance(content, list):
+                                    for content_item in content:
+                                        if isinstance(content_item, dict) and 'text' in content_item:
+                                            # Try to extract quotes from the UI tree
+                                            ui_tree_text = content_item.get('text', '')
+                                            
+                                            # Log when we're checking for quotes
+                                            logger.info(f"Checking step {idx} for quotes...")
+                                            logger.info(f"Content item type: {content_item.get('type')}")
+                                            logger.info(f"Text length: {len(ui_tree_text)}")
+                                            
+                                            if 'View Details' in ui_tree_text or 'Monthly Premium' in ui_tree_text or 'Monthly Price' in ui_tree_text:
+                                                logger.info(f"✓ Found quote indicators in step {idx}, calling parser...")
+                                                # Parse quotes from the UI tree
+                                                parsed_quotes = parse_quote_results(ui_tree_text)
+                                                logger.info(f"Parser returned {len(parsed_quotes)} quotes")
+                                                quotes.extend(parsed_quotes)
+                                            else:
+                                                logger.info(f"No quote indicators found in step {idx}")
                 
                 # Build execution results in the expected format
                 execution_results = {
                     'execution_type': 'real_browser_automation',
-                    'workflow_name': 'Insurance Quote Workflow',
-                    'executed_steps': [],
-                    'extracted_data': {},
-                    'quotes': [],
-                    'applicant_info': {},
+                    'workflow_name': workflow_data.get('name', 'Insurance Quote Workflow'),
+                    'executed_steps': executed_steps,
+                    'extracted_data': mcp_content if mcp_content else {},
+                    'quotes': quotes,
+                    'applicant_info': extract_applicant_info(workflow_data),
                     'performance_metrics': {
                         'total_steps': len(arguments.get('items', [])),
-                        'successful_steps': 0,
-                        'failed_steps': 0,
+                        'successful_steps': successful_steps,
+                        'failed_steps': failed_steps,
                         'total_execution_time_seconds': execution_time
                     },
                     'raw_mcp_response': result_data,
-                    'step_details': []
+                    'step_details': mcp_content.get('results', []) if mcp_content else []
                 }
                 
                 logger.info(f"📋 Sequence Execution Result:")
@@ -1066,7 +1225,7 @@ if __name__ == "__main__":
 @app.function(
     image=image,
     secrets=secrets,
-    schedule=modal.Period(seconds=10),  # Check every 10 seconds
+    schedule=modal.Period(seconds=1),  # Check every 1 second
     timeout=300  # 5 minutes max per check
 )
 def check_and_process_queued_jobs():
