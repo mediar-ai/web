@@ -53,7 +53,9 @@ DB_CONFIG = {
 }
 
 # MCP endpoint configuration - could be moved to secrets
-MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"
+# MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"
+MCP_ENDPOINT = "https://willingly-settling-husky.ngrok-free.app/mcp"
+
 
 
 def get_database_connection():
