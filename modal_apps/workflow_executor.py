@@ -70,7 +70,7 @@ DB_CONFIG = {
 }
 
 # MCP endpoint configuration - could be moved to secrets
-# MCP_ENDPOINT = "https://barely-honest-yak.ngrok-free.app" # virtual machine
+# MCP_ENDPOINT = "https://barely-honest-yak.ngrok-free.app/mcp" # virtual machine
 MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"  # Louis computer
 # MCP_ENDPOINT = "https://willingly-settling-husky.ngrok-free.app/mcp" # Matt computer
 
@@ -301,223 +301,132 @@ def generate_formatted_summary(
 
 
 def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
-    """Parse insurance quotes from the UI tree text using Price-based backward search"""
+    """
+    Parse insurance quotes from the UI tree text by safely parsing JSON
+    and traversing the tree structure.
+    """
     quotes = []
-    processed_positions = set()
+    logger.info("=== QUOTE PARSER STARTED (v6 - with unicode un-escaping) ===")
 
-    logger.info("=== QUOTE PARSER STARTED ===")
-    logger.info(f"UI tree text length: {len(ui_tree_text)} characters")
+    def find_quote_groups(node):
+        """Recursively find and parse quote groups from the UI tree."""
+        if not isinstance(node, dict):
+            return
 
-    # Log first 500 chars to see the structure
-    logger.info(f"First 500 chars of UI tree: {ui_tree_text[:500]}")
+        # Check if the current node is a quote group
+        attributes = node.get("attributes", {})
+        children = node.get("children", [])
 
-    # Check for key indicators
-    has_view_details = "View Details" in ui_tree_text
-    has_monthly_price = "Monthly Price" in ui_tree_text
-    has_prosperity = "Prosperity" in ui_tree_text
+        if attributes and children:
+            child_attributes = [child.get("attributes", {}) for child in children]
+            child_names = [
+                attrs.get("name", "")
+                for attrs in child_attributes
+                if isinstance(attrs.get("name"), str)
+            ]
 
-    logger.info(
-        f"UI tree contains: View Details={has_view_details}, Monthly Price={has_monthly_price}, Prosperity={has_prosperity}"
-    )
-
-    # Detect which JSON format the UI tree is using
-    logger.info("\n=== DETECTING JSON FORMAT ===")
-    if '"name": "' in ui_tree_text[:1000]:
-        logger.info('✓ Detected Simple JSON format (e.g., "name": "value")')
-    elif '\\"name\\":\\"' in ui_tree_text[:1000]:
-        logger.info(
-            '✓ Detected 2-backslash escaped JSON format (e.g., \\"name\\":\\"value\\")'
-        )
-    elif '\\\\\\"name\\\\\\":\\\\\\"' in ui_tree_text[:1000]:
-        logger.info(
-            '✓ Detected 6-backslash escaped JSON format (e.g., \\\\\\"name\\\\\\":\\\\\\"value\\\\\\")'
-        )
-    else:
-        logger.warning("⚠️ Could not detect JSON format from first 1000 characters")
-
-    # Find all occurrences of "Price" (could be "Monthly Price", "Price", etc.)
-    # Try different patterns based on the JSON format
-    patterns_to_try = [
-        (r'"name": "([^"]*Price[^"]*)"', "Simple JSON"),
-        (r'\\"name\\":\\"([^"\\]*Price[^"\\]*)\\"', "2-backslash"),
-        (r'\\\\\\"name\\\\\\":\\\\\\"([^"\\]*Price[^"\\]*)\\\\\\"', "6-backslash"),
-    ]
-
-    price_label_matches = []
-    price_pattern = None
-    for pattern, pattern_name in patterns_to_try:
-        matches = list(re.finditer(pattern, ui_tree_text))
-        logger.info(f"{pattern_name} pattern found {len(matches)} price labels")
-        if matches:
-            price_label_matches = matches
-            price_pattern = pattern
-            logger.info(f"Using {pattern_name} pattern for parsing")
-            break
-
-    if not price_label_matches:
-        logger.warning("No price labels found with any pattern")
-        # Show sample of what's around "Price" if it exists
-        if "Price" in ui_tree_text:
-            price_pos = ui_tree_text.find("Price")
-            context = ui_tree_text[max(0, price_pos - 50) : price_pos + 50]
-            logger.info(f"Context around 'Price': {repr(context)}")
-        return quotes
-
-    # Determine which dollar and name patterns to use based on which price pattern worked
-    if '"name": "' in price_pattern:
-        dollar_pattern = r'"name": "\$(\d+(?:,\d{3})*(?:\.\d{2})?)"'
-        name_pattern = r'"name": "([^"]+)"'
-    elif '\\"name\\":\\"' in price_pattern:
-        dollar_pattern = r'\\"name\\":\\"\$(\d+(?:,\d{3})*(?:\.\d{2})?)\\"'
-        name_pattern = r'\\"name\\":\\"([^"\\]+)\\"'
-    else:
-        dollar_pattern = (
-            r'\\\\\\"name\\\\\\":\\\\\\"\$(\d+(?:,\d{3})*(?:\.\d{2})?)\\\\\\"'
-        )
-        name_pattern = r'\\\\\\"name\\\\\\":\\\\\\"([^"\\]+)\\\\\\"'
-
-    logger.info(f"Using dollar pattern: {dollar_pattern}")
-
-    for i, price_match in enumerate(price_label_matches):
-        price_label = price_match.group(1)
-        price_label_pos = price_match.start()
-
-        logger.info(
-            f"\nProcessing price label {i+1}: '{price_label}' at position {price_label_pos}"
-        )
-
-        # Step 1: Look backward for the dollar amount
-        backward_start = max(0, price_label_pos - 500)
-        backward_text = ui_tree_text[backward_start:price_label_pos]
-
-        # Find the most recent dollar amount before "Price"
-        dollar_matches = list(re.finditer(dollar_pattern, backward_text))
-
-        logger.info(f"  Looking for dollar amounts with pattern: {dollar_pattern}")
-        logger.info(
-            f"  Found {len(dollar_matches)} dollar amounts before this price label"
-        )
-
-        if not dollar_matches:
-            logger.warning(
-                f"  No dollar amounts found before price label '{price_label}'"
+            has_price = any(name.startswith("$") for name in child_names)
+            has_monthly_price_label = any(
+                "Monthly Price" in name for name in child_names
             )
-            continue
 
-        # Get the last (closest) dollar match
-        last_dollar_match = dollar_matches[-1]
-        dollar_amount = f"${last_dollar_match.group(1)}"
-        dollar_pos = backward_start + last_dollar_match.start()
+            if has_price and has_monthly_price_label:
+                # This node looks like a quote group, let's parse it
+                quote = {
+                    "carrier": "Unknown",
+                    "product": "Unknown",
+                    "monthly_price": "N/A",
+                    "status": [],
+                    "eligible": True,
+                }
 
-        logger.info(f"  Found dollar amount: {dollar_amount} at position {dollar_pos}")
+                # Extract price
+                for name in child_names:
+                    if name.startswith("$"):
+                        quote["monthly_price"] = name
+                        break  # Take the first price found in the group
 
-        # Skip if we've already processed this price
-        if dollar_pos in processed_positions:
-            logger.info(f"  Skipping already processed price at position {dollar_pos}")
-            continue
-        processed_positions.add(dollar_pos)
+                # Extract carrier and product (often in `Carrier: Product` format)
+                for name in child_names:
+                    if ":" in name and "logo" not in name.lower():
+                        parts = name.split(":", 1)
+                        quote["carrier"] = parts[0].strip()
+                        quote["product"] = parts[1].strip().replace("*", "")
+                        break
 
-        # Step 2: Continue backward from the dollar amount to find carrier:product
-        carrier_search_start = max(0, dollar_pos - 1500)
-        carrier_search_text = ui_tree_text[carrier_search_start:dollar_pos]
-
-        # Find all name fields before the dollar amount
-        name_matches = list(re.finditer(name_pattern, carrier_search_text))
-
-        logger.info(f"  Found {len(name_matches)} name fields before dollar amount")
-
-        # Look for carrier:product pattern
-        carrier_product_found = False
-        for match in reversed(name_matches):
-            text = match.group(1)
-
-            if ":" in text and not text.startswith("$"):
-                parts = text.split(":", 1)
-                if len(parts) == 2:
-                    potential_product = parts[1].upper()
-                    # Check for insurance keywords
-                    if any(
-                        kw in potential_product
-                        for kw in [
-                            "TERM",
-                            "WHOLE",
-                            "UNIVERSAL",
-                            "LIFE",
-                            "PRIMETERM",
-                            "YEAR",
-                        ]
-                    ):
-                        if "logo" not in text.lower():
-                            carrier = parts[0].strip()
-                            product = parts[1].strip()
-
-                            logger.info(
-                                f"  ✓ Found carrier:product - {carrier}: {product}"
+                # If carrier is still unknown, check for a 'logo' image name
+                if quote["carrier"] == "Unknown":
+                    for attrs in child_attributes:
+                        child_name = attrs.get("name", "").lower()
+                        if "logo" in child_name:
+                            # e.g., "prosperity primeterm-to-100 logo" -> "Prosperity Primeterm-To-100"
+                            quote["carrier"] = (
+                                child_name.replace(" logo", "").strip().title()
                             )
-
-                            # Check for status between carrier and price label
-                            status_section = ui_tree_text[
-                                dollar_pos : price_label_pos + 200
-                            ]
-
-                            status = []
-                            if "Graded" in status_section:
-                                status.append("Graded")
-                            if "Discontinued" in status_section:
-                                status.append("Discontinued")
-                            if "Ineligible" in status_section:
-                                status.append("Ineligible")
-
-                            if not status:
-                                status.append("Available")
-
-                            logger.info(f"  Status: {', '.join(status)}")
-
-                            quote = {
-                                "carrier": carrier,
-                                "product": product,
-                                "monthly_price": dollar_amount,
-                                "status": status,
-                                "eligible": not any(
-                                    s in ["Discontinued", "Ineligible"] for s in status
-                                ),
-                            }
-
-                            quotes.append(quote)
-                            logger.info(
-                                f"  ✅ Successfully extracted quote: {carrier} - {product} at {dollar_amount}"
-                            )
-                            carrier_product_found = True
                             break
 
-        if not carrier_product_found:
-            logger.warning(
-                f"  Could not find carrier:product for price {dollar_amount}"
-            )
-            # Log some of the names we did find
-            if name_matches:
-                logger.info(
-                    f"  Last 3 names found: {[m.group(1) for m in name_matches[-3:]]}"
+                # Extract status
+                status = []
+                if "Graded" in child_names:
+                    status.append("Graded")
+                if "Discontinued" in child_names:
+                    status.append("Discontinued")
+                if "Ineligible" in child_names:
+                    status.append("Ineligible")
+
+                if not status:
+                    status.append("Available")
+
+                quote["status"] = status
+                quote["eligible"] = (
+                    "Discontinued" not in status and "Ineligible" not in status
                 )
 
-    logger.info(f"\n=== QUOTE PARSER COMPLETED ===")
+                quotes.append(quote)
+                # Once we've parsed a quote group, we don't need to check its children
+                # as they are part of this quote.
+                return
+
+        # If the current node isn't a quote group, recurse into its children
+        for child in children:
+            find_quote_groups(child)
+
+    try:
+        # Pre-process the text to handle unicode escapes and other escaped sequences
+        # that make the string an invalid JSON. The UI automation layer seems to
+        # produce a string that needs to be un-escaped.
+        processed_text = ui_tree_text.encode("latin1", "backslashreplace").decode(
+            "unicode-escape"
+        )
+
+        # The input string could be a full payload or just the ui_tree
+        ui_tree = None
+        try:
+            data = json.loads(processed_text)
+            if isinstance(data, dict) and "ui_tree" in data:
+                ui_tree = data.get("ui_tree")
+            else:
+                # The text might be the ui_tree itself
+                ui_tree = data
+        except json.JSONDecodeError as e:
+            logger.error(f"Could not parse UI tree text as JSON: {e}")
+            logger.error(f"Problematic text (first 500 chars): {processed_text[:500]}")
+            return []
+
+        if not ui_tree:
+            logger.error("Could not find 'ui_tree' in the provided text.")
+            return []
+
+        # Start the traversal from the root of the actual UI tree
+        find_quote_groups(ui_tree)
+
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during quote parsing: {e}")
+
     logger.info(f"Total quotes extracted: {len(quotes)}")
     if quotes:
-        for i, quote in enumerate(quotes):
-            logger.info(
-                f"Quote {i+1}: {quote['carrier']} - {quote['product']} at {quote['monthly_price']}"
-            )
-
-    # Log which JSON format was used
-    if price_pattern:
-        if '"name": "' in price_pattern:
-            logger.info("📋 Used Simple JSON format for parsing")
-        elif '\\"name\\":\\"' in price_pattern:
-            logger.info("📋 Used 2-backslash escaped JSON format for parsing")
-        elif '\\\\\\"name\\\\\\":\\\\\\"' in price_pattern:
-            logger.info("📋 Used 6-backslash escaped JSON format for parsing")
-    else:
-        logger.warning("📋 No JSON format matched - parsing failed")
+        for i, q in enumerate(quotes):
+            logger.info(f"  Quote {i+1}: {q}")
 
     return quotes
 
