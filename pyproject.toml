@@ -10,3 +10,8 @@ dependencies = [
     "httpx",
     "websockets",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
