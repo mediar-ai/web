@@ -123,7 +123,7 @@ def get_database_connection():
 
         return conn
     except Exception as e:
-        logger.error(f"❌ Database connection failed: {e}")
+        logger.error("❌ Database connection failed: %s", e)
         raise
 
 
@@ -140,48 +140,58 @@ def extract_applicant_info(workflow_data: Dict[str, Any]) -> Dict[str, str]:
         "nicotine": "Never",  # Default value
     }
 
-    # Extract from automation_sequence (database format) instead of steps
-    automation_sequence = workflow_data.get("automation_sequence", [])
+    try:
+        automation_sequence = workflow_data.get("automation_sequence", [{}])[0]
+        items = automation_sequence.get("arguments", {}).get("items", [])
 
-    for step in automation_sequence:
-        # Extract text input values
-        if step.get("action") == "fill_input":
-            # Handle both 'value' field and 'parameters' object
-            text_value = ""
-            if "value" in step:
-                text_value = step["value"]
-            elif "parameters" in step:
-                text_value = step["parameters"].get("value", "")
+        for item in items:
+            if "steps" in item:
+                for step in item["steps"]:
+                    tool_name = step.get("tool_name")
+                    arguments = step.get("arguments", {})
 
-            description = step.get("description", "").lower()
+                    if tool_name == "type_into_element":
+                        text_to_type = arguments.get("text_to_type", "")
+                        # Check for various keys that might hold the description
+                        description = arguments.get("description", "").lower()
+                        selector = arguments.get("selector", "").lower()
 
-            if "height" in description:
-                # Store height as-is (e.g., "5'10\"")
-                info["height"] = text_value
-            elif "date of birth" in description:
-                info["date_of_birth"] = text_value
-            elif "weight" in description:
-                info["weight"] = (
-                    text_value + " lbs"
-                    if not text_value.endswith("lbs")
-                    else text_value
-                )
-            elif "state" in description:
-                info["state"] = text_value
-            elif "zip" in description:
-                info["zip"] = text_value
-            elif "face value" in description or "coverage amount" in description:
-                info["face_value"] = text_value
+                        if "height" in description or "height" in selector:
+                            info["height"] = text_to_type
+                        elif "date of birth" in description or "mm/dd/yyyy" in selector:
+                            info["date_of_birth"] = text_to_type
+                        elif "weight" in description or "weight" in selector:
+                            info["weight"] = text_to_type
+                        elif "state" in description or "state" in selector:
+                            info["state"] = text_to_type
+                        elif "zip" in description or "zip" in selector:
+                            info["zip"] = text_to_type
+                        elif (
+                            "face value" in description
+                            or "face value" in selector
+                            or "100,000" in text_to_type
+                        ):
+                            info["face_value"] = text_to_type
 
-        # Extract gender from click actions
-        elif (
-            step.get("action") == "click"
-            and "male" in step.get("description", "").lower()
-        ):
-            if "female" not in step.get("description", "").lower():
-                info["gender"] = "Male"
-            else:
-                info["gender"] = "Female"
+                    elif tool_name == "set_selected":
+                        description = arguments.get("description", "").lower()
+                        selector = arguments.get("selector", "").lower()
+                        if "male" in description or "male" in selector:
+                            info["gender"] = "Male"
+                        elif "female" in description or "female" in selector:
+                            info["gender"] = "Female"
+
+                    elif tool_name == "select_option":
+                        option_name = arguments.get("option_name", "").lower()
+                        if "never" in option_name:
+                            info["nicotine"] = "Never"
+                        elif "past" in option_name:
+                            info["nicotine"] = "Past"
+                        elif "current" in option_name:
+                            info["nicotine"] = "Current"
+
+    except Exception as e:
+        logger.error("Could not extract applicant info: %s", e)
 
     return info
 
@@ -300,144 +310,13 @@ def generate_formatted_summary(
     return "\n".join(summary_lines)
 
 
-def parse_quote_results(ui_tree_text: str) -> List[Dict[str, Any]]:
-    """
-    Parse insurance quotes from the UI tree text by safely parsing JSON
-    and traversing the tree structure.
-    """
-    quotes = []
-    logger.info("=== QUOTE PARSER STARTED (v6 - with unicode un-escaping) ===")
-
-    def find_quote_groups(node):
-        """Recursively find and parse quote groups from the UI tree."""
-        if not isinstance(node, dict):
-            return
-
-        # Check if the current node is a quote group
-        attributes = node.get("attributes", {})
-        children = node.get("children", [])
-
-        if attributes and children:
-            child_attributes = [child.get("attributes", {}) for child in children]
-            child_names = [
-                attrs.get("name", "")
-                for attrs in child_attributes
-                if isinstance(attrs.get("name"), str)
-            ]
-
-            has_price = any(name.startswith("$") for name in child_names)
-            has_monthly_price_label = any(
-                "Monthly Price" in name for name in child_names
-            )
-
-            if has_price and has_monthly_price_label:
-                # This node looks like a quote group, let's parse it
-                quote = {
-                    "carrier": "Unknown",
-                    "product": "Unknown",
-                    "monthly_price": "N/A",
-                    "status": [],
-                    "eligible": True,
-                }
-
-                # Extract price
-                for name in child_names:
-                    if name.startswith("$"):
-                        quote["monthly_price"] = name
-                        break  # Take the first price found in the group
-
-                # Extract carrier and product (often in `Carrier: Product` format)
-                for name in child_names:
-                    if ":" in name and "logo" not in name.lower():
-                        parts = name.split(":", 1)
-                        quote["carrier"] = parts[0].strip()
-                        quote["product"] = parts[1].strip().replace("*", "")
-                        break
-
-                # If carrier is still unknown, check for a 'logo' image name
-                if quote["carrier"] == "Unknown":
-                    for attrs in child_attributes:
-                        child_name = attrs.get("name", "").lower()
-                        if "logo" in child_name:
-                            # e.g., "prosperity primeterm-to-100 logo" -> "Prosperity Primeterm-To-100"
-                            quote["carrier"] = (
-                                child_name.replace(" logo", "").strip().title()
-                            )
-                            break
-
-                # Extract status
-                status = []
-                if "Graded" in child_names:
-                    status.append("Graded")
-                if "Discontinued" in child_names:
-                    status.append("Discontinued")
-                if "Ineligible" in child_names:
-                    status.append("Ineligible")
-
-                if not status:
-                    status.append("Available")
-
-                quote["status"] = status
-                quote["eligible"] = (
-                    "Discontinued" not in status and "Ineligible" not in status
-                )
-
-                quotes.append(quote)
-                # Once we've parsed a quote group, we don't need to check its children
-                # as they are part of this quote.
-                return
-
-        # If the current node isn't a quote group, recurse into its children
-        for child in children:
-            find_quote_groups(child)
-
-    try:
-        # Pre-process the text to handle unicode escapes and other escaped sequences
-        # that make the string an invalid JSON. The UI automation layer seems to
-        # produce a string that needs to be un-escaped.
-        processed_text = ui_tree_text.encode("latin1", "backslashreplace").decode(
-            "unicode-escape"
-        )
-
-        # The input string could be a full payload or just the ui_tree
-        ui_tree = None
-        try:
-            data = json.loads(processed_text)
-            if isinstance(data, dict) and "ui_tree" in data:
-                ui_tree = data.get("ui_tree")
-            else:
-                # The text might be the ui_tree itself
-                ui_tree = data
-        except json.JSONDecodeError as e:
-            logger.error(f"Could not parse UI tree text as JSON: {e}")
-            logger.error(f"Problematic text (first 500 chars): {processed_text[:500]}")
-            return []
-
-        if not ui_tree:
-            logger.error("Could not find 'ui_tree' in the provided text.")
-            return []
-
-        # Start the traversal from the root of the actual UI tree
-        find_quote_groups(ui_tree)
-
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during quote parsing: {e}")
-
-    logger.info(f"Total quotes extracted: {len(quotes)}")
-    if quotes:
-        for i, q in enumerate(quotes):
-            logger.info(f"  Quote {i+1}: {q}")
-
-    return quotes
-
-
 async def execute_mcp_workflow(
     workflow_data: Dict[str, Any], execution_params: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Execute workflow using the working MCP HTTP approach"""
     import httpx
 
-    logger.info(f"🔌 Attempting to connect to MCP endpoint: {MCP_ENDPOINT}")
+    logger.info("🔌 Attempting to connect to MCP endpoint: %s", MCP_ENDPOINT)
 
     try:
         # Use the automation sequence from the database
@@ -445,8 +324,8 @@ async def execute_mcp_workflow(
 
         # --- START TROUBLESHOOTING LOGS ---
         logger.info("--- TROUBLESHOOTING: Raw automation_sequence from DB ---")
-        logger.info(f"Type: {type(automation_sequence)}")
-        logger.info(f"Content: {automation_sequence}")
+        logger.info("Type: %s", type(automation_sequence))
+        logger.info("Content: %s", automation_sequence)
         # --- END TROUBLESHOOTING LOGS ---
 
         if (
@@ -462,8 +341,8 @@ async def execute_mcp_workflow(
 
         # --- START TROUBLESHOOTING LOGS ---
         logger.info("--- TROUBLESHOOTING: Parsed workflow_data_to_use ---")
-        logger.info(f"Type: {type(workflow_data_to_use)}")
-        logger.info(f"Content: {workflow_data_to_use}")
+        logger.info("Type: %s", type(workflow_data_to_use))
+        logger.info("Content: %s", workflow_data_to_use)
         # --- END TROUBLESHOOTING LOGS ---
 
         tool_name = workflow_data_to_use.get("tool_name")
@@ -471,12 +350,17 @@ async def execute_mcp_workflow(
 
         # --- START TROUBLESHOOTING LOGS ---
         logger.info("--- TROUBLESHOOTING: Extracted tool_name and arguments ---")
-        logger.info(f"Tool Name: {tool_name}")
-        logger.info(f"Arguments: {arguments}")
+        logger.info("Tool Name: %s", tool_name)
+        logger.info("Arguments: %s", arguments)
         logger.info("--- END TROUBLESHOOTING LOGS ---")
 
-        logger.info(f"📋 Workflow: {tool_name}")
-        logger.info(f"   Items: {len(arguments.get('items', []))}")
+        logger.info("📋 Workflow: %s", tool_name)
+        logger.info("   Items: %d", len(arguments.get("items", [])))
+
+        # --- MORE DETAILED LOGGING ---
+        logger.info("--- DETAILED LOGGING: Payload being sent to MCP ---")
+        logger.info(json.dumps(arguments, indent=2))
+        logger.info("--- END DETAILED LOGGING ---")
 
         async with httpx.AsyncClient(timeout=300.0) as client:
             # Step 1: Initialize MCP session
@@ -532,13 +416,13 @@ async def execute_mcp_workflow(
 
             if response.status_code not in [200, 202]:
                 logger.warning(
-                    f"⚠️ Initialized notification failed: {response.status_code}"
+                    "⚠️ Initialized notification failed: %s", response.status_code
                 )
             else:
                 logger.info("✅ Session initialized successfully")
 
             # Step 2: Execute the workflow
-            logger.info(f"🚀 Executing workflow: {tool_name}...")
+            logger.info("🚀 Executing workflow: %s...", tool_name)
             start_time = time.time()
 
             tool_request = {
@@ -569,7 +453,7 @@ async def execute_mcp_workflow(
 
             logger.info("✅ Workflow execution completed!")
             execution_time = time.time() - start_time
-            logger.info(f"⏱️ Execution time: {execution_time:.1f}s")
+            logger.info("⏱️ Execution time: %.1fs", execution_time)
 
             # Parse and display results (handle SSE format)
             try:
@@ -592,11 +476,19 @@ async def execute_mcp_workflow(
 
                 if not json_text:
                     logger.error(
-                        f"No data found in response. First 200 chars: {response_text[:200]}"
+                        "No data found in response. First 200 chars: %s",
+                        response_text[:200],
                     )
                     raise Exception("No data found in SSE response")
 
                 result_data = json.loads(json_text)
+
+                # --- MORE DETAILED LOGGING ---
+                logger.info(
+                    "--- DETAILED LOGGING: Full content from RAW MCP response ---"
+                )
+                logger.info(json.dumps(result_data, indent=2))
+                logger.info("--- END DETAILED LOGGING ---")
 
                 # Extract the actual content from the MCP response
                 mcp_content = None
@@ -607,14 +499,22 @@ async def execute_mcp_workflow(
                         for content_item in result_content:
                             if content_item.get("type") == "text":
                                 try:
-                                    mcp_content = json.loads(
-                                        content_item.get("text", "{}")
-                                    )
+                                    # The text content is a JSON string, so we load it
+                                    mcp_content_text = content_item.get("text", "{}")
+                                    mcp_content = json.loads(mcp_content_text)
+
                                     break
                                 except json.JSONDecodeError:
                                     logger.warning(
-                                        "Failed to parse MCP content text as JSON"
+                                        "Failed to parse MCP content text as JSON, using raw text"
                                     )
+                                    # Fallback to using the text directly if it's not JSON
+                                    mcp_content = {"raw_text": content_item.get("text")}
+
+                # --- MORE DETAILED LOGGING ---
+                # logger.info("--- DETAILED LOGGING: Full content from MCP response ---")
+                # logger.info(json.dumps(mcp_content, indent=2))
+                # logger.info("--- END DETAILED LOGGING ---")
 
                 # Extract quotes and metrics from the MCP response
                 quotes = []
@@ -623,7 +523,19 @@ async def execute_mcp_workflow(
                 executed_steps = []
 
                 if mcp_content:
-                    # Extract execution results
+                    # Extract quotes from the new parsed_output field.
+                    # The MCP tool now returns pre-parsed and structured quote data.
+                    if "parsed_output" in mcp_content:
+                        logger.info(
+                            "Found 'parsed_output' field. Using it directly for quotes."
+                        )
+                        quotes = mcp_content.get("parsed_output", [])
+                    else:
+                        logger.warning(
+                            "No 'parsed_output' field found in MCP response. Quotes will be empty."
+                        )
+
+                    # Extract execution step details for metrics
                     if "results" in mcp_content and isinstance(
                         mcp_content["results"], list
                     ):
@@ -639,53 +551,6 @@ async def execute_mcp_workflow(
                                 successful_steps += 1
                             else:
                                 failed_steps += 1
-
-                            # Look for quotes in the step results
-                            if (
-                                "result" in step_result
-                                and "content" in step_result["result"]
-                            ):
-                                content = step_result["result"]["content"]
-                                if isinstance(content, list):
-                                    for content_item in content:
-                                        if (
-                                            isinstance(content_item, dict)
-                                            and "text" in content_item
-                                        ):
-                                            # Try to extract quotes from the UI tree
-                                            ui_tree_text = content_item.get("text", "")
-
-                                            # Log when we're checking for quotes
-                                            logger.info(
-                                                f"Checking step {idx} for quotes..."
-                                            )
-                                            logger.info(
-                                                f"Content item type: {content_item.get('type')}"
-                                            )
-                                            logger.info(
-                                                f"Text length: {len(ui_tree_text)}"
-                                            )
-
-                                            if (
-                                                "View Details" in ui_tree_text
-                                                or "Monthly Premium" in ui_tree_text
-                                                or "Monthly Price" in ui_tree_text
-                                            ):
-                                                logger.info(
-                                                    f"✓ Found quote indicators in step {idx}, calling parser..."
-                                                )
-                                                # Parse quotes from the UI tree
-                                                parsed_quotes = parse_quote_results(
-                                                    ui_tree_text
-                                                )
-                                                logger.info(
-                                                    f"Parser returned {len(parsed_quotes)} quotes"
-                                                )
-                                                quotes.extend(parsed_quotes)
-                                            else:
-                                                logger.info(
-                                                    f"No quote indicators found in step {idx}"
-                                                )
 
                 # Build execution results in the expected format
                 execution_results = {
@@ -709,21 +574,22 @@ async def execute_mcp_workflow(
                     ),
                 }
 
-                logger.info(f"📋 Sequence Execution Result:")
-                logger.info(f"Tool: {tool_name}")
-                logger.info(f"Status: ✅ Completed")
-                logger.info(f"Result length: {len(json_text)} characters")
-                logger.info(f"🎉 {tool_name} executed successfully!")
+                logger.info("📋 Sequence Execution Result:")
+                logger.info("Tool: %s", tool_name)
+                logger.info("Status: ✅ Completed")
+                logger.info("Result length: %d characters", len(json_text))
+                logger.info("🎉 %s executed successfully!", tool_name)
+                logger.info("Found %d quotes.", len(quotes))
 
                 return execution_results
 
             except json.JSONDecodeError as e:
-                logger.error(f"❌ Failed to parse response JSON: {e}")
-                logger.error(f"Raw response: {response_text[:500]}...")
+                logger.error("❌ Failed to parse response JSON: %s", e)
+                logger.error("Raw response: %s...", response_text[:500])
                 raise Exception(f"Failed to parse MCP response: {e}")
 
     except Exception as e:
-        logger.error(f"MCP workflow execution error: {e}")
+        logger.error("MCP workflow execution error: %s", e)
         # Add more context to the error
         error_context = {
             "error_type": type(e).__name__,
@@ -749,7 +615,7 @@ async def execute_mcp_workflow(
         else:
             error_context["error_category"] = "mcp_general_error"
 
-        logger.error(f"MCP Error Context: {json.dumps(error_context, indent=2)}")
+        logger.error("MCP Error Context: %s", json.dumps(error_context, indent=2))
 
         # Re-raise with more context
         raise Exception(
@@ -798,7 +664,7 @@ def execute_workflow(
         conn = get_database_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        logger.info(f"🚀 Starting REAL workflow execution {workflow_id} on Modal...")
+        logger.info("🚀 Starting REAL workflow execution %s on Modal...", workflow_id)
 
         # Get workflow details from database
         cur.execute("SELECT * FROM deployed_workflows WHERE id = %s", (workflow_id,))
@@ -812,13 +678,15 @@ def execute_workflow(
         total_steps = len(automation_sequence.get("arguments", {}).get("items", []))
 
         logger.info(
-            f"📋 Loaded {workflow['name']} - {total_steps} groups to execute via browser"
+            "📋 Loaded %s - %d groups to execute via browser",
+            workflow["name"],
+            total_steps,
         )
 
         # Either update existing execution or create new one
         if execution_id:
             # Update existing execution record
-            logger.info(f"📝 Updating existing execution record {execution_id}")
+            logger.info("📝 Updating existing execution record %s", execution_id)
             cur.execute(
                 """
                 UPDATE workflow_executions 
@@ -895,7 +763,7 @@ def execute_workflow(
             execution_id = cur.fetchone()["id"]
             conn.commit()
 
-            logger.info(f"📝 Created execution record {execution_id}")
+            logger.info("📝 Created execution record %s", execution_id)
 
         # Execute workflow through MCP browser automation
         # Run async function in sync context
@@ -903,9 +771,9 @@ def execute_workflow(
         asyncio.set_event_loop(loop)
 
         # Don't clear log buffer - instead add execution boundary marker
-        logger.info(f"{'='*60}")
-        logger.info(f"🚀 EXECUTION {execution_id} STARTING")
-        logger.info(f"{'='*60}")
+        logger.info("=" * 60)
+        logger.info("🚀 EXECUTION %s STARTING", execution_id)
+        logger.info("=" * 60)
 
         # Clear stdout buffer for this execution
         stdout_buffer.seek(0)
@@ -915,14 +783,18 @@ def execute_workflow(
         with CaptureOutput(stdout_buffer):
             try:
                 # Log system information
-                logger.info(f"📍 Modal Function: execute_workflow")
-                logger.info(f"🔗 MCP Endpoint: {MCP_ENDPOINT}")
-                logger.info(f"📦 Workflow ID: {workflow_id}")
-                logger.info(f"🏷️ Execution ID: {execution_id}")
-                logger.info(f"⏰ Start Time: {datetime.now(timezone.utc).isoformat()}")
+                logger.info("📍 Modal Function: execute_workflow")
+                logger.info("🔗 MCP Endpoint: %s", MCP_ENDPOINT)
+                logger.info("📦 Workflow ID: %s", workflow_id)
+                logger.info("🏷️ Execution ID: %s", execution_id)
+                logger.info("⏰ Start Time: %s", datetime.now(timezone.utc).isoformat())
 
                 results = loop.run_until_complete(
                     execute_mcp_workflow(workflow, execution_params or {})
+                )
+                logger.info(
+                    "Received %d quotes from MCP workflow.",
+                    len(results.get("quotes", [])),
                 )
             finally:
                 loop.close()
@@ -994,9 +866,9 @@ def execute_workflow(
                 )
                 logger.info("📋 Generated formatted summary")
                 # Also log the formatted output for debugging
-                logger.info(f"\n{formatted_output}")
+                logger.info("\n%s", formatted_output)
             except Exception as format_error:
-                logger.warning(f"Failed to generate formatted summary: {format_error}")
+                logger.warning("Failed to generate formatted summary: %s", format_error)
 
         # Update execution with final results and raw data
         cur.execute(
@@ -1032,9 +904,11 @@ def execute_workflow(
         # when the workflow_executions status changes to 'completed' or 'failed'
 
         logger.info(
-            f"✅ Completed real browser execution {execution_id} in {execution_duration}s"
+            "✅ Completed real browser execution %s in %ds",
+            execution_id,
+            execution_duration,
         )
-        logger.info(f"📊 Found {len(results.get('quotes', []))} insurance quotes")
+        logger.info("📊 Found %d insurance quotes", len(results.get("quotes", [])))
 
         return {
             "success": True,
@@ -1052,7 +926,7 @@ def execute_workflow(
 
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"❌ Real workflow execution failed: {error_msg}")
+        logger.error("❌ Real workflow execution failed: %s", error_msg)
 
         # Capture any logs that were generated before the error
         raw_logs = log_buffer.getvalue()
@@ -1176,7 +1050,7 @@ def execute_workflow(
                 # when the workflow_executions status changes to 'failed'
 
             except Exception as update_error:
-                logger.error(f"Failed to update error status: {update_error}")
+                logger.error("Failed to update error status: %s", update_error)
 
         return {
             "success": False,
@@ -1306,13 +1180,15 @@ def health_check() -> Dict[str, Any]:
         }
 
         logger.info(
-            f"🏥 Health check completed in {health_data['response_time_ms']}ms - Status: {health_data['modal_status']}"
+            "🏥 Health check completed in %dms - Status: %s",
+            health_data["response_time_ms"],
+            health_data["modal_status"],
         )
 
         return health_data
 
     except Exception as e:
-        logger.error(f"❌ Health check failed: {e}")
+        logger.error("❌ Health check failed: %s", e)
         return {
             "modal_status": "unhealthy",
             "error": str(e),
@@ -1349,7 +1225,7 @@ if __name__ == "__main__":
 
     # Also log to logger so it's captured
     logger.info("Modal app initialized with enhanced logging")
-    logger.info(f"Using ngrok endpoint: {MCP_ENDPOINT}")
+    logger.info("Using ngrok endpoint: %s", MCP_ENDPOINT)
 
 
 @app.function(
@@ -1399,7 +1275,7 @@ def check_and_process_queued_jobs():
                 "checked_at": datetime.now(timezone.utc).isoformat(),
             }
 
-        logger.info(f"📋 Found {len(queued_jobs)} queued executions")
+        logger.info("📋 Found %d queued executions", len(queued_jobs))
         processed = []
         errors = []
 
@@ -1411,7 +1287,9 @@ def check_and_process_queued_jobs():
 
             try:
                 logger.info(
-                    f"🚀 Processing execution {execution_id} for workflow {workflow_id}"
+                    "🚀 Processing execution %s for workflow %s",
+                    execution_id,
+                    workflow_id,
                 )
 
                 # Call the execute_workflow function with the existing execution_id
@@ -1423,7 +1301,9 @@ def check_and_process_queued_jobs():
                 except Exception as exec_error:
                     # Capture early-stage execution errors
                     logger.error(
-                        f"❌ Early-stage execution error for {execution_id}: {str(exec_error)}"
+                        "❌ Early-stage execution error for %s: %s",
+                        execution_id,
+                        str(exec_error),
                     )
                     result = {
                         "success": False,
@@ -1432,7 +1312,7 @@ def check_and_process_queued_jobs():
                     }
 
                 if result.get("success"):
-                    logger.info(f"✅ Successfully processed execution {execution_id}")
+                    logger.info("✅ Successfully processed execution %s", execution_id)
                     processed.append(
                         {
                             "execution_id": execution_id,
@@ -1446,7 +1326,7 @@ def check_and_process_queued_jobs():
             except Exception as e:
                 error_msg = str(e)
                 logger.error(
-                    f"❌ Failed to process execution {execution_id}: {error_msg}"
+                    "❌ Failed to process execution %s: %s", execution_id, error_msg
                 )
 
                 # Update execution as failed
@@ -1480,7 +1360,7 @@ def check_and_process_queued_jobs():
         }
 
     except Exception as e:
-        logger.error(f"❌ Job processor error: {e}")
+        logger.error("❌ Job processor error: %s", e)
         return {
             "success": False,
             "error": str(e),
