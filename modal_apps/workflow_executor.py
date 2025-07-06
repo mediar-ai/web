@@ -511,10 +511,12 @@ async def execute_mcp_workflow(
                                     # Fallback to using the text directly if it's not JSON
                                     mcp_content = {"raw_text": content_item.get("text")}
 
-                # --- MORE DETAILED LOGGING ---
-                # logger.info("--- DETAILED LOGGING: Full content from MCP response ---")
-                # logger.info(json.dumps(mcp_content, indent=2))
-                # logger.info("--- END DETAILED LOGGING ---")
+                # --- MORE DETAILED LOGGING FOR PARSER ---
+                logger.info(
+                    "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
+                )
+                logger.info(json.dumps(mcp_content, indent=2))
+                logger.info("--- END DETAILED LOGGING ---")
 
                 # Extract quotes and metrics from the MCP response
                 quotes = []
@@ -523,16 +525,37 @@ async def execute_mcp_workflow(
                 executed_steps = []
 
                 if mcp_content:
+                    # --- MORE DETAILED LOGGING FOR PARSER ---
+                    logger.info(
+                        "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
+                    )
+                    logger.info(json.dumps(mcp_content, indent=2))
+                    logger.info("--- END DETAILED LOGGING ---")
+
+                    # Check for parser errors first
+                    if "parser_error" in mcp_content:
+                        logger.error(
+                            "❌ Output parser failed in MCP agent: %s",
+                            mcp_content["parser_error"],
+                        )
+
                     # Extract quotes from the new parsed_output field.
                     # The MCP tool now returns pre-parsed and structured quote data.
                     if "parsed_output" in mcp_content:
-                        logger.info(
-                            "Found 'parsed_output' field. Using it directly for quotes."
-                        )
-                        quotes = mcp_content.get("parsed_output", [])
+                        parsed_output = mcp_content.get("parsed_output", [])
+                        if not parsed_output:
+                            logger.warning(
+                                "⚠️ 'parsed_output' field exists but is empty. The UI tree may not have matched the parsing rules."
+                            )
+                        else:
+                            logger.info(
+                                "✅ Found 'parsed_output' field with %d items. Using it for quotes.",
+                                len(parsed_output),
+                            )
+                        quotes = parsed_output
                     else:
                         logger.warning(
-                            "No 'parsed_output' field found in MCP response. Quotes will be empty."
+                            "⚠️ No 'parsed_output' field found in MCP response. Quotes will be empty. Check for parser errors or if the workflow produced a UI tree."
                         )
 
                     # Extract execution step details for metrics
