@@ -1,0 +1,360 @@
+{
+    "tool_name": "execute_sequence",
+    "arguments": {
+        "items": [
+            {
+                "tool_name": "navigate_browser",
+                "arguments": {
+                    "url": "https://v2preview.online.bestplanpro.com/"
+                }
+            },
+            {
+                "group_name": "Handle EULA and Software Registration (Skippable)",
+                "skippable": true,
+                "steps": [
+                    {
+                        "tool_name": "click_element",
+                        "arguments": {
+                            "selector": "role:Button|name:Accept",
+                            "timeout_ms": 1000,
+                            "include_tree": false,
+                            "retries": 1
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#16783872191045950436",
+                            "text_to_type": "70",
+                            "timeout_ms": 500,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        }
+                    },
+                    {
+                        "tool_name": "wait_for_element",
+                        "arguments": {
+                            "selector": "role:Text|name:Software Registration",
+                            "condition": "exists",
+                            "timeout_ms": 2000,
+                            "include_tree": false,
+                            "retries": 2
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#13604283145638815416",
+                            "text_to_type": "4WV-HJR-SA9",
+                            "timeout_ms": 500,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#14651589766163622092",
+                            "text_to_type": "louis@mediar.ai",
+                            "timeout_ms": 500,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "click_element",
+                        "arguments": {
+                            "selector": "role:Button|name:Activate",
+                            "timeout_ms": 1000,
+                            "include_tree": false,
+                            "retries": 2
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "wait_for_element",
+                        "arguments": {
+                            "selector": "role:Button|name:OK",
+                            "condition": "exists",
+                            "timeout_ms": 3000,
+                            "include_tree": false,
+                            "retries": 2
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "click_element",
+                        "arguments": {
+                            "selector": "role:Button|name:OK",
+                            "timeout_ms": 1000,
+                            "include_tree": false,
+                            "retries": 2
+                        },
+                        "continue_on_error": true
+                    }
+                ]
+            },
+            {
+                "group_name": "Reset Form (Skippable)",
+                "skippable": true,
+                "steps": [
+                    {
+                        "tool_name": "invoke_element",
+                        "arguments": {
+                            "selector": "#5938268134123786900",
+                            "timeout_ms": 2000
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "press_key_global",
+                        "arguments": {
+                            "key": "{Enter}"
+                        },
+                        "continue_on_error": true,
+                        "delay_ms": 1000
+                    }
+                ]
+            },
+            {
+                "group_name": "Fill Insurance Application Form",
+                "skippable": false,
+                "steps": [
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#16783872191045950436",
+                            "text_to_type": "70",
+                            "timeout_ms": 400,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        }
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#14662394201609357334",
+                            "text_to_type": "01/15/1985",
+                            "timeout_ms": 400,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        }
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#18191819271730191548",
+                            "text_to_type": "180",
+                            "timeout_ms": 400,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        }
+                    },
+                    {
+                        "tool_name": "set_selected",
+                        "arguments": {
+                            "selector": "#4137124105991473885",
+                            "state": true,
+                            "timeout_ms": 600,
+                            "include_tree": false,
+                            "retries": 2
+                        }
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#677755112996739582",
+                            "text_to_type": "California",
+                            "timeout_ms": 400,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        }
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#9188373975606501900",
+                            "text_to_type": "90210",
+                            "timeout_ms": 400,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        }
+                    },
+                    {
+                        "tool_name": "set_selected",
+                        "arguments": {
+                            "selector": "#14493993113991611727",
+                            "state": true,
+                            "timeout_ms": 600,
+                            "include_tree": false,
+                            "retries": 2
+                        }
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#4233704881078076887",
+                            "text_to_type": "$100,000",
+                            "timeout_ms": 400,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        }
+                    },
+                    {
+                        "tool_name": "select_option",
+                        "arguments": {
+                            "selector": "#17979079102255792476",
+                            "option_name": "Best Case: Graded Coverage",
+                            "timeout_ms": 2000,
+                            "include_tree": false,
+                            "retries": 3
+                        }
+                    }
+                ]
+            },
+            {
+                "group_name": "Close Health Wizard",
+                "skippable": false,
+                "steps": [
+                    {
+                        "tool_name": "invoke_element",
+                        "arguments": {
+                            "selector": "#16251652239921112986",
+                            "timeout_ms": 800,
+                            "include_tree": false,
+                            "retries": 2
+                        }
+                    }
+                ]
+            },
+            {
+                "group_name": "Generate and Capture Quote",
+                "skippable": false,
+                "steps": [
+                    {
+                        "tool_name": "invoke_element",
+                        "arguments": {
+                            "selector": "#17517999067772859239",
+                            "timeout_ms": 800,
+                            "include_tree": false,
+                            "retries": 2
+                        }
+                    },
+                    {
+                        "tool_name": "wait_for_element",
+                        "arguments": {
+                            "selector": "#6729189997817199306",
+                            "condition": "exists",
+                            "include_tree": true,
+                            "timeout_ms": 30000,
+                            "retries": 2
+                        },
+                        "continue_on_error": false
+                    }
+                ]
+            }
+        ],
+        "output_parser": {
+            "uiTreeJsonPath": "$.results[-1].results[-1].result.content[0].text.ui_tree",
+            "itemContainerDefinition": {
+                "nodeConditions": [
+                    {
+                        "property": "role",
+                        "op": "equals",
+                        "value": "Group"
+                    }
+                ],
+                "childConditions": {
+                    "logic": "and",
+                    "conditions": [
+                        {
+                            "existsChild": {
+                                "conditions": [
+                                    {
+                                        "property": "name",
+                                        "op": "startsWith",
+                                        "value": "$"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "existsChild": {
+                                "conditions": [
+                                    {
+                                        "property": "name",
+                                        "op": "equals",
+                                        "value": "Monthly Price"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "existsChild": {
+                                "conditions": [
+                                    {
+                                        "property": "name",
+                                        "op": "contains",
+                                        "value": ":"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            "fieldsToExtract": {
+                "carrierProduct": {
+                    "fromChild": {
+                        "conditions": [
+                            {
+                                "property": "name",
+                                "op": "contains",
+                                "value": ":"
+                            }
+                        ],
+                        "extractProperty": "name"
+                    }
+                },
+                "monthlyPrice": {
+                    "fromChild": {
+                        "conditions": [
+                            {
+                                "property": "name",
+                                "op": "startsWith",
+                                "value": "$"
+                            }
+                        ],
+                        "extractProperty": "name"
+                    }
+                },
+                "status": {
+                    "fromChildren": {
+                        "conditions": [
+                            {
+                                "property": "role",
+                                "op": "equals",
+                                "value": "Text"
+                            },
+                            {
+                                "property": "name",
+                                "op": "isOneOf",
+                                "value": [
+                                    "Graded",
+                                    "Discontinued",
+                                    "Standard"
+                                ]
+                            }
+                        ],
+                        "extractProperty": "name",
+                        "joinWith": ", "
+                    }
+                }
+            }
+        }
+    }
+}
