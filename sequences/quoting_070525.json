@@ -259,7 +259,7 @@
             }
         ],
         "output_parser": {
-            "uiTreeJsonPath": "$.results[-1].results[-1].result.content[0].text.ui_tree",
+            "uiTreeJsonPath": "$.results[-1].results[-1].result.content[0].text",
             "itemContainerDefinition": {
                 "nodeConditions": [
                     {
