@@ -1173,25 +1173,15 @@ export default function WorkflowsPage() {
               <CardContent>
                 {/* Execution History Dropdown */}
                 {(() => {
-                  // Sort function to prioritize running executions
-                  const statusPriority = (status: string) => {
-                    switch (status) {
-                      case 'running': return 0;
-                      case 'queued': return 1;
-                      case 'failed':
-                      case 'error': return 2;
-                      default: return 3;
-                    }
-                  };
-                  
+                  // Sort function to prioritize running executions (REMOVED)
                   const workflowLiveExecutions = liveExecutions
                     .filter(exec => exec.workflow_id === workflow.id)
-                    .sort((a, b) => statusPriority(a.status) - statusPriority(b.status));
+                    .sort((a, b) => b.id - a.id);
                     
                   const recentExecutions = executions
                     .filter(exec => exec.workflow_id === workflow.id)
                     .filter(exec => !['running', 'queued'].includes(exec.status)) // Exclude running/queued since they're in live section
-                    .sort((a, b) => statusPriority(a.status) - statusPriority(b.status));
+                    .sort((a, b) => b.execution_id - a.execution_id);
                   
                   const hasExecutions = workflowLiveExecutions.length > 0 || recentExecutions.length > 0;
                   
@@ -1350,6 +1340,34 @@ export default function WorkflowsPage() {
                                           </>
                                         )}
                                         {/* Show contextual info based on status */}
+                                        {execution.status === 'completed' && execution.formatted_output && (
+                                          <>
+                                            <span className="text-gray-400">•</span>
+                                            <div className="flex items-center gap-1.5 text-xs">
+                                              {(() => {
+                                                try {
+                                                  const quotes = JSON.parse(execution.formatted_output);
+                                                  if (Array.isArray(quotes) && quotes.length > 0) {
+                                                    return (
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-green-700">{quotes.length} quote{quotes.length > 1 ? 's' : ''} found:</span>
+                                                        <span className="font-mono bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate max-w-[400px]" title={quotes[0].carrierProduct}>
+                                                          {quotes[0].carrierProduct?.split(':')[0]}: {quotes[0].monthlyPrice}
+                                                        </span>
+                                                        {quotes.length > 1 && <span className="text-gray-500">...</span>}
+                                                      </div>
+                                                    )
+                                                  }
+                                                  // It's valid JSON, but not a quote array as expected, show raw
+                                                  return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
+                                                } catch {
+                                                  // Not valid JSON, so it's the old text format
+                                                  return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
+                                                }
+                                              })()}
+                                            </div>
+                                          </>
+                                        )}
                                         {execution.status === 'failed' && (execution.error_message || execution.formatted_output) && (
                                           <>
                                             <span className="text-gray-400">•</span>
@@ -1398,14 +1416,6 @@ export default function WorkflowsPage() {
                                                 }
                                                 return 'Workflow execution failed';
                                               })()}
-                                            </span>
-                                          </>
-                                        )}
-                                        {execution.status === 'completed' && execution.formatted_output && (
-                                          <>
-                                            <span className="text-gray-400">•</span>
-                                            <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>
-                                              {execution.formatted_output.split('\n')[0]}
                                             </span>
                                           </>
                                         )}
