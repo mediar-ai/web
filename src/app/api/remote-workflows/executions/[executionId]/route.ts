@@ -86,6 +86,7 @@ export async function GET(
         has_error: hasError,
         
         // Timing info
+        created_at: execution.created_at,
         started_at: execution.started_at,
         completed_at: execution.completed_at,
         execution_duration_seconds: execution.execution_duration_seconds || runtimeSeconds,
@@ -104,6 +105,7 @@ export async function GET(
         modal_call_id: execution.modal_call_id,
         client_id: execution.client_id,
         execution_params: execution.execution_params || {},
+        execution_logs: execution.execution_logs || [],
         
         // Results (only if completed or failed)
         results: isCompleted ? (execution.results || {}) : null,
