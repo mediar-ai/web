@@ -868,7 +868,7 @@ export default function WorkflowsPage() {
                       <dl className="space-y-1 text-sm">
                         <div className="flex justify-between">
                           <dt className="text-muted-foreground">Created:</dt>
-                          <dd className="text-xs">{new Date(selectedExecution.created_at).toLocaleString()}</dd>
+                          <dd className="text-xs">{selectedExecution.created_at ? new Date(selectedExecution.created_at).toLocaleString() : '—'}</dd>
                         </div>
                         <div className="flex justify-between">
                           <dt className="text-muted-foreground">Started:</dt>
@@ -930,7 +930,7 @@ export default function WorkflowsPage() {
                       <div className="p-4 space-y-2">
                         {selectedExecution.execution_logs.map((log, idx) => (
                           <div key={idx} className="flex gap-2 text-xs font-mono">
-                            <span className="text-muted-foreground">{log.timestamp}</span>
+                            <span className="text-muted-foreground">{log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''}</span>
                             <Badge variant={log.level === 'error' ? 'outline' : 'secondary'} className={log.level === 'error' ? 'border-black text-black' : 'text-xs'}>
                               {log.level}
                             </Badge>
@@ -940,22 +940,31 @@ export default function WorkflowsPage() {
                       </div>
                     </ScrollArea>
                   ) : (
-                    <p className="text-sm text-muted-foreground text-center py-8">No execution logs available</p>
+                    <Alert className="text-center">
+                      <Terminal className="h-4 w-4" />
+                      <AlertDescription>
+                        No structured execution logs available for this run.
+                      </AlertDescription>
+                    </Alert>
                   )}
                 </TabsContent>
                 
                 <TabsContent value="results" className="space-y-4">
                   {selectedExecution.results ? (
-                    <div>
-                      <h4 className="font-semibold mb-2">Execution Results</h4>
-                      <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto">
+                    <ScrollArea className="h-[500px] w-full rounded-md border">
+                      <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto text-xs">
                         <code className="text-sm">
                           {JSON.stringify(selectedExecution.results, null, 2)}
                         </code>
                       </pre>
-                    </div>
+                    </ScrollArea>
                   ) : (
-                    <p className="text-sm text-muted-foreground text-center py-8">No results available</p>
+                    <Alert className="text-center">
+                      <FileText className="h-4 w-4" />
+                      <AlertDescription>
+                        No results available for this execution.
+                      </AlertDescription>
+                    </Alert>
                   )}
                 </TabsContent>
                 
@@ -980,6 +989,14 @@ export default function WorkflowsPage() {
                         </code>
                       </pre>
                     </div>
+                  )}
+                  {!selectedExecution.raw_logs && !selectedExecution.raw_mcp_response && (
+                    <Alert className="text-center">
+                      <Terminal className="h-4 w-4" />
+                      <AlertDescription>
+                        No raw logs or debug information were captured for this run.
+                      </AlertDescription>
+                    </Alert>
                   )}
                 </TabsContent>
               </Tabs>
