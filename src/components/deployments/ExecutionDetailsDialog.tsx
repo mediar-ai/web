@@ -80,11 +80,10 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
         </div>
         <Tabs defaultValue="summary" value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
           <div className="px-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
               <TabsTrigger value="results">Results</TabsTrigger>
-              <TabsTrigger value="debug">Debug</TabsTrigger>
             </TabsList>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-6">
@@ -198,8 +197,10 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                 <div className="space-y-4 h-full flex flex-col">
                   {execution.execution_logs && execution.execution_logs.length > 0 ? (
                     <div className="space-y-2 flex-1 flex flex-col min-h-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold">Execution Logs</h4>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-muted-foreground">
+                          Real-time logs generated during the workflow execution.
+                        </p>
                         <CopyToClipboardButton
                           contentToCopy={execution.execution_logs?.map(log => 
                               `${log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''} [${log.level}] ${log.message}`
@@ -235,7 +236,9 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                   {execution.results ? (
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold">Execution Results</h4>
+                        <p className="text-sm text-muted-foreground">
+                          The final JSON output produced by the workflow.
+                        </p>
                         <CopyToClipboardButton
                           contentToCopy={JSON.stringify(execution.results, null, 2)}
                         />
@@ -251,48 +254,6 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                       <FileText className="h-4 w-4" />
                       <AlertDescription>
                         No results available for this execution.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              )}
-            </TabsContent>
-            <TabsContent value="debug">
-              {isTabLoading ? <LoadingSkeleton /> : (
-                <div className="space-y-4">
-                  {execution.raw_data?.raw_logs && (
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold">Raw Logs</h4>
-                        <CopyToClipboardButton
-                          contentToCopy={execution.raw_data?.raw_logs || ''}
-                        />
-                      </div>
-                      <pre className="p-4 text-xs border rounded-md bg-white overflow-auto max-h-[400px]">
-                        <code>{execution.raw_data.raw_logs}</code>
-                      </pre>
-                    </div>
-                  )}
-                  {execution.raw_data?.raw_mcp_response && (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold">Raw MCP Response</h4>
-                        <CopyToClipboardButton
-                          contentToCopy={JSON.stringify(execution.raw_data?.raw_mcp_response || {}, null, 2)}
-                        />
-                      </div>
-                      <pre className="bg-gray-100 p-3 rounded-lg overflow-auto text-xs border max-h-[400px]">
-                        <code>
-                          {JSON.stringify(execution.raw_data.raw_mcp_response, null, 2)}
-                        </code>
-                      </pre>
-                    </div>
-                  )}
-                  {!execution.raw_data?.raw_logs && !execution.raw_data?.raw_mcp_response && (
-                    <Alert className="text-center">
-                      <Terminal className="h-4 w-4" />
-                      <AlertDescription>
-                        No raw logs or debug information were captured for this run.
                       </AlertDescription>
                     </Alert>
                   )}
