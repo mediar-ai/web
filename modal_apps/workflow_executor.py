@@ -882,16 +882,14 @@ def execute_workflow(
         formatted_output = None
         if results.get("quotes") is not None:  # If we have quotes data (even if empty)
             try:
-                formatted_output = generate_formatted_summary(
-                    quotes=results.get("quotes", []),
-                    applicant_info=results.get("applicant_info", {}),
-                    execution_metrics=results.get("performance_metrics", {}),
-                )
-                logger.info("📋 Generated formatted summary")
+                # Directly use the raw quote output as the formatted output
+                quotes_output = results.get("quotes", [])
+                formatted_output = json.dumps(quotes_output, indent=2)
+                logger.info("📋 Using raw quote output as formatted_output.")
                 # Also log the formatted output for debugging
                 logger.info("\n%s", formatted_output)
             except Exception as format_error:
-                logger.warning("Failed to generate formatted summary: %s", format_error)
+                logger.warning("Failed to serialize raw quote output: %s", format_error)
 
         # Update execution with final results and raw data
         cur.execute(
