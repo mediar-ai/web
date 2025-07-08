@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { XCircle, Terminal, FileText } from 'lucide-react';
+import { XCircle, Terminal, FileText, Loader2 } from 'lucide-react';
 import { CopyToClipboardButton } from '@/components/common/CopyToClipboardButton';
 import { Execution } from '@/lib/workflow-types';
 import { getStatusBadge, getStatusIcon, formatDuration } from './utils';
@@ -61,7 +61,7 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
     }
   };
 
-  if (!execution) return null;
+  if (!execution && !open) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,13 +69,24 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
         <div className="p-6 pb-0">
           <DialogHeader>
             <DialogTitle className="text-2xl flex items-center gap-2">
-              Execution #{execution.execution_id}
-              <Badge className={getStatusBadge(execution.status)}>
-                {getStatusIcon(execution.status)}
-                <span className="ml-1">{execution.status.toUpperCase()}</span>
-              </Badge>
+              {execution ? (
+                <>
+                  Execution #{execution.execution_id}
+                  <Badge className={getStatusBadge(execution.status)}>
+                    {getStatusIcon(execution.status)}
+                    <span className="ml-1">{execution.status.toUpperCase()}</span>
+                  </Badge>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Loading Execution Details...
+                  </div>
+                </>
+              )}
             </DialogTitle>
-            <DialogDescription>{execution.workflow_name}</DialogDescription>
+            <DialogDescription>{execution?.workflow_name || 'Loading...'}</DialogDescription>
           </DialogHeader>
         </div>
         <Tabs defaultValue="summary" value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
@@ -88,7 +99,7 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-6">
             <TabsContent value="summary">
-              {isTabLoading ? <LoadingSkeleton /> : (
+              {isTabLoading || !execution ? <LoadingSkeleton /> : (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -186,7 +197,7 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
               )}
             </TabsContent>
             <TabsContent value="logs">
-              {isTabLoading ? <LoadingSkeleton /> : (
+              {isTabLoading || !execution ? <LoadingSkeleton /> : (
                 <div className="space-y-4 h-full flex flex-col">
                   {execution.execution_logs && execution.execution_logs.length > 0 ? (
                     <div className="space-y-2 flex-1 flex flex-col min-h-0">
@@ -224,7 +235,7 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
               )}
             </TabsContent>
             <TabsContent value="results">
-              {isTabLoading ? <LoadingSkeleton /> : (
+              {isTabLoading || !execution ? <LoadingSkeleton /> : (
                 <div className="space-y-4">
                   {execution.results ? (
                     <div>

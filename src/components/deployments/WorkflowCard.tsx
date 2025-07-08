@@ -21,6 +21,7 @@ interface WorkflowCardProps {
   onFetchWorkflowDetails: (workflowId: number) => void;
   onFetchExecutionDetails: (executionId: number) => void;
   loadingDetails: boolean;
+  loadingExecutionId: number | null;
 }
 
 const getStatusBadge = (status: string) => {
@@ -71,6 +72,7 @@ export function WorkflowCard({
   onFetchWorkflowDetails,
   onFetchExecutionDetails,
   loadingDetails,
+  loadingExecutionId,
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showParamsDropdown, setShowParamsDropdown] = useState(false);
@@ -324,15 +326,26 @@ export function WorkflowCard({
                       {workflowLiveExecutions.map((execution) => (
                         <div 
                           key={`live-${execution.id}`} 
-                          className="bg-gray-50 px-2 py-1 border border-gray-200 rounded hover:bg-gray-100 hover:border-gray-400 cursor-pointer transition-colors"
-                          onClick={() => onFetchExecutionDetails(execution.id)}
+                          className={`bg-gray-50 px-2 py-1 border border-gray-200 rounded transition-colors ${
+                            loadingExecutionId === execution.id 
+                              ? 'bg-blue-50 border-blue-300 cursor-wait' 
+                              : 'hover:bg-gray-100 hover:border-gray-400 cursor-pointer'
+                          }`}
+                          onClick={() => loadingExecutionId === null && onFetchExecutionDetails(execution.id)}
                         >
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-mono text-black font-semibold">#{execution.id}</span>
-                            <Badge className={`${getStatusBadge(execution.status)} h-5 px-1.5 text-xs`}>
-                              {getStatusIcon(execution.status)}
-                              <span className="ml-0.5">{execution.status.toUpperCase()}</span>
-                            </Badge>
+                            {loadingExecutionId === execution.id ? (
+                              <div className="flex items-center gap-1">
+                                <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                <span className="text-xs font-mono text-blue-600">LOADING...</span>
+                              </div>
+                            ) : (
+                              <Badge className={`${getStatusBadge(execution.status)} h-5 px-1.5 text-xs`}>
+                                {getStatusIcon(execution.status)}
+                                <span className="ml-0.5">{execution.status.toUpperCase()}</span>
+                              </Badge>
+                            )}
                             {execution.status === 'running' && (
                               <div className="w-1.5 h-1.5 bg-black rounded-full animate-pulse"></div>
                             )}
@@ -392,17 +405,28 @@ export function WorkflowCard({
                       {recentExecutions.map((execution) => (
                         <div 
                           key={`exec-${execution.execution_id}`} 
-                          className="bg-white px-2 py-1 border border-black rounded hover:bg-gray-50 hover:border-gray-600 cursor-pointer transition-colors"
-                          onClick={() => onFetchExecutionDetails(execution.execution_id)}
+                          className={`bg-white px-2 py-1 border border-black rounded transition-colors ${
+                            loadingExecutionId === execution.execution_id 
+                              ? 'bg-blue-50 border-blue-300 cursor-wait' 
+                              : 'hover:bg-gray-50 hover:border-gray-600 cursor-pointer'
+                          }`}
+                          onClick={() => loadingExecutionId === null && onFetchExecutionDetails(execution.execution_id)}
                         >
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-mono text-black font-semibold">
                               #{execution.execution_id}
                             </span>
-                            <Badge className={`${getStatusBadge(execution.status)} h-5 px-1.5 text-xs`}>
-                              {getStatusIcon(execution.status)}
-                              <span className="ml-0.5">{execution.status.toUpperCase()}</span>
-                            </Badge>
+                            {loadingExecutionId === execution.execution_id ? (
+                              <div className="flex items-center gap-1">
+                                <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                <span className="text-xs font-mono text-blue-600">LOADING...</span>
+                              </div>
+                            ) : (
+                              <Badge className={`${getStatusBadge(execution.status)} h-5 px-1.5 text-xs`}>
+                                {getStatusIcon(execution.status)}
+                                <span className="ml-0.5">{execution.status.toUpperCase()}</span>
+                              </Badge>
+                            )}
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               {execution.completed_at && (
                                 <span className="flex items-center gap-0.5">
