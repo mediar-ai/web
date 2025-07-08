@@ -123,7 +123,7 @@ export default function WorkflowsPage() {
     setExecutingWorkflows(prev => new Set([...prev, workflow.id]));
     
     try {
-      const params = customParams || workflow.sample_inputs || {};
+      const params = customParams || {};
       
       const response = await fetch(`/api/remote-workflows/${workflow.id}/execute`, {
         method: 'POST',
@@ -301,8 +301,8 @@ export default function WorkflowsPage() {
               loadingDetails={loadingDetails}
             />
           ))}
-        </div>
-      </div>
-    </div>
+                          </div>
+                      </div>
+                    </div>
   );
 }

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from '@/components/ui/separator';
 import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight } from 'lucide-react';
-import { Workflow, Execution, LiveExecutionStatus, InputParameter } from '@/lib/workflow-types';
+import { Workflow, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
 
 interface WorkflowCardProps {
   workflow: Workflow;
@@ -78,6 +78,14 @@ export function WorkflowCard({
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
 
   useEffect(() => {
+    // Always use the sample_inputs from the workflow definition as the base
+    // for the execution parameters. The UI allows overriding them.
+    if (workflow.sample_inputs) {
+      setExecutionParams(workflow.sample_inputs);
+    }
+  }, [workflow]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       setLocalTimeOffsets(prev => {
         const newMap = new Map(prev);
@@ -97,42 +105,6 @@ export function WorkflowCard({
     
     return () => clearInterval(timer);
   }, [liveExecutions, workflow.id]);
-
-  const generateSampleInputs = (inputParams: Record<string, InputParameter>): Record<string, unknown> => {
-    const samples: Record<string, unknown> = {};
-    Object.entries(inputParams).forEach(([key, param]) => {
-      if (param.example) {
-        samples[key] = param.example;
-      } else if (param.default !== undefined) {
-        samples[key] = param.default;
-      } else {
-        switch (param.type) {
-          case 'string':
-          case 'enum':
-            samples[key] = param.values?.[0] || 'example';
-            break;
-          case 'number':
-            samples[key] = 0;
-            break;
-          case 'boolean':
-            samples[key] = false;
-            break;
-          default:
-            samples[key] = '';
-        }
-      }
-    });
-    return samples;
-  };
-
-  const initializeParams = () => {
-    if (Object.keys(executionParams).length === 0) {
-      const params = workflow.sample_inputs && Object.keys(workflow.sample_inputs).length > 0
-        ? workflow.sample_inputs
-        : generateSampleInputs(workflow.input_parameters || {});
-      setExecutionParams(params);
-    }
-  };
 
   const updateParam = (key: string, value: string) => {
     setExecutionParams(prev => ({
@@ -225,12 +197,7 @@ export function WorkflowCard({
               {workflow.deployment_status.toUpperCase()}
             </Badge>
             {workflow.input_parameters && Object.keys(workflow.input_parameters).length > 0 ? (
-              <DropdownMenu open={showParamsDropdown} onOpenChange={(open) => {
-                if (open) {
-                  initializeParams();
-                }
-                setShowParamsDropdown(open);
-              }}>
+              <DropdownMenu open={showParamsDropdown} onOpenChange={setShowParamsDropdown}>
                 <DropdownMenuTrigger asChild>
                   <Button 
                     className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-4"
@@ -264,7 +231,7 @@ export function WorkflowCard({
                           </Label>
                           <Input
                             id={`${workflow.id}-${key}`}
-                            value={String(executionParams[key] ?? param.example ?? param.default ?? '')}
+                            value={String(executionParams[key] ?? '')}
                             onChange={(e) => updateParam(key, e.target.value)}
                             className="h-8 text-xs font-mono"
                             placeholder={String(param.example || param.default || `Enter ${param.type || 'value'}`)}
