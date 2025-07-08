@@ -302,7 +302,7 @@ graph TB
       method: 'GET',
       path: '/api/remote-workflows/executions/live',
       title: 'Live Execution Status',
-      description: 'Retrieves real-time status of running executions.',
+      description: 'Retrieves real-time status of running executions with optimized performance metrics for monitoring dashboards.',
       queryParams: [
         { name: 'status', type: 'string', optional: true, description: 'Filter by status ("active" for running/queued)' },
         { name: 'workflow_id', type: 'number', optional: true, description: 'Filter by workflow ID' },
@@ -313,23 +313,43 @@ graph TB
   "data": {
     "executions": [
       {
+        // Basic identification
         "id": 44,
         "workflow_id": 1,
         "workflow_name": "Best Plan Pro Insurance Quote",
+        "workflow_description": "Automated life insurance quote generation",
+        
+        // Status and progress
         "status": "running",
         "progress_percentage": 75,
         "current_step_index": 12,
         "total_steps": 15,
         "current_step_description": "Extracting quote results",
+        
+        // Timing information
+        "step_start_time": "2025-01-01T20:13:00.000Z",
+        "estimated_completion_time": "2025-01-01T20:14:30.000Z",
+        "started_at": "2025-01-01T20:12:35.657Z",
+        "created_at": "2025-01-01T20:12:30.000Z",
+        "execution_duration_seconds": 45,
+        "runtime_seconds": 45,
+        
+        // Performance metrics (calculated in real-time)
         "estimated_seconds_remaining": 22,
-        "steps_per_minute": 8.5
+        "steps_per_minute": 8.5,
+        
+        // System identifiers
+        "modal_call_id": "modal_1751407955657_j9p0qn5ks",
+        "client_id": "web-1751407955657",
+        "status_priority": 1
       }
     ],
     "summary": {
       "total_active": 2,
       "total_running": 2,
       "total_queued": 0,
-      "average_progress": 75
+      "average_progress": 75,
+      "timestamp": "2025-01-01T20:13:15.000Z"
     }
   }
 }`
