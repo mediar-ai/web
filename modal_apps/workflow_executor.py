@@ -13,6 +13,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import io
 import sys
+import collections.abc
 
 # Add contextlib for stdout/stderr capture
 import contextlib
@@ -310,6 +311,30 @@ def generate_formatted_summary(
     return "\n".join(summary_lines)
 
 
+def deep_merge(d, u):
+    """
+    Recursively merge dictionaries.
+    'd' is the dictionary to be updated, 'u' is the dictionary with new values.
+    """
+    for k, v in u.items():
+        if isinstance(v, collections.abc.Mapping):
+            d[k] = deep_merge(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
+
+def log_merge_details(original, merged, path=""):
+    """Recursively compares two dictionaries and logs the changes."""
+    # Using sorted keys for consistent log output
+    for key in sorted(merged.keys()):
+        new_path = f"{path}.{key}" if path else key
+        if key not in original:
+            logger.info(f"  ➕ Added '{new_path}': {merged[key]}")
+        elif isinstance(merged.get(key), dict) and isinstance(original.get(key), dict):
+            log_merge_details(original[key], merged[key], path=new_path)
+        elif original.get(key) != merged.get(key):
+            logger.info(f"  🔄 Changed '{new_path}': '{original.get(key)}' -> '{merged.get(key)}'")
+
 async def execute_mcp_workflow(
     workflow_data: Dict[str, Any], execution_params: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -336,11 +361,32 @@ async def execute_mcp_workflow(
         tool_name = workflow_data_to_use.get("tool_name")
         arguments = workflow_data_to_use.get("arguments", {})
 
+        # --- PARAMETER OVERRIDE LOGIC ---
+        if execution_params:
+            logger.info("⚡️ Merging pre-structured execution parameters into workflow variables:")
+            
+            # Make a deep copy for comparison logging
+            original_variables = json.loads(json.dumps(arguments.get('variables', {})))
+
+            # The execution_params are now expected to be correctly nested by the frontend.
+            # We can merge them directly.
+            merged_variables = deep_merge(arguments.get('variables', {}), execution_params)
+            arguments['variables'] = merged_variables
+            
+            # Log the detailed changes
+            log_merge_details(original_variables, merged_variables)
+        else:
+            logger.info("✅ Using default variables from workflow definition.")
+        # --- END PARAMETER OVERRIDE LOGIC ---
+
+
         logger.info("📋 Workflow: %s", tool_name)
         logger.info("   Items: %d", len(arguments.get("items", [])))
 
         # --- MORE DETAILED LOGGING ---
         logger.info("--- DETAILED LOGGING: Payload being sent to MCP ---")
+        if arguments.get('variables'):
+            logger.info("   Variables payload for MCP: %s", json.dumps(arguments['variables'], indent=2))
         log_string = json.dumps(arguments)
         logger.info(f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}")
         logger.info("--- END DETAILED LOGGING ---")
@@ -648,21 +694,15 @@ def execute_workflow(
     """
     🚀 REAL BROWSER AUTOMATION: Execute workflow using MCP browser control
 
-    This function executes real browser automation by:
-    - Connecting to MCP endpoint for browser control
-    - Processing each automation step through real browser
-    - Extracting actual data from web pages
-    - Updating progress in database
-    - Returning real results
+    This function is now responsible for the actual execution of a workflow that
+    has already been "claimed" by the queue processor.
 
-    Args:
-        workflow_id: ID of workflow to execute
-        execution_params: Input parameters for the workflow
-        client_id: Optional client identifier
-        execution_id: Optional existing execution ID to update (instead of creating new)
-
-    Returns:
-        Dict with execution results and extracted data
+    It will:
+    - Calculate total steps and update the execution record.
+    - Connect to MCP endpoint for browser control
+    - Process each automation step through real browser
+    - Update progress in database
+    - Return final results
     """
     start_time = time.time()
     conn = None
@@ -673,7 +713,10 @@ def execute_workflow(
         conn = get_database_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        logger.info("🚀 Starting REAL workflow execution %s on Modal...", workflow_id)
+        # The job is already marked as 'running' by the queue worker.
+        # This function's first job is to fetch the workflow, calculate steps,
+        # and update the execution record with that info.
+        logger.info("🚀 Executing workflow ID %s for execution record %s", workflow_id, execution_id)
 
         # Get workflow details from database
         cur.execute("SELECT * FROM deployed_workflows WHERE id = %s", (workflow_id,))
@@ -682,97 +725,25 @@ def execute_workflow(
         if not workflow:
             raise Exception(f"Workflow {workflow_id} not found")
 
-        # Calculate total steps from the automation sequence
+        # Calculate total steps and update the execution record
         automation_sequence = workflow.get("automation_sequence", [{}])[0]
         total_steps = len(automation_sequence.get("arguments", {}).get("items", []))
+        
+        cur.execute(
+            """
+            UPDATE workflow_executions
+            SET total_steps = %s
+            WHERE id = %s
+            """,
+            (total_steps, execution_id)
+        )
+        conn.commit()
 
         logger.info(
-            "📋 Loaded %s - %d groups to execute via browser",
+            "📋 Loaded workflow '%s' - %d groups to execute via browser",
             workflow["name"],
             total_steps,
         )
-
-        # Either update existing execution or create new one
-        if execution_id:
-            # Update existing execution record
-            logger.info("📝 Updating existing execution record %s", execution_id)
-            cur.execute(
-                """
-                UPDATE workflow_executions 
-                SET status = %s, started_at = %s, total_steps = %s, 
-                    current_step_index = %s, progress_percentage = %s,
-                    modal_call_id = %s
-                WHERE id = %s
-            """,
-                (
-                    "running",
-                    datetime.now(timezone.utc).isoformat(),
-                    total_steps,
-                    0,
-                    0,
-                    f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}",
-                    execution_id,
-                ),
-            )
-            conn.commit()
-        else:
-            # Create new execution record
-            execution_data = {
-                "workflow_id": workflow_id,
-                "status": "running",
-                "started_at": datetime.now(timezone.utc).isoformat(),
-                "execution_params": execution_params or {},
-                "modal_call_id": f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}",
-                "total_steps": total_steps,
-                "current_step_index": 0,
-                "progress_percentage": 0,
-            }
-
-            # Build INSERT query with optional client_id
-            if client_id:
-                cur.execute(
-                    """
-                    INSERT INTO workflow_executions 
-                    (workflow_id, status, started_at, execution_params, modal_call_id, total_steps, current_step_index, progress_percentage, client_id) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                    RETURNING id
-                """,
-                    (
-                        execution_data["workflow_id"],
-                        execution_data["status"],
-                        execution_data["started_at"],
-                        json.dumps(execution_data["execution_params"]),
-                        execution_data["modal_call_id"],
-                        execution_data["total_steps"],
-                        execution_data["current_step_index"],
-                        execution_data["progress_percentage"],
-                        client_id,
-                    ),
-                )
-            else:
-                cur.execute(
-                    """
-                    INSERT INTO workflow_executions 
-                    (workflow_id, status, started_at, execution_params, modal_call_id, total_steps, current_step_index, progress_percentage) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
-                    RETURNING id
-                """,
-                    (
-                        execution_data["workflow_id"],
-                        execution_data["status"],
-                        execution_data["started_at"],
-                        json.dumps(execution_data["execution_params"]),
-                        execution_data["modal_call_id"],
-                        execution_data["total_steps"],
-                        execution_data["current_step_index"],
-                        execution_data["progress_percentage"],
-                    ),
-                )
-
-            execution_id = cur.fetchone()["id"]
-            conn.commit()
-
-            logger.info("📝 Created execution record %s", execution_id)
 
         # Execute workflow through MCP browser automation
         # Run async function in sync context
@@ -1303,12 +1274,11 @@ if __name__ == "__main__":
 )
 def check_and_process_queued_jobs():
     """
-    🔄 SCHEDULED JOB PROCESSOR: Check for queued executions and process them
+    🔄 ATOMIC JOB PROCESSOR: Claims and processes one queued execution.
 
-    This function runs every 10 seconds to:
-    - Find executions with status='queued'
-    - Process them by calling execute_workflow
-    - Handle errors and update statuses
+    This function runs on a schedule and uses an atomic database update
+    to "claim" a single job, preventing the race condition where multiple
+    workers could process the same job.
     """
     conn = None
     cur = None
@@ -1318,119 +1288,78 @@ def check_and_process_queued_jobs():
         conn = get_database_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Find queued executions (oldest first, limit to prevent overload)
+        # This query atomically finds the next 'queued' job,
+        # updates its status to 'running', and returns its details.
+        # `FOR UPDATE SKIP LOCKED` ensures that concurrent workers
+        # don't try to grab the same job.
+        modal_call_id = f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}"
+        
         cur.execute(
             """
-            SELECT id, workflow_id, execution_params, client_id, created_at
-            FROM workflow_executions
-            WHERE status = 'queued'
-              AND created_at > NOW() - INTERVAL '1 hour'  -- Only process recent jobs
-            ORDER BY created_at ASC
-            LIMIT 5  -- Process max 5 at a time
-        """
+            WITH claimed_job AS (
+                SELECT id
+                FROM workflow_executions
+                WHERE status = 'queued'
+                ORDER BY created_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE workflow_executions
+            SET
+                status = 'running',
+                started_at = NOW(),
+                modal_call_id = %s
+            FROM claimed_job
+            WHERE workflow_executions.id = claimed_job.id
+            RETURNING
+                workflow_executions.id,
+                workflow_executions.workflow_id,
+                workflow_executions.execution_params,
+                workflow_executions.client_id;
+            """,
+            (modal_call_id,)
         )
 
-        queued_jobs = cur.fetchall()
+        job_to_process = cur.fetchone()
+        conn.commit()  # Commit the claim immediately
 
-        if not queued_jobs:
-            # No need to log here, this is the normal, high-frequency state
-            return {
-                "success": True,
-                "message": "No queued jobs to process",
-                "checked_at": datetime.now(timezone.utc).isoformat(),
-            }
+        if not job_to_process:
+            # This is the normal state when the queue is empty.
+            return {"status": "no_jobs_found"}
 
-        logger.info("📋 Found %d queued executions to process", len(queued_jobs))
-        processed = []
-        errors = []
+        # If we get here, we have successfully claimed a job.
+        execution_id = job_to_process["id"]
+        workflow_id = job_to_process["workflow_id"]
+        execution_params = job_to_process["execution_params"] or {}
+        client_id = job_to_process["client_id"]
 
-        for job in queued_jobs:
-            execution_id = job["id"]
-            workflow_id = job["workflow_id"]
-            execution_params = job["execution_params"] or {}
-            client_id = job["client_id"]
+        logger.info(
+            "✅ Claimed execution ID %s for workflow %s. Dispatching to executor...",
+            execution_id,
+            workflow_id,
+        )
 
-            try:
-                logger.info(
-                    "🚀 Processing execution %s for workflow %s",
-                    execution_id,
-                    workflow_id,
-                )
-
-                # Call the execute_workflow function with the existing execution_id
-                # Wrap in try-catch to capture early-stage errors
-                try:
-                    result = execute_workflow.local(
-                        workflow_id, execution_params, client_id, execution_id
-                    )
-                except Exception as exec_error:
-                    # Capture early-stage execution errors
-                    logger.error(
-                        "❌ Early-stage execution error for %s: %s",
-                        execution_id,
-                        str(exec_error),
-                    )
-                    result = {
-                        "success": False,
-                        "error": str(exec_error),
-                        "error_type": "early_stage_failure",
-                    }
-
-                if result.get("success"):
-                    logger.info("✅ Successfully processed execution %s", execution_id)
-                    processed.append(
-                        {
-                            "execution_id": execution_id,
-                            "workflow_id": workflow_id,
-                            "status": "completed",
-                        }
-                    )
-                else:
-                    raise Exception(result.get("error", "Unknown error"))
-
-            except Exception as e:
-                error_msg = str(e)
-                logger.error(
-                    "❌ Failed to process execution %s: %s", execution_id, error_msg
-                )
-
-                # Update execution as failed
-                cur.execute(
-                    """
-                    UPDATE workflow_executions
-                    SET status = 'failed', 
-                        error_message = %s,
-                        completed_at = NOW(),
-                        execution_duration_seconds = EXTRACT(EPOCH FROM (NOW() - created_at))::integer
-                    WHERE id = %s
-                """,
-                    (error_msg, execution_id),
-                )
-                conn.commit()
-
-                errors.append(
-                    {
-                        "execution_id": execution_id,
-                        "workflow_id": workflow_id,
-                        "error": error_msg,
-                    }
-                )
+        # Now, call the main execution function asynchronously.
+        # This function will handle the rest of the process.
+        execute_workflow.remote(
+            workflow_id=workflow_id,
+            execution_params=execution_params,
+            client_id=client_id,
+            execution_id=execution_id,
+        )
 
         return {
-            "success": True,
-            "message": f"Processed {len(processed)} jobs, {len(errors)} errors",
-            "processed": processed,
-            "errors": errors,
-            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "status": "job_claimed",
+            "execution_id": execution_id,
+            "workflow_id": workflow_id,
         }
 
     except Exception as e:
         logger.error("❌ Job processor error: %s", e)
-        return {
-            "success": False,
-            "error": str(e),
-            "checked_at": datetime.now(timezone.utc).isoformat(),
-        }
+        # Rollback any transaction if an error occurs before commit
+        if conn:
+            conn.rollback()
+        return {"status": "error", "error": str(e)}
 
     finally:
         if cur:
