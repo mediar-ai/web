@@ -14,6 +14,39 @@ import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetail
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
 
 
+const transformParamsToNested = (params: Record<string, unknown>): Record<string, any> => {
+  const result: Record<string, any> = { applicant: {}, policy: {} };
+
+  const mapping: Record<string, { group: 'applicant' | 'policy'; key: string }> = {
+    date_of_birth: { group: 'applicant', key: 'dob' },
+    // height: { group: 'applicant', key: 'height' }, // Temporarily disabled for testing
+    weight: { group: 'applicant', key: 'weight' },
+    state: { group: 'applicant', key: 'state' },
+    zip_code: { group: 'applicant', key: 'zip_code' },
+    face_value: { group: 'policy', key: 'face_amount' },
+  };
+
+  for (const [key, value] of Object.entries(params)) {
+    if (mapping[key]) {
+      const { group, key: nestedKey } = mapping[key];
+      result[group][nestedKey] = value;
+    } else if (key === 'gender') {
+      result.applicant.select_male = String(value).toLowerCase() === 'male';
+    } else if (key === 'nicotine_usage') {
+      result.applicant.select_tobacco_no = String(value).toLowerCase() === 'never';
+    }
+    // The permissive 'else' block that passed through unmapped keys has been removed
+    // to make the transformation stricter.
+  }
+  // Clean up empty groups
+  return Object.fromEntries(
+    Object.entries(result).filter(([, value]) => 
+      (typeof value === 'object' && Object.keys(value).length > 0) || typeof value !== 'object'
+    )
+  );
+};
+
+
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
@@ -133,6 +166,7 @@ export default function WorkflowsPage() {
     
     try {
       const params = customParams || {};
+      const nestedParams = transformParamsToNested(params);
       
       const response = await fetch(`/api/remote-workflows/${workflow.id}/execute`, {
         method: 'POST',
@@ -140,7 +174,7 @@ export default function WorkflowsPage() {
         body: JSON.stringify({
           client_id: `web-${Date.now()}`,
           execution_mode: 'async',
-          parameters: params
+          parameters: nestedParams
         })
       });
 
