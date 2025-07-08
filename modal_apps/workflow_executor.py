@@ -322,12 +322,6 @@ async def execute_mcp_workflow(
         # Use the automation sequence from the database
         automation_sequence = workflow_data.get("automation_sequence")
 
-        # --- START TROUBLESHOOTING LOGS ---
-        logger.info("--- TROUBLESHOOTING: Raw automation_sequence from DB ---")
-        logger.info("Type: %s", type(automation_sequence))
-        logger.info("Content: %s", automation_sequence)
-        # --- END TROUBLESHOOTING LOGS ---
-
         if (
             not automation_sequence
             or not isinstance(automation_sequence, list)
@@ -339,27 +333,16 @@ async def execute_mcp_workflow(
 
         workflow_data_to_use = automation_sequence[0]
 
-        # --- START TROUBLESHOOTING LOGS ---
-        logger.info("--- TROUBLESHOOTING: Parsed workflow_data_to_use ---")
-        logger.info("Type: %s", type(workflow_data_to_use))
-        logger.info("Content: %s", workflow_data_to_use)
-        # --- END TROUBLESHOOTING LOGS ---
-
         tool_name = workflow_data_to_use.get("tool_name")
         arguments = workflow_data_to_use.get("arguments", {})
-
-        # --- START TROUBLESHOOTING LOGS ---
-        logger.info("--- TROUBLESHOOTING: Extracted tool_name and arguments ---")
-        logger.info("Tool Name: %s", tool_name)
-        logger.info("Arguments: %s", arguments)
-        logger.info("--- END TROUBLESHOOTING LOGS ---")
 
         logger.info("📋 Workflow: %s", tool_name)
         logger.info("   Items: %d", len(arguments.get("items", [])))
 
         # --- MORE DETAILED LOGGING ---
         logger.info("--- DETAILED LOGGING: Payload being sent to MCP ---")
-        logger.info(json.dumps(arguments, indent=2))
+        log_string = json.dumps(arguments)
+        logger.info(f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}")
         logger.info("--- END DETAILED LOGGING ---")
 
         async with httpx.AsyncClient(timeout=300.0) as client:
@@ -487,7 +470,8 @@ async def execute_mcp_workflow(
                 logger.info(
                     "--- DETAILED LOGGING: Full content from RAW MCP response ---"
                 )
-                logger.info(json.dumps(result_data, indent=2))
+                log_string = json.dumps(result_data)
+                logger.info(f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}")
                 logger.info("--- END DETAILED LOGGING ---")
 
                 # Extract the actual content from the MCP response
@@ -515,7 +499,8 @@ async def execute_mcp_workflow(
                 logger.info(
                     "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
                 )
-                logger.info(json.dumps(mcp_content, indent=2))
+                log_string = json.dumps(mcp_content)
+                logger.info(f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}")
                 logger.info("--- END DETAILED LOGGING ---")
 
                 # Extract quotes and metrics from the MCP response
@@ -529,7 +514,8 @@ async def execute_mcp_workflow(
                     logger.info(
                         "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
                     )
-                    logger.info(json.dumps(mcp_content, indent=2))
+                    log_string = json.dumps(mcp_content)
+                    logger.info(f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}")
                     logger.info("--- END DETAILED LOGGING ---")
 
                     # Check for parser errors first
