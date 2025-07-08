@@ -793,12 +793,9 @@ def execute_workflow(
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        # Don't clear log buffer - instead add execution boundary marker
-        logger.info("=" * 60)
-        logger.info("🚀 EXECUTION %s STARTING", execution_id)
-        logger.info("=" * 60)
-
-        # Clear stdout buffer for this execution
+        # Clear buffers to ensure isolated logging for this execution
+        log_buffer.seek(0)
+        log_buffer.truncate(0)
         stdout_buffer.seek(0)
         stdout_buffer.truncate(0)
 
@@ -870,6 +867,52 @@ def execute_workflow(
         # 2. AND it achieved its business goal (found at least one quote)
         workflow_completed = success_rate == 100 and quotes_found > 0
 
+        # --- Enhanced Error Message Extraction ---
+        error_message_for_db = None
+        if not workflow_completed:
+            # Case 1: The workflow ran perfectly but found no quotes.
+            if quotes_found == 0 and success_rate == 100:
+                error_message_for_db = "Workflow incomplete - No quotes found"
+            # Case 2: An actual error occurred during MCP execution.
+            elif raw_mcp_response and 'result' in raw_mcp_response:
+                try:
+                    mcp_result_text = raw_mcp_response['result']['content'][0]['text']
+                    mcp_result = json.loads(mcp_result_text)
+                    
+                    if mcp_result.get('status') != 'success':
+                        failed_step = None
+                        # Find the first step with a status of 'error'
+                        if 'results' in mcp_result and isinstance(mcp_result['results'], list):
+                            for group in mcp_result['results']:
+                                if 'results' in group and isinstance(group['results'], list):
+                                    for step in group['results']:
+                                        if step.get('status') == 'error':
+                                            failed_step = step
+                                            break
+                                if failed_step:
+                                    break
+                        
+                        if failed_step:
+                            tool_name = failed_step.get('tool_name', 'Unknown Tool')
+                            error_details = failed_step.get('error', 'Unknown error')
+                            
+                            # Extract the high-level error type for a concise message
+                            match = re.search(r'\{\\\"error_type\\\":\\\"(.*?)\\\"', error_details)
+                            error_type = match.group(1) if match else "Unknown"
+                            
+                            # Create a more informative high-level message, e.g., "type_into_element failed: ElementNotFound"
+                            error_message_for_db = f"{tool_name} failed: {error_type}"
+                        else:
+                            # Fallback if no specific failed step is found
+                            error_message_for_db = "MCP Execution Failed: See logs for details"
+
+                except (json.JSONDecodeError, KeyError, IndexError) as e:
+                    logger.error(f"Failed to parse MCP error from response: {e}")
+                    error_message_for_db = "MCP Execution Failed: Unable to parse error"
+            else:
+                # Fallback for other unknown errors
+                error_message_for_db = "Workflow failed: Unknown error"
+
         results["execution_summary"] = {
             "workflow_completed": workflow_completed,
             "success_rate_percentage": round(success_rate, 2),
@@ -882,14 +925,30 @@ def execute_workflow(
         formatted_output = None
         if results.get("quotes") is not None:  # If we have quotes data (even if empty)
             try:
-                # Directly use the raw quote output as the formatted output
                 quotes_output = results.get("quotes", [])
-                formatted_output = json.dumps(quotes_output, indent=2)
-                logger.info("📋 Using raw quote output as formatted_output.")
-                # Also log the formatted output for debugging
-                logger.info("\n%s", formatted_output)
+                
+                if not workflow_completed and quotes_found == 0:
+                    # Specific handling for "failed" state due to no quotes
+                    logger.warning("Workflow failed: No quotes found. Generating failure summary.")
+                    
+                    execution_metrics = results.get("performance_metrics", {})
+                    
+                    summary_lines = [
+                        f"❌ {error_message_for_db}",
+                        "-"*30,
+                        f"All {execution_metrics.get('successful_steps', 0)} automation steps completed successfully, but no insurance quotes were extracted from the final page.",
+                        "This usually means the applicant's criteria (e.g., age, health) did not result in any available products from the provider.",
+                    ]
+                    formatted_output = "\n".join(summary_lines)
+                else:
+                    # Existing logic for successful executions with quotes
+                    formatted_output = json.dumps(quotes_output, indent=2)
+                    logger.info("📋 Using raw quote output as formatted_output.")
+                    logger.info("\n%s", formatted_output)
+
             except Exception as format_error:
                 logger.warning("Failed to serialize raw quote output: %s", format_error)
+                formatted_output = f"Error: Could not format results.\n{format_error}"
 
         # Update execution with final results and raw data
         cur.execute(
@@ -898,7 +957,7 @@ def execute_workflow(
             SET status = %s, completed_at = %s, execution_duration_seconds = %s, 
                 results = %s, progress_percentage = %s, current_step_index = %s,
                 raw_logs = %s, raw_mcp_response = %s, execution_logs = %s,
-                formatted_output = %s
+                formatted_output = %s, error_message = %s
             WHERE id = %s
         """,
             (
@@ -916,6 +975,7 @@ def execute_workflow(
                 json.dumps(raw_mcp_response) if raw_mcp_response else None,
                 json.dumps(execution_logs),
                 formatted_output,
+                error_message_for_db,
                 execution_id,
             ),
         )
@@ -1268,8 +1328,6 @@ def check_and_process_queued_jobs():
     cur = None
 
     try:
-        logger.info("🔍 Checking for queued workflow executions...")
-
         # Connect to database
         conn = get_database_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1289,14 +1347,14 @@ def check_and_process_queued_jobs():
         queued_jobs = cur.fetchall()
 
         if not queued_jobs:
-            logger.info("✅ No queued jobs found")
+            # No need to log here, this is the normal, high-frequency state
             return {
                 "success": True,
                 "message": "No queued jobs to process",
                 "checked_at": datetime.now(timezone.utc).isoformat(),
             }
 
-        logger.info("📋 Found %d queued executions", len(queued_jobs))
+        logger.info("📋 Found %d queued executions to process", len(queued_jobs))
         processed = []
         errors = []
 
