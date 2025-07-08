@@ -87,6 +87,44 @@ export function WorkflowCard({
     }
   }, [workflow]);
 
+  const formatHeightForDisplay = (cleanValue = ''): string => {
+    const parts = String(cleanValue).split(' ');
+    const feet = parts[0];
+    const inches = parts[1];
+
+    if (feet && inches) {
+        return `${feet}' ${inches}"`;
+    }
+    if (feet) {
+        return `${feet}'`;
+    }
+    return '';
+  };
+
+  const handleParamChange = (key: string, value: string) => {
+    if (key === 'height') {
+      // 1. Get only the digits from the input, max 3.
+      const digits = value.replace(/\D/g, '').substring(0, 3);
+      
+      // 2. Parse into feet and inches.
+      const feet = digits.substring(0, 1);
+      const inches = digits.substring(1, 3);
+      
+      // 3. Construct the clean value with a space for the backend.
+      const cleanValueForBackend = `${feet}${inches ? ' ' + inches : ''}`;
+
+      setExecutionParams(prev => ({
+        ...prev,
+        [key]: cleanValueForBackend
+      }));
+    } else {
+      setExecutionParams(prev => ({
+        ...prev,
+        [key]: value
+      }));
+    }
+  };
+
   useEffect(() => {
     const timer = setInterval(() => {
       setLocalTimeOffsets(prev => {
@@ -107,13 +145,6 @@ export function WorkflowCard({
     
     return () => clearInterval(timer);
   }, [liveExecutions, workflow.id]);
-
-  const updateParam = (key: string, value: string) => {
-    setExecutionParams(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
 
   const workflowLiveExecutions = liveExecutions
     .filter(exec => exec.workflow_id === workflow.id)
@@ -233,8 +264,12 @@ export function WorkflowCard({
                           </Label>
                           <Input
                             id={`${workflow.id}-${key}`}
-                            value={String(executionParams[key] ?? '')}
-                            onChange={(e) => updateParam(key, e.target.value)}
+                            value={
+                              key === 'height'
+                                ? formatHeightForDisplay(String(executionParams[key] ?? ''))
+                                : String(executionParams[key] ?? '')
+                            }
+                            onChange={(e) => handleParamChange(key, e.target.value)}
                             className="h-8 text-xs font-mono"
                             placeholder={String(param.example || param.default || `Enter ${param.type || 'value'}`)}
                           />
