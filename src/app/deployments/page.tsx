@@ -28,6 +28,7 @@ export default function WorkflowsPage() {
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(null);
 
   // Fetch workflows
   const fetchWorkflows = useCallback(async () => {
@@ -66,16 +67,24 @@ export default function WorkflowsPage() {
   const fetchExecutionDetails = useCallback(async (executionId: number) => {
     try {
       setLoadingDetails(true);
+      setLoadingExecutionId(executionId);
+      
+      // Open the dialog immediately to show loading skeleton
+      setSelectedExecution(null);
+      setExecutionDetailsOpen(true);
+      
       const response = await fetch(`/api/remote-workflows/executions/${executionId}`);
       const data = await response.json();
       if (data.success) {
         setSelectedExecution(data.execution);
-        setExecutionDetailsOpen(true);
       }
     } catch (error) {
       console.error('Failed to fetch execution details:', error);
+      // Close dialog on error
+      setExecutionDetailsOpen(false);
     } finally {
       setLoadingDetails(false);
+      setLoadingExecutionId(null);
     }
   }, []);
 
@@ -299,6 +308,7 @@ export default function WorkflowsPage() {
               onFetchWorkflowDetails={fetchWorkflowOverview}
               onFetchExecutionDetails={fetchExecutionDetails}
               loadingDetails={loadingDetails}
+              loadingExecutionId={loadingExecutionId}
             />
           ))}
                           </div>
