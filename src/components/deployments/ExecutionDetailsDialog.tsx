@@ -147,32 +147,25 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                   
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold">API Request Details</h4>
+                      <h4 className="font-semibold">API Request</h4>
                       <CopyToClipboardButton
-                        contentToCopy={`POST /api/remote-workflows/${execution.workflow_id}/execute\n\nRequest Body:\n${JSON.stringify(execution.execution_params || {}, null, 2)}`}
+                        contentToCopy={`POST /api/remote-workflows/${execution.workflow_id}/execute\nContent-Type: application/json\n\n${JSON.stringify(execution.execution_params || {}, null, 2)}`}
                       />
                     </div>
-                    <div className="bg-gray-900 text-gray-100 p-3 rounded-lg font-mono text-sm overflow-x-auto">
-                      <div className="text-green-400 mb-2">POST /api/remote-workflows/{execution.workflow_id}/execute</div>
-                      <div className="text-gray-400 text-xs">Content-Type: application/json</div>
-                    </div>
-                  </div>
-                  
-                  {execution.execution_params && Object.keys(execution.execution_params).length > 0 && (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold">Request Body</h4>
-                        <CopyToClipboardButton
-                          contentToCopy={JSON.stringify(execution.execution_params, null, 2)}
-                        />
-                      </div>
-                      <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto">
-                        <code className="text-sm">
+                    <pre className="bg-gray-900 text-gray-100 p-3 rounded-lg font-mono text-sm overflow-x-auto">
+                      <div className="text-green-400">POST /api/remote-workflows/{execution.workflow_id}/execute</div>
+                      <div className="text-gray-400 text-xs mb-2">Content-Type: application/json</div>
+                      {execution.execution_params && Object.keys(execution.execution_params).length > 0 ? (
+                        <code className="text-sm text-white">
                           {JSON.stringify(execution.execution_params, null, 2)}
                         </code>
-                      </pre>
-                    </div>
-                  )}
+                      ) : (
+                        <code className="text-sm text-gray-500">
+                          {"// No parameters provided for this execution."}
+                        </code>
+                      )}
+                    </pre>
+                  </div>
                   
                   {execution.formatted_output && (
                     <div>

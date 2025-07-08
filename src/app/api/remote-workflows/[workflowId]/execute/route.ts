@@ -14,10 +14,12 @@ export async function POST(
     
     // Extract parameters from request body
     const { 
-      execution_params = {}, 
+      parameters: execution_params = {}, 
       client_id = `web-${Date.now()}`,
       execution_mode = 'async'
     } = body;
+
+    console.log('✅ Extracted execution_params:', execution_params);
 
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
