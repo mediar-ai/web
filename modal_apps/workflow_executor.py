@@ -684,6 +684,7 @@ async def execute_mcp_workflow(
     timeout=1800,  # 30 minutes for real browser automation
     memory=2048,  # 2GB memory for browser operations
     cpu=2.0,  # 2 CPUs for better performance
+    max_containers=1,  # Only allow one execution at a time
 )
 def execute_workflow(
     workflow_id: int,
