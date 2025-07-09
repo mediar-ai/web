@@ -1,7 +1,7 @@
 'use client';
 
 // This is the main admin dashboard page, accessible at /admin.
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { type UserSessionData } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -221,7 +221,7 @@ function AuthenticatedAdminPage({
   const [inviteStatus, setInviteStatus] = useState<{message: string, error: boolean} | null>(null);
 
   // Column widths state and localStorage persistence
-  const defaultColumnWidths = {
+  const defaultColumnWidths = useMemo(() => ({
     user: 300,
     organization: 150,
     ss: 60,
@@ -233,7 +233,7 @@ function AuthenticatedAdminPage({
     duration: 80,
     lastActive: 180,
     actions: 80
-  };
+  }), []);
 
   // Live user tracking (users with recent activity)
   const [liveUsers, setLiveUsers] = useState<Set<string>>(new Set());
