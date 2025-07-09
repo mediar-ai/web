@@ -9,7 +9,7 @@ This pull request proposes a comprehensive design for implementing a Next.js API
 Currently, our workflow execution relies on single MCP endpoints (ngrok tunnels) that can become bottlenecks. We need a scalable solution that can:
 - Dynamically provision Windows automation agents based on demand
 - Handle concurrent workflow executions without conflicts
-- Provide isolated environments for each automation session
+- Provide isolated environments for each automation session (one agent per container for exclusive UI control)
 - Ensure proper resource cleanup after execution
 
 ## Proposed Solution
@@ -35,6 +35,16 @@ graph TB
 
 ### Key Components
 
+#### Architecture Note: One Agent Per Container
+
+**Important**: Each Windows container runs exactly one automation agent. This 1:1 relationship is critical because:
+- Windows UI automation requires exclusive control of the desktop session
+- Multiple agents in the same container would conflict when trying to control mouse/keyboard
+- Each container provides an isolated Windows desktop environment
+- This ensures predictable behavior and prevents race conditions
+
+The scaling strategy is to spin up more containers (pods) rather than multiple agents within a container.
+
 #### 1. Next.js API Routes
 
 **New routes to implement:**
@@ -59,6 +69,8 @@ POST   /api/automation-agents/pool      // Configure pool settings
 **Dockerfile for Windows automation agent:**
 
 ```dockerfile
+# Windows Automation Agent Container
+# Each container runs exactly ONE agent instance for exclusive UI control
 # escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
@@ -117,7 +129,7 @@ metadata:
   name: windows-automation-agents
   namespace: automation
 spec:
-  replicas: 3  # Initial pool size
+  replicas: 3  # Initial pool size (3 containers = 3 agents)
   selector:
     matchLabels:
       app: windows-automation-agent
@@ -257,22 +269,23 @@ export class WindowsAgentManager {
   }
 
   async provisionAgent(workflowId: string, userId: string): Promise<AgentInfo> {
-    // Check for available agents first
+    // Check for available containers (each container = one agent)
     const availableAgent = await this.findAvailableAgent();
     
     if (availableAgent) {
+      // Mark the entire container/pod as busy (exclusive to this workflow)
       await this.markAgentBusy(availableAgent.id);
       return availableAgent;
     }
     
-    // No available agents, check if we can scale up
+    // No available containers, check if we can scale up
     const canScale = await this.canScaleUp();
     
     if (!canScale) {
       throw new Error('No available agents and scaling limit reached');
     }
     
-    // Trigger scale up and wait for new agent
+    // Trigger scale up to create a new container with its own agent
     await this.triggerScaleUp();
     return await this.waitForNewAgent();
   }
@@ -585,11 +598,11 @@ data:
 
 ### Performance Targets
 
-- Agent provisioning: < 30 seconds
+- Container/Agent provisioning: < 30 seconds
 - Workflow execution: Same as current (+ provisioning time)
-- Concurrent executions: 50+ workflows
-- Agent utilization: > 70%
-- Scale-up time: < 2 minutes
+- Concurrent executions: 50+ workflows (50+ containers)
+- Agent utilization: > 70% (one workflow per container at a time)
+- Scale-up time: < 2 minutes (new container with agent)
 - Scale-down time: < 5 minutes
 
 ### Cost Considerations
@@ -623,4 +636,4 @@ data:
 
 ## Summary
 
-This design provides a scalable, reliable, and cost-effective solution for running Windows automation agents in Kubernetes. By leveraging containers and dynamic scaling, we can handle varying workloads while maintaining isolation and security. The integration with our existing Next.js application and MCP protocol ensures a smooth transition and familiar development experience.
+This design provides a scalable, reliable, and cost-effective solution for running Windows automation agents in Kubernetes. The architecture maintains a strict 1:1 relationship between containers and agents, ensuring each automation workflow has exclusive control of its Windows UI environment. By leveraging containers and dynamic scaling, we can handle varying workloads while maintaining isolation and security. The integration with our existing Next.js application and MCP protocol ensures a smooth transition and familiar development experience.
