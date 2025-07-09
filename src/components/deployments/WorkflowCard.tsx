@@ -497,7 +497,7 @@ export function WorkflowCard({
                                           return (
                                             <div className="flex items-center gap-2">
                                               <span className="text-green-700">{quotes.length} quote{quotes.length > 1 ? 's' : ''} found:</span>
-                                              <span className="font-mono bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate max-w-[500px]" title={fullTitle}>
+                                              <span className="font-mono bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate max-w-[400px]" title={fullTitle}>
                                                 {quoteDisplay}
                                               </span>
                                               {quotes.length > 2 && <span className="text-gray-500">...</span>}
