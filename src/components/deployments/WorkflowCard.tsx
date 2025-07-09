@@ -87,41 +87,23 @@ export function WorkflowCard({
     }
   }, [workflow]);
 
-  const formatHeightForDisplay = (cleanValue = ''): string => {
-    const parts = String(cleanValue).split(' ');
-    const feet = parts[0];
-    const inches = parts[1];
-
-    if (feet && inches) {
-        return `${feet}' ${inches}"`;
+  const formatHeightForDisplay = (value: string = ''): string => {
+    const digits = String(value).replace(/\D/g, '');
+    if (digits.length === 0) return '';
+    const feet = digits.charAt(0);
+    const inches = digits.substring(1);
+    if (inches) {
+      return `${feet}' ${inches}"`;
     }
-    if (feet) {
-        return `${feet}'`;
-    }
-    return '';
+    return `${feet}'`;
   };
 
   const handleParamChange = (key: string, value: string) => {
     if (key === 'height') {
-      // 1. Get only the digits from the input, max 3.
       const digits = value.replace(/\D/g, '').substring(0, 3);
-      
-      // 2. Parse into feet and inches.
-      const feet = digits.substring(0, 1);
-      const inches = digits.substring(1, 3);
-      
-      // 3. Construct the clean value with a space for the backend.
-      const cleanValueForBackend = `${feet}${inches ? ' ' + inches : ''}`;
-
-      setExecutionParams(prev => ({
-        ...prev,
-        [key]: cleanValueForBackend
-      }));
+      setExecutionParams(prev => ({ ...prev, [key]: digits }));
     } else {
-      setExecutionParams(prev => ({
-        ...prev,
-        [key]: value
-      }));
+      setExecutionParams(prev => ({ ...prev, [key]: value }));
     }
   };
 
