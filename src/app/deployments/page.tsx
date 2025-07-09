@@ -12,57 +12,42 @@ import {
 import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
-interface ApplicantParams {
+interface WorkflowParams {
   [key: string]: string | boolean | undefined;
-  dob?: string;
-  weight?: string;
-  state?: string;
-  zip_code?: string;
-  select_male?: boolean;
-  select_tobacco_no?: boolean;
 }
 
-interface PolicyParams {
-  [key: string]: string | undefined;
-  face_amount?: string;
-}
+const transformParams = (params: Record<string, unknown>): WorkflowParams => {
+  const result: WorkflowParams = {};
 
-interface NestedParams {
-  applicant: ApplicantParams;
-  policy: PolicyParams;
-}
-
-const transformParamsToNested = (params: Record<string, unknown>): NestedParams => {
-  const result: NestedParams = { applicant: {}, policy: {} };
-
-  const mapping: Record<string, { group: 'applicant' | 'policy'; key: string }> = {
-    date_of_birth: { group: 'applicant', key: 'dob' },
-    // height: { group: 'applicant', key: 'height' }, // Temporarily disabled for testing
-    weight: { group: 'applicant', key: 'weight' },
-    state: { group: 'applicant', key: 'state' },
-    zip_code: { group: 'applicant', key: 'zip_code' },
-    face_value: { group: 'policy', key: 'face_amount' },
+  const mapping: Record<string, string> = {
+    date_of_birth: 'dob',
+    height: 'height',
+    weight: 'weight',
+    state: 'state',
+    zip_code: 'zip_code',
+    face_value: 'face_amount',
+    gender: 'gender',
+    nicotine_usage: 'nicotine_usage',
   };
 
   for (const [key, value] of Object.entries(params)) {
-    if (mapping[key]) {
-      const { group, key: nestedKey } = mapping[key];
-      result[group][nestedKey] = value as string | boolean;
-    } else if (key === 'gender') {
-      result.applicant.select_male = String(value).toLowerCase() === 'male';
-    } else if (key === 'nicotine_usage') {
-      result.applicant.select_tobacco_no = String(value).toLowerCase() === 'never';
+    if (mapping[key] && value) {
+      if (key === 'gender') {
+        result[mapping[key]] = String(value).toLowerCase() === 'male' ? 'Male' : 'Female';
+      } else if (key === 'nicotine_usage') {
+        result[mapping[key]] = String(value).toLowerCase() === 'never' ? 'Never' : 'Used';
+      } else if (key === 'height') {
+        // Remove non-numeric characters for height
+        result[mapping[key]] = String(value).replace(/[^0-9]/g, '');
+      } else {
+        result[mapping[key]] = value as string;
+      }
     }
-    // The permissive 'else' block that passed through unmapped keys has been removed
-    // to make the transformation stricter.
   }
-  // Clean up empty groups
-  return Object.fromEntries(
-    Object.entries(result).filter(([, value]) => 
-      (typeof value === 'object' && Object.keys(value).length > 0) || typeof value !== 'object'
-    )
-  ) as NestedParams;
+  return result;
 };
 
 
@@ -185,7 +170,7 @@ export default function WorkflowsPage() {
     
     try {
       const params = customParams || {};
-      const nestedParams = transformParamsToNested(params);
+      const transformedParams = transformParams(params);
       
       const response = await fetch(`/api/remote-workflows/${workflow.id}/execute`, {
         method: 'POST',
@@ -193,7 +178,7 @@ export default function WorkflowsPage() {
         body: JSON.stringify({
           client_id: `web-${Date.now()}`,
           execution_mode: 'async',
-          parameters: nestedParams
+          parameters: transformedParams
         })
       });
 
