@@ -1,0 +1,224 @@
+{
+    "tool_name": "execute_sequence",
+    "arguments": {
+        "variables": {
+            "url": "https://v2preview.online.bestplanpro.com/",
+            "registration": {
+                "key": "4WV-HJR-SA9",
+                "email": "louis@mediar.ai"
+            },
+            "applicant": {
+                "dob": "01/15/1985",
+                "height": "510",
+                "weight": "180",
+                "select_male": true,
+                "state": "California",
+                "zip_code": "90210",
+                "select_tobacco_no": true
+            },
+            "policy": {
+                "face_amount": "$100,000",
+                "coverage_type": "Best Case: Graded Coverage",
+                "use_max_budget": false,
+                "monthly_budget": "$500"
+            },
+            "selectors": {
+                "eula_accept_button": "role:Button|name:Accept",
+                "software_reg_text": "role:Text|name:Software Registration",
+                "reg_key_field": "#171944",
+                "reg_email_field": "#485431",
+                "activate_button": "role:Button|name:Activate",
+                "activation_ok_button": "#744321",
+                "reset_button": "#141366",
+                "dob_field": "#156018",
+                "height_field": "#643180",
+                "weight_field": "#101443",
+                "gender_male_radio": "#142876",
+                "state_field": "#146156",
+                "zip_field": "#103886",
+                "tobacco_no_radio": "#164746",
+                "max_monthly_budget_toggle": "#169644",
+                "max_monthly_budget_field": "#145550",
+                "face_amount_field": "#145550",
+                "coverage_type_dropdown": "#126156",
+                "health_wizard_close_button": "#828238",
+                "run_quote_button": "#326617",
+                "view_details_text": "#840880"
+            }
+        },
+        "items": [
+            {
+                "tool_name": "navigate_browser",
+                "arguments": {
+                    "url": "{{url}}"
+                }
+            },
+            {
+                "group_name": "Handle EULA and Software Registration (Skippable)",
+                "skippable": true,
+                "steps": [
+                    { "tool_name": "click_element", "arguments": { "selector": "{{selectors.eula_accept_button}}", "timeout_ms": 1000, "include_tree": false, "retries": 0 }, "continue_on_error": true },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.dob_field}}", "text_to_type": "{{applicant.dob}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 0 } },
+                    { "tool_name": "wait_for_element", "arguments": { "selector": "{{selectors.software_reg_text}}", "condition": "exists", "timeout_ms": 2000, "include_tree": false, "retries": 2 }, "continue_on_error": true },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.reg_key_field}}", "text_to_type": "{{registration.key}}", "timeout_ms": 500, "clear_before_typing": true, "include_tree": false }, "continue_on_error": true },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.reg_email_field}}", "text_to_type": "{{registration.email}}", "timeout_ms": 500, "clear_before_typing": true, "include_tree": false }, "continue_on_error": true },
+                    { "tool_name": "click_element", "arguments": { "selector": "{{selectors.activate_button}}", "timeout_ms": 1000, "include_tree": false, "retries": 2 }, "continue_on_error": true },
+                    { "tool_name": "wait_for_element", "arguments": { "selector": "{{selectors.activation_ok_button}}", "condition": "exists", "timeout_ms": 3000, "include_tree": false, "retries": 2 }, "continue_on_error": true },
+                    { "tool_name": "click_element", "arguments": { "selector": "{{selectors.activation_ok_button}}", "timeout_ms": 1000, "include_tree": false, "retries": 2 }, "continue_on_error": true }
+                ]
+            },
+            {
+                "group_name": "Reset Form (Skippable)",
+                "skippable": true,
+                "steps": [
+                    { "tool_name": "invoke_element", "arguments": { "selector": "{{selectors.reset_button}}", "timeout_ms": 2000 }, "continue_on_error": true },
+                    { "tool_name": "press_key_global", "arguments": { "key": "{Enter}" }, "continue_on_error": true, "delay_ms": 1000 }
+                ]
+            },
+            {
+                "group_name": "Fill Insurance Application Form",
+                "skippable": false,
+                "steps": [
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.dob_field}}", "text_to_type": "{{applicant.dob}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.height_field}}", "text_to_type": "{{applicant.height}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.weight_field}}", "text_to_type": "{{applicant.weight}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "set_selected", "arguments": { "selector": "{{selectors.gender_male_radio}}", "state": true, "timeout_ms": 600, "include_tree": false, "retries": 2 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.state_field}}", "text_to_type": "{{applicant.state}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.zip_field}}", "text_to_type": "{{applicant.zip_code}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "set_selected", "arguments": { "selector": "{{selectors.tobacco_no_radio}}", "state": true, "timeout_ms": 600, "include_tree": false, "retries": 2 } }
+                ]
+            },
+            {
+                "group_name": "Enter Max Monthly Budget",
+                "condition": "{{policy.use_max_budget}} == true",
+                "skippable": false,
+                "steps": [
+                    { "tool_name": "invoke_element", "arguments": { "selector": "{{selectors.max_monthly_budget_toggle}}", "timeout_ms": 800 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.max_monthly_budget_field}}", "text_to_type": "{{policy.monthly_budget}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } }
+                ]
+            },
+            {
+                "group_name": "Enter Face Amount",
+                "condition": "{{policy.use_max_budget}} == false",
+                "skippable": false,
+                "steps": [
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.face_amount_field}}", "text_to_type": "{{policy.face_amount}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } }
+                ]
+            },
+            {
+                "group_name": "Set Coverage and Generate Quote",
+                "skippable": false,
+                "steps": [
+                    {"tool_name": "wait_for_element", "arguments": {"selector": "{{selectors.coverage_type_dropdown}}", "condition": "exists", "timeout_ms": 5000, "include_tree": false, "retries": 2}},
+                    { "tool_name": "click_element", "arguments": { "selector": "{{selectors.coverage_type_dropdown}}", "timeout_ms": 1000, "include_tree": false, "retries": 2 }, "delay_ms": 100 },
+                    { "tool_name": "click_element", "arguments": { "selector": "role:ListItem|name:{{policy.coverage_type}}", "timeout_ms": 2000 }, "description": "Step 3: Click the desired option from the list." },
+                    {"tool_name": "invoke_element", "arguments": {"selector": "{{selectors.run_quote_button}}", "timeout_ms": 800, "include_tree": false, "retries": 2}},
+                    {"tool_name": "wait_for_element", "arguments": {"selector": "{{selectors.view_details_text}}", "condition": "exists", "timeout_ms": 30000, "include_tree": true, "retries": 2}, "continue_on_error": false}
+                ]
+            }
+        ],
+        "output_parser": {
+            "uiTreeJsonPath": "$.results[-1].results[-1].result.content[0].text",
+            "itemContainerDefinition": {
+                "nodeConditions": [
+                    {
+                        "property": "role",
+                        "op": "equals",
+                        "value": "Group"
+                    }
+                ],
+                "childConditions": {
+                    "logic": "and",
+                    "conditions": [
+                        {
+                            "existsChild": {
+                                "conditions": [
+                                    {
+                                        "property": "role",
+                                        "op": "equals",
+                                        "value": "Image"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "existsChild": {
+                                "conditions": [
+                                    {
+                                        "property": "name",
+                                        "op": "contains",
+                                        "value": ":"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            "fieldsToExtract": {
+                "carrierProduct": {
+                    "fromChild": {
+                        "conditions": [
+                            {
+                                "property": "name",
+                                "op": "contains",
+                                "value": ":"
+                            }
+                        ],
+                        "extractProperty": "name"
+                    }
+                },
+                "quoteValue": {
+                    "fromChild": {
+                        "conditions": [
+                            {
+                                "property": "name",
+                                "op": "startsWith",
+                                "value": "$"
+                            }
+                        ],
+                        "extractProperty": "name"
+                    }
+                },
+                "quoteType": {
+                    "fromChild": {
+                        "conditions": [
+                            {
+                                "property": "name",
+                                "op": "isOneOf",
+                                "value": [
+                                    "Monthly Price",
+                                    "Death Benefit"
+                                ]
+                            }
+                        ],
+                        "extractProperty": "name"
+                    }
+                },
+                "status": {
+                    "fromChildren": {
+                        "conditions": [
+                            {
+                                "property": "role",
+                                "op": "equals",
+                                "value": "Text"
+                            },
+                            {
+                                "property": "name",
+                                "op": "isOneOf",
+                                "value": [
+                                    "Graded",
+                                    "Discontinued",
+                                    "Standard",
+                                    "ROP"
+                                ]
+                            }
+                        ],
+                        "extractProperty": "name",
+                        "joinWith": ", "
+                    }
+                }
+            }
+        }
+    }
+}
