@@ -13,9 +13,28 @@ import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
 
+interface ApplicantParams {
+  [key: string]: string | boolean | undefined;
+  dob?: string;
+  weight?: string;
+  state?: string;
+  zip_code?: string;
+  select_male?: boolean;
+  select_tobacco_no?: boolean;
+}
 
-const transformParamsToNested = (params: Record<string, unknown>): Record<string, any> => {
-  const result: Record<string, any> = { applicant: {}, policy: {} };
+interface PolicyParams {
+  [key: string]: string | undefined;
+  face_amount?: string;
+}
+
+interface NestedParams {
+  applicant: ApplicantParams;
+  policy: PolicyParams;
+}
+
+const transformParamsToNested = (params: Record<string, unknown>): NestedParams => {
+  const result: NestedParams = { applicant: {}, policy: {} };
 
   const mapping: Record<string, { group: 'applicant' | 'policy'; key: string }> = {
     date_of_birth: { group: 'applicant', key: 'dob' },
@@ -29,7 +48,7 @@ const transformParamsToNested = (params: Record<string, unknown>): Record<string
   for (const [key, value] of Object.entries(params)) {
     if (mapping[key]) {
       const { group, key: nestedKey } = mapping[key];
-      result[group][nestedKey] = value;
+      result[group][nestedKey] = value as string | boolean;
     } else if (key === 'gender') {
       result.applicant.select_male = String(value).toLowerCase() === 'male';
     } else if (key === 'nicotine_usage') {
@@ -43,7 +62,7 @@ const transformParamsToNested = (params: Record<string, unknown>): Record<string
     Object.entries(result).filter(([, value]) => 
       (typeof value === 'object' && Object.keys(value).length > 0) || typeof value !== 'object'
     )
-  );
+  ) as NestedParams;
 };
 
 
