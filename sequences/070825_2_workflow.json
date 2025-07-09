@@ -9,7 +9,7 @@
             },
             "applicant": {
                 "dob": "01/15/1985",
-                "height": "178",
+                "height": "510",
                 "weight": "180",
                 "select_male": true,
                 "state": "California",
@@ -19,7 +19,7 @@
             "policy": {
                 "face_amount": "$100,000",
                 "coverage_type": "Best Case: Graded Coverage",
-                "use_max_budget": true,
+                "use_max_budget": false,
                 "monthly_budget": "$500"
             },
             "selectors": {
@@ -79,12 +79,12 @@
                 "group_name": "Fill Insurance Application Form",
                 "skippable": false,
                 "steps": [
-                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.dob_field}}", "text_to_type": "{{applicant.dob}}", "timeout_ms": 400, "clear_before_typing": true, "include_tree": false, "verify_action": false, "retries": 2 } },
-                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.height_field}}", "text_to_type": "{{applicant.height}}", "timeout_ms": 400, "clear_before_typing": true, "include_tree": false, "verify_action": false, "retries": 2 } },
-                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.weight_field}}", "text_to_type": "{{applicant.weight}}", "timeout_ms": 400, "clear_before_typing": true, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.dob_field}}", "text_to_type": "{{applicant.dob}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.height_field}}", "text_to_type": "{{applicant.height}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.weight_field}}", "text_to_type": "{{applicant.weight}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
                     { "tool_name": "set_selected", "arguments": { "selector": "{{selectors.gender_male_radio}}", "state": true, "timeout_ms": 600, "include_tree": false, "retries": 2 } },
-                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.state_field}}", "text_to_type": "{{applicant.state}}", "timeout_ms": 400, "clear_before_typing": true, "include_tree": false, "verify_action": false, "retries": 2 } },
-                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.zip_field}}", "text_to_type": "{{applicant.zip_code}}", "timeout_ms": 400, "clear_before_typing": true, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.state_field}}", "text_to_type": "{{applicant.state}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.zip_field}}", "text_to_type": "{{applicant.zip_code}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
                     { "tool_name": "set_selected", "arguments": { "selector": "{{selectors.tobacco_no_radio}}", "state": true, "timeout_ms": 600, "include_tree": false, "retries": 2 } }
                 ]
             },
@@ -94,7 +94,7 @@
                 "skippable": false,
                 "steps": [
                     { "tool_name": "invoke_element", "arguments": { "selector": "{{selectors.max_monthly_budget_toggle}}", "timeout_ms": 800 } },
-                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.max_monthly_budget_field}}", "text_to_type": "{{policy.monthly_budget}}", "timeout_ms": 400, "clear_before_typing": true, "include_tree": false, "verify_action": false, "retries": 2 } }
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.max_monthly_budget_field}}", "text_to_type": "{{policy.monthly_budget}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } }
                 ]
             },
             {
@@ -102,7 +102,7 @@
                 "condition": "{{policy.use_max_budget}} == false",
                 "skippable": false,
                 "steps": [
-                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.face_amount_field}}", "text_to_type": "{{policy.face_amount}}", "timeout_ms": 400, "clear_before_typing": true, "include_tree": false, "verify_action": false, "retries": 2 } }
+                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.face_amount_field}}", "text_to_type": "{{policy.face_amount}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } }
                 ]
             },
             {
@@ -111,7 +111,7 @@
                 "steps": [
                     {"tool_name": "wait_for_element", "arguments": {"selector": "{{selectors.coverage_type_dropdown}}", "condition": "exists", "timeout_ms": 5000, "include_tree": false, "retries": 2}},
                     { "tool_name": "click_element", "arguments": { "selector": "{{selectors.coverage_type_dropdown}}", "timeout_ms": 1000, "include_tree": false, "retries": 2 }, "delay_ms": 500 },
-                    { "tool_name": "select_option", "arguments": { "selector": "{{selectors.coverage_type_dropdown}}", "option_name": "{{policy.coverage_type}}", "timeout_ms": 2000, "include_tree": false, "retries": 3 } },
+                    { "tool_name": "click_element", "arguments": { "selector": "role:ListItem|name:{{policy.coverage_type}}", "timeout_ms": 2000 }, "description": "Step 3: Click the desired option from the list." },
                     {"tool_name": "wait_for_element", "arguments": {"selector": "{{selectors.health_wizard_close_button}}", "condition": "exists", "timeout_ms": 5000, "include_tree": false, "retries": 2}},
                     { "tool_name": "invoke_element", "arguments": { "selector": "{{selectors.health_wizard_close_button}}", "timeout_ms": 800, "include_tree": false, "retries": 2 } },
                     { "tool_name": "invoke_element", "arguments": { "selector": "{{selectors.run_quote_button}}", "timeout_ms": 800, "include_tree": false, "retries": 2 } },
