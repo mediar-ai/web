@@ -88,7 +88,7 @@ export default function BatchTestPage() {
         </Button>
         <h1 className="text-3xl font-bold mt-2">Create Batch Test</h1>
         <p className="text-muted-foreground">
-          Configure and run a test suite for the "{workflow.name}" workflow.
+          Configure and run a test suite for the &quot;{workflow.name}&quot; workflow.
         </p>
       </div>
 

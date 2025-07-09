@@ -217,7 +217,7 @@ function HomeComponent() {
     } catch (err) {
       logError(`[streamData] Network error for ${itemType} (${item.id}):`, err);
     }
-  }, [userId, logError]);
+  }, [logError, userId]);
 
   const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
     videoRef.current = node;
