@@ -71,8 +71,8 @@ DB_CONFIG = {
 }
 
 # MCP endpoint configuration - could be moved to secrets
-# MCP_ENDPOINT = "https://barely-honest-yak.ngrok-free.app/mcp" # virtual machine
-MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"  # Louis computer
+MCP_ENDPOINT = "https://barely-honest-yak.ngrok-free.app/mcp" # virtual machine
+# MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"  # Louis computer
 # MCP_ENDPOINT = "https://willingly-settling-husky.ngrok-free.app/mcp" # Matt computer
 
 
