@@ -9,8 +9,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/compon
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from '@/components/ui/separator';
-import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight, TestTube2 } from 'lucide-react';
 import { Workflow, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
+import Link from 'next/link';
 
 type RecursiveObject = {
   [key: string]: string | number | boolean | RecursiveObject | null | undefined;
@@ -206,6 +207,17 @@ export function WorkflowCard({
               >
                 {loadingDetails ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
                 <span className="ml-1">DETAILS</span>
+              </Button>
+               <Button 
+                asChild
+                variant="outline"
+                size="sm"
+                className="font-mono text-xs h-6"
+              >
+                <Link href={`/deployments/${workflow.id}/batch-test`}>
+                    <TestTube2 className="w-3 h-3" />
+                    <span className="ml-1">BATCH TEST</span>
+                </Link>
               </Button>
             </div>
             <p className="text-black text-sm mb-2">{workflow.description}</p>
