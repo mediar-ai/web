@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const workflow_id = searchParams.get('workflow_id');
     const status = searchParams.get('status');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const limit = parseInt(searchParams.get('limit') || '200');
     const offset = parseInt(searchParams.get('offset') || '0');
     const include_results = searchParams.get('include_results') === 'true';
 
