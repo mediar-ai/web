@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import Image from 'next/image';
 import type { ActivityItem, UIDiffAnalysis, InitialFrameDumpAnalysis, DataProvider } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -147,9 +148,11 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
     }
     if (imageUrl) {
       return (
-        <img
+        <Image
           src={imageUrl}
           alt="Activity screenshot"
+          width={1920}
+          height={1080}
           className="object-contain w-full h-full"
         />
       );
@@ -217,9 +220,11 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
           >
             <X className="w-8 h-8" />
           </Button>
-          <img
+          <Image
             src={imageUrl}
             alt="Activity screenshot"
+            width={1920}
+            height={1080}
             className="max-w-[90vw] max-h-[90vh] object-contain"
           />
         </div>

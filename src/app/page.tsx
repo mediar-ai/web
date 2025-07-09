@@ -761,7 +761,7 @@ function HomeComponent() {
       setShowScrollHint(true);
       setHasTriggeredScrollHint(true);
     }
-  }, [selectedMainTab, activityItems.length, isHoveringScrollableArea, hasTriggeredScrollHint]);
+  }, [selectedMainTab, activityItems.length, isHoveringScrollableArea, hasTriggeredScrollHint, logToUI]);
 
   const handleDismissScrollHint = () => {
     setShowScrollHint(false);
@@ -792,11 +792,11 @@ function HomeComponent() {
     } else {
       setMainStatus('Idle');
     }
-  }, [stream, error, activeAnalysesCount, setMainStatus, videoRef, streamRef]); 
+  }, [activeAnalysesCount, setMainStatus, videoRef, streamRef]); 
 
   useEffect(() => {
     updateMainStatus();
-  }, [stream, error, activeAnalysesCount, setMainStatus]);
+  }, [stream, error, activeAnalysesCount, setMainStatus, updateMainStatus]);
 
   useEffect(() => {
     logToUI(`[useEffect stream] Main effect RUNNING. Stream active: ${!!stream}`);
@@ -961,7 +961,7 @@ function HomeComponent() {
       frameBufferLength: frameBuffer.length,
       analysesPanelCollapsed
     });
-  }, [selectedMainTab, selectedActivity, selectedMoreOption, allAnalyses.length, analysesPanelCollapsed]);
+  }, [selectedMainTab, selectedActivity, selectedMoreOption, allAnalyses.length, analysesPanelCollapsed, completedAnalyses.length, frameBuffer.length, pendingEventAnalyses.length, queuedAnalyses.length, runningAnalyses.length]);
 
   // Debug: Check IndexedDB directly
   useEffect(() => {
@@ -991,7 +991,7 @@ function HomeComponent() {
 
   useEffect(() => {
     logToUI(`[App] Starting with capture session ID: ${captureSessionId} (next capture will use this ID)`);
-  }, []); 
+  }, [captureSessionId, logToUI]); 
 
   useEffect(() => {
     if (pipWindow) {
@@ -1008,7 +1008,7 @@ function HomeComponent() {
       const reactRoot = ReactDOM.createRoot(root);
       reactRoot.render(<PipView events={events} onStart={handleStartScreenShare} onStop={handleStopScreenShare} isCapturing={!!stream} mainStatus={mainStatus} error={error} />);
     }
-  }, [events, pipWindow, stream, mainStatus, error]);
+  }, [events, pipWindow, stream, mainStatus, error, handleStartScreenShare, handleStopScreenShare]);
 
   const handleTogglePip = async (open?: boolean) => {
     if (open === false && pipWindow) {

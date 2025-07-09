@@ -427,7 +427,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       // than an exact millisecond match.
       return Math.floor(analysisTimestamp.getTime() / 1000) === Math.floor(selectedEventTimestamp.getTime() / 1000);
     }) || null;
-  }, [selectedEvent, allWorkflowAnalyses, uiTreeEvents]);
+  }, [selectedEvent, allWorkflowAnalyses]);
 
   // Find the previous UI tree event in the timeline
   const previousUiTreeEvent = useMemo(() => {
