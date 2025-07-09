@@ -766,8 +766,14 @@ def execute_workflow(
                 logger.info("🏷️ Execution ID: %s", execution_id)
                 logger.info("⏰ Start Time: %s", datetime.now(timezone.utc).isoformat())
 
+                # Handle empty height parameter to avoid overriding defaults
+                params_for_mcp = execution_params.copy() if execution_params else {}
+                if params_for_mcp.get('height') == '':
+                    logger.info("Removing empty 'height' parameter to allow workflow default to be used.")
+                    del params_for_mcp['height']
+
                 results = loop.run_until_complete(
-                    execute_mcp_workflow(workflow, execution_params or {})
+                    execute_mcp_workflow(workflow, params_for_mcp)
                 )
                 logger.info(
                     "Received %d quotes from MCP workflow.",
