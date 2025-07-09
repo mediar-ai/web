@@ -132,6 +132,13 @@
                 ]
             },
             {
+                "tool_name": "zoom_in",
+                "arguments": {
+                    "level": 3
+                },
+                "delay_ms": 500
+            },
+            {
                 "group_name": "Close Window",
                 "skippable": true,
                 "steps": [
@@ -140,13 +147,13 @@
                         "arguments": {
                             "key": "{Alt}{F4}"
                         },
-                        "delay_ms": 5000
+                        "delay_ms": 10000
                     }
                 ]
             }
         ],
         "output_parser": {
-            "uiTreeJsonPath": "$.results[-2].results[-1].result.content[0].text",
+            "uiTreeJsonPath": "$.results[-3].results[-1].result.content[0].text",
             "itemContainerDefinition": {
                 "nodeConditions": [
                     {
