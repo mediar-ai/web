@@ -483,13 +483,17 @@ export function WorkflowCard({
                                       try {
                                         const quotes = JSON.parse(execution.formatted_output);
                                         if (Array.isArray(quotes) && quotes.length > 0) {
+                                          const quotesToShow = quotes.slice(0, 2);
+                                          const quoteDisplay = quotesToShow.map(q => `${q.carrierProduct?.split(':')[0]}: ${q.quoteValue || ''}`).join(' | ');
+                                          const fullTitle = quotes.map(q => `${q.carrierProduct}: ${q.quoteValue || ''}`).join(', ');
+                                          
                                           return (
                                             <div className="flex items-center gap-2">
                                               <span className="text-green-700">{quotes.length} quote{quotes.length > 1 ? 's' : ''} found:</span>
-                                              <span className="font-mono bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate max-w-[400px]" title={quotes[0].carrierProduct}>
-                                                {quotes[0].carrierProduct?.split(':')[0]}: {quotes[0].monthlyPrice}
+                                              <span className="font-mono bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate max-w-[500px]" title={fullTitle}>
+                                                {quoteDisplay}
                                               </span>
-                                              {quotes.length > 1 && <span className="text-gray-500">...</span>}
+                                              {quotes.length > 2 && <span className="text-gray-500">...</span>}
                                             </div>
                                           )
                                         }
