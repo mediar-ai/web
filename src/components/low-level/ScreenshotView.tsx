@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { loadScreenshotFromStorage } from '@/lib/screenshotStorage';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -80,9 +81,11 @@ const ScreenshotView: React.FC<ScreenshotViewProps> = ({
       className="w-full h-[700px] overflow-hidden bg-muted rounded-lg flex items-center justify-center"
       onWheel={onWheel}
     >
-      <img 
+      <Image 
         src={finalImageUrl} 
         alt="Workflow Step Screenshot" 
+        width={1920}
+        height={1080}
         className="max-h-full max-w-none" 
         style={{ objectFit: 'contain' }}
         onError={() => {

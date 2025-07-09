@@ -220,6 +220,21 @@ function AuthenticatedAdminPage({
   const [inviteRole, setInviteRole] = useState('org:member');
   const [inviteStatus, setInviteStatus] = useState<{message: string, error: boolean} | null>(null);
 
+  // Column widths state and localStorage persistence
+  const defaultColumnWidths = {
+    user: 300,
+    organization: 150,
+    ss: 60,
+    type: 90,
+    events: 80,
+    steps: 120,
+    annotation: 120,
+    workflow: 120,
+    duration: 80,
+    lastActive: 180,
+    actions: 80
+  };
+
   // Live user tracking (users with recent activity)
   const [liveUsers, setLiveUsers] = useState<Set<string>>(new Set());
   
@@ -240,21 +255,6 @@ function AuthenticatedAdminPage({
     llmLabeled: number;
     humanAnnotated: number;
   }>>({});
-
-  // Column widths state and localStorage persistence
-  const defaultColumnWidths = {
-    user: 300,
-    organization: 150,
-    ss: 60,
-    type: 90,
-    events: 80,
-    steps: 120,
-    annotation: 120,
-    workflow: 120,
-    duration: 80,
-    lastActive: 180,
-    actions: 80
-  };
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(defaultColumnWidths);
   
@@ -280,7 +280,7 @@ function AuthenticatedAdminPage({
         console.error('Failed to parse saved column widths:', error);
       }
     }
-  }, []);
+  }, [defaultColumnWidths]);
 
   // Save column widths to localStorage
   const saveColumnWidths = useCallback((widths: Record<string, number>) => {

@@ -281,7 +281,7 @@ export function useWorkflowPageLogic(userId: string) {
     // }
     // If synthesisStep is not 'done', messages are managed by the synthesis process itself 
     // (e.g., loadSynthesisSession, handleSendMessage) and should not be overwritten by the generic workflows list loading.
-  }, [workflows, synthesisStep]);
+  }, [workflows]);
 
   const fetchWorkflows = useCallback(async (skipLoadingState = false) => {
     if(!userId) return;
