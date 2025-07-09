@@ -12,6 +12,61 @@ import { Separator } from '@/components/ui/separator';
 import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight } from 'lucide-react';
 import { Workflow, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
 
+type RecursiveObject = {
+  [key: string]: string | number | boolean | RecursiveObject | null | undefined;
+};
+
+// New Recursive form component to render the nested variable structure
+const RecursiveForm = ({ data, path, handleParamChange }: { data: RecursiveObject, path: string, handleParamChange: (path: string, value: string | number | boolean) => void }) => {
+  return (
+    <div className="space-y-3">
+      {Object.entries(data).map(([key, value]) => {
+        const currentPath = path ? `${path}.${key}` : key;
+        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          return (
+            <fieldset key={currentPath} className="border border-gray-200 rounded-md p-2 space-y-2">
+              <legend className="text-xs font-mono font-medium px-1">{key}</legend>
+              <RecursiveForm data={value as RecursiveObject} path={currentPath} handleParamChange={handleParamChange} />
+            </fieldset>
+          );
+        } else if (typeof value === 'boolean') {
+          return (
+             <div key={currentPath} className="flex items-center space-x-2">
+               <input
+                 type="checkbox"
+                 id={currentPath}
+                 checked={!!value}
+                 onChange={(e) => handleParamChange(currentPath, e.target.checked)}
+                 className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+               />
+               <Label htmlFor={currentPath} className="text-xs font-mono">
+                 {key}
+               </Label>
+             </div>
+          );
+        } else {
+          // Handle string, number, or other primitives
+          return (
+            <div key={currentPath} className="space-y-1">
+              <Label htmlFor={currentPath} className="text-xs font-mono">
+                {key}
+              </Label>
+              <Input
+                id={currentPath}
+                value={String(value ?? '')}
+                onChange={(e) => handleParamChange(currentPath, e.target.value)}
+                className="h-8 text-xs font-mono"
+                placeholder={`Enter value for ${key}`}
+              />
+            </div>
+          );
+        }
+      })}
+    </div>
+  );
+};
+
+
 interface WorkflowCardProps {
   workflow: Workflow;
   executions: Execution[];
@@ -80,31 +135,24 @@ export function WorkflowCard({
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
 
   useEffect(() => {
-    // Always use the sample_inputs from the workflow definition as the base
-    // for the execution parameters. The UI allows overriding them.
-    if (workflow.sample_inputs) {
-      setExecutionParams(workflow.sample_inputs);
+    // The source of truth for execution parameters is now input_parameters,
+    // which is dynamically generated from the workflow's variables block.
+    if (workflow.input_parameters) {
+      setExecutionParams(workflow.input_parameters);
     }
   }, [workflow]);
 
-  const formatHeightForDisplay = (value: string = ''): string => {
-    const digits = String(value).replace(/\D/g, '');
-    if (digits.length === 0) return '';
-    const feet = digits.charAt(0);
-    const inches = digits.substring(1);
-    if (inches) {
-      return `${feet}' ${inches}"`;
-    }
-    return `${feet}'`;
-  };
-
-  const handleParamChange = (key: string, value: string) => {
-    if (key === 'height') {
-      const digits = value.replace(/\D/g, '').substring(0, 3);
-      setExecutionParams(prev => ({ ...prev, [key]: digits }));
-    } else {
-      setExecutionParams(prev => ({ ...prev, [key]: value }));
-    }
+  const handleParamChange = (path: string, value: string | number | boolean) => {
+    setExecutionParams(prev => {
+      const newParams = JSON.parse(JSON.stringify(prev)); // Deep copy
+      const keys = path.split('.');
+      let current = newParams;
+      for (let i = 0; i < keys.length - 1; i++) {
+        current = current[keys[i]] = current[keys[i]] || {};
+      }
+      current[keys[keys.length - 1]] = value;
+      return newParams;
+    });
   };
 
   useEffect(() => {
@@ -233,56 +281,33 @@ export function WorkflowCard({
                     )}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-80 p-4" align="end">
+                <DropdownMenuContent className="w-96 p-4 max-h-[70vh] overflow-y-auto" align="end">
                   <div className="space-y-4">
                     <div className="font-mono text-sm font-bold">EXECUTION PARAMETERS</div>
                     
-                    <div className="space-y-3">
-                      {Object.entries(workflow.input_parameters).map(([key, param]) => (
-                        <div key={key} className="space-y-1">
-                          <Label htmlFor={`${workflow.id}-${key}`} className="text-xs font-mono">
-                            {key}
-                            {param.required && <span className="text-red-500 ml-1">*</span>}
-                          </Label>
-                          <Input
-                            id={`${workflow.id}-${key}`}
-                            value={
-                              key === 'height'
-                                ? formatHeightForDisplay(String(executionParams[key] ?? ''))
-                                : String(executionParams[key] ?? '')
-                            }
-                            onChange={(e) => handleParamChange(key, e.target.value)}
-                            className="h-8 text-xs font-mono"
-                            placeholder={String(param.example || param.default || `Enter ${param.type || 'value'}`)}
-                          />
-                          {param.description && (
-                            <p className="text-xs text-muted-foreground">{param.description}</p>
-                          )}
-                        </div>
-                      ))}
-                      
-                      <div className="flex gap-2 pt-2">
-                        <Button
-                          onClick={() => {
-                            onExecute(workflow, executionParams);
-                            setShowParamsDropdown(false);
-                          }}
-                          className="bg-black text-white hover:bg-gray-800 font-mono text-xs flex-1"
-                          size="sm"
-                          disabled={executingWorkflows.has(workflow.id)}
-                        >
-                          <PlayCircle className="w-3 h-3 mr-1" />
-                          RUN WITH PARAMS
-                        </Button>
-                        <Button
-                          onClick={() => setShowParamsDropdown(false)}
-                          variant="outline"
-                          className="font-mono text-xs"
-                          size="sm"
-                        >
-                          CANCEL
-                        </Button>
-                      </div>
+                    <RecursiveForm data={executionParams as RecursiveObject} path="" handleParamChange={handleParamChange} />
+                    
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        onClick={() => {
+                          onExecute(workflow, executionParams);
+                          setShowParamsDropdown(false);
+                        }}
+                        className="bg-black text-white hover:bg-gray-800 font-mono text-xs flex-1"
+                        size="sm"
+                        disabled={executingWorkflows.has(workflow.id)}
+                      >
+                        <PlayCircle className="w-3 h-3 mr-1" />
+                        RUN WITH PARAMS
+                      </Button>
+                      <Button
+                        onClick={() => setShowParamsDropdown(false)}
+                        variant="outline"
+                        className="font-mono text-xs"
+                        size="sm"
+                      >
+                        CANCEL
+                      </Button>
                     </div>
                   </div>
                 </DropdownMenuContent>

@@ -12,44 +12,6 @@ import {
 import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-
-interface WorkflowParams {
-  [key: string]: string | boolean | undefined;
-}
-
-const transformParams = (params: Record<string, unknown>): WorkflowParams => {
-  const result: WorkflowParams = {};
-
-  const mapping: Record<string, string> = {
-    date_of_birth: 'dob',
-    height: 'height',
-    weight: 'weight',
-    state: 'state',
-    zip_code: 'zip_code',
-    face_value: 'face_amount',
-    gender: 'gender',
-    nicotine_usage: 'nicotine_usage',
-  };
-
-  for (const [key, value] of Object.entries(params)) {
-    if (mapping[key] && value) {
-      if (key === 'gender') {
-        result[mapping[key]] = String(value).toLowerCase() === 'male' ? 'Male' : 'Female';
-      } else if (key === 'nicotine_usage') {
-        result[mapping[key]] = String(value).toLowerCase() === 'never' ? 'Never' : 'Used';
-      } else if (key === 'height') {
-        // Remove non-numeric characters for height
-        result[mapping[key]] = String(value).replace(/[^0-9]/g, '');
-      } else {
-        result[mapping[key]] = value as string;
-      }
-    }
-  }
-  return result;
-};
-
 
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -169,16 +131,13 @@ export default function WorkflowsPage() {
     setExecutingWorkflows(prev => new Set([...prev, workflow.id]));
     
     try {
-      const params = customParams || {};
-      const transformedParams = transformParams(params);
-      
       const response = await fetch(`/api/remote-workflows/${workflow.id}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           client_id: `web-${Date.now()}`,
           execution_mode: 'async',
-          parameters: transformedParams
+          parameters: customParams || {}
         })
       });
 
