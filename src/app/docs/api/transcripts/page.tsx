@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { promises as fs } from 'fs';
 import path from 'path';
 import remarkGfm from 'remark-gfm';
+import { markdownComponents } from '@/components/common/MarkdownComponents';
 
 // This is now a Server Component, so we can fetch data directly on the server.
 export default async function TranscriptsApiPage() {
@@ -15,7 +16,12 @@ export default async function TranscriptsApiPage() {
       <div className="p-8 rounded-lg border bg-card text-card-foreground shadow-sm">
         <article className="prose prose-zinc dark:prose-invert max-w-none">
           {/* We add remarkGfm to support GitHub Flavored Markdown like tables */}
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+          <ReactMarkdown 
+            remarkPlugins={[remarkGfm]}
+            components={markdownComponents}
+          >
+            {markdown}
+          </ReactMarkdown>
         </article>
       </div>
     </div>

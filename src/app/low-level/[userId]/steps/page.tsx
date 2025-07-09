@@ -52,6 +52,7 @@ import { diffLines } from 'diff';
 import { preprocessTree } from '@/lib/diff';
 import { FlattenedWorkflowAnalysis } from '@/types';
 import { AnalysisDisplay } from '@/components/workflow-analysis';
+import { CodeBlock } from '@/components/common/CodeBlock';
 
 interface GenericEvent {
   [key: string]: unknown;
@@ -1096,9 +1097,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                             {eventsBetweenByTimestamp.length > 0 ? (
                               eventsBetweenByTimestamp.map((event, index) => (
                                 <div key={index}>
-                                  <pre className="text-xs overflow-auto bg-gray-50 border rounded-md font-mono text-gray-700">
-                                    {JSON.stringify(event.payload.payload, null, 2)}
-                                  </pre>
+                                  <CodeBlock
+                                    code={JSON.stringify(event.payload.payload, null, 2)}
+                                    language="json"
+                                    showCopyButton={false}
+                                    customStyle={{ fontSize: '0.75rem' }}
+                                  />
                                 </div>
                               ))
                             ) : (
@@ -1118,9 +1122,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                               eventsBetweenSameWindow.length > 0 ? (
                                 eventsBetweenSameWindow.map((event, index) => (
                                   <div key={index}>
-                                    <pre className="text-xs overflow-auto bg-gray-50 border rounded-md font-mono text-gray-700">
-                                      {JSON.stringify(event.payload.payload, null, 2)}
-                                    </pre>
+                                    <CodeBlock
+                                      code={JSON.stringify(event.payload.payload, null, 2)}
+                                      language="json"
+                                      showCopyButton={false}
+                                      customStyle={{ fontSize: '0.75rem' }}
+                                    />
                                   </div>
                                 ))
                               ) : (
@@ -1199,9 +1206,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             </div>
             <AccordionContent>
               {rawLlmInputForDisplay ? (
-                <pre className="p-2 text-xs overflow-auto bg-gray-50 border rounded-md font-mono text-gray-700 max-h-96">
-                  {rawLlmInputForDisplay}
-                </pre>
+                <CodeBlock
+                  code={rawLlmInputForDisplay}
+                  language="json"
+                  showLineNumbers={true}
+                  customStyle={{ maxHeight: '384px', overflow: 'auto' }}
+                />
               ) : (
                 <p className="text-sm text-gray-500 p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
                   No raw input to display. Process a step to see the input.

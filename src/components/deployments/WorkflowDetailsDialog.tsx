@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Terminal } from 'lucide-react';
 import { CopyToClipboardButton } from '@/components/common/CopyToClipboardButton';
+import { CodeBlock } from '@/components/common/CodeBlock';
 import { WorkflowOverview } from '@/lib/workflow-types';
 import { formatDuration } from './utils';
 
@@ -162,11 +163,11 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                   contentToCopy={JSON.stringify(workflow.sample_inputs, null, 2)}
                 />
               </div>
-              <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto">
-                <code className="text-sm">
-                  {JSON.stringify(workflow.sample_inputs, null, 2)}
-                </code>
-              </pre>
+              <CodeBlock
+                code={JSON.stringify(workflow.sample_inputs, null, 2)}
+                language="json"
+                showCopyButton={false}
+              />
             </div>
             
             <div>
@@ -176,11 +177,11 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                   contentToCopy={JSON.stringify(workflow.expected_outputs, null, 2)}
                 />
               </div>
-              <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto">
-                <code className="text-sm">
-                  {JSON.stringify(workflow.expected_outputs, null, 2)}
-                </code>
-              </pre>
+              <CodeBlock
+                code={JSON.stringify(workflow.expected_outputs, null, 2)}
+                language="json"
+                showCopyButton={false}
+              />
             </div>
           </TabsContent>
           
@@ -255,14 +256,14 @@ https://app.mediar.ai/api/remote-workflows/${workflow.id}/execute \\
 -d '${JSON.stringify(workflow.sample_inputs || {}, null, 2)}'`}
                 />
               </div>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                <code className="text-sm">
-{`curl -X POST \\
+              <CodeBlock
+                code={`curl -X POST \\
 https://app.mediar.ai/api/remote-workflows/${workflow.id}/execute \\
 -H "Content-Type: application/json" \\
 -d '${JSON.stringify(workflow.sample_inputs || {}, null, 2)}'`}
-                </code>
-              </pre>
+                language="bash"
+                showCopyButton={false}
+              />
             </div>
             
             <div>
@@ -276,15 +277,15 @@ body: JSON.stringify(${JSON.stringify(workflow.sample_inputs || {}, null, 2)})
 }).then(response => response.json())`}
                 />
               </div>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                <code className="text-sm">
-{`fetch('/api/remote-workflows/${workflow.id}/execute', {
+              <CodeBlock
+                code={`fetch('/api/remote-workflows/${workflow.id}/execute', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json' },
 body: JSON.stringify(${JSON.stringify(workflow.sample_inputs || {}, null, 2)})
 }).then(response => response.json())`}
-                </code>
-              </pre>
+                language="javascript"
+                showCopyButton={false}
+              />
             </div>
           </TabsContent>
         </Tabs>

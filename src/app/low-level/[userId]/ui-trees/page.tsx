@@ -11,6 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import DiffView from '@/components/low-level/DiffView';
 import { preprocessTree } from '@/lib/diff';
 import { diffLines } from 'diff';
+import { CodeBlock } from '@/components/common/CodeBlock';
 
 type UITreePayload = {
   type?: string;
@@ -329,9 +330,12 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
                              </div>
 
                             {diffMode === 'raw' && (
-                                <pre className="p-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 rounded">
-                                    {JSON.stringify(JSON.parse(currentTree), null, 2)}
-                                </pre>
+                                <CodeBlock
+                                  code={JSON.stringify(JSON.parse(currentTree), null, 2)}
+                                  language="json"
+                                  showLineNumbers={true}
+                                  customStyle={{ maxHeight: '500px', overflow: 'auto' }}
+                                />
                             )}
                             {diffMode === 'previous' && previousTree && (
                                 <DiffView oldTree={previousTree} newTree={currentTree} />

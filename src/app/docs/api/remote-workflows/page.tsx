@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
+import { CodeBlock } from '@/components/common/CodeBlock';
 import mermaid from 'mermaid';
 
 export default function RemoteWorkflowsAPIDocsPage() {
@@ -451,18 +452,22 @@ graph TB
                   {endpoint.requestBody && (
                     <div className="mb-6">
                       <h4 className="font-semibold mb-2">Request Body:</h4>
-                      <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                        <code className="text-sm">{endpoint.requestBody}</code>
-                      </pre>
+                      <CodeBlock
+                        code={endpoint.requestBody}
+                        language="json"
+                        showCopyButton={true}
+                      />
                     </div>
                   )}
                   
                   {/* Response */}
                   <div>
                     <h4 className="font-semibold mb-2">Response:</h4>
-                    <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                      <code className="text-sm">{endpoint.response}</code>
-                    </pre>
+                    <CodeBlock
+                      code={endpoint.response}
+                      language="json"
+                      showCopyButton={true}
+                    />
                   </div>
                 </AccordionContent>
               </AccordionItem>

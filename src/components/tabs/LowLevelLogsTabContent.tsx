@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useViewingMode } from '@/hooks/useViewingMode';
+import { CodeBlock } from '@/components/common/CodeBlock';
 
 interface RawLogItem {
   id: number;
@@ -95,9 +96,12 @@ export default function LowLevelLogsTabContent({ onLogsCountChange }: LowLevelLo
                     </span>
                   </TableCell>
                   <TableCell>
-                    <pre className="text-xs bg-gray-100 p-2 rounded-md overflow-auto">
-                      {JSON.stringify(log.item_data, null, 2)}
-                    </pre>
+                    <CodeBlock
+                      code={JSON.stringify(log.item_data, null, 2)}
+                      language="json"
+                      showCopyButton={true}
+                      customStyle={{ fontSize: '0.75rem' }}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

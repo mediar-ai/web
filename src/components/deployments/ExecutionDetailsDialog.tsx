@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { XCircle, Terminal, FileText, Loader2 } from 'lucide-react';
 import { CopyToClipboardButton } from '@/components/common/CopyToClipboardButton';
+import { CodeBlock } from '@/components/common/CodeBlock';
 import { Execution } from '@/lib/workflow-types';
 import { getStatusBadge, getStatusIcon, formatDuration } from './utils';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -163,19 +164,16 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                         contentToCopy={`POST /api/remote-workflows/${execution.workflow_id}/execute\nContent-Type: application/json\n\n${JSON.stringify(execution.execution_params || {}, null, 2)}`}
                       />
                     </div>
-                    <pre className="bg-gray-900 text-gray-100 p-3 rounded-lg font-mono text-sm overflow-x-auto">
-                      <div className="text-green-400">POST /api/remote-workflows/{execution.workflow_id}/execute</div>
-                      <div className="text-gray-400 text-xs mb-2">Content-Type: application/json</div>
-                      {execution.execution_params && Object.keys(execution.execution_params).length > 0 ? (
-                        <code className="text-sm text-white">
-                          {JSON.stringify(execution.execution_params, null, 2)}
-                        </code>
-                      ) : (
-                        <code className="text-sm text-gray-500">
-                          {"// No parameters provided for this execution."}
-                        </code>
-                      )}
-                    </pre>
+                    <CodeBlock
+                      code={`POST /api/remote-workflows/${execution.workflow_id}/execute
+Content-Type: application/json
+
+${execution.execution_params && Object.keys(execution.execution_params).length > 0 
+  ? JSON.stringify(execution.execution_params, null, 2)
+  : '// No parameters provided for this execution.'}`}
+                      language="http"
+                      showCopyButton={false}
+                    />
                   </div>
                   
                   {execution.formatted_output && (
@@ -186,11 +184,10 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                           contentToCopy={execution.formatted_output || ''}
                         />
                       </div>
-                      <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto whitespace-pre-wrap">
-                        <code className="text-sm">
-                          {execution.formatted_output}
-                        </code>
-                      </pre>
+                      <CodeBlock
+                        code={execution.formatted_output}
+                        showCopyButton={false}
+                      />
                     </div>
                   )}
                 </div>
@@ -247,11 +244,11 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                           contentToCopy={JSON.stringify(execution.results, null, 2)}
                         />
                       </div>
-                      <pre className="p-3 text-xs overflow-auto border rounded-md">
-                        <code>
-                          {JSON.stringify(execution.results, null, 2)}
-                        </code>
-                      </pre>
+                      <CodeBlock
+                        code={JSON.stringify(execution.results, null, 2)}
+                        language="json"
+                        showCopyButton={false}
+                      />
                     </div>
                   ) : (
                     <Alert className="text-center">
