@@ -768,9 +768,12 @@ def execute_workflow(
 
                 # Handle empty height parameter to avoid overriding defaults
                 params_for_mcp = execution_params.copy() if execution_params else {}
-                if params_for_mcp.get('height') == '':
-                    logger.info("Removing empty 'height' parameter to allow workflow default to be used.")
-                    del params_for_mcp['height']
+                if params_for_mcp.get("applicant", {}).get("height") == "":
+                    logger.info("Removing empty 'height' parameter from applicant to allow workflow default to be used.")
+                    del params_for_mcp["applicant"]["height"]
+                    # If the applicant object becomes empty after removing height, remove it too
+                    if not params_for_mcp["applicant"]:
+                        del params_for_mcp["applicant"]
 
                 results = loop.run_until_complete(
                     execute_mcp_workflow(workflow, params_for_mcp)
