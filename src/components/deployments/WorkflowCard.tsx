@@ -380,14 +380,15 @@ export function WorkflowCard({
                       {workflowLiveExecutions.map((execution) => (
                         <div 
                           key={`live-${execution.id}`} 
-                          className={`bg-gray-50 px-2 py-1 border border-gray-200 rounded transition-colors ${
+                          className={`bg-gray-50 px-3 py-2 border border-gray-200 rounded transition-colors ${
                             loadingExecutionId === execution.id 
                               ? 'bg-blue-50 border-blue-300 cursor-wait' 
                               : 'hover:bg-gray-100 hover:border-gray-400 cursor-pointer'
                           }`}
                           onClick={() => loadingExecutionId === null && onFetchExecutionDetails(execution.id)}
                         >
-                          <div className="flex items-center gap-2">
+                          {/* First row: ID and Status */}
+                          <div className="flex items-center gap-2 mb-1">
                             <span className="text-xs font-mono text-black font-semibold">#{execution.id}</span>
                             {loadingExecutionId === execution.id ? (
                               <div className="flex items-center gap-1">
@@ -403,45 +404,48 @@ export function WorkflowCard({
                             {execution.status === 'running' && (
                               <div className="w-1.5 h-1.5 bg-black rounded-full animate-pulse"></div>
                             )}
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              {execution.started_at && (
-                                <span className="flex items-center gap-0.5">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  Started {new Date(execution.started_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              )}
-                              {(execution.runtime_seconds !== undefined || localTimeOffsets.has(execution.id)) && (
-                                <>
-                                  <span className="text-gray-400">•</span>
-                                  <span className="font-mono">
-                                    {(() => {
-                                      const seconds = localTimeOffsets.get(execution.id) ?? execution.runtime_seconds ?? 0;
-                                      return execution.status === 'running' ? (
-                                        <>
-                                          <span className="text-black font-bold">{seconds}s</span>
-                                          {seconds >= 60 && <span className="text-gray-500 ml-1">({formatDuration(seconds)})</span>}
-                                        </>
-                                      ) : formatDuration(seconds);
-                                    })()}
-                                  </span>
-                                </>
-                              )}
-                              {execution.progress_percentage !== undefined && (
-                                <>
-                                  <span className="text-gray-400">•</span>
-                                  <span>{execution.progress_percentage}%</span>
-                                </>
-                              )}
-                              {execution.current_step_description && (
-                                <>
-                                  <span className="text-gray-400">•</span>
-                                  <span className="text-blue-600 truncate inline-block max-w-[550px]" title={execution.current_step_description}>
-                                    {execution.current_step_description}
-                                  </span>
-                                </>
-                              )}
-                            </div>
                           </div>
+
+                          {/* Second row: Time and Duration */}
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                            {execution.started_at && (
+                              <span className="flex items-center gap-0.5">
+                                <Clock className="w-2.5 h-2.5" />
+                                Started {new Date(execution.started_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                            {(execution.runtime_seconds !== undefined || localTimeOffsets.has(execution.id)) && (
+                              <>
+                                <span className="text-gray-400">•</span>
+                                <span className="font-mono">
+                                  {(() => {
+                                    const seconds = localTimeOffsets.get(execution.id) ?? execution.runtime_seconds ?? 0;
+                                    return execution.status === 'running' ? (
+                                      <>
+                                        <span className="text-black font-bold">{seconds}s</span>
+                                        {seconds >= 60 && <span className="text-gray-500 ml-1">({formatDuration(seconds)})</span>}
+                                      </>
+                                    ) : formatDuration(seconds);
+                                  })()}
+                                </span>
+                              </>
+                            )}
+                            {execution.progress_percentage !== undefined && (
+                              <>
+                                <span className="text-gray-400">•</span>
+                                <span>{execution.progress_percentage}%</span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Third row: Current step (if available) */}
+                          {execution.current_step_description && (
+                            <div className="text-xs mt-1">
+                              <span className="text-blue-600 block" title={execution.current_step_description}>
+                                {execution.current_step_description}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -459,14 +463,15 @@ export function WorkflowCard({
                       {recentExecutions.map((execution) => (
                         <div 
                           key={`exec-${execution.execution_id}`} 
-                          className={`bg-white px-2 py-1 border border-black rounded transition-colors ${
+                          className={`bg-white px-3 py-2 border border-black rounded transition-colors ${
                             loadingExecutionId === execution.execution_id 
                               ? 'bg-blue-50 border-blue-300 cursor-wait' 
                               : 'hover:bg-gray-50 hover:border-gray-600 cursor-pointer'
                           }`}
                           onClick={() => loadingExecutionId === null && onFetchExecutionDetails(execution.execution_id)}
                         >
-                          <div className="flex items-center gap-2">
+                          {/* First row: ID and Status */}
+                          <div className="flex items-center gap-2 mb-1">
                             <span className="text-xs font-mono text-black font-semibold">
                               #{execution.execution_id}
                             </span>
@@ -481,75 +486,77 @@ export function WorkflowCard({
                                 <span className="ml-0.5">{execution.status.toUpperCase()}</span>
                               </Badge>
                             )}
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              {execution.completed_at && (
-                                <span className="flex items-center gap-0.5">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  {new Date(execution.completed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              )}
-                              {execution.execution_duration_seconds !== undefined && execution.execution_duration_seconds !== null && (
-                                <>
-                                  <span className="text-gray-400">•</span>
-                                  <span>{formatDuration(execution.execution_duration_seconds)}</span>
-                                </>
-                              )}
-                              {execution.status === 'completed' && execution.formatted_output && (
-                                <>
-                                  <span className="text-gray-400">•</span>
-                                  <div className="flex items-center gap-1.5 text-xs">
-                                    {(() => {
-                                      try {
-                                        const quotes = JSON.parse(execution.formatted_output);
-                                        if (Array.isArray(quotes) && quotes.length > 0) {
-                                          const quotesToShow = quotes.slice(0, 2);
-                                          const quoteDisplay = quotesToShow.map(q => `${q.carrierProduct?.split(':')[0]}: ${q.quoteValue || ''}`).join(' | ');
-                                          const fullTitle = quotes.map(q => `${q.carrierProduct}: ${q.quoteValue || ''}`).join(', ');
-                                          
-                                          return (
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-green-700">{quotes.length} quote{quotes.length > 1 ? 's' : ''} found:</span>
-                                              <span className="font-mono bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate max-w-[400px]" title={fullTitle}>
-                                                {quoteDisplay}
-                                              </span>
-                                              {quotes.length > 2 && <span className="text-gray-500">...</span>}
-                                            </div>
-                                          )
-                                        }
-                                        return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
-                                      } catch {
-                                        return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
-                                      }
-                                    })()}
-                                  </div>
-                                </>
-                              )}
-                              {execution.status === 'failed' && (execution.error_message || execution.formatted_output) && (
-                                <>
-                                  <span className="text-gray-400">•</span>
-                                  <span className="text-red-600 truncate inline-block max-w-[550px]" title={execution.error_message || execution.formatted_output}>
-                                    {(() => {
-                                      if (execution.error_message) return execution.error_message;
-                                      if (execution.formatted_output) {
-                                        const lines = execution.formatted_output.split('\n');
-                                        const hasCompletedMessage = lines.some(line => line.includes('✅ Workflow execution completed!'));
-                                        const hasNoQuotesFound = lines.some(line => line.includes('❌ No Eligible Quotes Found') || line.includes('No Eligible Quotes Found'));
-                                        if (hasCompletedMessage && hasNoQuotesFound) {
-                                          const successfulStepsLine = lines.find(line => line.includes('Successful Steps:'));
-                                          if (successfulStepsLine && successfulStepsLine.includes('Successful Steps: 0')) return 'Workflow failed - No steps completed successfully';
-                                          else if (hasNoQuotesFound) return 'Workflow incomplete - No quotes found';
-                                        }
-                                        const errorLine = lines.find(line => line.includes('❌') || line.includes('Message:') || line.includes('Error:') || line.includes('Failed:') || line.includes('failed!'));
-                                        if (errorLine) return errorLine.replace(/^\s*Message:\s*/, '').replace(/^\s*Error:\s*/, '').replace(/^❌\s*/, '').trim();
-                                        return lines.find(line => line.trim() && !line.includes('===') && !line.includes('---')) || 'Workflow execution failed';
-                                      }
-                                      return 'Workflow execution failed';
-                                    })()}
-                                  </span>
-                                </>
-                              )}
-                            </div>
                           </div>
+
+                          {/* Second row: Date/Time and Duration */}
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                            {execution.completed_at && (
+                              <span className="flex items-center gap-0.5">
+                                <Clock className="w-2.5 h-2.5" />
+                                {new Date(execution.completed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                            {execution.execution_duration_seconds !== undefined && execution.execution_duration_seconds !== null && (
+                              <>
+                                <span className="text-gray-400">•</span>
+                                <span>{formatDuration(execution.execution_duration_seconds)}</span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Third row: Output/Quotes (if available) */}
+                          {execution.status === 'completed' && execution.formatted_output && (
+                            <div className="text-xs mt-1">
+                              {(() => {
+                                try {
+                                  const quotes = JSON.parse(execution.formatted_output);
+                                  if (Array.isArray(quotes) && quotes.length > 0) {
+                                    const quotesToShow = quotes.slice(0, 2);
+                                    const quoteDisplay = quotesToShow.map(q => `${q.carrierProduct?.split(':')[0]}: ${q.quoteValue || ''}`).join(' | ');
+                                    const fullTitle = quotes.map(q => `${q.carrierProduct}: ${q.quoteValue || ''}`).join(', ');
+                                    
+                                    return (
+                                      <div className="flex flex-col gap-1">
+                                        <span className="text-green-700 font-semibold">{quotes.length} quote{quotes.length > 1 ? 's' : ''} found:</span>
+                                        <span className="font-mono text-gray-700 ml-2" title={fullTitle}>
+                                          {quoteDisplay}
+                                          {quotes.length > 2 && <span className="text-gray-500 ml-1">+ {quotes.length - 2} more</span>}
+                                        </span>
+                                      </div>
+                                    )
+                                  }
+                                  return <span className="text-green-700 block" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
+                                } catch {
+                                  return <span className="text-green-700 block" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
+                                }
+                              })()}
+                            </div>
+                          )}
+
+                          {/* Error message for failed executions */}
+                          {execution.status === 'failed' && (execution.error_message || execution.formatted_output) && (
+                            <div className="text-xs mt-1">
+                              <span className="text-red-600 block" title={execution.error_message || execution.formatted_output}>
+                                {(() => {
+                                  if (execution.error_message) return execution.error_message;
+                                  if (execution.formatted_output) {
+                                    const lines = execution.formatted_output.split('\n');
+                                    const hasCompletedMessage = lines.some(line => line.includes('✅ Workflow execution completed!'));
+                                    const hasNoQuotesFound = lines.some(line => line.includes('❌ No Eligible Quotes Found') || line.includes('No Eligible Quotes Found'));
+                                    if (hasCompletedMessage && hasNoQuotesFound) {
+                                      const successfulStepsLine = lines.find(line => line.includes('Successful Steps:'));
+                                      if (successfulStepsLine && successfulStepsLine.includes('Successful Steps: 0')) return 'Workflow failed - No steps completed successfully';
+                                      else if (hasNoQuotesFound) return 'Workflow incomplete - No quotes found';
+                                    }
+                                    const errorLine = lines.find(line => line.includes('❌') || line.includes('Message:') || line.includes('Error:') || line.includes('Failed:') || line.includes('failed!'));
+                                    if (errorLine) return errorLine.replace(/^\s*Message:\s*/, '').replace(/^\s*Error:\s*/, '').replace(/^❌\s*/, '').trim();
+                                    return lines.find(line => line.trim() && !line.includes('===') && !line.includes('---')) || 'Workflow execution failed';
+                                  }
+                                  return 'Workflow execution failed';
+                                })()}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
