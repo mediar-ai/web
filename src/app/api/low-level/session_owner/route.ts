@@ -21,6 +21,21 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const { data: sessionData, error: sessionError } = await supabaseAdmin
+      .from('session_metadata')
+      .select('user_id')
+      .eq('id', sessionId)
+      .single();
+
+    if (sessionError) {
+      console.error('[API/session_owner] Error fetching session metadata:', sessionError);
+      throw sessionError;
+    }
+
+    if (!sessionData) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+
     const { data: events, error: eventsError } = await supabaseAdmin
       .from('low_level_events')
       .select('*')
@@ -34,6 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
+        userId: sessionData.user_id,
         events: events || []
     });
 
