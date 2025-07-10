@@ -1119,6 +1119,47 @@ def execute_workflow(
             conn.close()
 
 
+def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 45):
+    """
+    Clean up executions that have been 'running' for too long without completion.
+    This handles cases where Modal containers crash or timeout without updating status.
+    
+    Returns the number of executions cleaned up.
+    """
+    try:
+        cur.execute(
+            """
+            UPDATE workflow_executions
+            SET 
+                status = 'failed',
+                completed_at = NOW(),
+                error_message = 'Execution timed out - no completion after ' || %s || ' minutes',
+                execution_duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::integer
+            WHERE 
+                status = 'running'
+                AND started_at < NOW() - INTERVAL '%s minutes'
+            RETURNING id
+            """,
+            (stale_threshold_minutes, stale_threshold_minutes)
+        )
+        
+        stale_ids = [row[0] for row in cur.fetchall()]
+        conn.commit()
+        
+        if stale_ids:
+            logger.warning(
+                "🧹 Cleaned up %d stale executions: %s",
+                len(stale_ids),
+                stale_ids
+            )
+        
+        return len(stale_ids)
+    except Exception as e:
+        logger.error("Failed to cleanup stale executions: %s", e)
+        conn.rollback()
+        return 0
+
+
 @app.function(image=image, secrets=secrets, timeout=60)
 def health_check() -> Dict[str, Any]:
     """
@@ -1289,6 +1330,9 @@ def check_and_process_queued_jobs():
     This function runs on a schedule and uses an atomic database update
     to "claim" a single job, preventing the race condition where multiple
     workers could process the same job.
+    
+    SMART CLAIMING: Only claims a job if no execution is currently running,
+    preventing Modal's internal queue from building up.
     """
     conn = None
     cur = None
@@ -1298,12 +1342,44 @@ def check_and_process_queued_jobs():
         conn = get_database_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
+        # Periodically clean up stale executions (every 60 calls = ~1 minute)
+        # Use a simple counter based on current timestamp
+        if int(time.time()) % 60 == 0:
+            cleanup_count = cleanup_stale_executions(cur, conn, stale_threshold_minutes=45)
+            if cleanup_count > 0:
+                logger.info("🧹 Cleaned up %d stale executions", cleanup_count)
+
+        # SMART CHECK: First check if there's already a running execution
+        # This prevents claiming jobs that will just sit in Modal's internal queue
+        cur.execute(
+            """
+            SELECT COUNT(*) as running_count
+            FROM workflow_executions
+            WHERE status = 'running'
+            AND started_at > NOW() - INTERVAL '1 hour'  -- Ignore stale 'running' jobs
+            """
+        )
+        running_count = cur.fetchone()["running_count"]
+        
+        if running_count > 0:
+            # There's already an execution running, don't claim another job
+            logger.debug(
+                "⏸️ Skipping job claim - %d execution(s) already running",
+                running_count
+            )
+            return {
+                "status": "skipped",
+                "reason": "execution_already_running",
+                "running_count": running_count
+            }
+
+        # No running executions, safe to claim a new job
+        modal_call_id = f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}"
+        
         # This query atomically finds the next 'queued' job,
         # updates its status to 'running', and returns its details.
         # `FOR UPDATE SKIP LOCKED` ensures that concurrent workers
         # don't try to grab the same job.
-        modal_call_id = f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}"
-        
         cur.execute(
             """
             WITH claimed_job AS (

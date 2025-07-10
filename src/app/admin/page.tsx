@@ -6,6 +6,7 @@ import { type UserSessionData } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { useDebouncedCallback } from 'use-debounce';
@@ -711,6 +712,87 @@ function AuthenticatedAdminPage({
             </Dialog>
           )}
         </div>
+      </div>
+      
+      {/* Overall Stats Section */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+        <Card className="border-gray-200">
+          <CardContent className="p-4">
+            <div className="relative">
+              <p className="text-sm font-mono text-gray-600">TOTAL USERS</p>
+              <p className="text-3xl font-mono font-bold text-gray-900">
+                {Object.keys(userSessions).length}
+              </p>
+              <FloatingDelta value={Object.keys(userSessions).length - Object.keys(previousData.current).length} />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-gray-200">
+          <CardContent className="p-4">
+            <div className="relative">
+              <p className="text-sm font-mono text-gray-600">TOTAL EVENTS</p>
+              <p className="text-3xl font-mono font-bold text-gray-900">
+                {Object.values(userSessions).reduce((total, userData) => 
+                  total + userData.sessions.reduce((sum, s) => sum + (s.eventCount || 0), 0), 0
+                )}
+              </p>
+              <FloatingDelta value={
+                Object.values(deltas).reduce((sum, d) => sum + (d.events || 0), 0)
+              } />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-gray-200">
+          <CardContent className="p-4">
+            <div className="relative">
+              <p className="text-sm font-mono text-gray-600">TOTAL STEPS</p>
+              <p className="text-3xl font-mono font-bold text-gray-900">
+                {Object.values(userSessions).reduce((total, userData) => 
+                  total + userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0), 0
+                )}
+              </p>
+              <FloatingDelta value={
+                Object.values(deltas).reduce((sum, d) => sum + (d.steps || 0), 0)
+              } />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-gray-200">
+          <CardContent className="p-4">
+            <div className="relative">
+              <p className="text-sm font-mono text-gray-600">WORKFLOWS</p>
+              <p className="text-3xl font-mono font-bold text-gray-900">
+                {Object.values(userSessions).reduce((total, userData) => 
+                  total + (userData.workflowCount || 0), 0
+                )}
+              </p>
+              <FloatingDelta value={
+                Object.values(deltas).reduce((sum, d) => sum + (d.workflows || 0), 0)
+              } />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-gray-200">
+          <CardContent className="p-4">
+            <div className="relative">
+              <p className="text-sm font-mono text-gray-600">ACTIVE USERS</p>
+              <p className="text-3xl font-mono font-bold text-gray-900">
+                {liveUsers.size}
+              </p>
+              {liveUsers.size > 0 && (
+                <div className="absolute -top-1 -right-1 z-20 pointer-events-none animate-bounce-in">
+                  <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-lg border border-green-600 font-medium animate-pulse">
+                    LIVE
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
       
       <table className="w-full text-sm text-left" style={{ tableLayout: 'fixed' }}>

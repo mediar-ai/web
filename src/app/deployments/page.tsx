@@ -30,9 +30,11 @@ export default function WorkflowsPage() {
   const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(null);
 
   // Fetch workflows
-  const fetchWorkflows = useCallback(async () => {
+  const fetchWorkflows = useCallback(async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const response = await fetch('/api/remote-workflows/list');
       const data = await response.json();
       if (data.success) {
@@ -41,7 +43,9 @@ export default function WorkflowsPage() {
     } catch (error) {
       console.error('Failed to fetch workflows:', error);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -183,9 +187,10 @@ export default function WorkflowsPage() {
     const interval = setInterval(() => {
       fetchExecutions();
       fetchLiveExecutions();
+      fetchWorkflows(false); // Refresh workflows without showing loading state
     }, 2000); // Refresh every 2 seconds for live updates
     return () => clearInterval(interval);
-  }, [fetchExecutions, fetchLiveExecutions]);
+  }, [fetchExecutions, fetchLiveExecutions, fetchWorkflows]);
 
   if (loading) {
     return (
