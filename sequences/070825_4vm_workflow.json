@@ -56,19 +56,26 @@
                 }
             },
             {
-                "tool_name": "invoke_element",
-                "arguments": {
-                    "selector": "role:Window",
-                    "timeout_ms": 2000
-                },
-                "delay_ms": 500
-            },
-            {
-                "tool_name": "zoom_out",
-                "arguments": {
-                    "level": 3
-                },
-                "delay_ms": 500
+                "group_name": "Set Window State (Skippable)",
+                "skippable": true,
+                "steps": [
+                    {
+                        "tool_name": "maximize_window",
+                        "arguments": {
+                            "selector": "{{selectors.browser_window}}"
+                        },
+                        "delay_ms": 500,
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "zoom_out",
+                        "arguments": {
+                            "level": 3
+                        },
+                        "delay_ms": 500,
+                        "continue_on_error": true
+                    }
+                ]
             },
             {
                 "group_name": "Handle EULA and Software Registration (Skippable)",
