@@ -60,16 +60,12 @@ export async function POST(
       dynamic_parameters = {},
     } = body;
 
-    // Validate request
-    if (Object.keys(dynamic_parameters).length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'dynamic_parameters cannot be empty for a batch run.' },
-        { status: 400 }
-      );
-    }
+    // If no dynamic parameters, treat it as a single execution with only static parameters
+    // This allows the batch-execute endpoint to handle both single and batch executions
+    const isSingleExecution = Object.keys(dynamic_parameters).length === 0;
     
     // Generate all unique parameter combinations
-    const combinations = getCombinations(dynamic_parameters);
+    const combinations = isSingleExecution ? [{}] : getCombinations(dynamic_parameters);
     const totalJobs = combinations.length;
     
     // Cap the number of jobs to prevent abuse
@@ -120,7 +116,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: `Successfully queued ${totalJobs} workflow executions.`,
+      message: `Successfully queued ${totalJobs} workflow execution${totalJobs === 1 ? '' : 's'}.`,
       batch_id: batch_id,
       execution_ids: insertedJobs.map(j => j.id),
     });
