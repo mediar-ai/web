@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,6 +13,38 @@ import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
 
+// Floating Delta Component
+const FloatingDelta = ({ value }: { value: number }) => {
+  const [deltas, setDeltas] = useState<{ id: string, value: number }[]>([]);
+
+  useEffect(() => {
+    if (value !== 0) {
+      const newDelta = { id: `${Date.now()}-${Math.random()}`, value };
+      setDeltas(d => [...d, newDelta]);
+      setTimeout(() => {
+        setDeltas(d => d.filter(delta => delta.id !== newDelta.id));
+      }, 2000); // Corresponds to animation duration
+    }
+  }, [value]);
+
+  if (deltas.length === 0) return null;
+
+  return (
+    <>
+      {deltas.map(delta => (
+        <span
+          key={delta.id}
+          className={`absolute -top-2 -right-6 px-1.5 py-0.5 text-xs font-bold rounded-full animate-bounce-in-out ${
+            delta.value > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+          }`}
+        >
+          {delta.value > 0 ? `+${delta.value}` : delta.value}
+        </span>
+      ))}
+    </>
+  );
+};
+
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
@@ -20,6 +52,8 @@ export default function WorkflowsPage() {
   const [liveStats, setLiveStats] = useState({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
   const [loading, setLoading] = useState(true);
   const [executingWorkflows, setExecutingWorkflows] = useState<Set<number>>(new Set());
+  const previousWorkflows = useRef<Workflow[]>([]);
+  const previousLiveStats = useRef({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
   
   // New state for enhanced UI
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowOverview | null>(null);
@@ -192,6 +226,21 @@ export default function WorkflowsPage() {
     return () => clearInterval(interval);
   }, [fetchExecutions, fetchLiveExecutions, fetchWorkflows]);
 
+  useEffect(() => {
+    previousWorkflows.current = workflows;
+    previousLiveStats.current = liveStats;
+  }, [workflows, liveStats]);
+
+  const totalExecutions = workflows.reduce((total, workflow) => total + (workflow.total_executions || 0), 0);
+  const prevTotalExecutions = previousWorkflows.current.reduce((total, workflow) => total + (workflow.total_executions || 0), 0);
+  
+  const successRate = workflows.length > 0 
+    ? Math.round(workflows.reduce((acc, w) => acc + (w.success_rate || 0), 0) / workflows.length)
+    : 0;
+  const prevSuccessRate = previousWorkflows.current.length > 0
+    ? Math.round(previousWorkflows.current.reduce((acc, w) => acc + (w.success_rate || 0), 0) / previousWorkflows.current.length)
+    : 0;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -234,7 +283,10 @@ export default function WorkflowsPage() {
           <CardContent className="p-4">
             <div>
               <p className="text-sm font-mono text-black">AVAILABLE WORKFLOWS</p>
-              <p className="text-3xl font-mono font-bold text-black">{workflows.length}</p>
+              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+                {workflows.length}
+                <FloatingDelta value={workflows.length - previousWorkflows.current.length} />
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -243,8 +295,9 @@ export default function WorkflowsPage() {
           <CardContent className="p-4">
             <div>
               <p className="text-sm font-mono text-black">ACTIVE EXECUTIONS</p>
-              <p className="text-3xl font-mono font-bold text-black">
-                {liveStats.total_active || executions.filter(e => e.status === 'running' || e.status === 'queued').length}
+              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+                {liveStats.total_active}
+                <FloatingDelta value={liveStats.total_active - previousLiveStats.current.total_active} />
               </p>
               {liveStats.running > 0 && (
                 <p className="text-xs font-mono text-black mt-1">
@@ -259,11 +312,9 @@ export default function WorkflowsPage() {
           <CardContent className="p-4">
             <div>
               <p className="text-sm font-mono text-black">SUCCESS RATE</p>
-              <p className="text-3xl font-mono font-bold text-black">
-                {workflows.length > 0 
-                  ? `${Math.round(workflows.reduce((acc, w) => acc + (w.success_rate || 0), 0) / workflows.length)}%`
-                  : '0%'
-                }
+              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+                {successRate}%
+                <FloatingDelta value={successRate - prevSuccessRate} />
               </p>
             </div>
           </CardContent>
@@ -273,8 +324,9 @@ export default function WorkflowsPage() {
           <CardContent className="p-4">
             <div>
               <p className="text-sm font-mono text-black">TOTAL EXECUTIONS</p>
-              <p className="text-3xl font-mono font-bold text-black">
-                {workflows.reduce((total, workflow) => total + (workflow.total_executions || 0), 0)}
+              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+                {totalExecutions}
+                <FloatingDelta value={totalExecutions - prevTotalExecutions} />
               </p>
             </div>
           </CardContent>
