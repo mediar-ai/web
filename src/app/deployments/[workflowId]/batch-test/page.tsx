@@ -92,60 +92,56 @@ export default function BatchTestPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Panel: Configurator */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Variable Configurator</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                Define static values or iterate over multiple dynamic values for each parameter.
-              </p>
-              {workflow.input_parameters && Object.keys(workflow.input_parameters).length > 0 ? (
-                <BatchForm
-                  schema={workflow.input_parameters as JsonObject}
-                  onSpecChange={setBatchSpec}
-                  onCombinationsChange={setTotalCombinations}
-                />
-              ) : (
-                <p>This workflow has no configurable parameters.</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+      {/* Batch Summary at the top */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Batch Summary</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-mono text-sm uppercase text-muted-foreground">Total Combinations</h3>
+              <p className="text-4xl font-bold">{totalCombinations}</p>
+            </div>
+            <Button 
+              className="ml-4" 
+              size="lg" 
+              disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 500}
+              onClick={handleBatchSubmit}
+            >
+              {isSubmitting ? 'Submitting...' : `Queue ${totalCombinations} Executions`}
+            </Button>
+          </div>
+          {totalCombinations > 500 && (
+            <p className="text-red-500 text-xs mt-2 font-semibold">
+              Warning: Batch size exceeds the limit of 500.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
-        {/* Right Panel: Summary & Execution */}
-        <div>
-          <Card className="sticky top-6">
-            <CardHeader>
-              <CardTitle>Batch Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-mono text-sm uppercase text-muted-foreground">Total Combinations</h3>
-                  <p className="text-4xl font-bold">{totalCombinations}</p>
-                </div>
-                <Button 
-                  className="w-full" 
-                  size="lg" 
-                  disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 500}
-                  onClick={handleBatchSubmit}
-                >
-                  {isSubmitting ? 'Submitting...' : `Queue ${totalCombinations} Executions`}
-                </Button>
-                 {totalCombinations > 500 && (
-                    <p className="text-red-500 text-xs text-center font-semibold">
-                        Warning: Batch size exceeds the limit of 500.
-                    </p>
-                 )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {/* Variable Configurator below */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Variable Configurator</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Define static values or iterate over multiple dynamic values for each parameter.
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          {workflow.input_parameters && Object.keys(workflow.input_parameters).length > 0 ? (
+            <div className="max-h-[60vh] overflow-y-auto">
+              <BatchForm
+                schema={workflow.input_parameters as JsonObject}
+                onSpecChange={setBatchSpec}
+                onCombinationsChange={setTotalCombinations}
+              />
+            </div>
+          ) : (
+            <p className="p-6">This workflow has no configurable parameters.</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -104,6 +104,23 @@
                 ]
             },
             {
+                "group_name": "Enter Max Monthly Budget",
+                "condition": "{{policy.use_max_budget}} == true",
+                "skippable": false,
+                "steps": [
+                    {"tool_name":"invoke_element","arguments":{"selector":"{{selectors.max_monthly_budget_toggle}}","timeout_ms":800}},
+                    {"tool_name":"type_into_element","arguments":{"selector":"{{selectors.max_monthly_budget_field}}","text_to_type":"{{policy.monthly_budget}}","timeout_ms":400,"clear_before_typing":false,"include_tree":false,"verify_action":false,"retries":2}}
+                ]
+            },
+            {
+                "group_name": "Enter Face Amount",
+                "condition": "{{policy.use_max_budget}} == false",
+                "skippable": false,
+                "steps": [
+                    {"tool_name":"type_into_element","arguments":{"selector":"{{selectors.face_amount_field}}","text_to_type":"{{policy.face_amount}}","timeout_ms":400,"clear_before_typing":false,"include_tree":false,"verify_action":false,"retries":2}}
+                ]
+            },
+            {
                 "group_name": "Set Coverage and Generate Quote",
                 "skippable": false,
                 "steps": [
