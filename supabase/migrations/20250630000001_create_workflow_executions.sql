@@ -72,15 +72,24 @@ CREATE TRIGGER update_workflow_executions_updated_at
 -- Function to update workflow statistics after execution
 CREATE OR REPLACE FUNCTION update_workflow_stats()
 RETURNS TRIGGER AS $$
+DECLARE
+    new_avg_duration INT;
 BEGIN
     -- Only update stats when status changes to completed or failed
     IF NEW.status IN ('completed', 'failed') AND OLD.status NOT IN ('completed', 'failed') THEN
         IF NEW.status = 'completed' THEN
+            -- Calculate the new average duration from all successful runs for this workflow
+            SELECT AVG(execution_duration_seconds)::INT INTO new_avg_duration
+            FROM public.workflow_executions
+            WHERE workflow_id = NEW.workflow_id AND status = 'completed';
+
+            -- Update the parent workflow with the new stats
             UPDATE public.deployed_workflows 
             SET 
                 successful_runs = successful_runs + 1,
                 total_executions = total_executions + 1,
                 last_successful_execution = NEW.completed_at,
+                estimated_duration_seconds = new_avg_duration,
                 updated_at = now()
             WHERE id = NEW.workflow_id;
         ELSIF NEW.status = 'failed' THEN
