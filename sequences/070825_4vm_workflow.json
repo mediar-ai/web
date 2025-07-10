@@ -36,7 +36,7 @@
                 "weight_field": "role:Edit|name:Weight",
                 "gender_male_radio": "role:RadioButton|name:Male",
                 "state_field": "#146156",
-                "zip_field": "#103886",
+                "zip_field": "properties.AutomationId:zipCode",
                 "tobacco_no_radio": "#164746",
                 "max_monthly_budget_toggle": "#169644",
                 "max_monthly_budget_field": "role:Edit|name:Max Monthly Budget",
