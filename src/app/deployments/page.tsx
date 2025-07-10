@@ -49,7 +49,7 @@ export default function WorkflowsPage() {
   const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
     try {
       setLoadingDetails(true);
-      const response = await fetch(`/api/remote-workflows/${workflowId}`);
+      const response = await fetch(`/api/remote-workflows/${workflowId}/overview`);
       const data = await response.json();
       if (response.ok && data.success) {
         setSelectedWorkflow(data.workflow);

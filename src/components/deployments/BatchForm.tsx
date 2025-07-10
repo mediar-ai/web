@@ -48,7 +48,8 @@ const RecursiveField = ({
 
   const handleAddValue = () => {
     if (inputValue.trim()) {
-      onAddDynamicValue(path, inputValue);
+      const values = inputValue.split(',').map(v => v.trim()).filter(v => v);
+      values.forEach(v => onAddDynamicValue(path, v));
       setInputValue('');
     }
   };

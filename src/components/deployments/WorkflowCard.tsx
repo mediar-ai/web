@@ -212,21 +212,10 @@ export function WorkflowCard({
                 {loadingDetails ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
                 <span className="ml-1">DETAILS</span>
               </Button>
-               <Button 
-                asChild
-                variant="outline"
-                size="sm"
-                className="font-mono text-xs h-6"
-              >
-                <Link href={`/deployments/${workflow.id}/batch-test`}>
-                    <TestTube2 className="w-3 h-3" />
-                    <span className="ml-1">BATCH TEST</span>
-                </Link>
-              </Button>
             </div>
             <p className="text-black text-sm mb-2">{workflow.description}</p>
             
-            <div className="bg-gray-50 border border-gray-300 rounded-md p-3 mb-3">
+            <div className="bg-gray-50 border border-gray-300 rounded-md p-3 mb-3 max-w-lg">
               <h4 className="text-xs font-mono font-bold text-black mb-1">SUCCESS CRITERIA</h4>
               <ul className="text-xs space-y-1">
                 <li className="flex items-start gap-2">
@@ -356,6 +345,17 @@ export function WorkflowCard({
                 )}
               </Button>
             )}
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="font-mono text-xs mt-2 w-full"
+            >
+              <Link href={`/deployments/${workflow.id}/batch-test`}>
+                  <TestTube2 className="w-3 h-3 mr-1" />
+                  BATCH TEST
+              </Link>
+            </Button>
           </div>
         </div>
       </CardHeader>

@@ -38,8 +38,6 @@ export async function GET(request: NextRequest) {
         failed_runs,
         total_executions,
         deployment_status,
-        input_parameters,
-        sample_inputs,
         automation_sequence,
         created_at,
         updated_at
@@ -66,22 +64,29 @@ export async function GET(request: NextRequest) {
 
     // Format workflows with computed fields
     const formattedWorkflows = (workflows || []).map(workflow => {
-      // --- DYNAMIC PARAMETER EXTRACTION ---
-      // The new source of truth for UI parameters is the `variables` block
-      // inside the workflow's automation sequence.
       let executionSchema = {};
+      let sampleInputs = {};
+      let expectedOutputs = {};
+
       try {
         if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
           const mainSequence = workflow.automation_sequence[0];
-          if (mainSequence.arguments && mainSequence.arguments.variables) {
-            executionSchema = mainSequence.arguments.variables;
+          if (mainSequence.arguments) {
+            if (mainSequence.arguments.variables) {
+              executionSchema = mainSequence.arguments.variables;
+              sampleInputs = mainSequence.arguments.variables;
+            }
+            if (mainSequence.arguments.output_parser && mainSequence.arguments.output_parser.fieldsToExtract) {
+              expectedOutputs = Object.keys(mainSequence.arguments.output_parser.fieldsToExtract).reduce((acc, key) => {
+                acc[key] = " dynamically extracted";
+                return acc;
+              }, {} as Record<string, string>);
+            }
           }
         }
       } catch (e) {
-        console.error(`Error parsing variables for workflow ${workflow.id}:`, e);
-        // Leave executionSchema as {}
+        console.error(`Error parsing dynamic fields for workflow ${workflow.id}:`, e);
       }
-      // --- END DYNAMIC PARAMETER EXTRACTION ---
 
       return {
         id: workflow.id,
@@ -94,11 +99,10 @@ export async function GET(request: NextRequest) {
         difficulty_level: workflow.difficulty_level,
         estimated_duration_seconds: workflow.estimated_duration_seconds,
         
-        // Parameter configuration - NOW DYNAMICALLY GENERATED
-        input_parameters: executionSchema, // Replaces the static DB column
-        sample_inputs: workflow.sample_inputs || {},
+        input_parameters: executionSchema,
+        sample_inputs: sampleInputs,
+        expected_outputs: expectedOutputs,
         
-        // Performance metrics (nested format for new code)
         performance_metrics: {
           successful_runs: workflow.successful_runs || 0,
           failed_runs: workflow.failed_runs || 0,

@@ -27,7 +27,7 @@ export default function BatchTestPage() {
     if (!workflowId) return;
     try {
       setLoading(true);
-      const response = await fetch(`/api/remote-workflows/${workflowId}`);
+      const response = await fetch(`/api/remote-workflows/${workflowId}/overview`);
       const data = await response.json();
       if (data.success) {
         setWorkflow(data.workflow);
