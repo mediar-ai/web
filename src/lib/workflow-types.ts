@@ -1,92 +1,53 @@
 // Types for workflow system
-export interface AutomationStep {
-  action?: string;
-  description?: string;
-  url?: string;
-  selector?: string;
-  step_number?: number;
-  estimated_duration?: number;
-  [key: string]: unknown;
-}
-
-export interface InputParameter {
-  type?: string;
-  required?: boolean;
-  default?: unknown;
-  description?: string;
-  example?: unknown;
-  values?: unknown[];
-  [key: string]: unknown;
-}
-
-export interface ValidationCheck {
-  name: string;
-  description: string;
+export type InputParameter = {
   type: string;
-  condition?: string;
-}
-
-export interface ErrorHandlingRule {
-  error_condition: string;
-  recovery_actions: Array<{
-    action: string;
-    description: string;
-  }>;
-}
-
-export interface WorkflowOverview {
-  id: number;
-  name: string;
   description: string;
-  version: string;
-  category: string;
-  tags: string[];
-  difficulty_level: string;
-  estimated_duration_seconds: number;
-  total_steps: number;
-  automation_sequence: AutomationStep[];
-  input_parameters: Record<string, InputParameter>;
-  expected_outputs: Record<string, unknown>;
-  sample_inputs: Record<string, unknown>;
-  performance_metrics?: {
-    successful_runs: number;
-    failed_runs: number;
-    total_executions: number;
-    success_rate: number;
-  };
-  validation_checks: ValidationCheck[];
-  error_handling: ErrorHandlingRule[];
-  deployment_status: string;
-  modal_function_name: string;
-  last_updated?: string;
-}
+  required: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  default?: any;
+};
+
+// These types are no longer used and will be removed.
+/*
+export type ValidationCheck = {
+  check_id: string;
+  description: string;
+  expression: string; // e.g., "output.quote_value > 0"
+};
+
+export type ErrorHandlingRule = {
+  rule_id: string;
+  error_condition: string; // e.g., "step_failed" or "output_missing"
+  action: 'retry' | 'skip' | 'terminate';
+  action_params?: Record<string, unknown>;
+};
+*/
 
 export interface Workflow {
   id: number;
   name: string;
   description: string;
-  version?: string;
-  status?: string;
+  version: string;
+  status: string;
+  deployment_status: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  automation_sequence: any; // Keeping as 'any' for now
+  input_parameters: Record<string, InputParameter>;
+  expected_outputs: Record<string, unknown>;
+  sample_inputs: Record<string, unknown>;
+  estimated_duration_seconds?: number;
   category: string;
   tags: string[];
   difficulty_level: string;
-  estimated_duration_seconds: number;
+  successful_runs: number;
+  failed_runs: number;
+  total_executions: number;
   success_rate: number | null;
-  deployment_status: string;
-  input_parameters: Record<string, InputParameter>;
-  expected_outputs: Record<string, unknown>;
-  successful_runs?: number;
-  failed_runs?: number;
-  total_executions?: number;
-  automation_sequence?: AutomationStep[];
-  validation_checks?: ValidationCheck[];
-  error_handling?: ErrorHandlingRule[];
-  sample_inputs?: Record<string, unknown>;
-  modal_function_name?: string;
-  last_successful_execution?: string;
-  last_failed_execution?: string;
-  reliability_score?: number;
+  created_at: string;
+  updated_at: string;
 }
+
+export type WorkflowOverview = Omit<Workflow, 'automation_sequence'>;
 
 export interface ExecutionResult {
   quotes?: Array<{

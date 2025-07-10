@@ -19,23 +19,13 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Get workflow details with recent executions in one optimized query
-    const [workflowResult, executionsResult] = await Promise.all([
-      supabase
-        .from('deployed_workflows')
-        .select('*')
-        .eq('id', workflowIdNum)
-        .single(),
-      
-      supabase
-        .from('workflow_executions')
-        .select('id, status, started_at, completed_at, execution_duration_seconds, execution_params, error_message, modal_call_id')
-        .eq('workflow_id', workflowIdNum)
-        .order('created_at', { ascending: false })
-        .limit(10)
-    ]);
+    const { data: workflow, error: workflowError } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, automation_sequence, deployment_status, status')
+      .eq('id', workflowId)
+      .single();
 
-    if (workflowResult.error || !workflowResult.data) {
+    if (workflowError) {
       return NextResponse.json(
         {
           success: false,
@@ -46,15 +36,25 @@ export async function GET(
       );
     }
 
-    const workflow = workflowResult.data;
-    const executions = executionsResult.data || [];
+    // --- DYNAMICALLY GENERATE SAMPLE INPUTS ---
+    let sampleInputs = {};
+    try {
+        if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
+          const mainSequence = workflow.automation_sequence[0];
+          if (mainSequence.arguments && mainSequence.arguments.variables) {
+            sampleInputs = mainSequence.arguments.variables;
+          }
+        }
+    } catch (e) {
+        console.error(`Error parsing variables for workflow ${workflowIdNum}:`, e);
+    }
+    // --- END DYNAMIC GENERATION ---
 
     // Build comprehensive workflow details
     const workflowDetails = {
       id: workflow.id,
       name: workflow.name,
-      description: workflow.description,
-      version: workflow.version,
+      deployment_status: workflow.deployment_status,
       status: workflow.status,
       
       // Execution Information
@@ -62,60 +62,24 @@ export async function GET(
         endpoint: `/api/remote-workflows/${workflowIdNum}/execute`,
         method: 'POST',
         required_headers: ['Content-Type: application/json'],
-        modal_function: workflow.modal_function_name || 'execute_workflow',
         deployment_status: workflow.deployment_status,
         is_executable: workflow.deployment_status === 'deployed' && workflow.status === 'active'
       },
       
       // Workflow Definition (from database)
       automation_sequence: workflow.automation_sequence,
-      validation_checks: workflow.validation_checks,
-      error_handling: workflow.error_handling,
-      
-      // Parameters & I/O
-      input_parameters: workflow.input_parameters,
-      expected_outputs: workflow.expected_outputs,
-      sample_inputs: workflow.sample_inputs,
-      
-      // Metadata
-      estimated_duration_seconds: workflow.estimated_duration_seconds,
-      category: workflow.category,
-      tags: workflow.tags,
-      difficulty_level: workflow.difficulty_level,
-      
-      // Performance Metrics
-      performance_metrics: {
-        successful_runs: workflow.successful_runs,
-        failed_runs: workflow.failed_runs,
-        total_executions: workflow.total_executions,
-        success_rate: workflow.total_executions > 0 
-          ? Math.round((workflow.successful_runs / workflow.total_executions) * 100) 
-          : 0
-      },
-      
-      // Recent Execution History
-      recent_executions: executions.map(exec => ({
-        execution_id: exec.id,
-        status: exec.status,
-        started_at: exec.started_at,
-        completed_at: exec.completed_at,
-        duration_seconds: exec.execution_duration_seconds,
-        execution_params: exec.execution_params,
-        error_message: exec.error_message,
-        modal_call_id: exec.modal_call_id
-      })),
       
       // Usage Examples
       usage_examples: {
         curl_example: `curl -X POST \\
   ${process.env.VERCEL_URL || 'https://app.mediar.ai'}/api/remote-workflows/${workflowIdNum}/execute \\
   -H "Content-Type: application/json" \\
-  -d '${JSON.stringify(workflow.sample_inputs || {}, null, 2)}'`,
+  -d '${JSON.stringify(sampleInputs, null, 2)}'`,
         
         javascript_example: `fetch('/api/remote-workflows/${workflowIdNum}/execute', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(${JSON.stringify(workflow.sample_inputs || {})})
+  body: JSON.stringify(${JSON.stringify(sampleInputs)})
 }).then(response => response.json())`
       }
     };

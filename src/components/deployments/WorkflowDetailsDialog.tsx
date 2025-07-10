@@ -4,7 +4,6 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Terminal } from 'lucide-react';
@@ -30,9 +29,8 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
         </DialogHeader>
         
         <Tabs defaultValue="overview" className="mt-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="steps">Steps</TabsTrigger>
             <TabsTrigger value="parameters">Parameters</TabsTrigger>
             <TabsTrigger value="validation">Validation</TabsTrigger>
             <TabsTrigger value="usage">Usage</TabsTrigger>
@@ -59,10 +57,6 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                     <dt className="text-muted-foreground">Est. Duration:</dt>
                     <dd className="font-mono">{formatDuration(workflow.estimated_duration_seconds)}</dd>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Total Steps:</dt>
-                    <dd className="font-mono">{workflow.total_steps}</dd>
-                  </div>
                 </dl>
               </div>
               
@@ -71,19 +65,19 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                 <dl className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Total Runs:</dt>
-                    <dd className="font-mono">{workflow.performance_metrics?.total_executions || 0}</dd>
+                    <dd className="font-mono">{workflow.total_executions || 0}</dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Success Rate:</dt>
                     <dd className="font-mono">
-                      {workflow.performance_metrics?.success_rate !== undefined
-                        ? `${workflow.performance_metrics.success_rate}%` 
+                      {workflow.success_rate !== null
+                        ? `${workflow.success_rate}%` 
                         : '—'}
                     </dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Successful:</dt>
-                    <dd className="font-mono">{workflow.performance_metrics?.successful_runs || 0}</dd>
+                    <dd className="font-mono">{workflow.successful_runs || 0}</dd>
                   </div>
                 </dl>
               </div>
@@ -101,29 +95,6 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                 </div>
               </div>
             )}
-          </TabsContent>
-          
-          <TabsContent value="steps" className="space-y-4">
-            <ScrollArea className="h-[400px] w-full rounded-md border p-4">
-              <div className="space-y-3">
-                {workflow.automation_sequence.map((step, idx) => (
-                  <div key={step.step_number || idx + 1} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                    <div className="flex-shrink-0 w-8 h-8 bg-black text-white rounded-full flex items-center justify-center text-sm font-mono">
-                      {step.step_number || idx + 1}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-semibold text-sm">{(step.action || 'unknown').toUpperCase()}</div>
-                      <div className="text-sm text-muted-foreground">{step.description || 'No description'}</div>
-                      {step.selector && (
-                        <div className="text-xs font-mono bg-gray-200 px-2 py-1 rounded mt-1">
-                          {step.selector}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
           </TabsContent>
           
           <TabsContent value="parameters" className="space-y-4">
@@ -181,59 +152,6 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                   {JSON.stringify(workflow.expected_outputs, null, 2)}
                 </code>
               </pre>
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="validation" className="space-y-4">
-            <div>
-              <h4 className="font-semibold mb-3">Validation Checks</h4>
-              {workflow.validation_checks.length > 0 ? (
-                <div className="space-y-2">
-                  {workflow.validation_checks.map((check, idx) => (
-                    <div key={idx} className="border rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium text-sm">{check.name}</span>
-                        <Badge variant="outline" className="text-xs">{check.type}</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{check.description}</p>
-                      {check.condition && (
-                        <code className="text-xs bg-gray-100 px-2 py-1 rounded mt-1 inline-block">
-                          {check.condition}
-                        </code>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No validation checks defined</p>
-              )}
-            </div>
-            
-            <Separator />
-            
-            <div>
-              <h4 className="font-semibold mb-3">Error Handling Rules</h4>
-              {workflow.error_handling.length > 0 ? (
-                <div className="space-y-2">
-                  {workflow.error_handling.map((rule, idx) => (
-                    <div key={idx} className="border rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-sm">{rule.error_condition}</span>
-                      </div>
-                      <div className="space-y-1">
-                        {rule.recovery_actions.map((recovery, recoveryIdx) => (
-                          <div key={recoveryIdx} className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">{recovery.action}</Badge>
-                            <span className="text-sm text-muted-foreground">{recovery.description}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No error handling rules defined</p>
-              )}
             </div>
           </TabsContent>
           

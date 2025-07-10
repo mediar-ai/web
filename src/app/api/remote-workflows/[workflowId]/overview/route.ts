@@ -14,127 +14,92 @@ export async function GET(
 
   const { workflowId } = await params;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  
-  try {
-    const { data: workflow, error } = await supabase
-      .from('deployed_workflows')
-      .select(`
-        id,
-        name,
-        description,
-        version,
-        automation_sequence,
-        validation_checks,
-        error_handling,
-        input_parameters,
-        expected_outputs,
-        sample_inputs,
-        estimated_duration_seconds,
-        category,
-        tags,
-        difficulty_level,
-        successful_runs,
-        failed_runs,
-        total_executions,
-        last_successful_execution,
-        last_failed_execution,
-        deployment_status,
-        modal_function_name,
-        created_at,
-        updated_at
-      `)
-      .eq('id', workflowId)
-      .eq('status', 'active')
-      .single();
 
-    if (error) throw error;
-    if (!workflow) {
-      return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
-    }
+  const { data: workflow, error } = await supabase
+    .from('deployed_workflows')
+    .select(`
+      id,
+      name,
+      description,
+      version,
+      status,
+      deployment_status,
+      category,
+      tags,
+      difficulty_level,
+      estimated_duration_seconds,
+      successful_runs,
+      failed_runs,
+      total_executions,
+      automation_sequence,
+      created_at,
+      updated_at
+    `)
+    .eq('id', workflowId)
+    .single();
 
-    if (workflow.deployment_status !== 'deployed') {
-      return NextResponse.json({ 
-        error: 'Workflow not available for execution', 
-        deployment_status: workflow.deployment_status 
-      }, { status: 400 });
-    }
-
-    // Parse automation sequence to extract step information
-    const steps = workflow.automation_sequence?.steps || [];
-    const stepOverview = steps.map((step: Record<string, unknown>, index: number) => ({
-      step_number: index + 1,
-      action: typeof step.action === 'string' ? step.action : 'unknown',
-      description: typeof step.description === 'string' ? step.description : '',
-      estimated_duration: typeof step.estimated_duration === 'number' ? step.estimated_duration : 5
-    }));
-
-    // Calculate reliability metrics
-    const successRate = workflow.total_executions > 0 
-      ? Math.round((workflow.successful_runs / workflow.total_executions) * 100) 
-      : null;
-
-    const reliabilityScore = workflow.total_executions >= 10 
-      ? (successRate !== null && successRate >= 90) ? 'excellent' :
-        (successRate !== null && successRate >= 80) ? 'good' :
-        (successRate !== null && successRate >= 70) ? 'fair' : 'poor'
-      : 'insufficient_data';
-
-    // Extract required applications from steps
-    const requiredApps = new Set<string>();
-    steps.forEach((step: Record<string, unknown>) => {
-      if (step.action === 'navigate_browser') requiredApps.add('browser');
-      if (step.action === 'open_application' && typeof step.application === 'string') {
-        requiredApps.add(step.application);
-      }
-      // Add more app detection logic as needed
-    });
-
-    const overview = {
-      id: workflow.id,
-      name: workflow.name,
-      description: workflow.description,
-      version: workflow.version,
-      category: workflow.category,
-      tags: workflow.tags,
-      difficulty_level: workflow.difficulty_level,
-      
-      // Execution information
-      estimated_duration_seconds: workflow.estimated_duration_seconds,
-      total_steps: steps.length,
-      step_overview: stepOverview,
-      required_applications: Array.from(requiredApps),
-      
-      // Input/Output schema
-      input_parameters: workflow.input_parameters,
-      expected_outputs: workflow.expected_outputs,
-      sample_inputs: workflow.sample_inputs,
-      
-      // Reliability metrics
-      statistics: {
-        total_executions: workflow.total_executions,
-        successful_runs: workflow.successful_runs,
-        failed_runs: workflow.failed_runs,
-        success_rate_percent: successRate,
-        reliability_score: reliabilityScore,
-        last_successful_execution: workflow.last_successful_execution,
-        last_failed_execution: workflow.last_failed_execution
-      },
-      
-      // Validation and error handling
-      validation_checks: workflow.validation_checks,
-      error_handling: workflow.error_handling,
-      
-      // Deployment info
-      deployment_status: workflow.deployment_status,
-      modal_function_name: workflow.modal_function_name,
-      last_updated: workflow.updated_at
-    };
-
-    return NextResponse.json(overview);
-
-  } catch (error) {
-    console.error('Error fetching workflow overview:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
+
+  if (!workflow) {
+    return NextResponse.json({ success: false, error: 'Workflow not found' }, { status: 404 });
+  }
+
+  let executionSchema = {};
+  let sampleInputs = {};
+  let expectedOutputs = {};
+
+  try {
+    if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
+      const mainSequence = workflow.automation_sequence[0];
+      if (mainSequence.arguments) {
+        if (mainSequence.arguments.variables) {
+          executionSchema = mainSequence.arguments.variables;
+          sampleInputs = mainSequence.arguments.variables;
+        }
+        if (mainSequence.arguments.output_parser && mainSequence.arguments.output_parser.fieldsToExtract) {
+          expectedOutputs = Object.keys(mainSequence.arguments.output_parser.fieldsToExtract).reduce((acc, key) => {
+            acc[key] = "dynamically extracted";
+            return acc;
+          }, {} as Record<string, string>);
+        }
+      }
+    }
+  } catch (e) {
+    console.error(`Error parsing dynamic fields for workflow ${workflow.id}:`, e);
+  }
+
+  const responsePayload = {
+    id: workflow.id,
+    name: workflow.name,
+    description: workflow.description,
+    version: workflow.version,
+    status: workflow.status,
+    deployment_status: workflow.deployment_status,
+    is_executable: workflow.deployment_status === 'deployed' && workflow.status === 'active',
+    category: workflow.category,
+    tags: workflow.tags,
+    difficulty_level: workflow.difficulty_level,
+    estimated_duration_seconds: workflow.estimated_duration_seconds,
+    input_parameters: executionSchema,
+    expected_outputs: expectedOutputs,
+    sample_inputs: sampleInputs,
+    performance_metrics: {
+      successful_runs: workflow.successful_runs,
+      failed_runs: workflow.failed_runs,
+      total_executions: workflow.total_executions,
+      success_rate: workflow.total_executions > 0
+        ? Math.round((workflow.successful_runs / workflow.total_executions) * 100)
+        : 0,
+    },
+    automation_sequence: workflow.automation_sequence,
+    created_at: workflow.created_at,
+    updated_at: workflow.updated_at,
+  };
+
+  return NextResponse.json({
+    success: true,
+    workflow: responsePayload,
+  });
 }
