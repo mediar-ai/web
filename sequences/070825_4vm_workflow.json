@@ -376,7 +376,7 @@
                         "arguments": {
                             "selector": "{{selectors.view_details_text}}",
                             "condition": "exists",
-                            "timeout_ms": 30000,
+                            "timeout_ms": 120000,
                             "include_tree": true,
                             "retries": 2
                         },
