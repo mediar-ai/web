@@ -40,7 +40,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status_filter = searchParams.get('status'); // 'active' for running/queued, or specific status
     const workflow_id = searchParams.get('workflow_id');
-    const limit = parseInt(searchParams.get('limit') || '50');
 
     // Query the live execution status view
     let query = supabase
@@ -61,8 +60,7 @@ export async function GET(request: NextRequest) {
     // Order by priority: running first, then queued, then by creation time
     query = query
       .order('status', { ascending: false }) // running comes before queued alphabetically
-      .order('created_at', { ascending: false })
-      .limit(limit);
+      .order('created_at', { ascending: false });
 
     const { data: executions, error } = await query;
 
