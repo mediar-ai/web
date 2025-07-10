@@ -2,11 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import type { LowLevelEvent } from '@/types';
+import { useAuth, SignIn } from '@clerk/nextjs';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function LowLevelSessionClient({ sessionId }: { sessionId: string }) {
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isLoaded, userId, has } = useAuth();
 
   useEffect(() => {
     const fetchSessionData = async () => {
@@ -18,11 +23,13 @@ export default function LowLevelSessionClient({ sessionId }: { sessionId: string
         const response = await fetch(`/api/low-level/session_owner?sessionId=${sessionId}`);
         
         if (!response.ok) {
-          throw new Error(`Failed to fetch session data: ${response.statusText}`);
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Failed to fetch session data: ${response.statusText}`);
         }
         
         const data = await response.json();
         setEvents(data.events || []);
+        setOwnerId(data.userId || null);
         
       } catch (err) {
         console.error('Error fetching low-level session data:', err);
@@ -35,12 +42,37 @@ export default function LowLevelSessionClient({ sessionId }: { sessionId: string
     fetchSessionData();
   }, [sessionId]);
 
-  if (loading) {
+  if (!isLoaded || loading) {
     return <div>Loading session data...</div>;
+  }
+
+  if (!userId) {
+    return (
+      <div className="container mx-auto py-4 flex justify-center">
+        <SignIn />
+      </div>
+    );
   }
 
   if (error) {
     return <div>Error loading session data: {error}</div>;
+  }
+
+  const isOwner = userId === ownerId;
+  const isAdmin = has({ role: 'org:admin' });
+
+  if (!isOwner && !isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full space-y-8 text-center">
+          <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+          <p className="text-gray-600">You do not have permission to view this session.</p>
+          <Link href="/admin">
+            <Button variant="outline">Return to Dashboard</Button>
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (

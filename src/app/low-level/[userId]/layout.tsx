@@ -8,6 +8,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePathname, useRouter } from 'next/navigation';
 import { UserProvider, useUser } from '@/context/UserContext';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth, SignIn } from '@clerk/nextjs';
+import Link from 'next/link';
 
 const UserLayoutContent = ({
   children,
@@ -24,6 +26,7 @@ const UserLayoutContent = ({
   const router = useRouter();
   const pathname = usePathname();
   const { userId } = params;
+  const { isLoaded, userId: authUserId, has } = useAuth();
 
   useEffect(() => {
     setUserId(userId);
@@ -49,6 +52,39 @@ const UserLayoutContent = ({
   useEffect(() => {
     fetchUserName();
   }, [fetchUserName]);
+
+  if (!isLoaded) {
+    return (
+      <div className="container mx-auto py-4">
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!authUserId) {
+    return (
+      <div className="container mx-auto py-4 flex justify-center">
+        <SignIn />
+      </div>
+    );
+  }
+
+  const isOwner = authUserId === userId;
+  const isAdmin = has({ role: 'org:admin' });
+
+  if (!isOwner && !isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full space-y-8 text-center">
+          <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+          <p className="text-gray-600">You do not have permission to view this page.</p>
+          <Link href="/admin">
+            <Button variant="outline">Return to Dashboard</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const handleSaveName = async () => {
     if (!userId) return;
