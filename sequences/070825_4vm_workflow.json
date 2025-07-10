@@ -56,9 +56,10 @@
                 }
             },
             {
-                "tool_name": "maximize_window",
+                "tool_name": "invoke_element",
                 "arguments": {
-                    "selector": "{{selectors.browser_window}}"
+                    "selector": "role:Window",
+                    "timeout_ms": 2000
                 },
                 "delay_ms": 500
             },
