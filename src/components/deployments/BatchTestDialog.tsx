@@ -109,7 +109,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pr-10">
             <DialogTitle className="text-2xl font-bold">
               Batch Test: {workflow.name}
             </DialogTitle>
@@ -126,35 +126,35 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
         <div className="flex-1 overflow-y-auto space-y-4 pr-2">
           {/* Batch Summary */}
           <Card>
-            <CardHeader className="py-4">
-              <CardTitle className="text-base">Batch Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="py-4">
+            <CardContent className="py-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-mono text-sm uppercase text-muted-foreground">Total Combinations</h3>
-                  <p className="text-3xl font-bold">{totalCombinations}</p>
+                <div className="flex items-center gap-6">
+                  <h3 className="text-base font-semibold">Batch Summary</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs uppercase text-muted-foreground">Total Combinations:</span>
+                    <span className="text-2xl font-bold">{totalCombinations}</span>
+                    {totalCombinations > 500 && (
+                      <span className="text-red-500 text-xs font-semibold">
+                        (Exceeds limit of 500)
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <Button 
                   className="ml-4" 
-                  size="lg" 
+                  size="default" 
                   disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 500}
                   onClick={handleBatchSubmit}
                 >
                   {isSubmitting ? 'Submitting...' : `Queue ${totalCombinations} Execution${totalCombinations === 1 ? '' : 's'}`}
                 </Button>
               </div>
-              {totalCombinations > 500 && (
-                <p className="text-red-500 text-xs mt-2 font-semibold">
-                  Warning: Batch size exceeds the limit of 500.
-                </p>
-              )}
             </CardContent>
           </Card>
 
           {/* Variable Configurator */}
           <Card>
-            <CardHeader className="py-4">
+            <CardHeader className="py-3">
               <CardTitle className="text-base">Variable Configurator</CardTitle>
               <p className="text-sm text-muted-foreground">
                 Define static values or iterate over multiple dynamic values for each parameter.
