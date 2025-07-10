@@ -31,10 +31,10 @@
                 "activate_button": "role:Button|name:Activate",
                 "activation_ok_button": "#744321",
                 "reset_button": "#141366",
-                "dob_field": "#156018",
-                "height_field": "#643180",
-                "weight_field": "#101443",
-                "gender_male_radio": "#142876",
+                "dob_field": "role:Edit|name:MM/DD/YYYY",
+                "height_field": "role:Edit|name:Height",
+                "weight_field": "role:Edit|name:Weight",
+                "gender_male_radio": "role:RadioButton|name:Male",
                 "state_field": "#146156",
                 "zip_field": "#103886",
                 "tobacco_no_radio": "#164746",
@@ -100,24 +100,7 @@
                     { "tool_name": "set_selected", "arguments": { "selector": "{{selectors.gender_male_radio}}", "state": true, "timeout_ms": 600, "include_tree": false, "retries": 2 } },
                     { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.state_field}}", "text_to_type": "{{applicant.state}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
                     { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.zip_field}}", "text_to_type": "{{applicant.zip_code}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } },
-                    { "tool_name": "set_selected", "arguments": { "selector": "{{selectors.tobacco_no_radio}}", "state": true, "timeout_ms": 600, "include_tree": false, "retries": 2 } }
-                ]
-            },
-            {
-                "group_name": "Enter Max Monthly Budget",
-                "condition": "{{policy.use_max_budget}} == true",
-                "skippable": false,
-                "steps": [
-                    { "tool_name": "invoke_element", "arguments": { "selector": "{{selectors.max_monthly_budget_toggle}}", "timeout_ms": 800 } },
-                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.max_monthly_budget_field}}", "text_to_type": "{{policy.monthly_budget}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } }
-                ]
-            },
-            {
-                "group_name": "Enter Face Amount",
-                "condition": "{{policy.use_max_budget}} == false",
-                "skippable": false,
-                "steps": [
-                    { "tool_name": "type_into_element", "arguments": { "selector": "{{selectors.face_amount_field}}", "text_to_type": "{{policy.face_amount}}", "timeout_ms": 400, "clear_before_typing": false, "include_tree": false, "verify_action": false, "retries": 2 } }
+                    { "tool_name": "select_option", "arguments": { "selector": "{{selectors.tobacco_no_radio}}", "option_name": "Never", "timeout_ms": 600, "include_tree": false, "retries": 2 } }
                 ]
             },
             {
