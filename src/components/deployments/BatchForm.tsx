@@ -55,9 +55,9 @@ const RecursiveField = ({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="flex items-center gap-2">
       <Select value={mode} onValueChange={(newMode) => onModeChange(path, newMode as ParamMode)}>
-        <SelectTrigger className="w-[180px] h-8 text-xs">
+        <SelectTrigger className="w-[140px] h-8 text-xs">
           <SelectValue placeholder="Select Mode" />
         </SelectTrigger>
         <SelectContent>
@@ -71,32 +71,34 @@ const RecursiveField = ({
           type="text"
           value={String(value ?? '')}
           onChange={(e) => onStaticChange(path, e.target.value)}
-          className="h-8 text-xs font-mono"
+          className="flex-1 h-8 text-xs font-mono"
         />
       ) : (
-        <div className="space-y-2">
-            <div className="flex gap-2">
-                <Input
-                    type="text"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddValue()}
-                    className="h-8 text-xs font-mono"
-                    placeholder="Add a value and press Enter"
-                />
-                <Button size="sm" variant="outline" onClick={handleAddValue} className="h-8">
-                    <CornerDownLeft className="h-4 w-4" />
-                </Button>
-            </div>
+        <div className="flex-1 flex items-center gap-2">
+          {(value as JsonValue[]).length > 0 ? (
             <div className="flex flex-wrap gap-1">
-            {(value as JsonValue[]).map((val, index) => (
-              <div key={index} className="flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0.5 text-xs">
-                <span>{String(val)}</span>
-                <button onClick={() => onRemoveDynamicValue(path, index)} className="text-gray-500 hover:text-black">
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+              {(value as JsonValue[]).map((val, index) => (
+                <div key={index} className="flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0.5 text-xs">
+                  <span>{String(val)}</span>
+                  <button onClick={() => onRemoveDynamicValue(path, index)} className="text-gray-500 hover:text-black">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex gap-1">
+            <Input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddValue()}
+              className="w-48 h-8 text-xs font-mono"
+              placeholder="Add values (comma-separated)"
+            />
+            <Button size="sm" variant="outline" onClick={handleAddValue} className="h-8 px-2">
+              <CornerDownLeft className="h-3 w-3" />
+            </Button>
           </div>
         </div>
       )}
@@ -186,11 +188,11 @@ export const BatchForm = ({ schema, onSpecChange, onCombinationsChange }: BatchF
   return (
     <div className="space-y-4">
       {Object.entries(flatSchema).map(([path, value]) => (
-        <div key={path} className="grid grid-cols-4 gap-4 items-start p-3 border-b">
-            <Label htmlFor={path} className="col-span-1 text-sm font-mono pt-2 break-words">
+        <div key={path} className="grid grid-cols-12 gap-4 items-center px-6 py-2 hover:bg-gray-50">
+            <Label htmlFor={path} className="col-span-3 text-sm font-mono truncate" title={path}>
                 {path}
             </Label>
-            <div className="col-span-3">
+            <div className="col-span-9">
                  <RecursiveField
                     path={path}
                     value={modes[path] === ParamMode.Dynamic ? (dynamicValues[path] || []) : value}
