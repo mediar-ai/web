@@ -306,6 +306,10 @@ export default function WorkflowsPage() {
               onFetchExecutionDetails={fetchExecutionDetails}
               loadingDetails={loadingDetails}
               loadingExecutionId={loadingExecutionId}
+              onBatchSubmit={() => {
+                fetchExecutions();
+                fetchLiveExecutions();
+              }}
             />
           ))}
                           </div>

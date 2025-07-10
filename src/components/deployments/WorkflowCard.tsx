@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from '@/components/ui/separator';
 import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight, TestTube2 } from 'lucide-react';
 import { Workflow, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
-import Link from 'next/link';
+import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 
 type RecursiveObject = {
   [key: string]: string | number | boolean | RecursiveObject | null | undefined;
@@ -78,6 +78,7 @@ interface WorkflowCardProps {
   onFetchExecutionDetails: (executionId: number) => void;
   loadingDetails: boolean;
   loadingExecutionId: number | null;
+  onBatchSubmit?: () => void;
 }
 
 const getStatusBadge = (status: string) => {
@@ -129,11 +130,13 @@ export function WorkflowCard({
   onFetchExecutionDetails,
   loadingDetails,
   loadingExecutionId,
+  onBatchSubmit,
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showParamsDropdown, setShowParamsDropdown] = useState(false);
   const [executionParams, setExecutionParams] = useState<Record<string, unknown>>({});
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
+  const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
 
   const resetExecutionParams = useCallback(() => {
     if (workflow.input_parameters) {
@@ -346,15 +349,13 @@ export function WorkflowCard({
               </Button>
             )}
             <Button
-              asChild
+              onClick={() => setShowBatchTestDialog(true)}
               variant="outline"
               size="sm"
               className="font-mono text-xs mt-2 w-full"
             >
-              <Link href={`/deployments/${workflow.id}/batch-test`}>
-                  <TestTube2 className="w-3 h-3 mr-1" />
-                  BATCH TEST
-              </Link>
+              <TestTube2 className="w-3 h-3 mr-1" />
+              BATCH TEST
             </Button>
           </div>
         </div>
@@ -572,6 +573,14 @@ export function WorkflowCard({
           </Collapsible>
         )}
       </CardContent>
+      
+      {/* Batch Test Dialog */}
+      <BatchTestDialog 
+        workflow={workflow}
+        open={showBatchTestDialog}
+        onOpenChange={setShowBatchTestDialog}
+        onSubmit={onBatchSubmit}
+      />
     </Card>
   );
 } 
