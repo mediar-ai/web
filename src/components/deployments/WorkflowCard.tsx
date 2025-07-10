@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -135,13 +135,17 @@ export function WorkflowCard({
   const [executionParams, setExecutionParams] = useState<Record<string, unknown>>({});
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
 
-  useEffect(() => {
-    // The source of truth for execution parameters is now input_parameters,
-    // which is dynamically generated from the workflow's variables block.
+  const resetExecutionParams = useCallback(() => {
     if (workflow.input_parameters) {
       setExecutionParams(workflow.input_parameters);
     }
-  }, [workflow]);
+  }, [workflow.input_parameters]);
+
+  useEffect(() => {
+    // The source of truth for execution parameters is now input_parameters,
+    // which is dynamically generated from the workflow's variables block.
+    resetExecutionParams();
+  }, [resetExecutionParams]);
 
   const handleParamChange = (path: string, value: string | number | boolean) => {
     setExecutionParams(prev => {
@@ -272,7 +276,15 @@ export function WorkflowCard({
               {workflow.deployment_status.toUpperCase()}
             </Badge>
             {workflow.input_parameters && Object.keys(workflow.input_parameters).length > 0 ? (
-              <DropdownMenu open={showParamsDropdown} onOpenChange={setShowParamsDropdown}>
+              <DropdownMenu 
+                open={showParamsDropdown} 
+                onOpenChange={(open) => {
+                  setShowParamsDropdown(open);
+                  if (open) {
+                    resetExecutionParams();
+                  }
+                }}
+              >
                 <DropdownMenuTrigger asChild>
                   <Button 
                     className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-4"
