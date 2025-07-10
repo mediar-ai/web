@@ -61,7 +61,42 @@ const RecursiveField = ({
 
   const handleAddValue = () => {
     if (inputValue.trim()) {
-      const values = inputValue.split(',').map(v => v.trim()).filter(v => v);
+      // Smart parsing that handles values with commas inside quotes or dollar amounts
+      const values: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (let i = 0; i < inputValue.length; i++) {
+        const char = inputValue[i];
+        
+        if (char === '"' || char === "'") {
+          inQuotes = !inQuotes;
+          current += char;
+        } else if (char === ',' && !inQuotes) {
+          // Check if this comma is part of a number (e.g., $100,000)
+          const beforeComma = current.trim();
+          const afterComma = i + 1 < inputValue.length ? inputValue[i + 1] : '';
+          
+          // If we have a dollar sign before and digits after, it's part of a number
+          if (beforeComma.includes('$') && /^\d/.test(afterComma.trim())) {
+            current += char;
+          } else {
+            // It's a separator comma
+            if (current.trim()) {
+              values.push(current.trim());
+            }
+            current = '';
+          }
+        } else {
+          current += char;
+        }
+      }
+      
+      // Don't forget the last value
+      if (current.trim()) {
+        values.push(current.trim());
+      }
+      
       values.forEach(v => onAddDynamicValue(path, v));
       setInputValue('');
     }
@@ -107,7 +142,7 @@ const RecursiveField = ({
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddValue()}
               className="w-48 h-8 text-xs font-mono"
-              placeholder="Add values (comma-separated)"
+              placeholder="e.g. $100,000, $250,000"
             />
             <Button size="sm" variant="outline" onClick={handleAddValue} className="h-8 px-2">
               <CornerDownLeft className="h-3 w-3" />
@@ -174,19 +209,8 @@ export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialS
   const handleStaticChange = (path: string, value: string) => {
     setStaticValues(prev => {
         const newStatic = { ...prev };
-        const keys = path.split('.');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let current: any = newStatic;
-        
-        // Create nested structure if it doesn't exist
-        for(let i = 0; i < keys.length - 1; i++) {
-            if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
-                current[keys[i]] = {};
-            }
-            current = current[keys[i]];
-        }
-        
-        current[keys[keys.length - 1]] = value;
+        // Store the flat value directly
+        newStatic[path] = value;
         return newStatic;
     })
   }
@@ -206,39 +230,47 @@ export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialS
   }
 
   useEffect(() => {
-    const static_parameters = { ...staticValues };
+    // Build nested static_parameters from flat staticValues
+    const static_parameters: JsonObject = {};
     const dynamic_parameters: Record<string, JsonValue[]> = {};
     let combinations = 1;
+    let hasDynamicParams = false;
 
+    // First, build the nested structure for static parameters
+    for (const path in staticValues) {
+      if (modes[path] !== ParamMode.Dynamic) {
+        const keys = path.split('.');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let current: any = static_parameters;
+        
+        // Create nested structure
+        for(let i = 0; i < keys.length - 1; i++) {
+            if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
+                current[keys[i]] = {};
+            }
+            current = current[keys[i]];
+        }
+        
+        current[keys[keys.length - 1]] = staticValues[path];
+      }
+    }
+
+    // Then handle dynamic parameters
     for (const path in modes) {
       if (modes[path] === ParamMode.Dynamic) {
+        hasDynamicParams = true;
         dynamic_parameters[path] = dynamicValues[path] || [];
         if (dynamicValues[path] && dynamicValues[path].length > 0) {
             combinations *= dynamicValues[path].length;
         } else {
             combinations = 0;
         }
-        // Remove from static params - handle nested paths safely
-        const keys = path.split('.');
-        let current: JsonObject | JsonValue = static_parameters;
-        let isValid = true;
-        
-        for(let i = 0; i < keys.length - 1; i++) {
-            if (current && typeof current === 'object' && !Array.isArray(current)) {
-                current = (current as JsonObject)[keys[i]];
-            } else {
-                isValid = false;
-                break;
-            }
-        }
-        
-        if (isValid && current && typeof current === 'object' && !Array.isArray(current)) {
-            delete (current as JsonObject)[keys[keys.length - 1]];
-        }
       }
     }
+    
     onSpecChange({ static_parameters, dynamic_parameters });
-    onCombinationsChange(combinations === 1 && Object.keys(dynamic_parameters).length > 0 ? 1 : (Object.keys(dynamic_parameters).length === 0 ? 0 : combinations));
+    // If no dynamic params, it's 1 static execution. If dynamic params exist but some are empty, it's 0
+    onCombinationsChange(hasDynamicParams ? combinations : 1);
   }, [modes, staticValues, dynamicValues, onSpecChange, onCombinationsChange]);
 
   return (
@@ -251,7 +283,7 @@ export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialS
             <div className="col-span-9">
                  <RecursiveField
                     path={path}
-                    value={modes[path] === ParamMode.Dynamic ? (dynamicValues[path] || []) : value}
+                    value={modes[path] === ParamMode.Dynamic ? (dynamicValues[path] || []) : (staticValues[path] ?? value)}
                     mode={modes[path] || ParamMode.Static}
                     onModeChange={handleModeChange}
                     onStaticChange={handleStaticChange}
