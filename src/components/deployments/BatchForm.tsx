@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -104,29 +104,29 @@ const RecursiveField = ({
 
   return (
     <div className="flex items-center gap-2">
-      <Select value={mode} onValueChange={(newMode) => onModeChange(path, newMode as ParamMode)}>
-        <SelectTrigger className="w-[140px] h-8 text-xs">
-          <SelectValue placeholder="Select Mode" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ParamMode.Static}>Static</SelectItem>
-          <SelectItem value={ParamMode.Dynamic}>Dynamic (Iterate)</SelectItem>
-        </SelectContent>
-      </Select>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Static</span>
+        <Switch
+          id={path}
+          checked={mode === ParamMode.Dynamic}
+          onCheckedChange={(checked: boolean) => onModeChange(path, checked ? ParamMode.Dynamic : ParamMode.Static)}
+        />
+        <span className="text-xs text-muted-foreground">Dynamic</span>
+      </div>
       
       {mode === ParamMode.Static ? (
         <Input
           type="text"
           value={String(value ?? '')}
           onChange={(e) => onStaticChange(path, e.target.value)}
-          className="flex-1 h-8 text-xs font-mono"
+          className="flex-1 h-7 text-xs font-mono"
         />
       ) : (
         <div className="flex-1 flex items-center gap-2">
           {(value as JsonValue[]).length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {(value as JsonValue[]).map((val, index) => (
-                <div key={index} className="flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0.5 text-xs">
+                <div key={index} className="flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0 text-xs">
                   <span>{String(val)}</span>
                   <button onClick={() => onRemoveDynamicValue(path, index)} className="text-gray-500 hover:text-black">
                     <X className="h-3 w-3" />
@@ -141,10 +141,10 @@ const RecursiveField = ({
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddValue()}
-              className="w-48 h-8 text-xs font-mono"
+              className="w-40 h-7 text-xs font-mono"
               placeholder="e.g. $100,000, $250,000"
             />
-            <Button size="sm" variant="outline" onClick={handleAddValue} className="h-8 px-2">
+            <Button size="sm" variant="outline" onClick={handleAddValue} className="h-7 px-2">
               <CornerDownLeft className="h-3 w-3" />
             </Button>
           </div>
@@ -204,6 +204,17 @@ export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialS
 
   const handleModeChange = (path: string, mode: ParamMode) => {
     setModes(prev => ({ ...prev, [path]: mode }));
+    
+    // When switching from Static to Dynamic, preserve the static value as the first dynamic value
+    if (mode === ParamMode.Dynamic && modes[path] === ParamMode.Static) {
+      const currentStaticValue = staticValues[path];
+      if (currentStaticValue !== undefined && currentStaticValue !== null && currentStaticValue !== '') {
+        setDynamicValues(prev => ({
+          ...prev,
+          [path]: [currentStaticValue]
+        }));
+      }
+    }
   };
 
   const handleStaticChange = (path: string, value: string) => {
@@ -274,9 +285,9 @@ export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialS
   }, [modes, staticValues, dynamicValues, onSpecChange, onCombinationsChange]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-1">
       {Object.entries(flatSchema).map(([path, value]) => (
-        <div key={path} className="grid grid-cols-12 gap-4 items-center px-6 py-2 hover:bg-gray-50">
+        <div key={path} className="grid grid-cols-12 gap-4 items-center px-6 py-0.5 hover:bg-gray-50">
             <Label htmlFor={path} className="col-span-3 text-sm font-mono truncate" title={path}>
                 {path}
             </Label>
