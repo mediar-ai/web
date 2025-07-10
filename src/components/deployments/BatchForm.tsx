@@ -1,30 +1,43 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { X, CornerDownLeft } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 type JsonValue = string | number | boolean | { [x: string]: JsonValue } | Array<JsonValue> | null;
 type JsonObject = { [x: string]: JsonValue };
+
+enum ParamMode {
+  Static = 'Static',
+  Dynamic = 'Dynamic (Iterate)',
+}
 
 interface BatchFormProps {
   schema: JsonObject;
   onSpecChange: (spec: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> }) => void;
   onCombinationsChange: (count: number) => void;
+  initialSpec?: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> };
 }
 
-enum ParamMode {
-  Static = 'Static',
-  Dynamic = 'Dynamic (Iterate)',
+// Helper function to flatten nested schema
+function flattenSchema(schema: JsonObject): Record<string, JsonValue> {
+  const flat: Record<string, JsonValue> = {};
+  const recurse = (obj: JsonObject, path = '') => {
+    for (const key in obj) {
+      const newPath = path ? `${path}.${key}` : key;
+      const value = obj[key];
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        recurse(value as JsonObject, newPath);
+      } else {
+        flat[newPath] = value;
+      }
+    }
+  };
+  recurse(schema);
+  return flat;
 }
 
 const RecursiveField = ({
@@ -106,27 +119,53 @@ const RecursiveField = ({
   );
 };
 
-export const BatchForm = ({ schema, onSpecChange, onCombinationsChange }: BatchFormProps) => {
-  const [modes, setModes] = useState<Record<string, ParamMode>>({});
-  const [staticValues, setStaticValues] = useState<JsonObject>(schema);
-  const [dynamicValues, setDynamicValues] = useState<Record<string, JsonValue[]>>({});
-
-  const { flatSchema } = useMemo(() => {
-    const flat: Record<string, JsonValue> = {};
-    const recurse = (obj: JsonObject, path = '') => {
-      for (const key in obj) {
-        const newPath = path ? `${path}.${key}` : key;
-        const value = obj[key];
-        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-          recurse(value as JsonObject, newPath);
+export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialSpec }: BatchFormProps) {
+  const flatSchema = flattenSchema(schema);
+  
+  // Initialize state from initialSpec if provided
+  const initializeModes = () => {
+    const modes: Record<string, ParamMode> = {};
+    if (initialSpec) {
+      Object.keys(flatSchema).forEach(path => {
+        if (initialSpec.dynamic_parameters[path] && initialSpec.dynamic_parameters[path].length > 0) {
+          modes[path] = ParamMode.Dynamic;
         } else {
-          flat[newPath] = value;
+          modes[path] = ParamMode.Static;
         }
+      });
+    } else {
+      Object.keys(flatSchema).forEach(path => {
+        modes[path] = ParamMode.Static;
+      });
+    }
+    return modes;
+  };
+
+  const initializeStaticValues = () => {
+    const values: Record<string, JsonValue> = {};
+    Object.entries(flatSchema).forEach(([path, value]) => {
+      if (initialSpec && initialSpec.static_parameters[path] !== undefined) {
+        values[path] = initialSpec.static_parameters[path];
+      } else {
+        values[path] = value;
       }
-    };
-    recurse(schema);
-    return { flatSchema: flat };
-  }, [schema]);
+    });
+    return values;
+  };
+
+  const initializeDynamicValues = () => {
+    const values: Record<string, JsonValue[]> = {};
+    if (initialSpec) {
+      Object.entries(initialSpec.dynamic_parameters).forEach(([path, vals]) => {
+        values[path] = vals;
+      });
+    }
+    return values;
+  };
+
+  const [modes, setModes] = useState<Record<string, ParamMode>>(initializeModes);
+  const [staticValues, setStaticValues] = useState<Record<string, JsonValue>>(initializeStaticValues);
+  const [dynamicValues, setDynamicValues] = useState<Record<string, JsonValue[]>>(initializeDynamicValues);
 
   const handleModeChange = (path: string, mode: ParamMode) => {
     setModes(prev => ({ ...prev, [path]: mode }));
@@ -136,10 +175,17 @@ export const BatchForm = ({ schema, onSpecChange, onCombinationsChange }: BatchF
     setStaticValues(prev => {
         const newStatic = { ...prev };
         const keys = path.split('.');
-        let current = newStatic;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let current: any = newStatic;
+        
+        // Create nested structure if it doesn't exist
         for(let i = 0; i < keys.length - 1; i++) {
-            current = current[keys[i]] as JsonObject;
+            if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
+                current[keys[i]] = {};
+            }
+            current = current[keys[i]];
         }
+        
         current[keys[keys.length - 1]] = value;
         return newStatic;
     })
@@ -172,13 +218,23 @@ export const BatchForm = ({ schema, onSpecChange, onCombinationsChange }: BatchF
         } else {
             combinations = 0;
         }
-        // Remove from static params
+        // Remove from static params - handle nested paths safely
         const keys = path.split('.');
         let current: JsonObject | JsonValue = static_parameters;
-         for(let i = 0; i < keys.length - 1; i++) {
-            current = (current as JsonObject)[keys[i]];
+        let isValid = true;
+        
+        for(let i = 0; i < keys.length - 1; i++) {
+            if (current && typeof current === 'object' && !Array.isArray(current)) {
+                current = (current as JsonObject)[keys[i]];
+            } else {
+                isValid = false;
+                break;
+            }
         }
-        delete (current as JsonObject)[keys[keys.length - 1]];
+        
+        if (isValid && current && typeof current === 'object' && !Array.isArray(current)) {
+            delete (current as JsonObject)[keys[keys.length - 1]];
+        }
       }
     }
     onSpecChange({ static_parameters, dynamic_parameters });
