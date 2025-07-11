@@ -201,7 +201,7 @@ interface WorkflowCardProps {
   executions: Execution[];
   liveExecutions: LiveExecutionStatus[];
   executingWorkflows: Set<number>;
-  onExecute: (workflow: Workflow, params?: Record<string, unknown>) => void;
+  onExecute: (workflow: Workflow, params?: Record<string, unknown> | (() => Record<string, unknown>)) => void;
   onFetchWorkflowDetails: (workflowId: number) => void;
   onFetchExecutionDetails: (executionId: number) => void;
   loadingDetails: boolean;
@@ -275,8 +275,10 @@ export function WorkflowCard({
   }, [workflow.sample_inputs]);
 
   useEffect(() => {
+    // This effect should ONLY run when the workflow ID changes,
+    // not on every data refresh from the parent component's polling.
     resetExecutionParams();
-  }, [resetExecutionParams]);
+  }, [workflow.id]); // Depend on the stable ID, not the object reference.
 
   const handleParamChange = (path: string, value: JSONValue) => {
     setExecutionParams(prev => {
@@ -512,7 +514,12 @@ export function WorkflowCard({
                     <div className="flex gap-2 pt-2">
                       <Button
                         onClick={() => {
-                          onExecute(workflow, executionParams);
+                          // By passing a function, we ensure we get the latest state
+                          // when onExecute is actually called.
+                          onExecute(workflow, () => {
+                            // We return the latest executionParams state directly.
+                            return executionParams;
+                          });
                           setShowParamsDropdown(false);
                         }}
                         className="bg-black text-white hover:bg-gray-800 font-mono text-xs flex-1"

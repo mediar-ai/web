@@ -165,18 +165,24 @@ export default function WorkflowsPage() {
   }, []);
 
   // Execute workflow with optional custom parameters
-  const executeWorkflow = async (workflow: Workflow, customParams?: Record<string, unknown>) => {
+  const executeWorkflow = async (workflow: Workflow, customParams?: Record<string, unknown> | (() => Record<string, unknown>)) => {
     setExecutingWorkflows(prev => new Set([...prev, workflow.id]));
+    
+    let finalParams = customParams;
+    if (typeof customParams === 'function') {
+      finalParams = customParams();
+    }
     
     try {
       const response = await fetch(`/api/remote-workflows/${workflow.id}/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          client_id: `web-${Date.now()}`,
-          execution_mode: 'async',
-          parameters: customParams || {}
-        })
+          execution_mode: 'async', // Or 'sync' depending on desired behavior
+          parameters: finalParams,
+        }),
       });
 
       const result = await response.json();
