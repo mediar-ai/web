@@ -4,6 +4,26 @@ import { createClient } from '@supabase/supabase-js';
 type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue>;
 type JSONObject = { [x: string]: JSONValue };
 
+// Helper to recursively transform variables into a UI-friendly schema
+const transformVariablesToSchema = (variables: JSONObject): JSONObject => {
+  const schema: JSONObject = {};
+  for (const key in variables) {
+    if (Object.prototype.hasOwnProperty.call(variables, key)) {
+      const variable = { ...(variables[key] as JSONObject) };
+
+      // Convert "enum" to "select" for the UI component
+      if (variable.type === 'enum' && Array.isArray(variable.options)) {
+        variable.type = 'select';
+        // Format options for the Select component
+        variable.options = (variable.options as string[]).map(opt => ({ value: opt, label: opt }));
+      }
+      
+      schema[key] = variable;
+    }
+  }
+  return schema;
+};
+
 // Helper to recursively extract default values from a schema object
 const extractDefaults = (schema: JSONObject): JSONObject => {
   const defaults: JSONObject = {};
@@ -93,7 +113,7 @@ export async function GET(request: NextRequest) {
       try {
         const sequenceArgs = workflow.automation_sequence?.[0]?.arguments as JSONObject;
         if (sequenceArgs?.variables) {
-          executionSchema = sequenceArgs.variables as JSONObject;
+          executionSchema = transformVariablesToSchema(sequenceArgs.variables as JSONObject);
           sampleInputs = extractDefaults(executionSchema);
         }
       } catch (e) {
