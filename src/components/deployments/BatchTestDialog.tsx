@@ -30,6 +30,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
   });
   const [totalCombinations, setTotalCombinations] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSpecValid, setIsSpecValid] = useState(true);
 
   // Create a storage key specific to this workflow
   const storageKey = workflow ? `batch-test-${workflow.id}` : '';
@@ -73,6 +74,11 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
   const handleReset = () => {
     resetBatchSpec();
   };
+
+  const handleSpecChange = useCallback((spec: BatchSpec, isValid: boolean) => {
+    setBatchSpec(spec);
+    setIsSpecValid(isValid);
+  }, []);
 
   const handleBatchSubmit = async () => {
     if (!workflow || !batchSpec || totalCombinations === 0) return;
@@ -143,7 +149,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                 <Button 
                   className="ml-4" 
                   size="default" 
-                  disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 500}
+                  disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 500 || !isSpecValid}
                   onClick={handleBatchSubmit}
                 >
                   {isSubmitting ? 'Submitting...' : `Queue ${totalCombinations} Execution${totalCombinations === 1 ? '' : 's'}`}
@@ -166,7 +172,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                   <BatchForm
                     schema={workflow.input_parameters as JsonObject}
                     initialValues={workflow.sample_inputs as JsonObject}
-                    onSpecChange={setBatchSpec}
+                    onSpecChange={handleSpecChange}
                     onCombinationsChange={setTotalCombinations}
                     initialSpec={batchSpec}
                   />

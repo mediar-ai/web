@@ -30,9 +30,9 @@
             },
             "applicant_height": {
                 "type": "string",
-                "label": "Applicant Height (cm)",
-                "description": "Applicant's height in centimeters.",
-                "default": "178"
+                "label": "Applicant Height (ft)",
+                "description": "Applicant's height in feet and inches (e.g., '5 10').",
+                "default": "5 10"
             },
             "applicant_weight": {
                 "type": "string",
@@ -70,10 +70,12 @@
                 "default": "Never",
                 "options": [
                     "Never",
-                    "Cigarettes",
-                    "Cigars",
-                    "Vaping",
-                    "Other"
+                    "Within the Last 12 months",
+                    "Between 1 and 2 years ago",
+                    "Between 2 and 3 years ago",
+                    "Between 3 and 4 years ago",
+                    "Between 4 and 5 years ago",
+                    "More than 5 years ago"
                 ]
             },
             "policy_coverage_type": {
@@ -84,19 +86,18 @@
                 "options": [
                     "Default",
                     "Best Case: Graded Coverage",
-                    "Level",
-                    "Graded",
-                    "Modified"
+                    "Best Case: ROP Coverage",
+                    "Guaranteed Issue ONLY"
                 ]
             },
             "quote_type": {
                 "type": "enum",
                 "label": "Quote By",
                 "description": "Choose whether to quote by a maximum budget or a specific face amount.",
-                "default": "Face Amount",
+                "default": "Face Value",
                 "options": [
-                    "Monthly Amount",
-                    "Face Amount"
+                    "Max Monthly Budget",
+                    "Face Value"
                 ]
             },
             "quote_value": {
@@ -118,7 +119,7 @@
             "applicant_zip_code": "90210",
             "applicant_tobacco_usage": "Never",
             "policy_coverage_type": "Best Case: Graded Coverage",
-            "quote_type": "Face Amount",
+            "quote_type": "Face Value",
             "quote_value": "$500"
         },
         "selectors": {
@@ -375,11 +376,11 @@
             },
             {
                 "group_name": "Enter Quote Value (Monthly)",
-                "if": "quote_type == 'Monthly Amount'",
+                "if": "quote_type == 'Max Monthly Budget'",
                 "skippable": false,
                 "steps": [
                     {
-                        "tool_name": "invoke_element",
+                        "tool_name": "click_element",
                         "arguments": {
                             "selector": "{{selectors.max_monthly_budget_toggle}}",
                             "timeout_ms": 800
@@ -400,8 +401,8 @@
                 ]
             },
             {
-                "group_name": "Enter Quote Value (Face Amount)",
-                "if": "quote_type == 'Face Amount'",
+                "group_name": "Enter Quote Value (Face Value)",
+                "if": "quote_type == 'Face Value'",
                 "skippable": false,
                 "steps": [
                     {
