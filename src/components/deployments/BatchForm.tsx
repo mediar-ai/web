@@ -89,11 +89,19 @@ const ParameterField = ({
               <SelectValue placeholder="Select a value..." />
             </SelectTrigger>
             <SelectContent>
-              {schemaItem.options.map((option: { value: string; label: string }) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
+              {schemaItem.options.map((option: { value: string; label: string }) => {
+                const isSelected = value.some(v => String(v) === option.value);
+                return (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    disabled={isSelected}
+                    className={isSelected ? 'text-muted-foreground line-through' : ''}
+                  >
+                    {option.label}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
