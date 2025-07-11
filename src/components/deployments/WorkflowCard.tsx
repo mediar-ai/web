@@ -63,8 +63,10 @@ interface SchemaItem {
   default?: JSONValue;
   options?: { value: string; label: string }[];
   required?: boolean;
+  regex?: string;
   // Allows for nested schema items
-  [key: string]: JSONValue | undefined | { value: string; label: string }[] ;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 }
 
 // Helper to set a value in a nested object based on a path string
@@ -83,11 +85,12 @@ const set = (obj: JSONObject, path: string, value: JSONValue): JSONObject => {
 };
 
 // New Schema-Driven Recursive form component
-const RecursiveForm = ({ schema, values, path, handleParamChange }: {
+const RecursiveForm = ({ schema, values, path, handleParamChange, paramErrors }: {
   schema: Record<string, SchemaItem>;
   values: JSONObject;
   path: string;
-  handleParamChange: (path: string, value: JSONValue) => void;
+  handleParamChange: (path: string, value: JSONValue, schemaItem: SchemaItem) => void;
+  paramErrors: Record<string, string>;
 }) => {
   return (
     <div className="space-y-4">
@@ -105,6 +108,7 @@ const RecursiveForm = ({ schema, values, path, handleParamChange }: {
                 values={values}
                 path={currentPath}
                 handleParamChange={handleParamChange}
+                paramErrors={paramErrors}
               />
             </fieldset>
           );
@@ -141,7 +145,7 @@ const RecursiveForm = ({ schema, values, path, handleParamChange }: {
               {inputLabel}
               <Select
                 value={String(currentValue ?? defaultValue ?? '')}
-                onValueChange={val => handleParamChange(currentPath, val)}
+                onValueChange={val => handleParamChange(currentPath, val, schemaItem)}
               >
                 <SelectTrigger className="col-span-2 h-8 text-xs font-mono">
                   <SelectValue placeholder="Select an option" />
@@ -165,7 +169,7 @@ const RecursiveForm = ({ schema, values, path, handleParamChange }: {
                 <Switch
                   id={currentPath}
                   checked={Boolean(currentValue ?? defaultValue)}
-                  onCheckedChange={checked => handleParamChange(currentPath, checked)}
+                  onCheckedChange={checked => handleParamChange(currentPath, checked, schemaItem)}
                 />
                 {inputLabel}
               </span>
@@ -176,18 +180,23 @@ const RecursiveForm = ({ schema, values, path, handleParamChange }: {
         return (
           <div key={currentPath} className="grid grid-cols-3 items-center gap-4">
             {inputLabel}
-            <Input
-              id={currentPath}
-              type={type === 'number' ? 'number' : 'text'}
-              value={String(currentValue ?? defaultValue ?? '')}
-              onChange={e => {
-                const val = type === 'number' ? parseFloat(e.target.value) : e.target.value;
-                handleParamChange(currentPath, val);
-              }}
-              placeholder={description || ''}
-              className="col-span-2 h-8 text-xs font-mono"
-              required={required}
-            />
+            <div className="col-span-2">
+              <Input
+                id={currentPath}
+                type={type === 'number' ? 'number' : 'text'}
+                value={String(currentValue ?? defaultValue ?? '')}
+                onChange={e => {
+                  const val = type === 'number' ? parseFloat(e.target.value) : e.target.value;
+                  handleParamChange(currentPath, val, schemaItem);
+                }}
+                placeholder={description || ''}
+                className={`h-8 text-xs font-mono w-full ${paramErrors[currentPath] ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                required={required}
+              />
+              {paramErrors[currentPath] && (
+                <p className="text-red-500 text-xs mt-1">{paramErrors[currentPath]}</p>
+              )}
+            </div>
           </div>
         );
       })}
@@ -263,6 +272,7 @@ export function WorkflowCard({
   const [expanded, setExpanded] = useState(false);
   const [showParamsDropdown, setShowParamsDropdown] = useState(false);
   const [executionParams, setExecutionParams] = useState<JSONObject>({});
+  const [paramErrors, setParamErrors] = useState<Record<string, string>>({});
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
   const previousWorkflow = useRef<Workflow | null>(null);
@@ -280,7 +290,35 @@ export function WorkflowCard({
     resetExecutionParams();
   }, [workflow.id]); // Depend on the stable ID, not the object reference.
 
-  const handleParamChange = (path: string, value: JSONValue) => {
+  const handleParamChange = (path: string, value: JSONValue, schemaItem: SchemaItem) => {
+    // Validate based on regex if it exists
+    if (schemaItem.regex) {
+      try {
+        const regex = new RegExp(schemaItem.regex);
+        if (!regex.test(String(value))) {
+          setParamErrors(prev => ({ ...prev, [path]: `Invalid format.` }));
+        } else {
+          setParamErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors[path];
+            return newErrors;
+          });
+        }
+      } catch {
+        console.error('Invalid regex in schema:', schemaItem.regex);
+      }
+    } else {
+        // If there's no regex, ensure we clear any previous errors for this path
+        setParamErrors(prev => {
+            const newErrors = { ...prev };
+            if (newErrors[path]) {
+                delete newErrors[path];
+                return newErrors;
+            }
+            return prev;
+        });
+    }
+
     setExecutionParams(prev => {
       const newParams = JSON.parse(JSON.stringify(prev));
       return set(newParams, path, value);
@@ -509,6 +547,7 @@ export function WorkflowCard({
                       values={executionParams} 
                       path="" 
                       handleParamChange={handleParamChange} 
+                      paramErrors={paramErrors}
                     />
                       
                       <div className="flex gap-2 pt-2">
@@ -524,7 +563,7 @@ export function WorkflowCard({
                           }}
                           className="bg-black text-white hover:bg-gray-800 font-mono text-xs flex-1"
                           size="sm"
-                          disabled={executingWorkflows.has(workflow.id)}
+                          disabled={executingWorkflows.has(workflow.id) || Object.keys(paramErrors).length > 0}
                         >
                           <PlayCircle className="w-3 h-3 mr-1" />
                           RUN WITH PARAMS
