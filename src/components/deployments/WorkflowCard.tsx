@@ -295,18 +295,18 @@ export function WorkflowCard({
           if (exec.workflow_id === workflow.id) {
             if (exec.status === 'running' && exec.started_at) {
               // For running executions, show time since started
-              const startTime = new Date(exec.started_at).getTime();
-              const now = Date.now();
-              const runtimeSeconds = Math.floor((now - startTime) / 1000);
-              newMap.set(exec.id, runtimeSeconds);
+            const startTime = new Date(exec.started_at).getTime();
+            const now = Date.now();
+            const runtimeSeconds = Math.floor((now - startTime) / 1000);
+            newMap.set(exec.id, runtimeSeconds);
             } else if (exec.status === 'queued' && exec.created_at) {
               // For queued executions, show negative time to indicate waiting
               const createdTime = new Date(exec.created_at).getTime();
               const now = Date.now();
               const waitingSeconds = Math.floor((now - createdTime) / 1000);
               newMap.set(exec.id, -waitingSeconds); // Negative to distinguish from running
-            } else {
-              newMap.delete(exec.id);
+          } else {
+            newMap.delete(exec.id);
             }
           }
         });
@@ -510,33 +510,33 @@ export function WorkflowCard({
                       path="" 
                       handleParamChange={handleParamChange} 
                     />
-                    
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        onClick={() => {
+                      
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          onClick={() => {
                           // By passing a function, we ensure we get the latest state
                           // when onExecute is actually called.
                           onExecute(workflow, () => {
                             // We return the latest executionParams state directly.
                             return executionParams;
                           });
-                          setShowParamsDropdown(false);
-                        }}
-                        className="bg-black text-white hover:bg-gray-800 font-mono text-xs flex-1"
-                        size="sm"
-                        disabled={executingWorkflows.has(workflow.id)}
-                      >
-                        <PlayCircle className="w-3 h-3 mr-1" />
-                        RUN WITH PARAMS
-                      </Button>
-                      <Button
-                        onClick={() => setShowParamsDropdown(false)}
-                        variant="outline"
-                        className="font-mono text-xs"
-                        size="sm"
-                      >
-                        CANCEL
-                      </Button>
+                            setShowParamsDropdown(false);
+                          }}
+                          className="bg-black text-white hover:bg-gray-800 font-mono text-xs flex-1"
+                          size="sm"
+                          disabled={executingWorkflows.has(workflow.id)}
+                        >
+                          <PlayCircle className="w-3 h-3 mr-1" />
+                          RUN WITH PARAMS
+                        </Button>
+                        <Button
+                          onClick={() => setShowParamsDropdown(false)}
+                          variant="outline"
+                          className="font-mono text-xs"
+                          size="sm"
+                        >
+                          CANCEL
+                        </Button>
                     </div>
                   </div>
                 </DropdownMenuContent>
@@ -684,70 +684,70 @@ export function WorkflowCard({
                                 </>
                               ) : (
                                 <>
-                                  {execution.completed_at && (
-                                    <span className="flex items-center gap-0.5">
-                                      <Clock className="w-2.5 h-2.5" />
-                                      {new Date(execution.completed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                  )}
-                                  {execution.execution_duration_seconds !== undefined && execution.execution_duration_seconds !== null && (
-                                    <>
-                                      <span className="text-gray-400">•</span>
-                                      <span>{formatDuration(execution.execution_duration_seconds)}</span>
-                                    </>
-                                  )}
-                                  {execution.status === 'completed' && execution.formatted_output && (
-                                    <>
-                                      <span className="text-gray-400">•</span>
-                                      <div className="flex items-center gap-1.5 text-xs">
-                                        {(() => {
-                                          try {
-                                            const quotes = JSON.parse(execution.formatted_output);
-                                            if (Array.isArray(quotes) && quotes.length > 0) {
-                                              const quotesToShow = quotes.slice(0, 2);
-                                              const quoteDisplay = quotesToShow.map(q => `${q.carrierProduct?.split(':')[0]}: ${q.quoteValue || ''}`).join(' | ');
-                                              const fullTitle = quotes.map(q => `${q.carrierProduct}: ${q.quoteValue || ''}`).join(', ');
-                                              
-                                              return (
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-green-700">{quotes.length} quote{quotes.length > 1 ? 's' : ''} found:</span>
+                              {execution.completed_at && (
+                                <span className="flex items-center gap-0.5">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  {new Date(execution.completed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                              {execution.execution_duration_seconds !== undefined && execution.execution_duration_seconds !== null && (
+                                <>
+                                  <span className="text-gray-400">•</span>
+                                  <span>{formatDuration(execution.execution_duration_seconds)}</span>
+                                </>
+                              )}
+                              {execution.status === 'completed' && execution.formatted_output && (
+                                <>
+                                  <span className="text-gray-400">•</span>
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    {(() => {
+                                      try {
+                                        const quotes = JSON.parse(execution.formatted_output);
+                                        if (Array.isArray(quotes) && quotes.length > 0) {
+                                          const quotesToShow = quotes.slice(0, 2);
+                                          const quoteDisplay = quotesToShow.map(q => `${q.carrierProduct?.split(':')[0]}: ${q.quoteValue || ''}`).join(' | ');
+                                          const fullTitle = quotes.map(q => `${q.carrierProduct}: ${q.quoteValue || ''}`).join(', ');
+                                          
+                                          return (
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-green-700">{quotes.length} quote{quotes.length > 1 ? 's' : ''} found:</span>
                                                   <span className="font-mono bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate max-w-[400px]" title={fullTitle}>
-                                                    {quoteDisplay}
-                                                  </span>
-                                                  {quotes.length > 2 && <span className="text-gray-500">...</span>}
-                                                </div>
-                                              )
-                                            }
-                                            return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
-                                          } catch {
-                                            return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
-                                          }
-                                        })()}
-                                      </div>
-                                    </>
-                                  )}
-                                  {execution.status === 'failed' && (execution.error_message || execution.formatted_output) && (
-                                    <>
-                                      <span className="text-gray-400">•</span>
+                                                {quoteDisplay}
+                                              </span>
+                                              {quotes.length > 2 && <span className="text-gray-500">...</span>}
+                                            </div>
+                                          )
+                                        }
+                                        return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
+                                      } catch {
+                                        return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
+                                      }
+                                    })()}
+                                  </div>
+                                </>
+                              )}
+                              {execution.status === 'failed' && (execution.error_message || execution.formatted_output) && (
+                                <>
+                                  <span className="text-gray-400">•</span>
                                       <span className="text-red-600 truncate inline-block max-w-[550px]" title={execution.error_message || execution.formatted_output || ''}>
-                                        {(() => {
-                                          if (execution.error_message) return execution.error_message;
-                                          if (execution.formatted_output) {
-                                            const lines = execution.formatted_output.split('\n');
+                                    {(() => {
+                                      if (execution.error_message) return execution.error_message;
+                                      if (execution.formatted_output) {
+                                        const lines = execution.formatted_output.split('\n');
                                             const hasCompletedMessage = lines.some((line: string) => line.includes('✅ Workflow execution completed!'));
                                             const hasNoQuotesFound = lines.some((line: string) => line.includes('❌ No Eligible Quotes Found') || line.includes('No Eligible Quotes Found'));
-                                            if (hasCompletedMessage && hasNoQuotesFound) {
+                                        if (hasCompletedMessage && hasNoQuotesFound) {
                                               const successfulStepsLine = lines.find((line: string) => line.includes('Successful Steps:'));
-                                              if (successfulStepsLine && successfulStepsLine.includes('Successful Steps: 0')) return 'Workflow failed - No steps completed successfully';
-                                              else if (hasNoQuotesFound) return 'Workflow incomplete - No quotes found';
-                                            }
+                                          if (successfulStepsLine && successfulStepsLine.includes('Successful Steps: 0')) return 'Workflow failed - No steps completed successfully';
+                                          else if (hasNoQuotesFound) return 'Workflow incomplete - No quotes found';
+                                        }
                                             const errorLine = lines.find((line: string) => line.includes('❌') || line.includes('Message:') || line.includes('Error:') || line.includes('Failed:') || line.includes('failed!'));
-                                            if (errorLine) return errorLine.replace(/^\s*Message:\s*/, '').replace(/^\s*Error:\s*/, '').replace(/^❌\s*/, '').trim();
+                                        if (errorLine) return errorLine.replace(/^\s*Message:\s*/, '').replace(/^\s*Error:\s*/, '').replace(/^❌\s*/, '').trim();
                                             return lines.find((line: string) => line.trim() && !line.includes('===') && !line.includes('---')) || 'Workflow execution failed';
-                                          }
-                                          return 'Workflow execution failed';
-                                        })()}
-                                      </span>
+                                      }
+                                      return 'Workflow execution failed';
+                                    })()}
+                                  </span>
                                     </>
                                   )}
                                 </>
