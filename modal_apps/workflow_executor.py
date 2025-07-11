@@ -398,19 +398,17 @@ async def execute_mcp_workflow(
 
         else:
             logger.info("✅ Using default inputs from workflow definition.")
-        
+
         # The entire `arguments` object, containing the `variables` schema, the final `inputs`,
         # and the `items`, is sent to MCP. The template engine inside MCP will know
         # to use the `inputs` block for template substitution.
-        
+
         logger.info("📋 Workflow: %s", tool_name)
         logger.info("   Items: %d", len(arguments.get("items", [])))
 
         # --- MORE DETAILED LOGGING ---
         logger.info("--- DETAILED LOGGING: Payload being sent to MCP ---")
         # For clarity, we log the two main parts of the arguments separately
-        if 'variables' in arguments:
-             logger.info("   Variables Schema (for UI): %s", json.dumps(arguments['variables'], indent=2))
         if 'inputs' in arguments:
              logger.info("   Runtime Inputs (for execution): %s", json.dumps(arguments['inputs'], indent=2))
 
@@ -1405,7 +1403,7 @@ def check_and_process_queued_jobs():
 
         # No running executions, safe to claim a new job
         modal_call_id = f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}"
-        
+
         # This query atomically finds the next 'queued' job,
         # updates its status to 'running', and returns its details.
         # `FOR UPDATE SKIP LOCKED` ensures that concurrent workers
