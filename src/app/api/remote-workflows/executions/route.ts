@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     const { data: executions, error } = await query;
 
     if (error) {
+      console.error('Supabase query error in /api/remote-workflows/executions:', error);
       throw new Error(`Database query failed: ${error.message}`);
     }
 
