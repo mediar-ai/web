@@ -1,192 +1,339 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useUser } from '@clerk/nextjs';
-import { Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  Workflow,
+  Execution,
+  LiveExecutionStatus,
+  WorkflowOverview,
+} from '@/lib/workflow-types';
 import { WorkflowCard } from '@/components/deployments/WorkflowCard';
-import { Workflow, Execution, LiveExecutionStatus, WorkflowOverview } from '@/lib/workflow-types';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
 
-export default function DeploymentsPage() {
+// Floating Delta Component
+const FloatingDelta = ({ value }: { value: number }) => {
+  const [deltas, setDeltas] = useState<{ id: string, value: number }[]>([]);
+
+  useEffect(() => {
+    if (value !== 0) {
+      const newDelta = { id: `${Date.now()}-${Math.random()}`, value };
+      setDeltas(d => [...d, newDelta]);
+      setTimeout(() => {
+        setDeltas(d => d.filter(delta => delta.id !== newDelta.id));
+      }, 2000); // Corresponds to animation duration
+    }
+  }, [value]);
+
+  if (deltas.length === 0) return null;
+
+  return (
+    <>
+      {deltas.map(delta => (
+        <span
+          key={delta.id}
+          className={`absolute -top-2 -right-6 px-1.5 py-0.5 text-xs font-bold rounded-full animate-bounce-in-out ${
+            delta.value > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+          }`}
+        >
+          {delta.value > 0 ? `+${delta.value}` : delta.value}
+        </span>
+      ))}
+    </>
+  );
+};
+
+export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [liveStats, setLiveStats] = useState({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
+  const [loading, setLoading] = useState(true);
+  const [executingWorkflows, setExecutingWorkflows] = useState<Set<number>>(new Set());
+  const previousWorkflows = useRef<Workflow[]>([]);
+  const previousLiveStats = useRef({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
   
-  const [selectedWorkflowDetails, setSelectedWorkflowDetails] = useState<WorkflowOverview | null>(null);
+  // New state for enhanced UI
+  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowOverview | null>(null);
+  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
-  
-  const [selectedExecutionDetails, setSelectedExecutionDetails] = useState<Execution | null>(null);
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
-  
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(null);
 
-  const { user } = useUser();
-
-  const fetchWorkflows = useCallback(async () => {
-    const orgId = user?.unsafeMetadata?.orgId as string || '';
-    if (!orgId) return;
-    setIsLoading(true);
+  // Fetch workflows
+  const fetchWorkflows = useCallback(async (showLoading = true) => {
     try {
-      const response = await fetch(`/api/remote-workflows/list?organization_id=${orgId}`);
-      if (!response.ok) throw new Error('Failed to fetch workflows');
+      if (showLoading) {
+      setLoading(true);
+      }
+      const response = await fetch('/api/remote-workflows/list');
       const data = await response.json();
-      setWorkflows(data.workflows);
-    } catch (error) {
-      console.error('Error fetching workflows:', error);
-      setError('Failed to load workflows. Please try again later.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
-  const fetchExecutions = useCallback(async () => {
-    const orgId = user?.unsafeMetadata?.orgId as string || '';
-    if (!orgId) return;
-    try {
-      const response = await fetch(`/api/remote-workflows/executions?organization_id=${orgId}`);
-      if (!response.ok) throw new Error('Failed to fetch executions');
-      const data = await response.json();
-      setExecutions(data.executions);
-    } catch (error) {
-      console.error('Error fetching executions:', error);
-      // Non-critical, so we don't set a top-level error state
-    }
-  }, [user]);
-
-  const fetchLiveExecutions = useCallback(async () => {
-    const orgId = user?.unsafeMetadata?.orgId as string || '';
-    if (!orgId) return;
-    try {
-      const response = await fetch(`/api/remote-workflows/executions/live?organization_id=${orgId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setLiveExecutions(data.liveExecutions || []);
+      if (data.success) {
+        setWorkflows(data.workflows || []);
       }
     } catch (error) {
-      console.error('Error fetching live executions:', error);
+      console.error('Failed to fetch workflows:', error);
+    } finally {
+      if (showLoading) {
+      setLoading(false);
+      }
     }
-  }, [user]);
+  }, []);
 
+  // Fetch detailed workflow overview
   const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
-    setLoadingDetails(true);
     try {
-      const orgId = user?.unsafeMetadata?.orgId as string || '';
-      if (!orgId) return;
-      const response = await fetch(`/api/remote-workflows/${workflowId}/overview?organization_id=${orgId}`);
+      setLoadingDetails(true);
+      const response = await fetch(`/api/remote-workflows/${workflowId}/overview`);
       const data = await response.json();
       if (response.ok && data.success) {
-        setSelectedWorkflowDetails(data.overview);
+        setSelectedWorkflow(data.workflow);
         setWorkflowDetailsOpen(true);
-      } else {
-        throw new Error(data.error || 'Failed to fetch workflow details');
       }
-    } catch (err) {
-      console.error('Error fetching workflow overview:', err);
-      alert(`Could not load workflow details. Please try again.`);
+    } catch (error) {
+      console.error('Failed to fetch workflow overview:', error);
     } finally {
       setLoadingDetails(false);
     }
-  }, [user]);
+  }, []);
 
+  // Fetch detailed execution data
   const fetchExecutionDetails = useCallback(async (executionId: number) => {
-    setLoadingExecutionId(executionId);
     try {
-      const orgId = user?.unsafeMetadata?.orgId as string || '';
-      if (!orgId) return;
-      const response = await fetch(`/api/remote-workflows/executions/${executionId}?organization_id=${orgId}`);
+      setLoadingDetails(true);
+      setLoadingExecutionId(executionId);
+      
+      // Open the dialog immediately to show loading skeleton
+      setSelectedExecution(null);
+      setExecutionDetailsOpen(true);
+      
+      const response = await fetch(`/api/remote-workflows/executions/${executionId}`);
       const data = await response.json();
-      if (response.ok && data.success) {
-        setSelectedExecutionDetails(data.details);
-        setExecutionDetailsOpen(true);
-      } else {
-        throw new Error(data.error || 'Failed to fetch execution details');
+      if (data.success) {
+        setSelectedExecution(data.execution);
       }
-    } catch (err) {
-      console.error(`Error fetching details for execution ${executionId}:`, err);
-      alert(`Could not load details for execution #${executionId}.`);
+    } catch (error) {
+      console.error('Failed to fetch execution details:', error);
+      // Close dialog on error
+      setExecutionDetailsOpen(false);
     } finally {
+      setLoadingDetails(false);
       setLoadingExecutionId(null);
     }
-  }, [user]);
-  
-  useEffect(() => {
-    if (user) {
-      fetchWorkflows();
-      fetchExecutions();
-      
-      const liveUpdateInterval = setInterval(fetchLiveExecutions, 2000); // Poll every 2 seconds for live data
-      const executionsInterval = setInterval(fetchExecutions, 15000); // Refresh historical executions every 15 seconds
+  }, []);
 
-      return () => {
-        clearInterval(liveUpdateInterval);
-        clearInterval(executionsInterval);
-      };
+  // Fetch executions
+  const fetchExecutions = useCallback(async () => {
+    try {
+      const response = await fetch('/api/remote-workflows/executions');
+      const data = await response.json();
+      if (data.success) {
+        setExecutions(data.executions || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch executions:', error);
+      setExecutions([]);
     }
-  }, [user, fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
+  }, []);
 
-  const handleBatchSubmit = () => {
-    // A short delay to allow the backend to process the new execution
-    setTimeout(() => {
+  // Fetch live executions
+  const fetchLiveExecutions = useCallback(async () => {
+    try {
+      const response = await fetch('/api/remote-workflows/executions/live?status=active');
+      if (!response.ok) {
+        // API endpoint might not be available yet (migration not run)
+        setLiveExecutions([]);
+        setLiveStats({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
+        return;
+      }
+      const data = await response.json();
+      if (data.success && data.data) {
+        setLiveExecutions(data.data.executions || []);
+        setLiveStats(data.data.summary || { total_active: 0, running: 0, queued: 0, average_progress: 0 });
+      } else {
+        setLiveExecutions([]);
+        setLiveStats({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
+      }
+    } catch (error) {
+      console.error('Failed to fetch live executions:', error);
+      setLiveExecutions([]);
+      setLiveStats({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    fetchWorkflows();
+    fetchExecutions();
+    fetchLiveExecutions();
+  }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
+
+  // Auto-refresh executions and live status
+  useEffect(() => {
+    const interval = setInterval(() => {
       fetchExecutions();
       fetchLiveExecutions();
-    }, 1000);
-  };
+      fetchWorkflows(false); // Refresh workflows without showing loading state
+    }, 2000); // Refresh every 2 seconds for live updates
+    return () => clearInterval(interval);
+  }, [fetchExecutions, fetchLiveExecutions, fetchWorkflows]);
 
-  if (isLoading) {
+  useEffect(() => {
+    previousWorkflows.current = workflows;
+    previousLiveStats.current = liveStats;
+  }, [workflows, liveStats]);
+
+  useEffect(() => {
+    const currentlyExecuting = new Set<number>();
+    liveExecutions.forEach(exec => {
+      if (exec.status === 'running' || exec.status === 'queued') {
+        currentlyExecuting.add(exec.workflow_id);
+      }
+    });
+    setExecutingWorkflows(currentlyExecuting);
+  }, [liveExecutions]);
+
+  const totalExecutions = workflows.reduce((total, workflow) => total + (workflow.total_executions || 0), 0);
+  const prevTotalExecutions = previousWorkflows.current.reduce((total, workflow) => total + (workflow.total_executions || 0), 0);
+  
+  const totalSuccessfulRuns = workflows.reduce((acc, w) => acc + (w.successful_runs || 0), 0);
+  const successRate = totalExecutions > 0 ? Math.round((totalSuccessfulRuns / totalExecutions) * 100) : 0;
+
+  const prevTotalSuccessfulRuns = previousWorkflows.current.reduce((acc, w) => acc + (w.successful_runs || 0), 0);
+  const prevSuccessRate = prevTotalExecutions > 0 ? Math.round((prevTotalSuccessfulRuns / prevTotalExecutions) * 100) : 0;
+
+  if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-12 w-12 animate-spin" />
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg font-mono">LOADING...</div>
       </div>
     );
   }
 
-  if (error) {
-    return <div className="text-red-500 text-center mt-10">{error}</div>;
-  }
-
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Workflow Deployments</h1>
-        <p className="text-gray-600 mb-6">Monitor and manage your deployed workflows.</p>
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Remote Workflow Execution</h1>
+          <p className="text-muted-foreground">Execute and monitor automated workflows remotely</p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => window.open('/docs/api/remote-workflows', '_blank')}
+            variant="outline" 
+            size="sm" 
+            className="bg-white text-black border-black hover:bg-black hover:text-white"
+          >
+            API DOCS
+          </Button>
+          <Button 
+            onClick={() => window.open('https://www.postman.com/matt-3648038/mediar-deployed-workflows-workspace/overview', '_blank')}
+            variant="outline" 
+            size="sm" 
+            className="bg-white text-black border-black hover:bg-black hover:text-white"
+          >
+            POSTMAN COLLECTION
+        </Button>
+        </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+      {/* Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="border-black">
+          <CardContent className="p-4">
+            <div>
+              <p className="text-sm font-mono text-black">AVAILABLE WORKFLOWS</p>
+              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+                {workflows.length}
+                <FloatingDelta value={workflows.length - previousWorkflows.current.length} />
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-black">
+          <CardContent className="p-4">
+            <div>
+              <p className="text-sm font-mono text-black">ACTIVE EXECUTIONS</p>
+              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+                {liveStats.total_active}
+                <FloatingDelta value={liveStats.total_active - previousLiveStats.current.total_active} />
+              </p>
+              {liveStats.running > 0 && (
+                <p className="text-xs font-mono text-black mt-1">
+                  {liveStats.running} RUNNING • {Math.round(liveStats.average_progress)}% AVG
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-black">
+          <CardContent className="p-4">
+            <div>
+              <p className="text-sm font-mono text-black">SUCCESS RATE</p>
+              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+                {successRate}%
+                <FloatingDelta value={successRate - prevSuccessRate} />
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-black">
+          <CardContent className="p-4">
+            <div>
+              <p className="text-sm font-mono text-black">TOTAL EXECUTIONS</p>
+              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+                {totalExecutions}
+                <FloatingDelta value={totalExecutions - prevTotalExecutions} />
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Workflow Details Dialog */}
+      <WorkflowDetailsDialog
+        workflow={selectedWorkflow}
+        open={workflowDetailsOpen}
+        onOpenChange={setWorkflowDetailsOpen}
+      />
+
+      {/* Execution Details Dialog */}
+      <ExecutionDetailsDialog
+        execution={selectedExecution}
+        open={executionDetailsOpen}
+        onOpenChange={setExecutionDetailsOpen}
+      />
+
+      {/* Available Workflows */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold font-mono mb-4">AVAILABLE WORKFLOWS</h2>
+        <div className="grid gap-4">
           {workflows.map((workflow) => (
             <WorkflowCard
               key={workflow.id}
               workflow={workflow}
               executions={executions}
               liveExecutions={liveExecutions}
-              executingWorkflows={new Set()}
+              executingWorkflows={executingWorkflows}
               onFetchWorkflowDetails={fetchWorkflowOverview}
               onFetchExecutionDetails={fetchExecutionDetails}
               loadingDetails={loadingDetails}
               loadingExecutionId={loadingExecutionId}
-              onBatchSubmit={handleBatchSubmit}
+              onBatchSubmit={() => {
+                fetchExecutions();
+                fetchLiveExecutions();
+              }}
             />
           ))}
-        </div>
-      </div>
-      
-      {selectedWorkflowDetails && (
-        <WorkflowDetailsDialog 
-          workflow={selectedWorkflowDetails}
-          open={workflowDetailsOpen}
-          onOpenChange={setWorkflowDetailsOpen}
-        />
-      )}
-
-      {selectedExecutionDetails && (
-        <ExecutionDetailsDialog
-          execution={selectedExecutionDetails}
-          open={executionDetailsOpen}
-          onOpenChange={setExecutionDetailsOpen}
-        />
-      )}
-    </div>
+                          </div>
+                      </div>
+                    </div>
   );
 }
