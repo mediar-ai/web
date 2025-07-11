@@ -17,13 +17,14 @@ enum ParamMode {
 
 interface BatchFormProps {
   schema: JsonObject;
+  initialValues: JsonObject;
   onSpecChange: (spec: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> }) => void;
   onCombinationsChange: (count: number) => void;
   initialSpec?: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> };
 }
 
-// Helper function to flatten nested schema
-function flattenSchema(schema: JsonObject): Record<string, JsonValue> {
+// Helper function to flatten nested values object
+function flattenValues(values: JsonObject): Record<string, JsonValue> {
   const flat: Record<string, JsonValue> = {};
   const recurse = (obj: JsonObject, path = '') => {
     for (const key in obj) {
@@ -36,7 +37,7 @@ function flattenSchema(schema: JsonObject): Record<string, JsonValue> {
       }
     }
   };
-  recurse(schema);
+  recurse(values);
   return flat;
 }
 
@@ -154,14 +155,16 @@ const RecursiveField = ({
   );
 };
 
-export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialSpec }: BatchFormProps) {
-  const flatSchema = flattenSchema(schema);
+export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsChange, initialSpec }: BatchFormProps) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _schema = schema; // Acknowledge the prop is unused for now
+  const flatInitialValues = flattenValues(initialValues);
   
   // Initialize state from initialSpec if provided
   const initializeModes = () => {
     const modes: Record<string, ParamMode> = {};
     if (initialSpec) {
-      Object.keys(flatSchema).forEach(path => {
+      Object.keys(flatInitialValues).forEach(path => {
         if (initialSpec.dynamic_parameters[path] && initialSpec.dynamic_parameters[path].length > 0) {
           modes[path] = ParamMode.Dynamic;
         } else {
@@ -169,7 +172,7 @@ export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialS
         }
       });
     } else {
-      Object.keys(flatSchema).forEach(path => {
+      Object.keys(flatInitialValues).forEach(path => {
         modes[path] = ParamMode.Static;
       });
     }
@@ -178,7 +181,7 @@ export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialS
 
   const initializeStaticValues = () => {
     const values: Record<string, JsonValue> = {};
-    Object.entries(flatSchema).forEach(([path, value]) => {
+    Object.entries(flatInitialValues).forEach(([path, value]) => {
       if (initialSpec && initialSpec.static_parameters[path] !== undefined) {
         values[path] = initialSpec.static_parameters[path];
       } else {
@@ -286,7 +289,7 @@ export function BatchForm({ schema, onSpecChange, onCombinationsChange, initialS
 
   return (
     <div className="space-y-1">
-      {Object.entries(flatSchema).map(([path, value]) => (
+      {Object.entries(flatInitialValues).map(([path, value]) => (
         <div key={path} className="grid grid-cols-12 gap-4 items-center px-6 py-0.5 hover:bg-gray-50">
             <Label htmlFor={path} className="col-span-3 text-sm font-mono truncate" title={path}>
                 {path}
