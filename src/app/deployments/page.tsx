@@ -67,7 +67,7 @@ export default function WorkflowsPage() {
   const fetchWorkflows = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) {
-        setLoading(true);
+      setLoading(true);
       }
       const response = await fetch('/api/remote-workflows/list');
       const data = await response.json();
@@ -78,7 +78,7 @@ export default function WorkflowsPage() {
       console.error('Failed to fetch workflows:', error);
     } finally {
       if (showLoading) {
-        setLoading(false);
+      setLoading(false);
       }
     }
   }, []);
@@ -240,12 +240,11 @@ export default function WorkflowsPage() {
   const totalExecutions = workflows.reduce((total, workflow) => total + (workflow.total_executions || 0), 0);
   const prevTotalExecutions = previousWorkflows.current.reduce((total, workflow) => total + (workflow.total_executions || 0), 0);
   
-  const successRate = workflows.length > 0 
-    ? Math.round(workflows.reduce((acc, w) => acc + (w.success_rate || 0), 0) / workflows.length)
-    : 0;
-  const prevSuccessRate = previousWorkflows.current.length > 0
-    ? Math.round(previousWorkflows.current.reduce((acc, w) => acc + (w.success_rate || 0), 0) / previousWorkflows.current.length)
-    : 0;
+  const totalSuccessfulRuns = workflows.reduce((acc, w) => acc + (w.successful_runs || 0), 0);
+  const successRate = totalExecutions > 0 ? Math.round((totalSuccessfulRuns / totalExecutions) * 100) : 0;
+
+  const prevTotalSuccessfulRuns = previousWorkflows.current.reduce((acc, w) => acc + (w.successful_runs || 0), 0);
+  const prevSuccessRate = prevTotalExecutions > 0 ? Math.round((prevTotalSuccessfulRuns / prevTotalExecutions) * 100) : 0;
 
   if (loading) {
     return (
