@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { X, CornerDownLeft } from 'lucide-react';
 
 type JsonValue = string | number | boolean | { [x: string]: JsonValue } | Array<JsonValue> | null;
-type JsonObject = { [x: string]: JsonValue };
+type JsonObject = { [x:string]: JsonValue };
 
 enum ParamMode {
   Static = 'Static',
@@ -18,33 +19,32 @@ enum ParamMode {
 interface BatchFormProps {
   schema: JsonObject;
   initialValues: JsonObject;
-  onSpecChange: (spec: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> }) => void;
+  onSpecChange: (spec: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> }, isValid: boolean) => void;
   onCombinationsChange: (count: number) => void;
   initialSpec?: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> };
 }
 
-// Helper function to flatten nested values object
-function flattenValues(values: JsonObject): Record<string, JsonValue> {
-  const flat: Record<string, JsonValue> = {};
-  const recurse = (obj: JsonObject, path = '') => {
-    for (const key in obj) {
-      const newPath = path ? `${path}.${key}` : key;
-      const value = obj[key];
-      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        recurse(value as JsonObject, newPath);
-      } else {
-        flat[newPath] = value;
-      }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flattenSchema(schema: JsonObject, path = '', acc: Record<string, any> = {}): Record<string, any> {
+  for (const key in schema) {
+    const newPath = path ? `${path}.${key}` : key;
+    const value = schema[key] as JsonObject;
+    if (value && typeof value === 'object' && !Array.isArray(value) && !value.type) {
+        flattenSchema(value, newPath, acc);
+    } else {
+        acc[newPath] = value;
     }
-  };
-  recurse(values);
-  return flat;
+  }
+  return acc;
 }
 
 const RecursiveField = ({
   path,
   value,
+  schemaItem,
   mode,
+  error,
+  dynamicErrors,
   onModeChange,
   onStaticChange,
   onAddDynamicValue,
@@ -52,7 +52,11 @@ const RecursiveField = ({
 }: {
   path: string;
   value: JsonValue;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schemaItem: any;
   mode: ParamMode;
+  error?: string;
+  dynamicErrors: Record<string, string>;
   onModeChange: (path: string, mode: ParamMode) => void;
   onStaticChange: (path: string, value: string) => void;
   onAddDynamicValue: (path: string, value: string) => void;
@@ -61,49 +65,81 @@ const RecursiveField = ({
   const [inputValue, setInputValue] = useState('');
 
   const handleAddValue = () => {
-    if (inputValue.trim()) {
-      // Smart parsing that handles values with commas inside quotes or dollar amounts
-      const values: string[] = [];
-      let current = '';
-      let inQuotes = false;
-      
-      for (let i = 0; i < inputValue.length; i++) {
-        const char = inputValue[i];
-        
-        if (char === '"' || char === "'") {
-          inQuotes = !inQuotes;
-          current += char;
-        } else if (char === ',' && !inQuotes) {
-          // Check if this comma is part of a number (e.g., $100,000)
-          const beforeComma = current.trim();
-          const afterComma = i + 1 < inputValue.length ? inputValue[i + 1] : '';
-          
-          // If we have a dollar sign before and digits after, it's part of a number
-          if (beforeComma.includes('$') && /^\d/.test(afterComma.trim())) {
-            current += char;
-          } else {
-            // It's a separator comma
-            if (current.trim()) {
-              values.push(current.trim());
-            }
-            current = '';
-          }
-        } else {
-          current += char;
-        }
-      }
-      
-      // Don't forget the last value
-      if (current.trim()) {
-        values.push(current.trim());
-      }
-      
-      values.forEach(v => onAddDynamicValue(path, v));
+    if (String(inputValue).trim()) {
+      onAddDynamicValue(path, String(inputValue).trim());
       setInputValue('');
     }
   };
 
+  const renderStaticInput = () => {
+    if (schemaItem.type === 'select' && schemaItem.options) {
+      return (
+        <Select value={String(value ?? '')} onValueChange={(val) => onStaticChange(path, val)}>
+          <SelectTrigger className={`flex-1 h-7 text-xs font-mono ${error ? 'border-red-500' : ''}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {schemaItem.options.map((option: { value: string; label: string }) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+    return (
+      <Input
+        type={schemaItem.type === 'number' ? 'number' : 'text'}
+        value={String(value ?? '')}
+        onChange={(e) => onStaticChange(path, e.target.value)}
+        className={`flex-1 h-7 text-xs font-mono ${error ? 'border-red-500' : ''}`}
+      />
+    );
+  };
+
+  const renderDynamicInput = () => {
+    if (schemaItem.type === 'select' && schemaItem.options) {
+      return (
+        <div className="flex gap-1">
+          <Select value={inputValue} onValueChange={setInputValue}>
+            <SelectTrigger className="w-40 h-7 text-xs font-mono">
+              <SelectValue placeholder="Select a value..." />
+            </SelectTrigger>
+            <SelectContent>
+              {schemaItem.options.map((option: { value: string; label: string }) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" onClick={handleAddValue} className="h-7 px-2">
+            Add
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex gap-1">
+        <Input
+          type={schemaItem.type === 'number' ? 'number' : 'text'}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAddValue()}
+          className="w-40 h-7 text-xs font-mono"
+          placeholder="e.g. val1, val2, val3"
+        />
+        <Button size="sm" variant="outline" onClick={handleAddValue} className="h-7 px-2">
+          <CornerDownLeft className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  };
+
   return (
+    <div className="flex flex-col">
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">Static</span>
@@ -116,18 +152,13 @@ const RecursiveField = ({
       </div>
       
       {mode === ParamMode.Static ? (
-        <Input
-          type="text"
-          value={String(value ?? '')}
-          onChange={(e) => onStaticChange(path, e.target.value)}
-          className="flex-1 h-7 text-xs font-mono"
-        />
+        renderStaticInput()
       ) : (
         <div className="flex-1 flex items-center gap-2">
           {(value as JsonValue[]).length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {(value as JsonValue[]).map((val, index) => (
-                <div key={index} className="flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0 text-xs">
+                <div key={index} className={`flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0 text-xs ${dynamicErrors[`${path}-${index}`] ? 'border border-red-500' : ''}`}>
                   <span>{String(val)}</span>
                   <button onClick={() => onRemoveDynamicValue(path, index)} className="text-gray-500 hover:text-black">
                     <X className="h-3 w-3" />
@@ -136,169 +167,162 @@ const RecursiveField = ({
               ))}
             </div>
           ) : null}
-          <div className="flex gap-1">
-            <Input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddValue()}
-              className="w-40 h-7 text-xs font-mono"
-              placeholder="e.g. $100,000, $250,000"
-            />
-            <Button size="sm" variant="outline" onClick={handleAddValue} className="h-7 px-2">
-              <CornerDownLeft className="h-3 w-3" />
-            </Button>
-          </div>
+          {renderDynamicInput()}
         </div>
       )}
+    </div>
+      {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>
   );
 };
 
 export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsChange, initialSpec }: BatchFormProps) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _schema = schema; // Acknowledge the prop is unused for now
-  const flatInitialValues = flattenValues(initialValues);
-  
-  // Initialize state from initialSpec if provided
+  const flatSchema = flattenSchema(schema);
+  const flatInitialValues = flattenSchema(initialValues);
+
   const initializeModes = () => {
     const modes: Record<string, ParamMode> = {};
-    if (initialSpec) {
-      Object.keys(flatInitialValues).forEach(path => {
-        if (initialSpec.dynamic_parameters[path] && initialSpec.dynamic_parameters[path].length > 0) {
-          modes[path] = ParamMode.Dynamic;
-        } else {
-          modes[path] = ParamMode.Static;
-        }
-      });
-    } else {
-      Object.keys(flatInitialValues).forEach(path => {
-        modes[path] = ParamMode.Static;
-      });
-    }
+    Object.keys(flatSchema).forEach(path => {
+        modes[path] = (initialSpec?.dynamic_parameters?.[path]?.length > 0) ? ParamMode.Dynamic : ParamMode.Static;
+    });
     return modes;
   };
 
   const initializeStaticValues = () => {
     const values: Record<string, JsonValue> = {};
-    Object.entries(flatInitialValues).forEach(([path, value]) => {
-      if (initialSpec && initialSpec.static_parameters[path] !== undefined) {
-        values[path] = initialSpec.static_parameters[path];
-      } else {
-        values[path] = value;
-      }
+    Object.keys(flatSchema).forEach(path => {
+      values[path] = initialSpec?.static_parameters?.[path] ?? flatInitialValues[path] ?? flatSchema[path]?.default ?? '';
     });
     return values;
   };
 
-  const initializeDynamicValues = () => {
-    const values: Record<string, JsonValue[]> = {};
-    if (initialSpec) {
-      Object.entries(initialSpec.dynamic_parameters).forEach(([path, vals]) => {
-        values[path] = vals;
-      });
-    }
-    return values;
-  };
+  const initializeDynamicValues = () => initialSpec?.dynamic_parameters ?? {};
 
   const [modes, setModes] = useState<Record<string, ParamMode>>(initializeModes);
   const [staticValues, setStaticValues] = useState<Record<string, JsonValue>>(initializeStaticValues);
   const [dynamicValues, setDynamicValues] = useState<Record<string, JsonValue[]>>(initializeDynamicValues);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleModeChange = (path: string, mode: ParamMode) => {
-    setModes(prev => ({ ...prev, [path]: mode }));
-    
-    // When switching from Static to Dynamic, preserve the static value as the first dynamic value
-    if (mode === ParamMode.Dynamic && modes[path] === ParamMode.Static) {
-      const currentStaticValue = staticValues[path];
-      if (currentStaticValue !== undefined && currentStaticValue !== null && currentStaticValue !== '') {
-        setDynamicValues(prev => ({
-          ...prev,
-          [path]: [currentStaticValue]
-        }));
+  const validateValue = useCallback((path: string, value: string): string | undefined => {
+    const schemaItem = flatSchema[path];
+    if (!schemaItem) return;
+
+    if (schemaItem.type === 'number' && isNaN(Number(value))) {
+      return 'Must be a number.';
+    }
+
+    if (schemaItem && schemaItem.regex) {
+      try {
+        const regex = new RegExp(schemaItem.regex);
+        if (!regex.test(value)) {
+          return `Invalid format.`;
+        }
+      } catch {
+        console.error("Invalid regex in schema:", schemaItem.regex);
+        return `Invalid regex in schema.`;
       }
     }
+    return undefined;
+  }, [flatSchema]);
+
+  useEffect(() => {
+    const newErrors: Record<string, string> = {};
+    // Validate static values
+    Object.keys(staticValues).forEach(path => {
+      if (modes[path] === ParamMode.Static) {
+        const error = validateValue(path, String(staticValues[path]));
+        if (error) newErrors[path] = error;
+      }
+    });
+    // Validate dynamic values
+    Object.keys(dynamicValues).forEach(path => {
+      if (modes[path] === ParamMode.Dynamic) {
+        dynamicValues[path].forEach((val, index) => {
+          const error = validateValue(path, String(val));
+          if (error) newErrors[`${path}-${index}`] = error;
+        });
+      }
+    });
+    setErrors(newErrors);
+  }, [staticValues, dynamicValues, modes, validateValue]);
+
+  const handleModeChange = (path: string, mode: ParamMode) => {
+    const currentModes = modes;
+    if (mode === ParamMode.Dynamic && currentModes[path] === ParamMode.Static) {
+      const currentStaticValue = staticValues[path];
+      if (currentStaticValue !== undefined && String(currentStaticValue).trim() !== '') {
+        setDynamicValues(prev => ({ ...prev, [path]: [currentStaticValue] }));
+      }
+    } else if (mode === ParamMode.Static && currentModes[path] === ParamMode.Dynamic) {
+      const currentDynamicValues = dynamicValues[path];
+      if (currentDynamicValues && currentDynamicValues.length > 0) {
+        setStaticValues(prev => ({ ...prev, [path]: currentDynamicValues[0] }));
+      }
+    }
+    setModes(prev => ({ ...prev, [path]: mode }));
   };
 
   const handleStaticChange = (path: string, value: string) => {
-    setStaticValues(prev => {
-        const newStatic = { ...prev };
-        // Store the flat value directly
-        newStatic[path] = value;
-        return newStatic;
-    })
+    setStaticValues(prev => ({ ...prev, [path]: value }));
   }
 
   const handleAddDynamicValue = (path: string, value: string) => {
-    setDynamicValues(prev => ({
-        ...prev,
-        [path]: [...(prev[path] || []), value]
-    }));
+    setDynamicValues(prev => ({ ...prev, [path]: [...(prev[path] || []), value] }));
   }
 
   const handleRemoveDynamicValue = (path: string, index: number) => {
-    setDynamicValues(prev => ({
-        ...prev,
-        [path]: prev[path].filter((_, i) => i !== index)
-    }));
+    setDynamicValues(prev => {
+        const newDynamic = {...prev};
+        const updatedValues = (newDynamic[path] || []).filter((_, i) => i !== index);
+        newDynamic[path] = updatedValues;
+        return newDynamic;
+    });
   }
 
   useEffect(() => {
-    // Build nested static_parameters from flat staticValues
     const static_parameters: JsonObject = {};
     const dynamic_parameters: Record<string, JsonValue[]> = {};
     let combinations = 1;
     let hasDynamicParams = false;
 
-    // First, build the nested structure for static parameters
-    for (const path in staticValues) {
-      if (modes[path] !== ParamMode.Dynamic) {
-        const keys = path.split('.');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let current: any = static_parameters;
-        
-        // Create nested structure
+    Object.keys(modes).forEach(path => {
+      const keys = path.split('.');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let current: any = static_parameters;
+      if (modes[path] === ParamMode.Static) {
         for(let i = 0; i < keys.length - 1; i++) {
-            if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
-                current[keys[i]] = {};
-            }
-            current = current[keys[i]];
+          current[keys[i]] = current[keys[i]] || {};
+          current = current[keys[i]];
         }
-        
         current[keys[keys.length - 1]] = staticValues[path];
-      }
-    }
-
-    // Then handle dynamic parameters
-    for (const path in modes) {
-      if (modes[path] === ParamMode.Dynamic) {
+      } else {
         hasDynamicParams = true;
         dynamic_parameters[path] = dynamicValues[path] || [];
-        if (dynamicValues[path] && dynamicValues[path].length > 0) {
-            combinations *= dynamicValues[path].length;
-        } else {
-            combinations = 0;
-        }
+        combinations *= dynamic_parameters[path].length > 0 ? dynamic_parameters[path].length : 0;
       }
-    }
+    });
     
-    onSpecChange({ static_parameters, dynamic_parameters });
-    // If no dynamic params, it's 1 static execution. If dynamic params exist but some are empty, it's 0
-    onCombinationsChange(hasDynamicParams ? combinations : 1);
-  }, [modes, staticValues, dynamicValues, onSpecChange, onCombinationsChange]);
+    const isValid = Object.keys(errors).length === 0;
+    onSpecChange({ static_parameters, dynamic_parameters }, isValid);
+    onCombinationsChange(hasDynamicParams ? combinations : (Object.keys(static_parameters).length > 0 ? 1 : 0));
+  }, [modes, staticValues, dynamicValues, onSpecChange, onCombinationsChange, errors]);
 
   return (
     <div className="space-y-1">
-      {Object.entries(flatInitialValues).map(([path, value]) => (
-        <div key={path} className="grid grid-cols-12 gap-4 items-center px-6 py-0.5 hover:bg-gray-50">
+      {Object.entries(flatSchema).map(([path, schemaItem]) => (
+        <div key={path} className="grid grid-cols-12 gap-4 items-center px-6 py-2 hover:bg-gray-50 border-b">
             <Label htmlFor={path} className="col-span-3 text-sm font-mono truncate" title={path}>
                 {path}
             </Label>
             <div className="col-span-9">
                  <RecursiveField
                     path={path}
-                    value={modes[path] === ParamMode.Dynamic ? (dynamicValues[path] || []) : (staticValues[path] ?? value)}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    value={modes[path] === ParamMode.Dynamic ? (dynamicValues[path] || []) : (staticValues[path] ?? (schemaItem as any).default ?? '')}
+                    schemaItem={schemaItem}
                     mode={modes[path] || ParamMode.Static}
+                    error={errors[path]}
+                    dynamicErrors={errors}
                     onModeChange={handleModeChange}
                     onStaticChange={handleStaticChange}
                     onAddDynamicValue={handleAddDynamicValue}
