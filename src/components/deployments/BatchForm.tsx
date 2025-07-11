@@ -45,24 +45,47 @@ const ParameterField = ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schemaItem: any;
   dynamicErrors: Record<string, string>;
-  onAddDynamicValue: (path: string, value: string) => void;
+  onAddDynamicValue: (path: string, value: string) => string | undefined;
   onRemoveDynamicValue: (path: string, index: number) => void;
 }) => {
   const [inputValue, setInputValue] = useState('');
+  const [inputError, setInputError] = useState<string | undefined>();
 
   const handleAddValue = () => {
-    if (String(inputValue).trim()) {
-      onAddDynamicValue(path, String(inputValue).trim());
+    const error = onAddDynamicValue(path, String(inputValue).trim());
+    if (!error) {
       setInputValue('');
+      setInputError(undefined);
+    } else {
+      setInputError(error);
+    }
+  };
+
+  const handleInputChange = (value: string) => {
+    setInputValue(value);
+    if (inputError) {
+      setInputError(undefined);
+    }
+  }
+
+  const handleSelectAndAdd = (val: string) => {
+    if (!val) return;
+    const error = onAddDynamicValue(path, val);
+    if (error) {
+      setInputError(error);
+    } else if (inputError) {
+      setInputError(undefined);
     }
   };
 
   const renderDynamicInput = () => {
+    const placeholder = schemaItem.default ? `${schemaItem.default}` : "Add a value...";
+
     if (schemaItem.type === 'select' && schemaItem.options) {
       return (
         <div className="flex gap-1">
-          <Select value={inputValue} onValueChange={setInputValue}>
-            <SelectTrigger className="w-40 h-7 text-xs font-mono">
+          <Select onValueChange={handleSelectAndAdd} value="">
+            <SelectTrigger className="w-56 h-7 text-xs font-mono">
               <SelectValue placeholder="Select a value..." />
             </SelectTrigger>
             <SelectContent>
@@ -73,9 +96,6 @@ const ParameterField = ({
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" variant="outline" onClick={handleAddValue} className="h-7 px-2">
-            Add
-          </Button>
         </div>
       );
     }
@@ -85,12 +105,12 @@ const ParameterField = ({
         <Input
           type={schemaItem.type === 'number' ? 'number' : 'text'}
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAddValue()}
-          className="w-40 h-7 text-xs font-mono"
-          placeholder="e.g. val1, val2, val3"
+          className="w-48 h-7 text-xs font-mono"
+          placeholder={placeholder}
         />
-        <Button size="sm" variant="outline" onClick={handleAddValue} className="h-7 px-2">
+        <Button size="icon" variant="outline" onClick={handleAddValue} className="h-7 w-7 flex-shrink-0">
           <CornerDownLeft className="h-3 w-3" />
         </Button>
       </div>
@@ -98,18 +118,26 @@ const ParameterField = ({
   };
 
   return (
-    <div className="flex-1 flex items-center gap-2">
-        <div className="flex flex-wrap gap-1 flex-1">
-            {value.map((val, index) => (
-            <div key={index} className={`flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0 text-xs ${dynamicErrors[`${path}-${index}`] ? 'border border-red-500' : ''}`}>
-                <span>{String(val)}</span>
-                <button onClick={() => onRemoveDynamicValue(path, index)} className="text-gray-500 hover:text-black">
-                <X className="h-3 w-3" />
-                </button>
+    <div className="flex-1 flex flex-col items-end gap-2">
+        <div className="w-full flex-1 flex items-center gap-2">
+            <div className="flex flex-wrap gap-1 flex-1">
+                {value.map((val, index) => (
+                <div key={index} className={`relative group flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0 text-xs ${dynamicErrors[`${path}-${index}`] ? 'border border-red-500' : ''}`}>
+                    <span>{String(val)}</span>
+                    <button onClick={() => onRemoveDynamicValue(path, index)} className="text-gray-500 hover:text-black">
+                    <X className="h-3 w-3" />
+                    </button>
+                    {dynamicErrors[`${path}-${index}`] && (
+                      <div className="absolute bottom-full mb-2 w-max bg-black text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {dynamicErrors[`${path}-${index}`]}
+                      </div>
+                    )}
+                </div>
+                ))}
             </div>
-            ))}
+            {renderDynamicInput()}
         </div>
-        {renderDynamicInput()}
+        {inputError && <p className="text-red-500 text-xs text-right w-full">{inputError}</p>}
     </div>
   );
 };
@@ -138,18 +166,18 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     if (!schemaItem) return;
 
     if (schemaItem.type === 'number' && isNaN(Number(value))) {
-      return 'Must be a number.';
+      return schemaItem.validation_message || 'Must be a number.';
     }
 
     if (schemaItem.regex) {
       try {
         const regex = new RegExp(schemaItem.regex);
         if (!regex.test(value)) {
-          return `Invalid format.`;
+          return schemaItem.validation_message || `Invalid format.`;
         }
       } catch {
         console.error("Invalid regex in schema:", schemaItem.regex);
-        return `Invalid regex in schema.`;
+        return schemaItem.validation_message || `Invalid regex in schema.`;
       }
     }
     return undefined;
@@ -167,7 +195,13 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
   }, [dynamicValues]);
 
   const handleAddDynamicValue = (path: string, value: string) => {
+    if (!value) return;
+    const error = validateValue(path, value);
+    if (error) {
+      return error;
+    }
     setDynamicValues(prev => ({ ...prev, [path]: [...(prev[path] || []), value] }));
+    return undefined;
   }
 
   const handleRemoveDynamicValue = (path: string, index: number) => {

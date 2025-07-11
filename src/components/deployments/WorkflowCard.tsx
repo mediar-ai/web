@@ -1,14 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight, TestTube2 } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight } from 'lucide-react';
 import { Workflow, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import {
@@ -17,8 +14,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 
 // Floating Delta Component for stats
 const FloatingDelta = ({ value }: { value: number }) => {
@@ -52,165 +47,11 @@ const FloatingDelta = ({ value }: { value: number }) => {
   );
 };
 
-// Define types for our schema and values
-type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue> | null;
-type JSONObject = { [x: string]: JSONValue };
-
-interface SchemaItem {
-  type?: 'string' | 'number' | 'boolean' | 'select';
-  label?: string;
-  description?: string;
-  default?: JSONValue;
-  options?: { value: string; label: string }[];
-  required?: boolean;
-  regex?: string;
-  // Allows for nested schema items
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any;
-}
-
-// Helper to set a value in a nested object based on a path string
-const set = (obj: JSONObject, path: string, value: JSONValue): JSONObject => {
-  const keys = path.split('.');
-  let current: JSONObject = obj;
-  for (let i = 0; i < keys.length - 1; i++) {
-    const key = keys[i];
-    if (typeof current[key] !== 'object' || current[key] === null || Array.isArray(current[key])) {
-      current[key] = {};
-    }
-    current = current[key] as JSONObject;
-  }
-  current[keys[keys.length - 1]] = value;
-  return obj;
-};
-
-// New Schema-Driven Recursive form component
-const RecursiveForm = ({ schema, values, path, handleParamChange, paramErrors }: {
-  schema: Record<string, SchemaItem>;
-  values: JSONObject;
-  path: string;
-  handleParamChange: (path: string, value: JSONValue, schemaItem: SchemaItem) => void;
-  paramErrors: Record<string, string>;
-}) => {
-  return (
-    <div className="space-y-4">
-      {Object.entries(schema).map(([key, schemaItem]) => {
-        const currentPath = path ? `${path}.${key}` : key;
-        const { type, label, description, options, required, default: defaultValue } = schemaItem;
-        
-        // It's a nested group if it has no 'type' property.
-        if (!type) {
-          return (
-            <fieldset key={currentPath} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-4">
-              <legend className="text-sm font-medium text-gray-600 dark:text-gray-400 px-1">{label || key}</legend>
-              <RecursiveForm
-                schema={schemaItem as Record<string, SchemaItem>}
-                values={values}
-                path={currentPath}
-                handleParamChange={handleParamChange}
-                paramErrors={paramErrors}
-              />
-            </fieldset>
-          );
-        }
-
-        // It's a leaf node (a form field)
-        const getNestedValue = (obj: JSONObject, pathStr: string): JSONValue | undefined =>
-          pathStr.split('.').reduce((acc: JSONValue | undefined, part) =>
-            acc && typeof acc === 'object' ? (acc as JSONObject)[part] : undefined,
-          obj);
-
-        const currentValue = getNestedValue(values, currentPath);
-
-        const inputLabel = (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Label htmlFor={currentPath} className="text-right text-xs font-mono cursor-help">
-                  {label || key}{required && <span className="text-red-500">*</span>}
-                </Label>
-              </TooltipTrigger>
-              {description && (
-                <TooltipContent>
-                  <p>{description}</p>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
-        );
-
-        if (type === 'select' && options && Array.isArray(options)) {
-          return (
-            <div key={currentPath} className="grid grid-cols-3 items-center gap-4">
-              {inputLabel}
-              <Select
-                value={String(currentValue ?? defaultValue ?? '')}
-                onValueChange={val => handleParamChange(currentPath, val, schemaItem)}
-              >
-                <SelectTrigger className="col-span-2 h-8 text-xs font-mono">
-                  <SelectValue placeholder="Select an option" />
-                </SelectTrigger>
-                <SelectContent>
-                  {options.map((option: { value: string, label: string }) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label || option.value}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          );
-        }
-
-        if (type === 'boolean') {
-          return (
-            <div key={currentPath} className="grid grid-cols-3 items-center gap-4">
-              <span className="col-start-2 col-span-2 flex items-center space-x-2">
-                <Switch
-                  id={currentPath}
-                  checked={Boolean(currentValue ?? defaultValue)}
-                  onCheckedChange={checked => handleParamChange(currentPath, checked, schemaItem)}
-                />
-                {inputLabel}
-              </span>
-            </div>
-          );
-        }
-
-        return (
-          <div key={currentPath} className="grid grid-cols-3 items-center gap-4">
-            {inputLabel}
-            <div className="col-span-2">
-              <Input
-                id={currentPath}
-                type={type === 'number' ? 'number' : 'text'}
-                value={String(currentValue ?? defaultValue ?? '')}
-                onChange={e => {
-                  const val = type === 'number' ? parseFloat(e.target.value) : e.target.value;
-                  handleParamChange(currentPath, val, schemaItem);
-                }}
-                placeholder={description || ''}
-                className={`h-8 text-xs font-mono w-full ${paramErrors[currentPath] ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                required={required}
-              />
-              {paramErrors[currentPath] && (
-                <p className="text-red-500 text-xs mt-1">{paramErrors[currentPath]}</p>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-
 interface WorkflowCardProps {
   workflow: Workflow;
   executions: Execution[];
   liveExecutions: LiveExecutionStatus[];
   executingWorkflows: Set<number>;
-  onExecute: (workflow: Workflow, params?: Record<string, unknown> | (() => Record<string, unknown>)) => void;
   onFetchWorkflowDetails: (workflowId: number) => void;
   onFetchExecutionDetails: (executionId: number) => void;
   loadingDetails: boolean;
@@ -261,8 +102,6 @@ export function WorkflowCard({
   workflow,
   executions,
   liveExecutions,
-  executingWorkflows,
-  onExecute,
   onFetchWorkflowDetails,
   onFetchExecutionDetails,
   loadingDetails,
@@ -270,60 +109,9 @@ export function WorkflowCard({
   onBatchSubmit,
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [showParamsDropdown, setShowParamsDropdown] = useState(false);
-  const [executionParams, setExecutionParams] = useState<JSONObject>({});
-  const [paramErrors, setParamErrors] = useState<Record<string, string>>({});
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
   const previousWorkflow = useRef<Workflow | null>(null);
-
-  const resetExecutionParams = useCallback(() => {
-    // Use the new sample_inputs field for initial form values
-    if (workflow.sample_inputs) {
-      setExecutionParams(workflow.sample_inputs as JSONObject);
-    }
-  }, [workflow.sample_inputs]);
-
-  useEffect(() => {
-    // This effect should ONLY run when the workflow ID changes,
-    // not on every data refresh from the parent component's polling.
-    resetExecutionParams();
-  }, [workflow.id]); // Depend on the stable ID, not the object reference.
-
-  const handleParamChange = (path: string, value: JSONValue, schemaItem: SchemaItem) => {
-    // Validate based on regex if it exists
-    if (schemaItem.regex) {
-      try {
-        const regex = new RegExp(schemaItem.regex);
-        if (!regex.test(String(value))) {
-          setParamErrors(prev => ({ ...prev, [path]: `Invalid format.` }));
-        } else {
-          setParamErrors(prev => {
-            const newErrors = { ...prev };
-            delete newErrors[path];
-            return newErrors;
-          });
-        }
-      } catch {
-        console.error('Invalid regex in schema:', schemaItem.regex);
-      }
-    } else {
-        // If there's no regex, ensure we clear any previous errors for this path
-        setParamErrors(prev => {
-            const newErrors = { ...prev };
-            if (newErrors[path]) {
-                delete newErrors[path];
-                return newErrors;
-            }
-            return prev;
-        });
-    }
-
-    setExecutionParams(prev => {
-      const newParams = JSON.parse(JSON.stringify(prev));
-      return set(newParams, path, value);
-    });
-  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -508,106 +296,13 @@ export function WorkflowCard({
             <Badge className={getStatusBadge(workflow.deployment_status)}>
               {workflow.deployment_status.toUpperCase()}
             </Badge>
-            {workflow.input_parameters && Object.keys(workflow.input_parameters).length > 0 ? (
-              <DropdownMenu 
-                open={showParamsDropdown} 
-                onOpenChange={(open) => {
-                  setShowParamsDropdown(open);
-                  if (open) {
-                    resetExecutionParams();
-                  }
-                }}
-              >
-                <DropdownMenuTrigger asChild>
-                  <Button 
-                    className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-4"
-                    disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
-                    size="sm"
-                  >
-                    {executingWorkflows.has(workflow.id) ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                        RUNNING...
-                      </>
-                    ) : (
-                      <>
-                        <PlayCircle className="w-3 h-3 mr-1" />
-                        TEST RUN
-                        <ChevronDown className="w-3 h-3 ml-1" />
-                      </>
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-96 p-4 max-h-[70vh] overflow-y-auto" align="end">
-                  <div className="space-y-4">
-                    <div className="font-mono text-sm font-bold">EXECUTION PARAMETERS</div>
-                    
-                    <RecursiveForm 
-                      schema={workflow.input_parameters as Record<string, SchemaItem>} 
-                      values={executionParams} 
-                      path="" 
-                      handleParamChange={handleParamChange} 
-                      paramErrors={paramErrors}
-                    />
-                      
-                      <div className="flex gap-2 pt-2">
-                        <Button
-                          onClick={() => {
-                          // By passing a function, we ensure we get the latest state
-                          // when onExecute is actually called.
-                          onExecute(workflow, () => {
-                            // We return the latest executionParams state directly.
-                            return executionParams;
-                          });
-                            setShowParamsDropdown(false);
-                          }}
-                          className="bg-black text-white hover:bg-gray-800 font-mono text-xs flex-1"
-                          size="sm"
-                          disabled={executingWorkflows.has(workflow.id) || Object.keys(paramErrors).length > 0}
-                        >
-                          <PlayCircle className="w-3 h-3 mr-1" />
-                          RUN WITH PARAMS
-                        </Button>
-                        <Button
-                          onClick={() => setShowParamsDropdown(false)}
-                          variant="outline"
-                          className="font-mono text-xs"
-                          size="sm"
-                        >
-                          CANCEL
-                        </Button>
-                    </div>
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Button 
-                onClick={() => onExecute(workflow)}
-                className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-4"
-                disabled={workflow.deployment_status !== 'deployed' || executingWorkflows.has(workflow.id)}
-                size="sm"
-              >
-                {executingWorkflows.has(workflow.id) ? (
-                  <>
-                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                    RUNNING...
-                  </>
-                ) : (
-                  <>
-                    <PlayCircle className="w-3 h-3 mr-1" />
-                    TEST RUN
-                  </>
-                )}
-              </Button>
-            )}
             <Button
               onClick={() => setShowBatchTestDialog(true)}
-              variant="outline"
+              className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-4 w-full"
               size="sm"
-              className="font-mono text-xs mt-2 w-full"
             >
-              <TestTube2 className="w-3 h-3 mr-1" />
-              BATCH TEST
+              <PlayCircle className="w-3 h-3 mr-1" />
+              Test Run
             </Button>
           </div>
         </div>
