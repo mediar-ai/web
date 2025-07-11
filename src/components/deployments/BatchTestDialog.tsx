@@ -165,6 +165,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                 <div className="max-h-[50vh] overflow-y-auto">
                   <BatchForm
                     schema={workflow.input_parameters as JsonObject}
+                    initialValues={workflow.sample_inputs as JsonObject}
                     onSpecChange={setBatchSpec}
                     onCombinationsChange={setTotalCombinations}
                     initialSpec={batchSpec}
