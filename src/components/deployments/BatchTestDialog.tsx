@@ -33,7 +33,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
   const [isSpecValid, setIsSpecValid] = useState(true);
 
   // Create a storage key specific to this workflow
-  const storageKey = workflow ? `batch-test-${workflow.id}` : '';
+  const storageKey = workflow ? `test-run-${workflow.id}` : '';
 
   const resetBatchSpec = useCallback(() => {
     setBatchSpec({
@@ -98,12 +98,12 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
           onSubmit();
         }
       } else {
-        console.error('Failed to submit batch:', data.error);
-        alert(`Failed to submit batch: ${data.error}`);
+        console.error('Failed to submit test run:', data.error);
+        alert(`Failed to submit test run: ${data.error}`);
       }
     } catch (error) {
-      console.error('Error submitting batch:', error);
-      alert('Failed to submit batch execution');
+      console.error('Error submitting test run:', error);
+      alert('Failed to submit test run execution');
     } finally {
       setIsSubmitting(false);
     }
@@ -117,7 +117,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between pr-10">
             <DialogTitle className="text-2xl font-bold">
-              Batch Test: {workflow.name}
+              Test Run: {workflow.name}
             </DialogTitle>
             <Button variant="outline" onClick={handleReset} size="sm">
               <RotateCcw className="mr-2 h-4 w-4" />
@@ -135,7 +135,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
             <CardContent className="py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-6">
-                  <h3 className="text-base font-semibold">Batch Summary</h3>
+                  <h3 className="text-base font-semibold">Test Run Summary</h3>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs uppercase text-muted-foreground">Total Combinations:</span>
                     <span className="text-2xl font-bold">{totalCombinations}</span>
