@@ -323,6 +323,23 @@ def deep_merge(d, u):
             d[k] = v
     return d
 
+def extract_defaults_recursive(schema_node: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Recursively traverses a schema dictionary and extracts the default values.
+    """
+    defaults = {}
+    for key, value in schema_node.items():
+        if isinstance(value, dict):
+            if 'default' in value:
+                # This is a leaf node with a default value
+                defaults[key] = value['default']
+            else:
+                # This is a nested group of parameters, recurse
+                nested_defaults = extract_defaults_recursive(value)
+                if nested_defaults:
+                    defaults[key] = nested_defaults
+    return defaults
+
 def log_merge_details(original, merged, path=""):
     """Recursively compares two dictionaries and logs the changes."""
     # Using sorted keys for consistent log output
@@ -363,32 +380,42 @@ async def execute_mcp_workflow(
 
         # --- PARAMETER OVERRIDE LOGIC ---
         if execution_params:
-            logger.info("⚡️ Merging pre-structured execution parameters into workflow variables:")
+            logger.info("⚡️ Merging execution parameters into workflow inputs:")
             
-            # Make a deep copy for comparison logging
-            original_variables = json.loads(json.dumps(arguments.get('variables', {})))
+            # --- FINAL CORRECTED LOGIC ---
+            # 1. Use the `inputs` block as the source for default values.
+            default_inputs = arguments.get('inputs', {})
 
-            # The execution_params are now expected to be correctly nested by the frontend.
-            # We can merge them directly.
-            merged_variables = deep_merge(arguments.get('variables', {}), execution_params)
-            arguments['variables'] = merged_variables
+            # 2. For logging, show the changes between defaults and user overrides
+            log_merge_details(default_inputs, execution_params)
+
+            # 3. Create the final runtime values by merging overrides onto defaults
+            final_runtime_inputs = deep_merge(default_inputs, execution_params)
             
-            # Log the detailed changes
-            log_merge_details(original_variables, merged_variables)
+            # 4. Update ONLY the 'inputs' block. The 'variables' schema is not touched.
+            arguments['inputs'] = final_runtime_inputs
+            # --- END FINAL CORRECTED LOGIC ---
+
         else:
-            logger.info("✅ Using default variables from workflow definition.")
-        # --- END PARAMETER OVERRIDE LOGIC ---
-
-
+            logger.info("✅ Using default inputs from workflow definition.")
+        
+        # The entire `arguments` object, containing the `variables` schema, the final `inputs`,
+        # and the `items`, is sent to MCP. The template engine inside MCP will know
+        # to use the `inputs` block for template substitution.
+        
         logger.info("📋 Workflow: %s", tool_name)
         logger.info("   Items: %d", len(arguments.get("items", [])))
 
         # --- MORE DETAILED LOGGING ---
         logger.info("--- DETAILED LOGGING: Payload being sent to MCP ---")
-        if arguments.get('variables'):
-            logger.info("   Variables payload for MCP: %s", json.dumps(arguments['variables'], indent=2))
+        # For clarity, we log the two main parts of the arguments separately
+        if 'variables' in arguments:
+             logger.info("   Variables Schema (for UI): %s", json.dumps(arguments['variables'], indent=2))
+        if 'inputs' in arguments:
+             logger.info("   Runtime Inputs (for execution): %s", json.dumps(arguments['inputs'], indent=2))
+
         log_string = json.dumps(arguments)
-        logger.info(f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}")
+        logger.info(f"Full Arguments Payload (truncated): {log_string[:200]}{'...' if len(log_string) > 200 else ''}")
         logger.info("--- END DETAILED LOGGING ---")
 
         async with httpx.AsyncClient(timeout=300.0) as client:
@@ -728,7 +755,10 @@ def execute_workflow(
 
         # Calculate total steps and update the execution record
         automation_sequence = workflow.get("automation_sequence", [{}])[0]
-        total_steps = len(automation_sequence.get("arguments", {}).get("items", []))
+        arguments = automation_sequence.get("arguments", {})
+        # The canonical key for the list of execution groups is now 'steps'.
+        steps_list = arguments.get("steps", [])
+        total_steps = len(steps_list)
         
         cur.execute(
             """

@@ -1,6 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue>;
+type JSONObject = { [x: string]: JSONValue };
+
+// Helper to recursively extract default values from a schema object
+const extractDefaults = (schema: JSONObject): JSONObject => {
+  const defaults: JSONObject = {};
+  for (const key in schema) {
+    const value = schema[key] as JSONObject;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (value.hasOwnProperty('default')) {
+        defaults[key] = value.default;
+      } else {
+        // This is a nested group of parameters, not a parameter itself.
+        const nestedDefaults = extractDefaults(value);
+        if (Object.keys(nestedDefaults).length > 0) {
+          defaults[key] = nestedDefaults;
+        }
+      }
+    }
+  }
+  return defaults;
+};
+
 export async function GET(request: NextRequest) {
   try {
     console.log('⚡ Fast workflow list from Vercel...');
@@ -64,75 +87,23 @@ export async function GET(request: NextRequest) {
 
     // Format workflows with computed fields
     const formattedWorkflows = (workflows || []).map(workflow => {
-      let executionSchema = {};
-      let sampleInputs = {};
-      let expectedOutputs = {};
+      let executionSchema: JSONObject = {};
+      let sampleInputs: JSONObject = {};
 
       try {
-        if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
-          const mainSequence = workflow.automation_sequence[0];
-          if (mainSequence.arguments) {
-            if (mainSequence.arguments.variables) {
-              executionSchema = mainSequence.arguments.variables;
-              sampleInputs = mainSequence.arguments.variables;
-            }
-            if (mainSequence.arguments.output_parser && mainSequence.arguments.output_parser.fieldsToExtract) {
-              expectedOutputs = Object.keys(mainSequence.arguments.output_parser.fieldsToExtract).reduce((acc, key) => {
-                acc[key] = " dynamically extracted";
-                return acc;
-              }, {} as Record<string, string>);
-            }
-          }
+        const sequenceArgs = workflow.automation_sequence?.[0]?.arguments as JSONObject;
+        if (sequenceArgs?.variables) {
+          executionSchema = sequenceArgs.variables as JSONObject;
+          sampleInputs = extractDefaults(executionSchema);
         }
       } catch (e) {
-        console.error(`Error parsing dynamic fields for workflow ${workflow.id}:`, e);
+        console.error(`Error parsing schema for workflow ${workflow.id}:`, e);
       }
-
+      
       return {
-        id: workflow.id,
-        name: workflow.name,
-        description: workflow.description,
-        version: workflow.version,
-        status: workflow.status,
-        category: workflow.category,
-        tags: workflow.tags || [],
-        difficulty_level: workflow.difficulty_level,
-        estimated_duration_seconds: workflow.estimated_duration_seconds,
-        
-        input_parameters: executionSchema,
-        sample_inputs: sampleInputs,
-        expected_outputs: expectedOutputs,
-        
-        performance_metrics: {
-          successful_runs: workflow.successful_runs || 0,
-          failed_runs: workflow.failed_runs || 0,
-          total_executions: workflow.total_executions || 0,
-          success_rate: workflow.total_executions > 0 
-            ? Math.round(((workflow.successful_runs || 0) / workflow.total_executions) * 100) 
-            : 0
-        },
-        
-        // Performance metrics (flat format for backward compatibility)
-        successful_runs: workflow.successful_runs || 0,
-        failed_runs: workflow.failed_runs || 0,
-        total_executions: workflow.total_executions || 0,
-        success_rate: workflow.total_executions > 0 
-          ? Math.round(((workflow.successful_runs || 0) / workflow.total_executions) * 100) 
-          : null,
-        
-        // Execution info
-        is_executable: workflow.deployment_status === 'deployed' && workflow.status === 'active',
-        deployment_status: workflow.deployment_status,
-        
-        // Timestamps
-        created_at: workflow.created_at,
-        updated_at: workflow.updated_at,
-        
-        // Quick access URLs
-        endpoints: {
-          details: `/api/remote-workflows/${workflow.id}`,
-          execute: `/api/remote-workflows/${workflow.id}/execute`
-        }
+        ...workflow,
+        input_parameters: executionSchema, // The full schema
+        sample_inputs: sampleInputs,       // The default values
       };
     });
 

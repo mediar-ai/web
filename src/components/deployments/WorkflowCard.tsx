@@ -17,8 +17,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
-// Re-defining FloatingDelta here as it's not a shared component yet
+// Floating Delta Component for stats
 const FloatingDelta = ({ value }: { value: number }) => {
   const [deltas, setDeltas] = useState<{ id: string, value: number }[]>([]);
 
@@ -50,56 +52,144 @@ const FloatingDelta = ({ value }: { value: number }) => {
   );
 };
 
+// Define types for our schema and values
+type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue> | null;
+type JSONObject = { [x: string]: JSONValue };
 
-type RecursiveObject = {
-  [key: string]: string | number | boolean | RecursiveObject | null | undefined;
+interface SchemaItem {
+  type?: 'string' | 'number' | 'boolean' | 'select';
+  label?: string;
+  description?: string;
+  default?: JSONValue;
+  options?: { value: string; label: string }[];
+  required?: boolean;
+  // Allows for nested schema items
+  [key: string]: JSONValue | undefined | { value: string; label: string }[] ;
+}
+
+// Helper to set a value in a nested object based on a path string
+const set = (obj: JSONObject, path: string, value: JSONValue): JSONObject => {
+  const keys = path.split('.');
+  let current: JSONObject = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (typeof current[key] !== 'object' || current[key] === null || Array.isArray(current[key])) {
+      current[key] = {};
+    }
+    current = current[key] as JSONObject;
+  }
+  current[keys[keys.length - 1]] = value;
+  return obj;
 };
 
-// New Recursive form component to render the nested variable structure
-const RecursiveForm = ({ data, path, handleParamChange }: { data: RecursiveObject, path: string, handleParamChange: (path: string, value: string | number | boolean) => void }) => {
+// New Schema-Driven Recursive form component
+const RecursiveForm = ({ schema, values, path, handleParamChange }: {
+  schema: Record<string, SchemaItem>;
+  values: JSONObject;
+  path: string;
+  handleParamChange: (path: string, value: JSONValue) => void;
+}) => {
   return (
-    <div className="space-y-3">
-      {Object.entries(data).map(([key, value]) => {
+    <div className="space-y-4">
+      {Object.entries(schema).map(([key, schemaItem]) => {
         const currentPath = path ? `${path}.${key}` : key;
-        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        const { type, label, description, options, required, default: defaultValue } = schemaItem;
+        
+        // It's a nested group if it has no 'type' property.
+        if (!type) {
           return (
-            <fieldset key={currentPath} className="border border-gray-200 rounded-md p-2 space-y-2">
-              <legend className="text-xs font-mono font-medium px-1">{key}</legend>
-              <RecursiveForm data={value as RecursiveObject} path={currentPath} handleParamChange={handleParamChange} />
+            <fieldset key={currentPath} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-4">
+              <legend className="text-sm font-medium text-gray-600 dark:text-gray-400 px-1">{label || key}</legend>
+              <RecursiveForm
+                schema={schemaItem as Record<string, SchemaItem>}
+                values={values}
+                path={currentPath}
+                handleParamChange={handleParamChange}
+              />
             </fieldset>
           );
-        } else if (typeof value === 'boolean') {
+        }
+
+        // It's a leaf node (a form field)
+        const getNestedValue = (obj: JSONObject, pathStr: string): JSONValue | undefined =>
+          pathStr.split('.').reduce((acc: JSONValue | undefined, part) =>
+            acc && typeof acc === 'object' ? (acc as JSONObject)[part] : undefined,
+          obj);
+
+        const currentValue = getNestedValue(values, currentPath);
+
+        const inputLabel = (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Label htmlFor={currentPath} className="text-right text-xs font-mono cursor-help">
+                  {label || key}{required && <span className="text-red-500">*</span>}
+                </Label>
+              </TooltipTrigger>
+              {description && (
+                <TooltipContent>
+                  <p>{description}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
+        );
+
+        if (type === 'select' && options && Array.isArray(options)) {
           return (
-             <div key={currentPath} className="flex items-center space-x-2">
-               <input
-                 type="checkbox"
-                 id={currentPath}
-                 checked={!!value}
-                 onChange={(e) => handleParamChange(currentPath, e.target.checked)}
-                 className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
-               />
-               <Label htmlFor={currentPath} className="text-xs font-mono">
-                 {key}
-               </Label>
-             </div>
-          );
-        } else {
-          // Handle string, number, or other primitives
-          return (
-            <div key={currentPath} className="space-y-1">
-              <Label htmlFor={currentPath} className="text-xs font-mono">
-                {key}
-              </Label>
-              <Input
-                id={currentPath}
-                value={String(value ?? '')}
-                onChange={(e) => handleParamChange(currentPath, e.target.value)}
-                className="h-8 text-xs font-mono"
-                placeholder={`Enter value for ${key}`}
-              />
+            <div key={currentPath} className="grid grid-cols-3 items-center gap-4">
+              {inputLabel}
+              <Select
+                value={String(currentValue ?? defaultValue ?? '')}
+                onValueChange={val => handleParamChange(currentPath, val)}
+              >
+                <SelectTrigger className="col-span-2 h-8 text-xs font-mono">
+                  <SelectValue placeholder="Select an option" />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.map((option: { value: string, label: string }) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label || option.value}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           );
         }
+
+        if (type === 'boolean') {
+          return (
+            <div key={currentPath} className="grid grid-cols-3 items-center gap-4">
+              <span className="col-start-2 col-span-2 flex items-center space-x-2">
+                <Switch
+                  id={currentPath}
+                  checked={Boolean(currentValue ?? defaultValue)}
+                  onCheckedChange={checked => handleParamChange(currentPath, checked)}
+                />
+                {inputLabel}
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <div key={currentPath} className="grid grid-cols-3 items-center gap-4">
+            {inputLabel}
+            <Input
+              id={currentPath}
+              type={type === 'number' ? 'number' : 'text'}
+              value={String(currentValue ?? defaultValue ?? '')}
+              onChange={e => {
+                const val = type === 'number' ? parseFloat(e.target.value) : e.target.value;
+                handleParamChange(currentPath, val);
+              }}
+              placeholder={description || ''}
+              className="col-span-2 h-8 text-xs font-mono"
+              required={required}
+            />
+          </div>
+        );
       })}
     </div>
   );
@@ -172,37 +262,26 @@ export function WorkflowCard({
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showParamsDropdown, setShowParamsDropdown] = useState(false);
-  const [executionParams, setExecutionParams] = useState<Record<string, unknown>>({});
+  const [executionParams, setExecutionParams] = useState<JSONObject>({});
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
-  const prevWorkflow = useRef<Workflow>(workflow);
-
-  useEffect(() => {
-    prevWorkflow.current = workflow;
-  }, [workflow]);
+  const previousWorkflow = useRef<Workflow | null>(null);
 
   const resetExecutionParams = useCallback(() => {
-    if (workflow.input_parameters) {
-      setExecutionParams(workflow.input_parameters);
+    // Use the new sample_inputs field for initial form values
+    if (workflow.sample_inputs) {
+      setExecutionParams(workflow.sample_inputs as JSONObject);
     }
-  }, [workflow.input_parameters]);
+  }, [workflow.sample_inputs]);
 
   useEffect(() => {
-    // The source of truth for execution parameters is now input_parameters,
-    // which is dynamically generated from the workflow's variables block.
     resetExecutionParams();
   }, [resetExecutionParams]);
 
-  const handleParamChange = (path: string, value: string | number | boolean) => {
+  const handleParamChange = (path: string, value: JSONValue) => {
     setExecutionParams(prev => {
-      const newParams = JSON.parse(JSON.stringify(prev)); // Deep copy
-      const keys = path.split('.');
-      let current = newParams;
-      for (let i = 0; i < keys.length - 1; i++) {
-        current = current[keys[i]] = current[keys[i]] || {};
-      }
-      current[keys[keys.length - 1]] = value;
-      return newParams;
+      const newParams = JSON.parse(JSON.stringify(prev));
+      return set(newParams, path, value);
     });
   };
 
@@ -363,22 +442,22 @@ export function WorkflowCard({
             <div className="flex gap-4 text-xs font-mono text-black">
               <span className="relative inline-block">
                 RUNS: {workflow.total_executions || 0}
-                <FloatingDelta value={(workflow.total_executions || 0) - (prevWorkflow.current.total_executions || 0)} />
+                <FloatingDelta value={(workflow.total_executions || 0) - (previousWorkflow.current?.total_executions || 0)} />
               </span>
               <span className="relative inline-block text-gray-700">
                 SUCCESS: {workflow.successful_runs || 0}
-                <FloatingDelta value={(workflow.successful_runs || 0) - (prevWorkflow.current.successful_runs || 0)} />
+                <FloatingDelta value={(workflow.successful_runs || 0) - (previousWorkflow.current?.successful_runs || 0)} />
               </span>
               <span className="relative inline-block text-red-600">
                 FAILED: {workflow.failed_runs || 0}
-                <FloatingDelta value={(workflow.failed_runs || 0) - (prevWorkflow.current.failed_runs || 0)} />
+                <FloatingDelta value={(workflow.failed_runs || 0) - (previousWorkflow.current?.failed_runs || 0)} />
               </span>
               {(workflow.total_executions || 0) > 0 && (
                 <span className="relative inline-block">
                   SUCCESS RATE: {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
                   <FloatingDelta value={
                     Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100) -
-                    Math.round(((prevWorkflow.current.successful_runs || 0) / (prevWorkflow.current.total_executions || 1)) * 100)
+                    Math.round(((previousWorkflow.current?.successful_runs || 0) / (previousWorkflow.current?.total_executions || 1)) * 100)
                   } />
                 </span>
               )}
@@ -423,7 +502,12 @@ export function WorkflowCard({
                   <div className="space-y-4">
                     <div className="font-mono text-sm font-bold">EXECUTION PARAMETERS</div>
                     
-                    <RecursiveForm data={executionParams as RecursiveObject} path="" handleParamChange={handleParamChange} />
+                    <RecursiveForm 
+                      schema={workflow.input_parameters as Record<string, SchemaItem>} 
+                      values={executionParams} 
+                      path="" 
+                      handleParamChange={handleParamChange} 
+                    />
                     
                     <div className="flex gap-2 pt-2">
                       <Button
