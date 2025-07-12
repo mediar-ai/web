@@ -3,12 +3,23 @@
 import React, { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { X, CornerDownLeft } from 'lucide-react';
 
 type JsonValue = string | number | boolean | { [x: string]: JsonValue } | Array<JsonValue> | null;
 type JsonObject = { [x:string]: JsonValue };
+
+// Define proper types for schema items
+interface SchemaItem {
+  type?: string;
+  label?: string;
+  description?: string;
+  default?: JsonValue;
+  regex?: string;
+  validation_message?: string;
+  options?: Array<{ value: string; label: string }>;
+  controls?: Record<string, Record<string, SchemaItem>>;
+}
 
 interface BatchFormProps {
   schema: JsonObject;
@@ -18,15 +29,14 @@ interface BatchFormProps {
   initialSpec?: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function flattenSchema(schema: JsonObject, path = '', acc: Record<string, any> = {}): Record<string, any> {
+function flattenSchema(schema: JsonObject, path = '', acc: Record<string, SchemaItem> = {}): Record<string, SchemaItem> {
   for (const key in schema) {
     const newPath = path ? `${path}.${key}` : key;
     const value = schema[key] as JsonObject;
     if (value && typeof value === 'object' && !Array.isArray(value) && !value.type) {
         flattenSchema(value, newPath, acc);
     } else {
-        acc[newPath] = value;
+        acc[newPath] = value as SchemaItem;
     }
   }
   return acc;
@@ -42,8 +52,7 @@ const ParameterField = ({
 }: {
   path: string;
   value: JsonValue[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schemaItem: any;
+  schemaItem: SchemaItem;
   dynamicErrors: Record<string, string>;
   onAddDynamicValue: (path: string, value: string) => string | undefined;
   onRemoveDynamicValue: (path: string, index: number) => void;
@@ -157,7 +166,6 @@ const ParameterRow = ({
   level,
   dynamicValues,
   errors,
-  activeChoices,
   onAddDynamicValue,
   onRemoveDynamicValue,
 }: {
@@ -166,7 +174,6 @@ const ParameterRow = ({
   level: number;
   dynamicValues: Record<string, JsonValue[]>;
   errors: Record<string, string>;
-  activeChoices: Record<string, string>;
   onAddDynamicValue: (path: string, value: string) => string | undefined;
   onRemoveDynamicValue: (path: string, index: number) => void;
 }) => {
@@ -174,15 +181,13 @@ const ParameterRow = ({
     // Top-level parameters - no indentation
     return (
       <div key={path} className="mb-4">
-        {/* @ts-ignore */}
         <ParameterField
           path={path}
-          label={schemaItem.label as string || path}
-          values={dynamicValues[path] || []}
-          onAddValue={onAddDynamicValue}
-          onRemoveValue={onRemoveDynamicValue}
-          error={errors[path]}
-          schema={schemaItem}
+          value={dynamicValues[path] || []}
+          schemaItem={schemaItem as SchemaItem}
+          dynamicErrors={errors}
+          onAddDynamicValue={onAddDynamicValue}
+          onRemoveDynamicValue={onRemoveDynamicValue}
         />
       </div>
     );
@@ -190,8 +195,8 @@ const ParameterRow = ({
     // Branch headers - 24px indentation
     return (
       <div key={path} style={{ marginLeft: '24px' }} className="mb-4">
-        <div className="text-sm font-medium text-gray-700 mb-2">{path}:</div>
-        {schemaItem.controls && typeof schemaItem.controls === 'object' && (
+        <div className="text-sm font-medium text-gray-700 mb-2">{String(path)}:</div>
+        {schemaItem.controls && typeof schemaItem.controls === 'object' ? (
           <div>
             {Object.entries(schemaItem.controls as Record<string, Record<string, unknown>>).map(([branchValue, branchControls]) => {
               const selectedValues = dynamicValues[path] || [];
@@ -200,19 +205,17 @@ const ParameterRow = ({
               return (
                 <div key={branchValue} style={{ marginLeft: '24px' }} className="mb-4">
                   <div className={`text-sm font-medium mb-2 ${isSelected ? 'text-gray-700' : 'text-gray-400'}`}>
-                    {branchValue}:
+                    {String(branchValue)}:
                   </div>
                   {Object.entries(branchControls).map(([branchParamName, branchParamDef]) => (
                     <div key={branchParamName} style={{ marginLeft: '24px' }} className="mb-4">
                       <ParameterField
                         path={branchParamName}
-                        label={(branchParamDef as Record<string, unknown>).label as string || branchParamName}
-                        values={dynamicValues[branchParamName] || []}
-                        onAddValue={onAddDynamicValue}
-                        onRemoveValue={onRemoveDynamicValue}
-                        error={errors[branchParamName]}
-                        schema={branchParamDef as Record<string, unknown>}
-                        disabled={!isSelected}
+                        value={dynamicValues[branchParamName] || []}
+                        schemaItem={branchParamDef as SchemaItem}
+                        dynamicErrors={errors}
+                        onAddDynamicValue={onAddDynamicValue}
+                        onRemoveDynamicValue={onRemoveDynamicValue}
                       />
                     </div>
                   ))}
@@ -220,7 +223,7 @@ const ParameterRow = ({
               );
             })}
           </div>
-        )}
+        ) : null}
       </div>
     );
   }
@@ -241,21 +244,21 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     
     // First, initialize all regular parameters
     Object.keys(flatSchema).forEach(path => {
-        const initialValue = flatInitialValues[path] ?? flatSchema[path]?.default;
+        const initialValue = flatInitialValues[path]?.default ?? flatSchema[path]?.default;
         initialDynamic[path] = initialValue !== undefined && initialValue !== null ? [initialValue] : [];
     });
     
     // Then, initialize only the default branch parameters for conditional logic
-    Object.entries(schema).forEach(([controlPath, controlSchema]) => {
-      if (controlSchema && typeof controlSchema === 'object' && (controlSchema as any).controls) {
-        const controls = (controlSchema as any).controls;
+    Object.entries(schema).forEach(([, controlSchema]) => {
+      if (controlSchema && typeof controlSchema === 'object' && (controlSchema as SchemaItem).controls) {
+        const controls = (controlSchema as SchemaItem).controls;
         
         // Get the default branch value
-        const defaultBranchValue = (controlSchema as any).default || Object.keys(controls)[0];
+        const defaultBranchValue = (controlSchema as SchemaItem).default || Object.keys(controls || {})[0];
         
         // Only initialize parameters for the default branch
-        if (controls[defaultBranchValue]) {
-          Object.entries(controls[defaultBranchValue] as Record<string, any>).forEach(([paramName, paramDef]) => {
+        if (controls && controls[defaultBranchValue as string]) {
+          Object.entries(controls[defaultBranchValue as string]).forEach(([paramName, paramDef]) => {
             if (!initialDynamic[paramName] || initialDynamic[paramName].length === 0) {
               const defaultValue = paramDef.default;
               if (defaultValue !== undefined && defaultValue !== null) {
@@ -272,7 +275,6 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
 
   const [dynamicValues, setDynamicValues] = useState<Record<string, JsonValue[]>>(initializeDynamicValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [activeChoices, setActiveChoices] = useState<Record<string, string>>({});
 
   const validateValue = (path: string, value: string): string | undefined => {
     const flatSchema = flattenSchema(schema);
@@ -306,7 +308,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
       });
     });
     setErrors(newErrors);
-  }, [dynamicValues, schema]);
+  }, [dynamicValues, schema, validateValue]);
 
   const handleAddDynamicValue = (path: string, value: string) => {
     if (!value) return;
@@ -317,11 +319,11 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     
     // Check if this is a controlling parameter (has conditional branches)
     const controlSchema = schema[path];
-    if (controlSchema && typeof controlSchema === 'object' && (controlSchema as any).controls) {
-      const controls = (controlSchema as any).controls;
+    if (controlSchema && typeof controlSchema === 'object' && (controlSchema as SchemaItem).controls) {
+      const controls = (controlSchema as SchemaItem).controls;
       
       // If we're adding a new branch value, initialize its parameters with defaults
-      if (controls[value]) {
+      if (controls && controls[value]) {
         setDynamicValues(prev => {
           const newDynamic = { ...prev };
           
@@ -329,7 +331,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
           newDynamic[path] = [...(prev[path] || []), value];
           
           // Initialize default values for parameters in this branch
-          Object.entries(controls[value] as Record<string, any>).forEach(([paramName, paramDef]) => {
+          Object.entries(controls[value]).forEach(([paramName, paramDef]) => {
             if (!newDynamic[paramName] || newDynamic[paramName].length === 0) {
               const defaultValue = paramDef.default;
               if (defaultValue !== undefined && defaultValue !== null) {
@@ -361,10 +363,6 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     });
   }
 
-  const handleChoiceChange = (path: string, value: string) => {
-    setActiveChoices(prev => ({ ...prev, [path]: value }));
-  };
-
   useEffect(() => {
     // Filter dynamic_parameters based on active choices for conditional variables
     const filtered_dynamic_parameters: Record<string, JsonValue[]> = {};
@@ -373,9 +371,9 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     const shouldIncludeVariable = (variablePath: string): boolean => {
       // Check if this variable belongs to a conditional branch
       for (const [controlPath, controlSchema] of Object.entries(schema)) {
-        if (controlSchema && typeof controlSchema === 'object' && (controlSchema as any).controls) {
+        if (controlSchema && typeof controlSchema === 'object' && (controlSchema as SchemaItem).controls) {
           const selectedValues = dynamicValues[controlPath] || [];
-          const controls = (controlSchema as any).controls;
+          const controls = (controlSchema as SchemaItem).controls;
           
           // If this is the controlling parameter itself, always include it if it has values
           if (variablePath === controlPath) {
@@ -384,7 +382,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
           
           // Check if this variable is in any of the selected branches
           for (const selectedValue of selectedValues) {
-            const branchControls = controls[selectedValue];
+            const branchControls = controls?.[selectedValue as string];
             if (branchControls && branchControls[variablePath]) {
               return true;
             }
@@ -392,10 +390,12 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
           
           // Check if this variable is a branch-specific parameter
           // If it is, but not in any selected branch, exclude it
-          for (const [branchValue, branchControls] of Object.entries(controls)) {
-            if (branchControls && typeof branchControls === 'object' && (branchControls as any)[variablePath]) {
-              // This is a branch-specific parameter, but not in selected branches
-              return false;
+          if (controls) {
+            for (const [, branchControls] of Object.entries(controls)) {
+              if (branchControls && typeof branchControls === 'object' && branchControls[variablePath]) {
+                // This is a branch-specific parameter, but not in selected branches
+                return false;
+              }
             }
           }
         }
@@ -529,14 +529,12 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
         <ParameterRow
           key={path}
           path={path}
-          schemaItem={schemaItem}
+          schemaItem={schemaItem as Record<string, unknown>}
           level={0}
           dynamicValues={dynamicValues}
           errors={errors}
-          activeChoices={activeChoices}
           onAddDynamicValue={handleAddDynamicValue}
           onRemoveDynamicValue={handleRemoveDynamicValue}
-          onChoiceChange={handleChoiceChange}
         />
       ))}
     </div>

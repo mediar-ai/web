@@ -86,7 +86,10 @@ def main():
         print("Error: All execution IDs must be integers.")
         sys.exit(1)
         
-    reason = "Manually marked as failed. The job was interrupted by a new deployment."
+    if new_status == 'cancelled':
+        reason = "Manually cancelled. The job was affected by system issues or queue blocking."
+    else:
+        reason = "Manually updated. The job was interrupted by a new deployment."
     
     print(f"Preparing to set status to '{new_status}' for IDs: {execution_ids}")
     update_execution_statuses(new_status, execution_ids, reason)

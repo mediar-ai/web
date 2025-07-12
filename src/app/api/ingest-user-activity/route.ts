@@ -195,8 +195,10 @@ export async function POST(request: Request) {
           console.error(`Error uploading screenshot ${ss.id} for session ${sessionId}:`, uploadError.message);
         } else {
           console.log(`Successfully uploaded screenshot ${filePath}`);
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { dataUrl, ...metadata } = ss;
+          // Extract metadata without dataUrl (which is no longer needed after upload)
+          const metadata = Object.fromEntries(
+            Object.entries(ss).filter(([key]) => key !== 'dataUrl')
+          );
           dataToUpsert.push({
             session_id: sessionId,
             user_id: userId,
@@ -250,7 +252,6 @@ export async function POST(request: Request) {
     if (exportedData.activityItems && Array.isArray(exportedData.activityItems)) {
       for (const activity of exportedData.activityItems) {
         if (!activity.id || !activity.type || !activity.timestamp) continue;
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { type, id, timestamp, ...itemSpecificData } = activity;
         dataToUpsert.push({
           session_id: sessionId, user_id: userId, item_type: type,
