@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const include_results = searchParams.get('include_results') === 'true';
 
     // Build base query - use only existing database fields
+    // Performance optimization: heavy fields (execution_params, results) are fetched but only included in response if requested
     let query = supabase
       .from('workflow_executions')
       .select('id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, deployed_workflows!inner(id, name, description, category)')
