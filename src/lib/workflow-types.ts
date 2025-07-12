@@ -5,6 +5,13 @@ export type InputParameter = {
   required: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default?: any;
+  // For conditional parameters
+  controls?: Record<string, Record<string, InputParameter>>;
+  // Additional properties for UI rendering
+  label?: string;
+  regex?: string;
+  validation_message?: string;
+  options?: Array<{ value: string; label: string }> | string[];
 };
 
 // These types are no longer used and will be removed.

@@ -150,26 +150,132 @@ const ParameterField = ({
   );
 };
 
-export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsChange, initialSpec }: BatchFormProps) {
-  const flatSchema = flattenSchema(schema);
-  const flatInitialValues = flattenSchema(initialValues);
+// New component for rendering parameters with hierarchy
+const ParameterRow = ({
+  path,
+  schemaItem,
+  level,
+  dynamicValues,
+  errors,
+  activeChoices,
+  onAddDynamicValue,
+  onRemoveDynamicValue,
+}: {
+  path: string;
+  schemaItem: Record<string, unknown>;
+  level: number;
+  dynamicValues: Record<string, JsonValue[]>;
+  errors: Record<string, string>;
+  activeChoices: Record<string, string>;
+  onAddDynamicValue: (path: string, value: string) => string | undefined;
+  onRemoveDynamicValue: (path: string, index: number) => void;
+}) => {
+  if (level === 0) {
+    // Top-level parameters - no indentation
+    return (
+      <div key={path} className="mb-4">
+        {/* @ts-ignore */}
+        <ParameterField
+          path={path}
+          label={schemaItem.label as string || path}
+          values={dynamicValues[path] || []}
+          onAddValue={onAddDynamicValue}
+          onRemoveValue={onRemoveDynamicValue}
+          error={errors[path]}
+          schema={schemaItem}
+        />
+      </div>
+    );
+  } else if (level === 1) {
+    // Branch headers - 24px indentation
+    return (
+      <div key={path} style={{ marginLeft: '24px' }} className="mb-4">
+        <div className="text-sm font-medium text-gray-700 mb-2">{path}:</div>
+        {schemaItem.controls && typeof schemaItem.controls === 'object' && (
+          <div>
+            {Object.entries(schemaItem.controls as Record<string, Record<string, unknown>>).map(([branchValue, branchControls]) => {
+              const selectedValues = dynamicValues[path] || [];
+              const isSelected = selectedValues.includes(branchValue);
+              
+              return (
+                <div key={branchValue} style={{ marginLeft: '24px' }} className="mb-4">
+                  <div className={`text-sm font-medium mb-2 ${isSelected ? 'text-gray-700' : 'text-gray-400'}`}>
+                    {branchValue}:
+                  </div>
+                  {Object.entries(branchControls).map(([branchParamName, branchParamDef]) => (
+                    <div key={branchParamName} style={{ marginLeft: '24px' }} className="mb-4">
+                      <ParameterField
+                        path={branchParamName}
+                        label={(branchParamDef as Record<string, unknown>).label as string || branchParamName}
+                        values={dynamicValues[branchParamName] || []}
+                        onAddValue={onAddDynamicValue}
+                        onRemoveValue={onRemoveDynamicValue}
+                        error={errors[branchParamName]}
+                        schema={branchParamDef as Record<string, unknown>}
+                        disabled={!isSelected}
+                      />
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  return null;
+};
 
+export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsChange, initialSpec }: BatchFormProps) {
   const initializeDynamicValues = () => {
     if (initialSpec && Object.keys(initialSpec.dynamic_parameters).length > 0) {
       return initialSpec.dynamic_parameters;
     }
+    // Flatten schema to get all leaf parameters
+    const flatSchema = flattenSchema(schema);
+    const flatInitialValues = flattenSchema(initialValues);
+    
     const initialDynamic: Record<string, JsonValue[]> = {};
+    
+    // First, initialize all regular parameters
     Object.keys(flatSchema).forEach(path => {
         const initialValue = flatInitialValues[path] ?? flatSchema[path]?.default;
         initialDynamic[path] = initialValue !== undefined && initialValue !== null ? [initialValue] : [];
     });
+    
+    // Then, initialize only the default branch parameters for conditional logic
+    Object.entries(schema).forEach(([controlPath, controlSchema]) => {
+      if (controlSchema && typeof controlSchema === 'object' && (controlSchema as any).controls) {
+        const controls = (controlSchema as any).controls;
+        
+        // Get the default branch value
+        const defaultBranchValue = (controlSchema as any).default || Object.keys(controls)[0];
+        
+        // Only initialize parameters for the default branch
+        if (controls[defaultBranchValue]) {
+          Object.entries(controls[defaultBranchValue] as Record<string, any>).forEach(([paramName, paramDef]) => {
+            if (!initialDynamic[paramName] || initialDynamic[paramName].length === 0) {
+              const defaultValue = paramDef.default;
+              if (defaultValue !== undefined && defaultValue !== null) {
+                initialDynamic[paramName] = [defaultValue];
+              }
+            }
+          });
+        }
+      }
+    });
+    
     return initialDynamic;
   };
 
   const [dynamicValues, setDynamicValues] = useState<Record<string, JsonValue[]>>(initializeDynamicValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [activeChoices, setActiveChoices] = useState<Record<string, string>>({});
 
   const validateValue = (path: string, value: string): string | undefined => {
+    const flatSchema = flattenSchema(schema);
     const schemaItem = flatSchema[path];
     if (!schemaItem) return;
 
@@ -200,7 +306,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
       });
     });
     setErrors(newErrors);
-  }, [dynamicValues]);
+  }, [dynamicValues, schema]);
 
   const handleAddDynamicValue = (path: string, value: string) => {
     if (!value) return;
@@ -208,7 +314,41 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     if (error) {
       return error;
     }
-    setDynamicValues(prev => ({ ...prev, [path]: [...(prev[path] || []), value] }));
+    
+    // Check if this is a controlling parameter (has conditional branches)
+    const controlSchema = schema[path];
+    if (controlSchema && typeof controlSchema === 'object' && (controlSchema as any).controls) {
+      const controls = (controlSchema as any).controls;
+      
+      // If we're adding a new branch value, initialize its parameters with defaults
+      if (controls[value]) {
+        setDynamicValues(prev => {
+          const newDynamic = { ...prev };
+          
+          // Add the controlling parameter value
+          newDynamic[path] = [...(prev[path] || []), value];
+          
+          // Initialize default values for parameters in this branch
+          Object.entries(controls[value] as Record<string, any>).forEach(([paramName, paramDef]) => {
+            if (!newDynamic[paramName] || newDynamic[paramName].length === 0) {
+              const defaultValue = paramDef.default;
+              if (defaultValue !== undefined && defaultValue !== null) {
+                newDynamic[paramName] = [defaultValue];
+              }
+            }
+          });
+          
+          return newDynamic;
+        });
+      } else {
+        // Regular controlling parameter addition
+        setDynamicValues(prev => ({ ...prev, [path]: [...(prev[path] || []), value] }));
+      }
+    } else {
+      // Regular parameter addition
+      setDynamicValues(prev => ({ ...prev, [path]: [...(prev[path] || []), value] }));
+    }
+    
     return undefined;
   }
 
@@ -221,44 +361,183 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     });
   }
 
+  const handleChoiceChange = (path: string, value: string) => {
+    setActiveChoices(prev => ({ ...prev, [path]: value }));
+  };
+
   useEffect(() => {
-    const dynamic_parameters: Record<string, JsonValue[]> = dynamicValues;
-    let combinations = 1;
-
-    const hasValues = Object.values(dynamic_parameters).some(arr => arr.length > 0);
-
-    if (hasValues) {
-        Object.values(dynamic_parameters).forEach(arr => {
-            combinations *= arr.length > 0 ? arr.length : 0;
-        });
-    } else {
-        combinations = 0;
-    }
+    // Filter dynamic_parameters based on active choices for conditional variables
+    const filtered_dynamic_parameters: Record<string, JsonValue[]> = {};
     
+    // Helper function to check if a variable should be included
+    const shouldIncludeVariable = (variablePath: string): boolean => {
+      // Check if this variable belongs to a conditional branch
+      for (const [controlPath, controlSchema] of Object.entries(schema)) {
+        if (controlSchema && typeof controlSchema === 'object' && (controlSchema as any).controls) {
+          const selectedValues = dynamicValues[controlPath] || [];
+          const controls = (controlSchema as any).controls;
+          
+          // If this is the controlling parameter itself, always include it if it has values
+          if (variablePath === controlPath) {
+            return selectedValues.length > 0;
+          }
+          
+          // Check if this variable is in any of the selected branches
+          for (const selectedValue of selectedValues) {
+            const branchControls = controls[selectedValue];
+            if (branchControls && branchControls[variablePath]) {
+              return true;
+            }
+          }
+          
+          // Check if this variable is a branch-specific parameter
+          // If it is, but not in any selected branch, exclude it
+          for (const [branchValue, branchControls] of Object.entries(controls)) {
+            if (branchControls && typeof branchControls === 'object' && (branchControls as any)[variablePath]) {
+              // This is a branch-specific parameter, but not in selected branches
+              return false;
+            }
+          }
+        }
+      }
+      
+      // If not part of any conditional logic, include it
+      return true;
+    };
+
+    // Apply filtering logic
+    Object.entries(dynamicValues).forEach(([path, values]) => {
+      if (values.length > 0 && shouldIncludeVariable(path)) {
+        filtered_dynamic_parameters[path] = values;
+      }
+    });
+
+    // Calculate combinations with conditional logic awareness
+    const calculateConditionalCombinations = (params: Record<string, JsonValue[]>): number => {
+      const keys = Object.keys(params);
+      if (keys.length === 0) return 0;
+
+      // Check if we have conditional logic (branch-specific parameters)
+      const controllingParams: Record<string, JsonValue[]> = {};
+      const branchSpecificParams: Record<string, string[]> = {}; // Maps controlling param values to their branch-specific param names
+      const regularParams: Record<string, JsonValue[]> = {};
+
+      // Identify controlling parameters and their branch-specific parameters
+      for (const [paramName, paramValues] of Object.entries(params)) {
+        // Look for parameters that have branch-specific variants
+        // For example: quote_type controls quote_value_face_value and quote_value_max_monthly_budget
+        
+        // Check if there are parameters that follow the pattern: {base}_{branch_value}
+        // where {base} is derived from this parameter's name and {branch_value} matches one of this parameter's values
+        const hasBranchSpecific = paramValues.some(value => {
+          const normalizedValue = (value as string).toLowerCase().replace(/\s+/g, '_');
+          // Look for parameters that end with this normalized value
+          return keys.some(key => 
+            key !== paramName && 
+            key.toLowerCase().endsWith('_' + normalizedValue)
+          );
+        });
+        
+        if (hasBranchSpecific) {
+          // This is a controlling parameter
+          controllingParams[paramName] = paramValues;
+          
+          // Find all branch-specific parameters for this controlling parameter
+          paramValues.forEach(value => {
+            const normalizedValue = (value as string).toLowerCase().replace(/\s+/g, '_');
+            
+            // Find parameters that end with this normalized value
+            const matchingBranchParams = keys.filter(key => 
+              key !== paramName && 
+              key.toLowerCase().endsWith('_' + normalizedValue)
+            );
+            
+            if (matchingBranchParams.length > 0) {
+              if (!branchSpecificParams[value as string]) {
+                branchSpecificParams[value as string] = [];
+              }
+              branchSpecificParams[value as string].push(...matchingBranchParams);
+            }
+          });
+        } else {
+          // Check if this is a branch-specific parameter
+          const isBranchSpecific = Object.values(branchSpecificParams).some(branchParams =>
+            branchParams.includes(paramName)
+          );
+          
+          if (!isBranchSpecific) {
+            // This is a regular parameter
+            regularParams[paramName] = paramValues;
+          }
+        }
+      }
+
+      if (Object.keys(controllingParams).length > 0) {
+        // We have conditional logic - calculate combinations per branch
+        let totalCombinations = 0;
+        
+        Object.entries(controllingParams).forEach(([controlParam, controlValues]) => {
+          controlValues.forEach(controlValue => {
+            // For this specific branch, calculate combinations
+            const branchParams: Record<string, JsonValue[]> = {
+              ...regularParams,
+              [controlParam]: [controlValue] // Include the controlling parameter with this specific value
+            };
+            
+            // Add branch-specific parameters for this control value
+            const branchSpecificParamNames = branchSpecificParams[controlValue as string] || [];
+            branchSpecificParamNames.forEach(branchParamName => {
+              if (params[branchParamName]) {
+                // For calculation purposes, we don't need to map back to original names
+                // Just count the combinations for this branch
+                branchParams[branchParamName] = params[branchParamName];
+              }
+            });
+            
+            // Generate combinations count for this branch
+            let branchCombinations = 1;
+            Object.values(branchParams).forEach(values => {
+              branchCombinations *= values.length;
+            });
+            
+            totalCombinations += branchCombinations;
+          });
+        });
+        
+        return totalCombinations;
+      } else {
+        // No conditional logic, use simple Cartesian product
+        let combinations = 1;
+        Object.values(params).forEach(values => {
+          combinations *= values.length;
+        });
+        return combinations;
+      }
+    };
+
+    const totalCombinations = calculateConditionalCombinations(filtered_dynamic_parameters);
+    
+    // Pass the results to parent component
     const isValid = Object.keys(errors).length === 0;
-    onSpecChange({ static_parameters: {}, dynamic_parameters }, isValid);
-    onCombinationsChange(combinations);
-  }, [dynamicValues, onSpecChange, onCombinationsChange, errors]);
+    onSpecChange({ static_parameters: {}, dynamic_parameters: filtered_dynamic_parameters }, isValid);
+    onCombinationsChange(totalCombinations);
+  }, [dynamicValues, schema, errors, onSpecChange, onCombinationsChange]);
 
   return (
     <div className="space-y-0">
-      {Object.entries(flatSchema).map(([path, schemaItem]) => (
-        <div key={path} className="grid grid-cols-12 gap-4 items-center px-6 py-1 hover:bg-gray-50">
-            <Label htmlFor={path} className="col-span-3 text-sm font-mono truncate" title={path}>
-                {path}
-            </Label>
-            <div className="col-span-9">
-                 <ParameterField
-                    path={path}
-                    value={dynamicValues[path] || []}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    schemaItem={schemaItem}
-                    dynamicErrors={errors}
-                    onAddDynamicValue={handleAddDynamicValue}
-                    onRemoveDynamicValue={handleRemoveDynamicValue}
-                />
-            </div>
-        </div>
+      {Object.entries(schema).map(([path, schemaItem]) => (
+        <ParameterRow
+          key={path}
+          path={path}
+          schemaItem={schemaItem}
+          level={0}
+          dynamicValues={dynamicValues}
+          errors={errors}
+          activeChoices={activeChoices}
+          onAddDynamicValue={handleAddDynamicValue}
+          onRemoveDynamicValue={handleRemoveDynamicValue}
+          onChoiceChange={handleChoiceChange}
+        />
       ))}
     </div>
   );
