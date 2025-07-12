@@ -211,7 +211,7 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                             ).join('\n') || ''}
                         />
                       </div>
-                      <div className="flex-1 min-h-0 overflow-auto border rounded-md bg-white p-4">
+                      <div className="flex-1 min-h-0 overflow-auto border border-black rounded-md bg-white p-4">
                         {execution.execution_logs.map((log, idx) => (
                           <div key={idx} className="flex gap-2 text-xs font-mono">
                             <span className="text-muted-foreground">{log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''}</span>
@@ -247,7 +247,7 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                           contentToCopy={JSON.stringify(execution.results, null, 2)}
                         />
                       </div>
-                      <pre className="p-3 text-xs overflow-auto border rounded-md">
+                      <pre className="p-3 text-xs overflow-auto border border-black rounded-md">
                         <code>
                           {JSON.stringify(execution.results, null, 2)}
                         </code>
