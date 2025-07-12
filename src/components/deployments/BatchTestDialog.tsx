@@ -81,6 +81,9 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
   const handleBatchSubmit = async () => {
     if (!workflow || !batchSpec || totalCombinations === 0) return;
     
+    console.log('🚀 BatchTestDialog: Submitting batch with spec:', batchSpec);
+    console.log('🔢 BatchTestDialog: Total combinations:', totalCombinations);
+    
     setIsSubmitting(true);
     try {
       const response = await fetch(`/api/remote-workflows/${workflow.id}/batch-execute`, {
@@ -90,17 +93,21 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
       });
 
       const data = await response.json();
+      console.log('📡 BatchTestDialog: Server response:', data);
+      
       if (data.success) {
+        console.log('✅ BatchTestDialog: Batch submission successful');
+        console.log('🎯 BatchTestDialog: Execution IDs:', data.execution_ids);
         onOpenChange(false);
         if (onSubmit) {
           onSubmit();
         }
       } else {
-        console.error('Failed to submit test run:', data.error);
+        console.error('❌ BatchTestDialog: Failed to submit test run:', data.error);
         alert(`Failed to submit test run: ${data.error}`);
       }
     } catch (error) {
-      console.error('Error submitting test run:', error);
+      console.error('❌ BatchTestDialog: Error submitting test run:', error);
       alert('Failed to submit test run execution');
     } finally {
       setIsSubmitting(false);
