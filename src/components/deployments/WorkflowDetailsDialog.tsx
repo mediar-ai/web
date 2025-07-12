@@ -103,7 +103,7 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
               {Object.keys(workflow.input_parameters).length > 0 ? (
                 <div className="space-y-2">
                   {Object.entries(workflow.input_parameters).map(([key, param]) => (
-                    <div key={key} className="border rounded-lg p-3">
+                    <div key={key} className="border border-black rounded-lg p-3">
                       <div className="flex items-center justify-between mb-1">
                         <code className="text-sm font-mono">{key}</code>
                         <Badge variant="secondary" className="text-xs">

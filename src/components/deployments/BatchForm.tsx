@@ -97,9 +97,9 @@ const ParameterField = ({
 
     if (schema.type === 'select' && schema.options) {
       return (
-        <div className="flex gap-1">
+        <div className="w-56 flex gap-1">
           <Select onValueChange={handleSelectAndAdd} value="" disabled={disabled}>
-            <SelectTrigger className="w-56 text-xs font-mono" size="sm">
+            <SelectTrigger className="w-full h-6 text-xs font-mono border-black" size="sm">
               <SelectValue placeholder="Select a value..." />
             </SelectTrigger>
             <SelectContent>
@@ -123,17 +123,17 @@ const ParameterField = ({
     }
 
     return (
-      <div className="flex gap-1">
+      <div className="w-56 flex gap-1">
         <Input
           type={schema.type === 'number' ? 'number' : 'text'}
           value={inputValue}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAddValue()}
-          className="w-48 h-6 text-xs font-mono"
+          className="flex-1 h-6 text-xs font-mono border-black"
           placeholder={placeholder}
           disabled={disabled}
         />
-        <Button size="icon" variant="outline" onClick={handleAddValue} className="h-6 w-6 flex-shrink-0" disabled={disabled}>
+        <Button size="icon" variant="outline" onClick={handleAddValue} className="h-6 w-6 flex-shrink-0 border-black" disabled={disabled}>
           <CornerDownLeft className="h-3 w-3" />
         </Button>
       </div>
@@ -147,7 +147,7 @@ const ParameterField = ({
         <div className="w-full flex-1 flex items-center gap-2">
             <div className="flex flex-wrap gap-1 flex-1">
                 {values.map((val, index) => (
-                <div key={index} className={`relative group flex items-center gap-1 bg-gray-100 hover:bg-gray-200 rounded-md px-1.5 py-0.5 text-xs transition-colors ${error ? 'border border-red-500' : ''}`}>
+                <div key={index} className={`relative group flex items-center gap-1 bg-gray-100 hover:bg-gray-200 rounded-md px-1.5 py-0.5 text-xs transition-colors border ${error ? 'border-red-500' : 'border-black'}`}>
                     <span>{String(val)}</span>
                     <button onClick={() => onRemoveValue(path, index)} className="text-gray-500 hover:text-black" disabled={disabled}>
                     <X className="h-3 w-3" />

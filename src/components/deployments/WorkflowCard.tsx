@@ -235,7 +235,7 @@ export function WorkflowCard({
             </div>
             <p className="text-black text-sm mb-2">{workflow.description}</p>
             
-            <div className="bg-gray-50 border border-gray-300 rounded-md p-3 mb-3 max-w-lg">
+            <div className="bg-gray-50 border border-black rounded-md p-3 mb-3 max-w-lg">
               <h4 className="text-xs font-mono font-bold text-black mb-1">SUCCESS CRITERIA</h4>
               <ul className="text-xs space-y-1">
                 <li className="flex items-start gap-2">
@@ -345,7 +345,7 @@ export function WorkflowCard({
             </CollapsibleTrigger>
             
             <CollapsibleContent>
-              <div className="mt-2 max-h-[300px] overflow-y-auto p-2 border rounded-lg bg-white">
+              <div className="mt-2 max-h-[300px] overflow-y-auto p-2 border border-black rounded-lg bg-white">
                 {loadingExecutions ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="flex items-center gap-2">
@@ -366,7 +366,7 @@ export function WorkflowCard({
                           className={`bg-white px-2 py-1 border border-black rounded transition-colors ${
                             loadingExecutionId === execution.execution_id 
                               ? 'bg-blue-50 border-blue-300 cursor-wait' 
-                              : 'hover:bg-gray-50 hover:border-gray-600 cursor-pointer'
+                              : 'hover:bg-gray-50 hover:border-black cursor-pointer'
                           }`}
                           onClick={() => loadingExecutionId === null && onFetchExecutionDetails(execution.execution_id)}
                         >

@@ -131,7 +131,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-2">
           {/* Batch Summary */}
-          <Card>
+          <Card className="border-black">
             <CardContent className="py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-6">
@@ -159,7 +159,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
           </Card>
 
           {/* Variable Configurator */}
-          <Card>
+          <Card className="border-black">
             <CardHeader className="py-3">
               <CardTitle className="text-base">Variable Configurator</CardTitle>
               <p className="text-sm text-muted-foreground">
