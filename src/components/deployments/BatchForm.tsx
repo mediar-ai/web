@@ -133,7 +133,7 @@ const ParameterField = ({
           placeholder={placeholder}
           disabled={disabled}
         />
-        <Button size="icon" variant="outline" onClick={handleAddValue} className="h-6 w-6 flex-shrink-0 border-black" disabled={disabled}>
+        <Button size="icon" variant="outline" onClick={handleAddValue} className="h-6 w-6 flex-shrink-0 border-black p-1" disabled={disabled}>
           <CornerDownLeft className="h-3 w-3" />
         </Button>
       </div>
