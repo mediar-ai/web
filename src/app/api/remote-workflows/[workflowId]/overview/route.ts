@@ -1,11 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue> | null;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type JSONObject = { [x: string]: JSONValue };
+
+// Define types for workflow components
+interface WorkflowStep {
+  group_name?: string;
+  if?: string;
+  steps?: WorkflowStep[];
+  arguments?: Record<string, unknown>;
+}
+
+interface WorkflowVariable {
+  type?: string;
+  label?: string;
+  description?: string;
+  default?: unknown;
+  options?: Array<{ value: string; label: string }>;
+}
+
+interface AutomationSequence {
+  arguments?: {
+    variables?: Record<string, WorkflowVariable>;
+    steps?: WorkflowStep[];
+    output_parser?: {
+      fieldsToExtract?: Record<string, unknown>;
+    };
+  };
+}
+
 // Helper function to extract variables from a step's arguments
-function extractVariablesFromStep(step: any, variables: Set<string>) {
+function extractVariablesFromStep(step: WorkflowStep, variables: Set<string>) {
   if (!step || !step.arguments) return;
   
-  const extractFromValue = (value: any): void => {
+  const extractFromValue = (value: unknown): void => {
     if (typeof value === 'string') {
       // Extract {{variable}} patterns
       const matches = value.match(/\{\{([^}]+)\}\}/g);
@@ -24,7 +54,7 @@ function extractVariablesFromStep(step: any, variables: Set<string>) {
 }
 
 // Analyze automation sequence to identify conditional logic
-function analyzeAutomationSequence(automationSequence: any[]) {
+function analyzeAutomationSequence(automationSequence: AutomationSequence[]) {
   if (!automationSequence || !Array.isArray(automationSequence) || automationSequence.length === 0) {
     return { coreVariables: {}, conditionalVariables: {} };
   }
@@ -39,10 +69,10 @@ function analyzeAutomationSequence(automationSequence: any[]) {
   
   // Track which variables are used in unconditional vs conditional contexts
   const unconditionalVars = new Set<string>();
-  const conditionalBranches: Record<string, any> = {};
+  const conditionalBranches: Record<string, Record<string, Set<string>>> = {};
   
   // Process each step
-  steps.forEach((step: any) => {
+  steps.forEach((step: WorkflowStep) => {
     if (step.group_name && step.if) {
       // This is a conditional group
       const condition = step.if;
@@ -58,7 +88,7 @@ function analyzeAutomationSequence(automationSequence: any[]) {
         // Extract variables used in this branch
         const branchVars = new Set<string>();
         if (step.steps && Array.isArray(step.steps)) {
-          step.steps.forEach((subStep: any) => {
+          step.steps.forEach((subStep: WorkflowStep) => {
             extractVariablesFromStep(subStep, branchVars);
           });
         }
@@ -67,7 +97,7 @@ function analyzeAutomationSequence(automationSequence: any[]) {
       }
     } else if (step.steps && Array.isArray(step.steps)) {
       // Unconditional group
-      step.steps.forEach((subStep: any) => {
+      step.steps.forEach((subStep: WorkflowStep) => {
         extractVariablesFromStep(subStep, unconditionalVars);
       });
     } else {
@@ -77,8 +107,8 @@ function analyzeAutomationSequence(automationSequence: any[]) {
   });
   
   // Build the hierarchical schema
-  const coreVariables: Record<string, any> = {};
-  const conditionalVariables: Record<string, any> = {};
+  const coreVariables: Record<string, WorkflowVariable> = {};
+  const conditionalVariables: Record<string, WorkflowVariable & { controls?: Record<string, Record<string, WorkflowVariable>> }> = {};
   
   // Process all variables
   Object.entries(allVariables).forEach(([varName, varDef]) => {
@@ -92,7 +122,7 @@ function analyzeAutomationSequence(automationSequence: any[]) {
       
       // For each branch value, find variables used only in that branch
       Object.entries(conditionalBranches[varName]).forEach(([branchValue, branchVars]) => {
-        const branchSpecificVars: Record<string, any> = {};
+        const branchSpecificVars: Record<string, unknown> = {};
         
         (branchVars as Set<string>).forEach(usedVar => {
           // Remove prefixes like "selectors." to get the base variable name
@@ -116,7 +146,7 @@ function analyzeAutomationSequence(automationSequence: any[]) {
         });
         
         if (Object.keys(branchSpecificVars).length > 0) {
-          conditionalVariables[varName].controls[branchValue] = branchSpecificVars;
+          (conditionalVariables[varName] as unknown as { controls: Record<string, unknown> }).controls[branchValue] = branchSpecificVars;
         }
       });
     } else if (!isVariableUsedInAnyBranch(varName, conditionalBranches)) {
@@ -129,7 +159,7 @@ function analyzeAutomationSequence(automationSequence: any[]) {
 }
 
 // Helper to check if a variable is used in any conditional branch
-function isVariableUsedInAnyBranch(varName: string, conditionalBranches: Record<string, any>): boolean {
+function isVariableUsedInAnyBranch(varName: string, conditionalBranches: Record<string, Record<string, Set<string>>>): boolean {
   for (const [, branches] of Object.entries(conditionalBranches)) {
     for (const [, branchVars] of Object.entries(branches)) {
       if ((branchVars as Set<string>).has(varName)) {
@@ -198,17 +228,17 @@ export async function GET(
       executionSchema = { ...coreVariables, ...conditionalVariables };
       
       // Extract default values from the hierarchical schema
-      const extractDefaultsFromHierarchical = (schema: any): any => {
-        const defaults: any = {};
+      const extractDefaultsFromHierarchical = (schema: Record<string, unknown>): Record<string, unknown> => {
+        const defaults: Record<string, unknown> = {};
         for (const key in schema) {
-          const value = schema[key];
+          const value = schema[key] as Record<string, unknown>;
           if (value && typeof value === 'object' && !Array.isArray(value)) {
             if (value.hasOwnProperty('default')) {
               defaults[key] = value.default;
             }
             // Don't recurse into 'controls' - those are conditional
             if (!value.hasOwnProperty('controls')) {
-              const nestedDefaults = extractDefaultsFromHierarchical(value);
+              const nestedDefaults = extractDefaultsFromHierarchical(value as Record<string, unknown>);
               if (Object.keys(nestedDefaults).length > 0) {
                 defaults[key] = nestedDefaults;
               }

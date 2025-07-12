@@ -4,11 +4,21 @@ import { createClient } from '@supabase/supabase-js';
 type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue>;
 type JSONObject = { [x: string]: JSONValue };
 
+// Define types for workflow components
+interface WorkflowStep {
+  group_name?: string;
+  if?: string;
+  steps?: WorkflowStep[];
+  arguments?: Record<string, unknown>;
+}
+
+// Remove unused interface - the automation sequence is handled as JSONValue arrays
+
 // Helper function to extract variables from a step's arguments
-function extractVariablesFromStep(step: any, variables: Set<string>) {
+function extractVariablesFromStep(step: WorkflowStep, variables: Set<string>) {
   if (!step || !step.arguments) return;
   
-  const extractFromValue = (value: any): void => {
+  const extractFromValue = (value: unknown): void => {
     if (typeof value === 'string') {
       // Extract {{variable}} patterns
       const matches = value.match(/\{\{([^}]+)\}\}/g);
@@ -27,28 +37,29 @@ function extractVariablesFromStep(step: any, variables: Set<string>) {
 }
 
 // Analyze automation sequence to identify conditional logic
-function analyzeAutomationSequence(automationSequence: any[]) {
+function analyzeAutomationSequence(automationSequence: JSONValue[]) {
   if (!automationSequence || !Array.isArray(automationSequence) || automationSequence.length === 0) {
     return { coreVariables: {}, conditionalVariables: {} };
   }
   
-  const mainSequence = automationSequence[0];
-  if (!mainSequence.arguments || !mainSequence.arguments.variables) {
+  const mainSequence = automationSequence[0] as JSONObject;
+  if (!mainSequence?.arguments || !(mainSequence.arguments as JSONObject)?.variables) {
     return { coreVariables: {}, conditionalVariables: {} };
   }
   
-  const allVariables = mainSequence.arguments.variables;
-  const steps = mainSequence.arguments.steps || [];
+  const allVariables = (mainSequence.arguments as JSONObject).variables as Record<string, JSONValue>;
+  const steps = ((mainSequence.arguments as JSONObject).steps as JSONValue[]) || [];
   
   // Track which variables are used in unconditional vs conditional contexts
   const unconditionalVars = new Set<string>();
-  const conditionalBranches: Record<string, any> = {};
+  const conditionalBranches: Record<string, Record<string, Set<string>>> = {};
   
   // Process each step
-  steps.forEach((step: any) => {
+  steps.forEach((stepValue: JSONValue) => {
+    const step = stepValue as JSONObject;
     if (step.group_name && step.if) {
       // This is a conditional group
-      const condition = step.if;
+      const condition = step.if as string;
       // Parse condition like "quote_type == 'Face Value'"
       const conditionMatch = condition.match(/(\w+)\s*==\s*['"]([^'"]+)['"]/);
       if (conditionMatch) {
@@ -61,8 +72,8 @@ function analyzeAutomationSequence(automationSequence: any[]) {
         // Extract variables used in this branch
         const branchVars = new Set<string>();
         if (step.steps && Array.isArray(step.steps)) {
-          step.steps.forEach((subStep: any) => {
-            extractVariablesFromStep(subStep, branchVars);
+          step.steps.forEach((subStep: unknown) => {
+            extractVariablesFromStep(subStep as WorkflowStep, branchVars);
           });
         }
         
@@ -70,8 +81,8 @@ function analyzeAutomationSequence(automationSequence: any[]) {
       }
     } else if (step.steps && Array.isArray(step.steps)) {
       // Unconditional group
-      step.steps.forEach((subStep: any) => {
-        extractVariablesFromStep(subStep, unconditionalVars);
+      step.steps.forEach((subStep: unknown) => {
+        extractVariablesFromStep(subStep as WorkflowStep, unconditionalVars);
       });
     } else {
       // Single unconditional step
@@ -80,8 +91,8 @@ function analyzeAutomationSequence(automationSequence: any[]) {
   });
   
   // Build the hierarchical schema
-  const coreVariables: Record<string, any> = {};
-  const conditionalVariables: Record<string, any> = {};
+  const coreVariables: Record<string, JSONValue> = {};
+  const conditionalVariables: Record<string, JSONValue> = {};
   
   // Process all variables
   Object.entries(allVariables).forEach(([varName, varDef]) => {
@@ -89,13 +100,13 @@ function analyzeAutomationSequence(automationSequence: any[]) {
     if (conditionalBranches[varName]) {
       // This is a controlling variable
       conditionalVariables[varName] = {
-        ...varDef,
+        ...(varDef as Record<string, unknown>),
         controls: {}
       };
       
       // For each branch value, find variables used only in that branch
       Object.entries(conditionalBranches[varName]).forEach(([branchValue, branchVars]) => {
-        const branchSpecificVars: Record<string, any> = {};
+        const branchSpecificVars: Record<string, JSONValue> = {};
         
         (branchVars as Set<string>).forEach(usedVar => {
           // Remove prefixes like "selectors." to get the base variable name
@@ -108,7 +119,7 @@ function analyzeAutomationSequence(automationSequence: any[]) {
                 // Create branch-specific parameter name to avoid conflicts
                 const branchSpecificName = `${fullVarName}_${branchValue.toLowerCase().replace(/\s+/g, '_')}`;
                 branchSpecificVars[branchSpecificName] = {
-                  ...fullVarDef,
+                  ...(fullVarDef as Record<string, unknown>),
                   // Add metadata to track the original variable name
                   _originalName: fullVarName,
                   _branchValue: branchValue
@@ -119,7 +130,7 @@ function analyzeAutomationSequence(automationSequence: any[]) {
         });
         
         if (Object.keys(branchSpecificVars).length > 0) {
-          conditionalVariables[varName].controls[branchValue] = branchSpecificVars;
+          (conditionalVariables[varName] as unknown as { controls: Record<string, unknown> }).controls[branchValue] = branchSpecificVars;
         }
       });
     } else if (!isVariableUsedInAnyBranch(varName, conditionalBranches)) {
@@ -132,7 +143,7 @@ function analyzeAutomationSequence(automationSequence: any[]) {
 }
 
 // Helper to check if a variable is used in any conditional branch
-function isVariableUsedInAnyBranch(varName: string, conditionalBranches: Record<string, any>): boolean {
+function isVariableUsedInAnyBranch(varName: string, conditionalBranches: Record<string, Record<string, Set<string>>>): boolean {
   for (const [, branches] of Object.entries(conditionalBranches)) {
     for (const [, branchVars] of Object.entries(branches)) {
       if ((branchVars as Set<string>).has(varName)) {
