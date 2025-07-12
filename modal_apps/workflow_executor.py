@@ -70,6 +70,82 @@ DB_CONFIG = {
     "password": "***REMOVED***",
 }
 
+# Configuration for auto-cancellation
+CONSECUTIVE_FAILURE_THRESHOLD = 3  # Number of identical failures
+FAILURE_TIME_WINDOW_HOURS = 1      # Time window for failures
+
+# Auto-cancellation logic
+def get_last_failed_executions(cur, workflow_id, limit=3):
+    """Get last N failed executions for workflow, ordered by created_at DESC"""
+    cur.execute("""
+        SELECT id, created_at, error_message
+        FROM workflow_executions
+        WHERE workflow_id = %s AND status = 'failed' AND error_message IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT %s
+    """, (workflow_id, limit))
+    return cur.fetchall()
+
+def cancel_queued_jobs(cur, conn, workflow_id, original_error_message):
+    """Cancel all queued jobs for workflow, return count cancelled"""
+    cancellation_message = f"Auto-cancelled: 3 consecutive identical failures - {original_error_message}"
+    
+    cur.execute("""
+        UPDATE workflow_executions 
+        SET status = 'cancelled', 
+            error_message = %s,
+            completed_at = NOW()
+        WHERE workflow_id = %s AND status = 'queued'
+        RETURNING id
+    """, (cancellation_message, workflow_id))
+    
+    cancelled_ids = [row[0] for row in cur.fetchall()]
+    conn.commit()
+    
+    return len(cancelled_ids), cancelled_ids
+
+def check_and_cancel_queue_if_needed(cur, conn, workflow_id, current_error_message):
+    """
+    Check if we should cancel queued jobs due to 3 consecutive identical failures.
+    Returns: (should_cancel: bool, cancelled_count: int, reason: str)
+    """
+    try:
+        # Get last 3 failed executions for this workflow
+        last_failures = get_last_failed_executions(cur, workflow_id, CONSECUTIVE_FAILURE_THRESHOLD)
+        
+        # Need exactly 3 failures to trigger
+        if len(last_failures) < CONSECUTIVE_FAILURE_THRESHOLD:
+            return False, 0, ""
+        
+        # All 3 must have identical error messages
+        error_messages = [exec[2] for exec in last_failures]  # error_message is index 2
+        if not all(msg == error_messages[0] for msg in error_messages):
+            return False, 0, ""
+        
+        # Must occur within reasonable time window
+        from datetime import datetime, timedelta
+        oldest_failure_time = last_failures[-1][1]  # created_at is index 1
+        newest_failure_time = last_failures[0][1]
+        time_span = newest_failure_time - oldest_failure_time
+        
+        if time_span > timedelta(hours=FAILURE_TIME_WINDOW_HOURS):
+            return False, 0, ""
+        
+        # Cancel all queued jobs for this workflow
+        cancelled_count, cancelled_ids = cancel_queued_jobs(cur, conn, workflow_id, current_error_message)
+        
+        reason = f"Auto-cancelled {cancelled_count} queued jobs due to 3 consecutive identical failures: '{current_error_message[:100]}'"
+        
+        logger.info("🚫 %s", reason)
+        if cancelled_ids:
+            logger.info("🚫 Cancelled execution IDs: %s", cancelled_ids)
+        
+        return True, cancelled_count, reason
+        
+    except Exception as e:
+        logger.error("❌ Error in queue cancellation check: %s", e)
+        return False, 0, ""
+
 # MCP endpoint configuration - could be moved to secrets
 MCP_ENDPOINT = "https://barely-honest-yak.ngrok-free.app/mcp" # virtual machine
 # MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"  # Louis computer
@@ -976,6 +1052,10 @@ def execute_workflow(
         )
         conn.commit()
 
+        # Check for auto-cancellation if workflow failed
+        if not results["execution_summary"]["workflow_completed"] and error_message_for_db:
+            check_and_cancel_queue_if_needed(cur, conn, workflow_id, error_message_for_db)
+
         # Note: Workflow success/failure metrics are automatically updated by database trigger
         # when the workflow_executions status changes to 'completed' or 'failed'
 
@@ -1121,6 +1201,9 @@ def execute_workflow(
                     ),
                 )
                 conn.commit()
+
+                # Check for auto-cancellation after failed execution
+                check_and_cancel_queue_if_needed(cur, conn, workflow_id, error_msg)
 
                 # Note: Workflow failure metrics are automatically updated by database trigger
                 # when the workflow_executions status changes to 'failed'
