@@ -138,9 +138,9 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs uppercase text-muted-foreground">Total Combinations:</span>
                     <span className="text-2xl font-bold">{totalCombinations}</span>
-                    {totalCombinations > 500 && (
+                    {totalCombinations > 5000 && (
                       <span className="text-red-500 text-xs font-semibold">
-                        (Exceeds limit of 500)
+                        (Exceeds limit of 5000)
                       </span>
                     )}
                   </div>
@@ -148,7 +148,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                 <Button 
                   className="ml-4" 
                   size="default" 
-                  disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 500 || !isSpecValid}
+                  disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 5000 || !isSpecValid}
                   onClick={handleBatchSubmit}
                 >
                   {isSubmitting ? 'Submitting...' : `Queue ${totalCombinations} Execution${totalCombinations === 1 ? '' : 's'}`}
