@@ -280,6 +280,10 @@ export function WorkflowCard({
                 FAILED: {workflow.failed_runs || 0}
                 <FloatingDelta value={(workflow.failed_runs || 0) - (previousWorkflow.current?.failed_runs || 0)} />
               </span>
+              <span className="relative inline-block text-gray-500">
+                CANCELLED: {workflow.cancelled_runs || 0}
+                <FloatingDelta value={(workflow.cancelled_runs || 0) - (previousWorkflow.current?.cancelled_runs || 0)} />
+              </span>
               {(workflow.total_executions || 0) > 0 && (
                 <span className="relative inline-block">
                   SUCCESS RATE: {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%

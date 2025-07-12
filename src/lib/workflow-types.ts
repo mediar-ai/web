@@ -48,6 +48,7 @@ export interface Workflow {
   difficulty_level: string;
   successful_runs: number;
   failed_runs: number;
+  cancelled_runs: number;
   total_executions: number;
   success_rate: number | null;
   created_at: string;

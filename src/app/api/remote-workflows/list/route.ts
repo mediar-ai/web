@@ -230,6 +230,7 @@ export async function GET(request: NextRequest) {
         estimated_duration_seconds,
         successful_runs,
         failed_runs,
+        cancelled_runs,
         total_executions,
         deployment_status,
         automation_sequence,
