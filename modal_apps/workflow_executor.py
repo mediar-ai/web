@@ -72,7 +72,6 @@ DB_CONFIG = {
 
 # Configuration for auto-cancellation
 CONSECUTIVE_FAILURE_THRESHOLD = 3  # Number of identical failures
-FAILURE_TIME_WINDOW_HOURS = 1      # Time window for failures
 
 # Auto-cancellation logic
 def get_last_failed_executions(cur, workflow_id, limit=3):
@@ -121,20 +120,6 @@ def check_and_cancel_queue_if_needed(cur, conn, workflow_id, current_error_messa
         error_messages = [exec[2] for exec in last_failures]  # error_message is index 2
         if not all(msg == error_messages[0] for msg in error_messages):
             return False, 0, ""
-        
-        # Must occur within reasonable time window
-        from datetime import datetime, timedelta
-        oldest_failure_time = last_failures[-1][1]  # completed_at is index 1
-        newest_failure_time = last_failures[0][1]
-        
-        # Handle timezone-aware datetime objects
-        if oldest_failure_time and newest_failure_time:
-            time_span = newest_failure_time - oldest_failure_time
-            if time_span > timedelta(hours=FAILURE_TIME_WINDOW_HOURS):
-                return False, 0, ""
-        else:
-            # If we can't determine timing, still proceed with cancellation for safety
-            logger.warning("⚠️ Could not determine failure timing, proceeding with cancellation")
         
         # Cancel all queued jobs for this workflow
         cancelled_count, cancelled_ids = cancel_queued_jobs(cur, conn, workflow_id, current_error_message)
