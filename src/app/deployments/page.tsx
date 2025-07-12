@@ -62,6 +62,7 @@ export default function WorkflowsPage() {
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(null);
+  const [loadingExecutions, setLoadingExecutions] = useState(true);
 
   // Fetch workflows
   const fetchWorkflows = useCallback(async (showLoading = true) => {
@@ -126,8 +127,11 @@ export default function WorkflowsPage() {
   }, []);
 
   // Fetch executions
-  const fetchExecutions = useCallback(async () => {
+  const fetchExecutions = useCallback(async (showLoading = true) => {
     try {
+      if (showLoading) {
+        setLoadingExecutions(true);
+      }
       const response = await fetch('/api/remote-workflows/executions');
       const data = await response.json();
       if (data.success) {
@@ -136,6 +140,10 @@ export default function WorkflowsPage() {
     } catch (error) {
       console.error('Failed to fetch executions:', error);
       setExecutions([]);
+    } finally {
+      if (showLoading) {
+        setLoadingExecutions(false);
+      }
     }
   }, []);
 
@@ -174,7 +182,7 @@ export default function WorkflowsPage() {
   // Auto-refresh executions and live status
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchExecutions();
+      fetchExecutions(false); // Refresh executions without showing loading state
       fetchLiveExecutions();
       fetchWorkflows(false); // Refresh workflows without showing loading state
     }, 2000); // Refresh every 2 seconds for live updates
@@ -326,6 +334,8 @@ export default function WorkflowsPage() {
               onFetchExecutionDetails={fetchExecutionDetails}
               loadingDetails={loadingDetails}
               loadingExecutionId={loadingExecutionId}
+              loadingExecutions={loadingExecutions}
+
               onBatchSubmit={() => {
                 fetchExecutions();
                 fetchLiveExecutions();

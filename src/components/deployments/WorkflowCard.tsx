@@ -56,6 +56,7 @@ interface WorkflowCardProps {
   onFetchExecutionDetails: (executionId: number) => void;
   loadingDetails: boolean;
   loadingExecutionId: number | null;
+  loadingExecutions?: boolean;
   onBatchSubmit?: () => void;
 }
 
@@ -106,6 +107,7 @@ export function WorkflowCard({
   onFetchExecutionDetails,
   loadingDetails,
   loadingExecutionId,
+  loadingExecutions = false,
   onBatchSubmit,
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -208,6 +210,7 @@ export function WorkflowCard({
     .sort((a, b) => b.execution_id - a.execution_id);
   
   const hasExecutions = unifiedExecutions.length > 0;
+  const shouldShowExecutionHistory = hasExecutions || loadingExecutions;
 
   return (
     <Card className="border-black">
@@ -313,7 +316,7 @@ export function WorkflowCard({
       </CardHeader>
         
       <CardContent>
-        {hasExecutions && (
+        {shouldShowExecutionHistory && (
           <Collapsible open={expanded} onOpenChange={setExpanded}>
             <CollapsibleTrigger className="w-full">
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors cursor-pointer">
@@ -321,11 +324,20 @@ export function WorkflowCard({
                   {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                   <span className="text-sm font-bold font-mono text-black">EXECUTION HISTORY</span>
                   <div className="flex gap-2">
-                    {workflowLiveExecutions.length > 0 && (
-                      <Badge variant="secondary" className="text-xs">{workflowLiveExecutions.length} LIVE</Badge>
-                    )}
-                    {recentExecutions.length > 0 && (
-                      <Badge variant="outline" className="text-xs">{recentExecutions.length} RECENT</Badge>
+                    {loadingExecutions ? (
+                      <Badge variant="secondary" className="text-xs">
+                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                        LOADING
+                      </Badge>
+                    ) : (
+                      <>
+                        {workflowLiveExecutions.length > 0 && (
+                          <Badge variant="secondary" className="text-xs">{workflowLiveExecutions.length} LIVE</Badge>
+                        )}
+                        {recentExecutions.length > 0 && (
+                          <Badge variant="outline" className="text-xs">{recentExecutions.length} RECENT</Badge>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -334,7 +346,19 @@ export function WorkflowCard({
             
             <CollapsibleContent>
               <div className="mt-2 max-h-[300px] overflow-y-auto p-2 border rounded-lg bg-white">
-                {unifiedExecutions.map((execution) => (
+                {loadingExecutions ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
+                      <span className="text-sm font-mono text-gray-600">Loading execution history...</span>
+                    </div>
+                  </div>
+                ) : unifiedExecutions.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <span className="text-sm text-gray-500">No execution history available</span>
+                  </div>
+                ) : (
+                  unifiedExecutions.map((execution) => (
                   <TooltipProvider key={`exec-${execution.execution_id}`}>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -511,7 +535,8 @@ export function WorkflowCard({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                ))}
+                  ))
+                )}
               </div>
             </CollapsibleContent>
           </Collapsible>
