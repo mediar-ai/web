@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RotateCcw } from 'lucide-react';
+
 import { BatchForm } from '@/components/deployments/BatchForm';
 import { Workflow } from '@/lib/workflow-types';
 
@@ -71,9 +71,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
     }
   }, [batchSpec, storageKey]);
 
-  const handleReset = () => {
-    resetBatchSpec();
-  };
+
 
   const handleSpecChange = useCallback((spec: BatchSpec, isValid: boolean) => {
     setBatchSpec(spec);
@@ -115,15 +113,9 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border-black">
         <DialogHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between pr-10">
-            <DialogTitle className="text-2xl font-bold">
-              Test Run: {workflow.name}
-            </DialogTitle>
-            <Button variant="outline" onClick={handleReset} size="sm">
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Reset to Defaults
-            </Button>
-          </div>
+          <DialogTitle className="text-2xl font-bold">
+            Test Run: {workflow.name}
+          </DialogTitle>
           <p className="text-muted-foreground text-sm mt-1">
             Configure and run a test suite for this workflow.
           </p>
