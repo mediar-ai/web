@@ -131,13 +131,18 @@ def test_auto_cancellation_logic():
             if all_identical:
                 oldest_failure_time = last_failures[-1][1]
                 newest_failure_time = last_failures[0][1]
-                time_span = newest_failure_time - oldest_failure_time
                 
-                within_window = time_span <= timedelta(hours=FAILURE_TIME_WINDOW_HOURS)
+                # Handle timezone-aware datetime objects safely
+                if oldest_failure_time and newest_failure_time:
+                    time_span = newest_failure_time - oldest_failure_time
+                else:
+                    time_span = None
+                
+                within_window = time_span is None or time_span <= timedelta(hours=FAILURE_TIME_WINDOW_HOURS)
                 
                 print(f"   Workflow {workflow_id}:")
                 print(f"     - Last 3 failures are identical: {all_identical}")
-                print(f"     - Time span: {time_span}")
+                print(f"     - Time span: {time_span if time_span else 'Could not determine'}")
                 print(f"     - Within window: {within_window}")
                 print(f"     - Would trigger cancellation: {all_identical and within_window}")
             else:
