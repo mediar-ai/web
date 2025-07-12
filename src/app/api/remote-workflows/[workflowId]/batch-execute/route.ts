@@ -169,6 +169,11 @@ export async function POST(
       dynamic_parameters = {},
     } = body;
 
+    console.log('🚀 BATCH EXECUTE: Starting batch execution');
+    console.log('📦 BATCH EXECUTE: Request body:', JSON.stringify(body, null, 2));
+    console.log('🔢 BATCH EXECUTE: Dynamic parameters:', dynamic_parameters);
+    console.log('📊 BATCH EXECUTE: Parameter count:', Object.keys(dynamic_parameters).length);
+
     // Simple debug - write to a file since console.log isn't showing
     const debugInfo = {
       timestamp: new Date().toISOString(),
@@ -184,6 +189,9 @@ export async function POST(
     // Generate all unique parameter combinations
     const combinations = isSingleExecution ? [{}] : getCombinations(dynamic_parameters);
     
+    console.log('🎯 BATCH EXECUTE: Generated combinations:', combinations.length);
+    console.log('📋 BATCH EXECUTE: Combination details:', JSON.stringify(combinations, null, 2));
+    
     // Write combination results to debug file
     const combinationDebug = {
       timestamp: new Date().toISOString(),
@@ -193,6 +201,7 @@ export async function POST(
     fs.appendFileSync('/tmp/batch_debug.json', '\n' + JSON.stringify(combinationDebug, null, 2));
     
     const totalJobs = combinations.length;
+    console.log('🔢 BATCH EXECUTE: Total jobs to create:', totalJobs);
     
     // Cap the number of jobs to prevent abuse
     if (totalJobs > 500) {
@@ -230,6 +239,9 @@ export async function POST(
       });
     }
 
+    console.log('💾 BATCH EXECUTE: Inserting jobs into database...');
+    console.log('📝 BATCH EXECUTE: Jobs to insert:', jobsToInsert.length);
+    
     // Insert all jobs in a single query
     const { data: insertedJobs, error } = await supabase
       .from('workflow_executions')
@@ -237,8 +249,12 @@ export async function POST(
       .select('id');
 
     if (error) {
+      console.error('❌ BATCH EXECUTE: Database insertion error:', error);
       throw error;
     }
+
+    console.log('✅ BATCH EXECUTE: Successfully inserted jobs');
+    console.log('🎯 BATCH EXECUTE: Execution IDs:', insertedJobs.map(j => j.id));
 
     return NextResponse.json({
       success: true,

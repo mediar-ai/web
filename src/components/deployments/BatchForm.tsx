@@ -383,6 +383,8 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
   useEffect(() => {
     const filtered_dynamic_parameters: Record<string, JsonValue[]> = {};
     
+    console.log('🔍 BatchForm: Processing dynamic values:', dynamicValues);
+    
     for (const path in dynamicValues) {
       const values = dynamicValues[path];
       if (values && values.length > 0) {
@@ -409,6 +411,8 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
         }
       }
     }
+    
+    console.log('✅ BatchForm: Filtered dynamic parameters:', filtered_dynamic_parameters);
 
     const calculateConditionalCombinations = (params: Record<string, JsonValue[]>): number => {
       let totalCombinations = 0;
@@ -420,18 +424,35 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
 
         if (controlValues.length === 0) return 1;
 
+        // Find all parameters that are controlled by any branch
+        const allControlledParams = new Set<string>();
+        for (const branch of Object.values((schema[controlVar] as SchemaItem).controls!)) {
+          Object.keys(branch).forEach(key => allControlledParams.add(key));
+        }
+
+        // Find global parameters (not controlled by any branch)
+        const globalParams = Object.keys(params).filter(key => 
+          key !== controlVar && !allControlledParams.has(key)
+        );
+
         controlValues.forEach(cVal => {
           let branchCombinations = 1;
           
-          Object.entries(params).forEach(([key, values]) => {
-            if (key !== controlVar && !(schema[controlVar] as SchemaItem).controls![cVal as string][key]) {
-              branchCombinations *= Math.max(1, values.length);
+          // Multiply by global parameters (parameters not controlled by any branch)
+          globalParams.forEach(key => {
+            const values = params[key];
+            if (values && values.length > 0) {
+              branchCombinations *= values.length;
             }
           });
           
+          // Multiply by this branch's specific parameters
           const branchParams = (schema[controlVar] as SchemaItem).controls![cVal as string];
           Object.keys(branchParams).forEach(bpKey => {
-            branchCombinations *= Math.max(1, (params[bpKey]?.length || 0));
+            const values = params[bpKey];
+            if (values && values.length > 0) {
+              branchCombinations *= values.length;
+            }
           });
           totalCombinations += branchCombinations;
         });
