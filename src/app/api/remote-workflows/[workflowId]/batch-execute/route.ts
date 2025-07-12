@@ -204,9 +204,9 @@ export async function POST(
     console.log('🔢 BATCH EXECUTE: Total jobs to create:', totalJobs);
     
     // Cap the number of jobs to prevent abuse
-    if (totalJobs > 500) {
+    if (totalJobs > 5000) {
         return NextResponse.json(
-            { success: false, error: `Batch size (${totalJobs}) exceeds the limit of 500.` },
+            { success: false, error: `Batch size (${totalJobs}) exceeds the limit of 5000.` },
             { status: 400 }
         );
     }
