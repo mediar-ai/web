@@ -115,6 +115,29 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
     start_time = time.time()
     
     try:
+        # Check if we should skip cancellation check for this workflow (manual resume)
+        cur.execute("""
+            SELECT skip_next_cancellation_check 
+            FROM deployed_workflows 
+            WHERE id = %s
+        """, (workflow_id,))
+        
+        result = cur.fetchone()
+        if result and result[0]:  # skip_next_cancellation_check is True
+            # Reset the flag and allow this execution to proceed
+            cur.execute("""
+                UPDATE deployed_workflows 
+                SET skip_next_cancellation_check = false,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, (workflow_id,))
+            conn.commit()
+            
+            check_duration_ms = int((time.time() - start_time) * 1000)
+            logger.info("✅ Skipping cancellation check for workflow %d (manual resume) (took %dms)", 
+                       workflow_id, check_duration_ms)
+            return False, "Skipped cancellation check - manual resume", check_duration_ms
+        
         # Check the last 3 executions that actually ran (completed or failed), ignoring cancelled jobs
         cur.execute("""
             SELECT id, status, error_message, completed_at

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight, Play } from 'lucide-react';
 import { Workflow, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import {
@@ -113,7 +113,39 @@ export function WorkflowCard({
   const [expanded, setExpanded] = useState(false);
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
+  const [resumingWorkflow, setResumingWorkflow] = useState(false);
   const previousWorkflow = useRef<Workflow | null>(null);
+
+  // Resume workflow function
+  const handleResumeWorkflow = async () => {
+    setResumingWorkflow(true);
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/resume`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('Workflow resumed successfully:', data.message);
+        // Trigger a refresh of the workflow data
+        if (onBatchSubmit) {
+          onBatchSubmit(); // This is used to refresh the parent component
+        }
+      } else {
+        console.error('Failed to resume workflow:', data.error);
+        alert(`Failed to resume workflow: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error resuming workflow:', error);
+      alert('Failed to resume workflow. Please try again.');
+    } finally {
+      setResumingWorkflow(false);
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -300,9 +332,25 @@ export function WorkflowCard({
           </div>
           
           <div className="flex flex-col items-end">
-            <Badge className={getStatusBadge(workflow.status)}>
-              {workflow.status.toUpperCase()}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {workflow.status === 'paused' && (
+                <button
+                  onClick={handleResumeWorkflow}
+                  disabled={resumingWorkflow}
+                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  title={resumingWorkflow ? 'Resuming...' : 'Resume workflow'}
+                >
+                  {resumingWorkflow ? (
+                    <Loader2 className="w-3 h-3 text-gray-600 animate-spin" />
+                  ) : (
+                    <Play className="w-3 h-3 text-gray-600 hover:text-black" />
+                  )}
+                </button>
+              )}
+              <Badge className={getStatusBadge(workflow.status)}>
+                {workflow.status.toUpperCase()}
+              </Badge>
+            </div>
             <Button
               onClick={() => setShowBatchTestDialog(true)}
               className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-4 w-full"
