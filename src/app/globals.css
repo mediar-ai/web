@@ -177,3 +177,26 @@ body {
   @apply bg-background text-foreground;
   font-feature-settings: "rlig" 1, "calt" 1;
 }
+
+/* Black Border Design System */
+@layer utilities {
+  /* Standard black border for containers/sections */
+  .border-black-outline {
+    @apply border border-black rounded-lg;
+  }
+  
+  /* Black border for interactive elements (buttons, badges, etc.) */
+  .border-black-interactive {
+    @apply border border-black rounded;
+  }
+  
+  /* Black border for card-like elements */
+  .border-black-card {
+    @apply border border-black rounded-md;
+  }
+  
+  /* Hover state for black-bordered interactive elements */
+  .border-black-hover {
+    @apply hover:border-black transition-colors;
+  }
+}
