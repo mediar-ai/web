@@ -29,17 +29,19 @@ interface WorkflowCardProps {
 }
 
 const getStatusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      deployed: 'bg-black text-white',
-      pending: 'bg-gray-200 text-black',
-      error: 'bg-red-800 text-white',
-      running: 'bg-black text-white',
-      completed: 'bg-black text-white',
-      failed: 'bg-red-600 text-white',
-      cancelled: 'bg-gray-600 text-white',
-      queued: 'bg-gray-400 text-white'
+    // Using consistent black and white design for all statuses
+    const statusStyles: Record<string, string> = {
+      deployed: 'bg-black text-white border border-black', // Active status - filled black
+      pending: 'bg-white text-black border border-black', // Default outline
+      error: 'bg-white text-black border border-black font-bold', // Bold text for emphasis
+      running: 'bg-black text-white border border-black', // Active status - filled black
+      completed: 'bg-white text-black border border-black', // Default outline
+      failed: 'bg-white text-black border border-black font-bold', // Bold text for emphasis
+      cancelled: 'bg-gray-100 text-gray-600 border border-black', // Slightly muted
+      queued: 'bg-white text-black border border-black', // Default outline
+      paused: 'bg-gray-100 text-black border border-black' // Slightly muted
     };
-    return colors[status] || 'bg-gray-100 text-black';
+    return statusStyles[status] || 'bg-white text-black border border-black';
 };
 
 const getStatusIcon = (status: string) => {
@@ -284,7 +286,7 @@ export function WorkflowCard({
             {/* Move details button right below test run button */}
             <Button 
               onClick={() => onFetchWorkflowDetails(workflow.id)}
-              variant="outline"
+              variant="black-outline"
               size="sm"
               className="font-mono text-xs h-6 mt-2 w-full"
               disabled={loadingDetails}
@@ -300,23 +302,23 @@ export function WorkflowCard({
         {shouldShowExecutionHistory && (
           <Collapsible open={expanded} onOpenChange={setExpanded}>
             <CollapsibleTrigger className="w-full">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors cursor-pointer">
+              <div className="flex items-center justify-between p-3 bg-gray-50 border border-black rounded hover:bg-gray-100 transition-colors cursor-pointer">
                 <div className="flex items-center gap-2">
                   {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                   <span className="text-sm font-bold font-mono text-black">EXECUTION HISTORY</span>
                   <div className="flex gap-2">
                     {loadingExecutions ? (
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge variant="black-outline" className="text-xs">
                         <Loader2 className="w-3 h-3 animate-spin mr-1" />
                         LOADING
                       </Badge>
                     ) : (
                       <>
                         {workflowLiveExecutions.length > 0 && (
-                          <Badge variant="secondary" className="text-xs">{workflowLiveExecutions.length} LIVE</Badge>
+                          <Badge variant="black-outline" className="text-xs">{workflowLiveExecutions.length} LIVE</Badge>
                         )}
                         {recentExecutions.length > 0 && (
-                          <Badge variant="outline" className="text-xs">{recentExecutions.length} RECENT</Badge>
+                          <Badge variant="black-outline" className="text-xs">{recentExecutions.length} RECENT</Badge>
                         )}
                       </>
                     )}
