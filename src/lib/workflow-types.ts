@@ -43,8 +43,6 @@ export interface Workflow {
   sample_inputs: Record<string, unknown>;
   estimated_duration_seconds?: number;
   category: string;
-  tags: string[];
-  difficulty_level: string;
   successful_runs: number;
   failed_runs: number;
   cancelled_runs: number;

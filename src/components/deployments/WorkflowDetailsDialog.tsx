@@ -50,10 +50,6 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                     <dd className="font-mono">{workflow.category}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Difficulty:</dt>
-                    <dd className="font-mono">{workflow.difficulty_level}</dd>
-                  </div>
-                  <div className="flex justify-between">
                     <dt className="text-muted-foreground">Est. Duration:</dt>
                     <dd className="font-mono">{formatDuration(workflow.estimated_duration_seconds)}</dd>
                   </div>
@@ -83,18 +79,6 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
               </div>
             </div>
             
-            {workflow.tags.length > 0 && (
-              <div>
-                <h4 className="font-semibold mb-2">Tags</h4>
-                <div className="flex flex-wrap gap-1">
-                  {workflow.tags.map((tag, idx) => (
-                    <Badge key={idx} variant="outline" className="text-xs">
-                      #{tag}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
           </TabsContent>
           
           <TabsContent value="parameters" className="space-y-4">

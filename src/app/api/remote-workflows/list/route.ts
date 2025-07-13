@@ -225,8 +225,6 @@ export async function GET(request: NextRequest) {
         version,
         status,
         category,
-        tags,
-        difficulty_level,
         estimated_duration_seconds,
         successful_runs,
         failed_runs,
