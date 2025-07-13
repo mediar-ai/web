@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
     // Get URL parameters for filtering and pagination
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
-    const status = searchParams.get('status') || 'active';
+    const status = searchParams.get('status'); // No default - show all by default
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
@@ -232,14 +232,17 @@ export async function GET(request: NextRequest) {
         failed_runs,
         cancelled_runs,
         total_executions,
-        deployment_status,
         automation_sequence,
         created_at,
         updated_at
       `)
-      .eq('status', status)
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
+
+    // Only filter by status if explicitly provided
+    if (status) {
+      query = query.eq('status', status);
+    }
 
     if (category) {
       query = query.eq('category', category);
@@ -252,10 +255,20 @@ export async function GET(request: NextRequest) {
     }
 
     // Get total count for pagination
-    const { count: totalCount } = await supabase
+    let countQuery = supabase
       .from('deployed_workflows')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', status);
+      .select('*', { count: 'exact', head: true });
+
+    // Apply same filters as main query
+    if (status) {
+      countQuery = countQuery.eq('status', status);
+    }
+
+    if (category) {
+      countQuery = countQuery.eq('category', category);
+    }
+
+    const { count: totalCount } = await countQuery;
 
     // Format workflows with computed fields
     const formattedWorkflows = (workflows || []).map(workflow => {

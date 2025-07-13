@@ -34,7 +34,7 @@ export async function POST(
     // Check if workflow exists and is executable
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('name, deployment_status, status')
+      .select('name, status')
       .eq('id', workflowIdNum)
       .single();
 
@@ -49,11 +49,11 @@ export async function POST(
       );
     }
 
-    if (workflow.deployment_status !== 'deployed' || workflow.status !== 'active') {
+    if (workflow.status !== 'deployed') {
       return NextResponse.json(
         {
           success: false,
-          error: `Workflow ${workflowIdNum} is not executable (status: ${workflow.deployment_status})`,
+          error: `Workflow ${workflowIdNum} is not executable (status: ${workflow.status})`,
           execution_id: null
         },
         { status: 400 }
