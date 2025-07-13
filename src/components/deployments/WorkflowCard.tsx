@@ -229,6 +229,11 @@ export function WorkflowCard({
                     ✅: {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
                   </span>
                 )}
+                {workflow.estimated_duration_seconds && (
+                  <span className="text-black">
+                    IN: {workflow.estimated_duration_seconds} sec.
+                  </span>
+                )}
               </div>
             </div>
             <p className="text-black text-sm mb-2">{workflow.description}</p>
@@ -253,9 +258,6 @@ export function WorkflowCard({
             
             <div className="flex flex-wrap gap-4 text-xs font-mono text-black mb-3">
               <span>DIFFICULTY: {workflow.difficulty_level?.toUpperCase() || 'MEDIUM'}</span>
-              {workflow.estimated_duration_seconds && (
-                <span>EST. DURATION: {formatDuration(workflow.estimated_duration_seconds)}</span>
-              )}
             </div>
             
             {workflow.tags && workflow.tags.length > 0 && (
