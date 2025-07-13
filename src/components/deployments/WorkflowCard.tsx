@@ -300,8 +300,8 @@ export function WorkflowCard({
           </div>
           
           <div className="flex flex-col items-end">
-            <Badge className={getStatusBadge(workflow.deployment_status)}>
-              {workflow.deployment_status.toUpperCase()}
+            <Badge className={getStatusBadge(workflow.status)}>
+              {workflow.status.toUpperCase()}
             </Badge>
             <Button
               onClick={() => setShowBatchTestDialog(true)}

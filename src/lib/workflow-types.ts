@@ -35,8 +35,7 @@ export interface Workflow {
   name: string;
   description: string;
   version: string;
-  status: string;
-  deployment_status: string;
+  status: 'draft' | 'pending' | 'deployed' | 'paused' | 'failed' | 'inactive';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   automation_sequence: any; // Keeping as 'any' for now
   input_parameters: Record<string, InputParameter>;

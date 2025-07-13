@@ -89,6 +89,15 @@ def cancel_queued_jobs(cur, conn, workflow_id, original_error_message):
     """, (cancellation_message, workflow_id))
     
     cancelled_ids = [row[0] for row in cur.fetchall()]
+    
+    # Update workflow status to 'paused' to prevent new executions
+    cur.execute("""
+        UPDATE deployed_workflows 
+        SET status = 'paused',
+            updated_at = NOW()
+        WHERE id = %s AND status = 'deployed'
+    """, (workflow_id,))
+    
     conn.commit()
     
     return len(cancelled_ids), cancelled_ids
@@ -142,10 +151,11 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
                 cur, conn, workflow_id, error_messages[0]
             )
             
-            reason = f"Blocked job claim: Workflow {workflow_id} has {len(recent_executions)} consecutive identical failures. Cancelled {cancelled_count} queued jobs."
+            reason = f"Blocked job claim: Workflow {workflow_id} has {len(recent_executions)} consecutive identical failures. Cancelled {cancelled_count} queued jobs and paused workflow."
             logger.warning("🚫 %s (took %dms)", reason, check_duration_ms)
             if cancelled_ids:
                 logger.warning("🚫 Cancelled execution IDs: %s", cancelled_ids)
+            logger.warning("⏸️ Workflow %d status changed to 'paused' to prevent new executions", workflow_id)
             
             return True, reason, check_duration_ms
         

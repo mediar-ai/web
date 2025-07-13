@@ -42,7 +42,7 @@ interface WorkflowDeployment {
   name: string;
   description: string;
   stage: 'idle' | 'human-in-loop' | 'autonomous';
-  status: 'active' | 'paused' | 'error' | 'deploying';
+  status: 'draft' | 'pending' | 'deployed' | 'paused' | 'failed' | 'inactive';
   version: string;
   lastDeployed: Date;
   nextRun?: Date;
@@ -74,7 +74,7 @@ const mockWorkflows: WorkflowDeployment[] = [
     name: 'Insurance Quote Processing',
     description: 'Automates insurance benefit amount updates and premium calculations across multiple insurance providers',
     stage: 'human-in-loop',
-    status: 'active',
+    status: 'deployed',
     version: 'v2.1.3',
     lastDeployed: new Date('2025-01-27T15:30:00Z'),
     nextRun: new Date(Date.now() + 3600000), // 1 hour from now
@@ -143,7 +143,7 @@ const mockWorkflows: WorkflowDeployment[] = [
     name: 'Agent Desktop Navigation',
     description: 'Manages agent workspace transitions and call handling workflows in contact center applications',
     stage: 'autonomous',
-    status: 'active',
+    status: 'deployed',
     version: 'v1.8.2',
     lastDeployed: new Date('2025-01-27T10:15:00Z'),
     nextRun: new Date(Date.now() + 1800000), // 30 minutes from now
@@ -325,8 +325,8 @@ export default function DeploymentsTabContent() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Active Workflows</p>
-                <p className="text-2xl font-bold">{filteredWorkflows.filter(w => w.status === 'active').length}</p>
+                <p className="text-sm font-medium text-muted-foreground">Deployed Workflows</p>
+                <p className="text-2xl font-bold">{filteredWorkflows.filter(w => w.status === 'deployed').length}</p>
               </div>
             </div>
           </CardContent>
@@ -397,11 +397,11 @@ export default function DeploymentsTabContent() {
             All Status
           </Button>
           <Button
-            variant={filterStatus === 'active' ? 'default' : 'outline'}
+            variant={filterStatus === 'deployed' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setFilterStatus('active')}
+            onClick={() => setFilterStatus('deployed')}
           >
-            Active
+            Deployed
           </Button>
           <Button
             variant={filterStatus === 'paused' ? 'default' : 'outline'}

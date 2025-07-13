@@ -21,7 +21,7 @@ export async function GET(
     
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, automation_sequence, deployment_status, status')
+      .select('id, name, automation_sequence, status')
       .eq('id', workflowId)
       .single();
 
@@ -54,7 +54,6 @@ export async function GET(
     const workflowDetails = {
       id: workflow.id,
       name: workflow.name,
-      deployment_status: workflow.deployment_status,
       status: workflow.status,
       
       // Execution Information
@@ -62,8 +61,8 @@ export async function GET(
         endpoint: `/api/remote-workflows/${workflowIdNum}/execute`,
         method: 'POST',
         required_headers: ['Content-Type: application/json'],
-        deployment_status: workflow.deployment_status,
-        is_executable: workflow.deployment_status === 'deployed' && workflow.status === 'active'
+        status: workflow.status,
+        is_executable: workflow.status === 'deployed'
       },
       
       // Workflow Definition (from database)
