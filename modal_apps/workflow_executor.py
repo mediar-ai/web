@@ -74,16 +74,6 @@ DB_CONFIG = {
 CONSECUTIVE_FAILURE_THRESHOLD = 3  # Number of identical failures
 
 # Auto-cancellation logic
-def get_last_failed_executions(cur, workflow_id, limit=3):
-    """Get last N failed executions for workflow, ordered by completed_at DESC"""
-    cur.execute("""
-        SELECT id, completed_at, error_message
-        FROM workflow_executions
-        WHERE workflow_id = %s AND status = 'failed' AND error_message IS NOT NULL
-        ORDER BY completed_at DESC
-        LIMIT %s
-    """, (workflow_id, limit))
-    return cur.fetchall()
 
 def cancel_queued_jobs(cur, conn, workflow_id, original_error_message):
     """Cancel all queued jobs for workflow, return count cancelled"""
@@ -103,38 +93,69 @@ def cancel_queued_jobs(cur, conn, workflow_id, original_error_message):
     
     return len(cancelled_ids), cancelled_ids
 
-def check_and_cancel_queue_if_needed(cur, conn, workflow_id, current_error_message):
+
+def check_failure_patterns_for_workflow(cur, conn, workflow_id):
     """
-    Check if we should cancel queued jobs due to 3 consecutive identical failures.
-    Returns: (should_cancel: bool, cancelled_count: int, reason: str)
+    🚫 WORKFLOW-SPECIFIC FAILURE PATTERN CHECK: Prevents claiming jobs for a specific workflow with recent consecutive failures.
+    
+    Checks if the last 3 executions (completed/failed) for the workflow are ALL failures with identical error messages.
+    Ignores cancelled jobs since they never actually executed. If pattern found, cancels all queued jobs.
+    
+    Returns: (should_block: bool, reason: str, check_duration_ms: int)
     """
+    start_time = time.time()
+    
     try:
-        # Get last 3 failed executions for this workflow
-        last_failures = get_last_failed_executions(cur, workflow_id, CONSECUTIVE_FAILURE_THRESHOLD)
+        # Check the last 3 executions that actually ran (completed or failed), ignoring cancelled jobs
+        cur.execute("""
+            SELECT id, status, error_message, completed_at
+            FROM workflow_executions 
+            WHERE workflow_id = %s 
+            AND status IN ('completed', 'failed')
+            AND completed_at > NOW() - INTERVAL '10 minutes'
+            ORDER BY completed_at DESC
+            LIMIT %s
+        """, (workflow_id, CONSECUTIVE_FAILURE_THRESHOLD))
         
-        # Need exactly 3 failures to trigger
-        if len(last_failures) < CONSECUTIVE_FAILURE_THRESHOLD:
-            return False, 0, ""
+        recent_executions = cur.fetchall()
+        check_duration_ms = int((time.time() - start_time) * 1000)
         
-        # All 3 must have identical error messages
-        error_messages = [exec[2] for exec in last_failures]  # error_message is index 2
-        if not all(msg == error_messages[0] for msg in error_messages):
-            return False, 0, ""
+        if len(recent_executions) < CONSECUTIVE_FAILURE_THRESHOLD:
+            logger.debug("🔍 Pre-claim check for workflow %d: %d recent executions, proceeding (took %dms)", 
+                        workflow_id, len(recent_executions), check_duration_ms)
+            return False, "", check_duration_ms
         
-        # Cancel all queued jobs for this workflow
-        cancelled_count, cancelled_ids = cancel_queued_jobs(cur, conn, workflow_id, current_error_message)
+        # Check if ALL 3 most recent executions are failures with identical error messages
+        all_failed = all(exec['status'] == 'failed' for exec in recent_executions)
         
-        reason = f"Auto-cancelled {cancelled_count} queued jobs due to 3 consecutive identical failures: '{current_error_message[:100]}'"
+        if not all_failed:
+            logger.debug("🔍 Pre-claim check for workflow %d: Not all recent executions failed, proceeding (took %dms)", 
+                        workflow_id, check_duration_ms)
+            return False, "", check_duration_ms
         
-        logger.info("🚫 %s", reason)
-        if cancelled_ids:
-            logger.info("🚫 Cancelled execution IDs: %s", cancelled_ids)
+        # All 3 are failures - check if they have identical error messages
+        error_messages = [exec['error_message'] for exec in recent_executions if exec['error_message']]
         
-        return True, cancelled_count, reason
+        if len(error_messages) == CONSECUTIVE_FAILURE_THRESHOLD and all(msg == error_messages[0] for msg in error_messages):
+            # Found problematic pattern - cancel remaining queued jobs for this workflow
+            cancelled_count, cancelled_ids = cancel_queued_jobs(
+                cur, conn, workflow_id, error_messages[0]
+            )
+            
+            reason = f"Blocked job claim: Workflow {workflow_id} has {len(recent_executions)} consecutive identical failures. Cancelled {cancelled_count} queued jobs."
+            logger.warning("🚫 %s (took %dms)", reason, check_duration_ms)
+            if cancelled_ids:
+                logger.warning("🚫 Cancelled execution IDs: %s", cancelled_ids)
+            
+            return True, reason, check_duration_ms
+        
+        logger.debug("🔍 Pre-claim check for workflow %d: No blocking patterns found (took %dms)", workflow_id, check_duration_ms)
+        return False, "", check_duration_ms
         
     except Exception as e:
-        logger.error("❌ Error in queue cancellation check: %s", e)
-        return False, 0, ""
+        check_duration_ms = int((time.time() - start_time) * 1000)
+        logger.error("❌ Error in pre-claim failure pattern check for workflow %d: %s (took %dms)", workflow_id, e, check_duration_ms)
+        return False, f"Check error: {e}", check_duration_ms
 
 # MCP endpoint configuration - could be moved to secrets
 MCP_ENDPOINT = "https://barely-honest-yak.ngrok-free.app/mcp" # virtual machine
@@ -772,7 +793,7 @@ async def execute_mcp_workflow(
 @app.function(
     image=image,
     secrets=secrets,
-    timeout=1800,  # 30 minutes for real browser automation
+    timeout=1800,  # 30 minutes for real browser automation (cleanup at 25 min prevents stuck jobs)
     memory=2048,  # 2GB memory for browser operations
     cpu=2.0,  # 2 CPUs for better performance
     max_containers=1,  # Only allow one execution at a time
@@ -1042,9 +1063,8 @@ def execute_workflow(
         )
         conn.commit()
 
-        # Check for auto-cancellation if workflow failed
-        if not results["execution_summary"]["workflow_completed"] and error_message_for_db:
-            check_and_cancel_queue_if_needed(cur, conn, workflow_id, error_message_for_db)
+        # Note: Auto-cancellation is now handled proactively BEFORE claiming jobs
+        # No need for reactive cancellation after failures
 
         # Note: Workflow success/failure metrics are automatically updated by database trigger
         # when the workflow_executions status changes to 'completed' or 'failed'
@@ -1192,8 +1212,8 @@ def execute_workflow(
                 )
                 conn.commit()
 
-                # Check for auto-cancellation after failed execution
-                check_and_cancel_queue_if_needed(cur, conn, workflow_id, error_msg)
+                # Note: Auto-cancellation is now handled proactively BEFORE claiming jobs
+                # No need for reactive cancellation after failures
 
                 # Note: Workflow failure metrics are automatically updated by database trigger
                 # when the workflow_executions status changes to 'failed'
@@ -1220,41 +1240,87 @@ def execute_workflow(
             conn.close()
 
 
-def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 45):
+def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
     """
     Clean up executions that have been 'running' for too long without completion.
     This handles cases where Modal containers crash or timeout without updating status.
     
+    CRITICAL FIX: Default threshold reduced to 25 minutes (from 45) to close the gap
+    that allowed job #1444 to stay stuck for 7+ hours.
+    
+    Timeline:
+    - Modal timeout: 30 minutes
+    - This cleanup: 25 minutes (catches stuck jobs BEFORE Modal timeout)
+    - Smart check: 30 minutes (matches Modal timeout exactly)
+    
     Returns the number of executions cleaned up.
     """
     try:
+        # First, get details about what we're about to clean up for better logging
+        cur.execute(
+            """
+            SELECT id, workflow_id, started_at, 
+                   EXTRACT(EPOCH FROM (NOW() - started_at))/60 as minutes_running,
+                   modal_call_id
+            FROM workflow_executions
+            WHERE 
+                status = 'running'
+                AND started_at < NOW() - INTERVAL '%s minutes'
+            ORDER BY started_at ASC
+            """,
+            (stale_threshold_minutes,)
+        )
+        
+        stale_jobs = cur.fetchall()
+        
+        if not stale_jobs:
+            return 0
+            
+        # Log details about each stale job before cleanup
+        for job in stale_jobs:
+            logger.warning(
+                "🚨 Detected stale execution ID %s (workflow %s): running for %.1f minutes, modal_call_id: %s",
+                job[0], job[1], job[3], job[4] or "None"
+            )
+        
+        # Now perform the cleanup
         cur.execute(
             """
             UPDATE workflow_executions
             SET 
                 status = 'failed',
                 completed_at = NOW(),
-                error_message = 'Execution timed out - no completion after ' || %s || ' minutes',
+                error_message = 'Auto-cleanup: Execution stuck in running state for ' || %s || '+ minutes (likely Modal timeout)',
                 execution_duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::integer
             WHERE 
                 status = 'running'
                 AND started_at < NOW() - INTERVAL '%s minutes'
-            RETURNING id
+            RETURNING id, workflow_id, EXTRACT(EPOCH FROM (NOW() - started_at))/60 as minutes_stuck
             """,
             (stale_threshold_minutes, stale_threshold_minutes)
         )
         
-        stale_ids = [row[0] for row in cur.fetchall()]
+        cleaned_jobs = cur.fetchall()
         conn.commit()
         
-        if stale_ids:
+        if cleaned_jobs:
+            stale_ids = [job[0] for job in cleaned_jobs]
+            total_minutes = sum(job[2] for job in cleaned_jobs)
+            avg_minutes = total_minutes / len(cleaned_jobs)
+            
             logger.warning(
-                "🧹 Cleaned up %d stale executions: %s",
-                len(stale_ids),
-                stale_ids
+                "🧹 Smart cleanup completed: %d stale executions cleaned up",
+                len(stale_ids)
+            )
+            logger.warning(
+                "   📊 Average stuck time: %.1f minutes | IDs: %s",
+                avg_minutes, stale_ids
+            )
+            logger.warning(
+                "   🔧 This prevents the queue-blocking issue that affected job #1444"
             )
         
-        return len(stale_ids)
+        return len(cleaned_jobs)
     except Exception as e:
         logger.error("Failed to cleanup stale executions: %s", e)
         conn.rollback()
@@ -1446,18 +1512,20 @@ def check_and_process_queued_jobs():
         # Periodically clean up stale executions (every 60 calls = ~1 minute)
         # Use a simple counter based on current timestamp
         if int(time.time()) % 60 == 0:
-            cleanup_count = cleanup_stale_executions(cur, conn, stale_threshold_minutes=45)
+            # CRITICAL FIX: Reduce cleanup threshold to 25 minutes (less than Modal's 30-min timeout)
+            # This prevents the 15-minute gap that allowed job #1444 to stay stuck
+            cleanup_count = cleanup_stale_executions(cur, conn, stale_threshold_minutes=25)
             if cleanup_count > 0:
-                logger.info("🧹 Cleaned up %d stale executions", cleanup_count)
+                logger.info("🧹 Smart cleanup: %d stale executions cleaned up", cleanup_count)
 
-        # SMART CHECK: First check if there's already a running execution
+        # ENHANCED SMART CHECK: More aggressive detection of stuck jobs
         # This prevents claiming jobs that will just sit in Modal's internal queue
         cur.execute(
             """
             SELECT COUNT(*) as running_count
             FROM workflow_executions
             WHERE status = 'running'
-            AND started_at > NOW() - INTERVAL '1 hour'  -- Ignore stale 'running' jobs
+            AND started_at > NOW() - INTERVAL '30 minutes'  -- Match Modal timeout exactly
             """
         )
         running_count = cur.fetchone()["running_count"]
@@ -1474,7 +1542,38 @@ def check_and_process_queued_jobs():
                 "running_count": running_count
             }
 
-        # No running executions, safe to claim a new job
+        # 🚫 WORKFLOW-SPECIFIC FAILURE PATTERN CHECK: Peek at next job's workflow and check for failure patterns
+        # First, peek at which workflow has the next queued job without claiming it
+        cur.execute("""
+            SELECT workflow_id
+            FROM workflow_executions
+            WHERE status = 'queued'
+            ORDER BY created_at ASC
+            LIMIT 1
+        """)
+        
+        next_job = cur.fetchone()
+        if not next_job:
+            # No queued jobs found
+            return {"status": "no_jobs_found"}
+        
+        next_workflow_id = next_job["workflow_id"]
+        
+        # Check if this specific workflow has consecutive failure patterns
+        should_block, block_reason, check_duration_ms = check_failure_patterns_for_workflow(cur, conn, next_workflow_id)
+        
+        if should_block:
+            logger.warning("🚫 BLOCKED job claim for workflow %d: %s", next_workflow_id, block_reason)
+            return {
+                "status": "blocked",
+                "reason": block_reason,
+                "workflow_id": next_workflow_id,
+                "check_duration_ms": check_duration_ms
+            }
+        else:
+            logger.debug("✅ Pre-claim check passed for workflow %d, proceeding to claim job (took %dms)", next_workflow_id, check_duration_ms)
+
+        # No running executions and no blocking patterns, safe to claim a new job
         modal_call_id = f"modal-real-{int(time.time())}-{random.randint(1000, 9999)}"
 
         # This query atomically finds the next 'queued' job,
