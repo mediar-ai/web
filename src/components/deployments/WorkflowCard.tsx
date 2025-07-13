@@ -218,17 +218,22 @@ export function WorkflowCard({
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h3 className="text-lg font-bold font-mono">{workflow.name}</h3>
+            {/* First line: Just the workflow title */}
+            <h3 className="text-lg font-bold font-mono mb-2">{workflow.name}</h3>
+            
+            {/* Second line: Version, stats, and action buttons */}
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
               <span className="text-xs font-mono px-2 py-1 bg-black text-white rounded">
                 v{workflow.version || '1.0.0'}
               </span>
-              {/* Move stats inline with title - make them very concise */}
+              
+              {/* Stats */}
               <div className="flex items-center gap-3 text-xs font-mono text-gray-600">
                 <span>RUNS: {workflow.total_executions || 0}</span>
                 {(workflow.total_executions || 0) > 0 && (
-                  <span className="text-black">
-                    ✅: {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
+                  <span className="text-black flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
                   </span>
                 )}
                 {workflow.estimated_duration_seconds && (
@@ -237,7 +242,29 @@ export function WorkflowCard({
                   </span>
                 )}
               </div>
+              
+              {/* Action buttons on same line */}
+              <Button
+                onClick={() => setShowBatchTestDialog(true)}
+                className="bg-black text-white hover:bg-gray-800 font-mono text-xs h-6"
+                size="sm"
+              >
+                <PlayCircle className="w-3 h-3 mr-1" />
+                Test Run
+              </Button>
+              
+              <Button 
+                onClick={() => onFetchWorkflowDetails(workflow.id)}
+                variant="black-outline"
+                size="sm"
+                className="font-mono text-xs h-6"
+                disabled={loadingDetails}
+              >
+                {loadingDetails ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                <span className="ml-1">DETAILS</span>
+              </Button>
             </div>
+            
             <p className="text-black text-sm mb-2">{workflow.description}</p>
             
           </div>
@@ -248,7 +275,7 @@ export function WorkflowCard({
                 <button
                   onClick={handleResumeWorkflow}
                   disabled={resumingWorkflow}
-                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  className="p-1 border border-black rounded hover:bg-gray-100 transition-colors"
                   title={resumingWorkflow ? 'Resuming...' : 'Resume workflow'}
                 >
                   {resumingWorkflow ? (
@@ -262,25 +289,6 @@ export function WorkflowCard({
                 {workflow.status.toUpperCase()}
               </Badge>
             </div>
-            <Button
-              onClick={() => setShowBatchTestDialog(true)}
-              className="bg-black text-white hover:bg-gray-800 font-mono text-xs mt-4 w-full"
-              size="sm"
-            >
-              <PlayCircle className="w-3 h-3 mr-1" />
-              Test Run
-            </Button>
-            {/* Move details button right below test run button */}
-            <Button 
-              onClick={() => onFetchWorkflowDetails(workflow.id)}
-              variant="black-outline"
-              size="sm"
-              className="font-mono text-xs h-6 mt-2 w-full"
-              disabled={loadingDetails}
-            >
-              {loadingDetails ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-              <span className="ml-1">DETAILS</span>
-            </Button>
           </div>
         </div>
       </CardHeader>
