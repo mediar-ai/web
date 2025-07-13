@@ -231,30 +231,12 @@ export function WorkflowCard({
                 )}
                 {workflow.estimated_duration_seconds && (
                   <span className="text-black">
-                    IN: {workflow.estimated_duration_seconds} sec.
+                    in {workflow.estimated_duration_seconds} sec.
                   </span>
                 )}
               </div>
             </div>
             <p className="text-black text-sm mb-2">{workflow.description}</p>
-            
-            <div className="bg-gray-50 border border-black rounded-md p-3 mb-3 max-w-lg">
-              <h4 className="text-xs font-mono font-bold text-black mb-1">SUCCESS CRITERIA</h4>
-              <ul className="text-xs space-y-1">
-                <li className="flex items-start gap-2">
-                  <span className="text-green-600 mt-0.5">✓</span>
-                  <span className="text-gray-700">All workflow steps must complete successfully (100% completion)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-green-600 mt-0.5">✓</span>
-                  <span className="text-gray-700">At least one insurance quote must be found and extracted</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-red-600 mt-0.5">✗</span>
-                  <span className="text-gray-700">Partial completion or no quotes found = FAILED</span>
-                </li>
-              </ul>
-            </div>
             
             <div className="flex flex-wrap gap-4 text-xs font-mono text-black mb-3">
               <span>DIFFICULTY: {workflow.difficulty_level?.toUpperCase() || 'MEDIUM'}</span>
