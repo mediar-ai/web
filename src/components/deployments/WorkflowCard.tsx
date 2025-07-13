@@ -240,19 +240,6 @@ export function WorkflowCard({
             </div>
             <p className="text-black text-sm mb-2">{workflow.description}</p>
             
-            <div className="flex flex-wrap gap-4 text-xs font-mono text-black mb-3">
-              <span>DIFFICULTY: {workflow.difficulty_level?.toUpperCase() || 'MEDIUM'}</span>
-            </div>
-            
-            {workflow.tags && workflow.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-3">
-                {workflow.tags.map((tag: string, index: number) => (
-                  <span key={`${workflow.id}-tag-${index}`} className="text-xs px-2 py-1 bg-white text-black border border-black rounded font-mono">
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
           
           <div className="flex flex-col items-end">
