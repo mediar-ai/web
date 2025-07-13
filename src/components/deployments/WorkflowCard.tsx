@@ -225,14 +225,9 @@ export function WorkflowCard({
               <div className="flex items-center gap-3 text-xs font-mono text-gray-600">
                 <span>RUNS: {workflow.total_executions || 0}</span>
                 {(workflow.total_executions || 0) > 0 && (
-                  <>
-                    <span className="text-black">
-                      ✅: {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
-                    </span>
-                    <span className="text-black">
-                      ❌: {Math.round(((workflow.failed_runs || 0) / (workflow.total_executions || 1)) * 100)}%
-                    </span>
-                  </>
+                  <span className="text-black">
+                    ✅: {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
+                  </span>
                 )}
               </div>
             </div>
