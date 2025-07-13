@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,38 +14,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-// Floating Delta Component for stats
-const FloatingDelta = ({ value }: { value: number }) => {
-  const [deltas, setDeltas] = useState<{ id: string, value: number }[]>([]);
-
-  useEffect(() => {
-    if (value !== 0) {
-      const newDelta = { id: `${Date.now()}-${Math.random()}`, value };
-      setDeltas(d => [...d, newDelta]);
-      setTimeout(() => {
-        setDeltas(d => d.filter(delta => delta.id !== newDelta.id));
-      }, 2000);
-    }
-  }, [value]);
-
-  if (deltas.length === 0) return null;
-
-  return (
-    <>
-      {deltas.map(delta => (
-        <span
-          key={delta.id}
-          className={`absolute -top-2 -right-6 px-1.5 py-0.5 text-xs font-bold rounded-full animate-bounce-in-out ${
-            delta.value > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-          }`}
-        >
-          {delta.value > 0 ? `+${delta.value}` : delta.value}
-        </span>
-      ))}
-    </>
-  );
-};
 
 interface WorkflowCardProps {
   workflow: Workflow;
@@ -114,7 +82,6 @@ export function WorkflowCard({
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
   const [resumingWorkflow, setResumingWorkflow] = useState(false);
-  const previousWorkflow = useRef<Workflow | null>(null);
 
   // Resume workflow function
   const handleResumeWorkflow = async () => {
@@ -254,16 +221,20 @@ export function WorkflowCard({
               <span className="text-xs font-mono px-2 py-1 bg-black text-white rounded">
                 v{workflow.version || '1.0.0'}
               </span>
-              <Button 
-                onClick={() => onFetchWorkflowDetails(workflow.id)}
-                variant="outline"
-                size="sm"
-                className="font-mono text-xs h-6"
-                disabled={loadingDetails}
-              >
-                {loadingDetails ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-                <span className="ml-1">DETAILS</span>
-              </Button>
+              {/* Move stats inline with title - make them very concise */}
+              <div className="flex items-center gap-3 text-xs font-mono text-gray-600">
+                <span>RUNS: {workflow.total_executions || 0}</span>
+                {(workflow.total_executions || 0) > 0 && (
+                  <>
+                    <span className="text-black">
+                      ✅: {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
+                    </span>
+                    <span className="text-black">
+                      ❌: {Math.round(((workflow.failed_runs || 0) / (workflow.total_executions || 1)) * 100)}%
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
             <p className="text-black text-sm mb-2">{workflow.description}</p>
             
@@ -301,34 +272,6 @@ export function WorkflowCard({
                 ))}
               </div>
             )}
-            
-            <div className="flex gap-4 text-xs font-mono text-black">
-              <span className="relative inline-block">
-                RUNS: {workflow.total_executions || 0}
-                <FloatingDelta value={(workflow.total_executions || 0) - (previousWorkflow.current?.total_executions || 0)} />
-              </span>
-              <span className="relative inline-block text-gray-700">
-                SUCCESS: {workflow.successful_runs || 0}
-                <FloatingDelta value={(workflow.successful_runs || 0) - (previousWorkflow.current?.successful_runs || 0)} />
-              </span>
-              <span className="relative inline-block text-red-600">
-                FAILED: {workflow.failed_runs || 0}
-                <FloatingDelta value={(workflow.failed_runs || 0) - (previousWorkflow.current?.failed_runs || 0)} />
-              </span>
-              <span className="relative inline-block text-gray-500">
-                CANCELLED: {workflow.cancelled_runs || 0}
-                <FloatingDelta value={(workflow.cancelled_runs || 0) - (previousWorkflow.current?.cancelled_runs || 0)} />
-              </span>
-              {(workflow.total_executions || 0) > 0 && (
-                <span className="relative inline-block">
-                  SUCCESS RATE: {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
-                  <FloatingDelta value={
-                    Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100) -
-                    Math.round(((previousWorkflow.current?.successful_runs || 0) / (previousWorkflow.current?.total_executions || 1)) * 100)
-                  } />
-                </span>
-              )}
-            </div>
           </div>
           
           <div className="flex flex-col items-end">
@@ -358,6 +301,17 @@ export function WorkflowCard({
             >
               <PlayCircle className="w-3 h-3 mr-1" />
               Test Run
+            </Button>
+            {/* Move details button right below test run button */}
+            <Button 
+              onClick={() => onFetchWorkflowDetails(workflow.id)}
+              variant="outline"
+              size="sm"
+              className="font-mono text-xs h-6 mt-2 w-full"
+              disabled={loadingDetails}
+            >
+              {loadingDetails ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+              <span className="ml-1">DETAILS</span>
             </Button>
           </div>
         </div>
