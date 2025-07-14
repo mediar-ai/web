@@ -137,12 +137,12 @@ $workDir = Split-Path -Parent $application
 & $NssmPath set $ServiceName AppRestartDelay 5000 # 5 second delay
 
 # Configure logging
-$logDir = "C:\Logs\MCPServer"
+$logDir = "C:\Users\terminatoradmin\Desktop\browser-workflow-capture-app-latest\windows-remote-service\logs"
 if (!(Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
-& $NssmPath set $ServiceName AppStdout "$logDir\service.log"
-& $NssmPath set $ServiceName AppStderr "$logDir\error.log"
+& $NssmPath set $ServiceName AppStdout "$logDir\stdout.log"      # Keep stdout separate (usually empty)
+& $NssmPath set $ServiceName AppStderr "$logDir\mcp-server.log"  # MCP server logs to stderr
 & $NssmPath set $ServiceName AppRotateFiles 1
 & $NssmPath set $ServiceName AppRotateBytes 1048576 # 1MB
 
