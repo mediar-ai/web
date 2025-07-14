@@ -1424,7 +1424,9 @@ def execute_workflow(
 def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
     """
     Clean up executions that have been 'running' for too long without completion.
-    This handles cases where Modal containers crash or timeout without updating status.
+    This handles two types of stuck jobs:
+    1. Jobs that started but Modal containers crashed/timed out (25+ minutes)
+    2. Jobs that were dispatched to Modal but never started (30+ minutes with NULL logs)
     
     CRITICAL FIX: Default threshold reduced to 25 minutes (from 45) to close the gap
     that allowed job #1444 to stay stuck for 7+ hours.
@@ -1432,9 +1434,10 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
     Timeline:
     - Modal timeout: 30 minutes
     - This cleanup: 25 minutes (catches stuck jobs BEFORE Modal timeout)
+    - NULL logs cleanup: 30 minutes (catches jobs that never started)
     - Smart check: 30 minutes (matches Modal timeout exactly)
     
-    Returns the number of executions cleaned up.
+    Returns the total number of executions cleaned up.
     """
     try:
         # First, get details about what we're about to clean up for better logging
@@ -1501,7 +1504,71 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                 "   🔧 This prevents the queue-blocking issue that affected job #1444"
             )
         
-        return len(cleaned_jobs)
+        # ENHANCED: Also clean up jobs that never started (NULL raw_logs)
+        # These are jobs that were dispatched to Modal but never actually executed
+        cur.execute(
+            """
+            SELECT id, workflow_id, started_at, 
+                   EXTRACT(EPOCH FROM (NOW() - started_at))/60 as minutes_running,
+                   modal_call_id
+            FROM workflow_executions
+            WHERE 
+                status = 'running'
+                AND started_at < NOW() - INTERVAL '30 minutes'
+                AND raw_logs IS NULL
+            ORDER BY started_at ASC
+            """,
+        )
+        
+        null_logs_jobs = cur.fetchall()
+        
+        if null_logs_jobs:
+            # Log details about each null-logs job before cleanup
+            for job in null_logs_jobs:
+                logger.warning(
+                    "🚨 Detected job with NULL logs ID %s (workflow %s): running for %.1f minutes, modal_call_id: %s",
+                    job[0], job[1], job[3], job[4] or "None"
+                )
+            
+            # Clean up jobs with NULL raw_logs (never started execution)
+            cur.execute(
+                """
+                UPDATE workflow_executions
+                SET 
+                    status = 'failed',
+                    completed_at = NOW(),
+                    error_message = 'Auto-cleanup: Job stuck in Modal queue without logs for 30+ minutes (likely Modal container startup failure)',
+                    execution_duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::integer
+                WHERE 
+                    status = 'running'
+                    AND started_at < NOW() - INTERVAL '30 minutes'
+                    AND raw_logs IS NULL
+                RETURNING id, workflow_id, EXTRACT(EPOCH FROM (NOW() - started_at))/60 as minutes_stuck
+                """,
+            )
+            
+            null_logs_cleaned = cur.fetchall()
+            conn.commit()
+            
+            if null_logs_cleaned:
+                null_logs_ids = [job[0] for job in null_logs_cleaned]
+                total_null_minutes = sum(job[2] for job in null_logs_cleaned)
+                avg_null_minutes = total_null_minutes / len(null_logs_cleaned)
+                
+                logger.warning(
+                    "🧹 NULL logs cleanup completed: %d executions cleaned up",
+                    len(null_logs_ids)
+                )
+                logger.warning(
+                    "   📊 Average stuck time: %.1f minutes | IDs: %s",
+                    avg_null_minutes, null_logs_ids
+                )
+                logger.warning(
+                    "   🔧 These jobs were dispatched to Modal but never actually started"
+                )
+        
+        total_cleaned = len(cleaned_jobs) + (len(null_logs_cleaned) if null_logs_jobs else 0)
+        return total_cleaned
     except Exception as e:
         logger.error("Failed to cleanup stale executions: %s", e)
         conn.rollback()
@@ -1705,11 +1772,13 @@ def check_and_process_queued_jobs():
         # Periodically clean up stale executions (every 60 calls = ~1 minute)
         # Use a simple counter based on current timestamp
         if int(time.time()) % 60 == 0:
-            # CRITICAL FIX: Reduce cleanup threshold to 25 minutes (less than Modal's 30-min timeout)
-            # This prevents the 15-minute gap that allowed job #1444 to stay stuck
+            # ENHANCED CLEANUP: Now handles both types of stuck jobs:
+            # 1. Jobs that started but Modal containers crashed/timed out (25+ minutes)
+            # 2. Jobs that were dispatched to Modal but never started (30+ minutes with NULL logs)
+            # This prevents the queue-blocking issue that affected job #1444
             cleanup_count = cleanup_stale_executions(cur, conn, stale_threshold_minutes=25)
             if cleanup_count > 0:
-                logger.info("🧹 Smart cleanup: %d stale executions cleaned up", cleanup_count)
+                logger.info("🧹 Enhanced cleanup: %d stale executions cleaned up", cleanup_count)
 
         # ENHANCED SMART CHECK: More aggressive detection of stuck jobs
         # This prevents claiming jobs that will just sit in Modal's internal queue
@@ -1820,18 +1889,72 @@ def check_and_process_queued_jobs():
 
         # Now, call the main execution function asynchronously.
         # This function will handle the rest of the process.
-        execute_workflow.remote(
-            workflow_id=workflow_id,
-            execution_params=execution_params,
-            client_id=client_id,
-            execution_id=execution_id,
-        )
-
-        return {
-            "status": "job_claimed",
-            "execution_id": execution_id,
-            "workflow_id": workflow_id,
-        }
+        try:
+            logger.info("🚀 Dispatching job %s to Modal...", execution_id)
+            
+            # Attempt to dispatch to Modal
+            modal_future = execute_workflow.remote(
+                workflow_id=workflow_id,
+                execution_params=execution_params,
+                client_id=client_id,
+                execution_id=execution_id,
+            )
+            
+            # Verify the remote call was accepted
+            logger.info("✅ Job %s successfully dispatched to Modal", execution_id)
+            
+            return {
+                "status": "job_claimed",
+                "execution_id": execution_id,
+                "workflow_id": workflow_id,
+                "modal_future": str(modal_future)
+            }
+            
+        except Exception as modal_error:
+            logger.error("❌ Modal dispatch failed for job %s: %s", execution_id, modal_error)
+            
+            # CRITICAL: Return the job to queue if Modal can't accept it
+            try:
+                cur.execute("""
+                    UPDATE workflow_executions
+                    SET status = 'queued', 
+                        started_at = NULL,
+                        modal_call_id = NULL,
+                        error_message = NULL
+                    WHERE id = %s
+                """, (execution_id,))
+                conn.commit()
+                
+                logger.info("🔄 Job %s returned to queue due to Modal dispatch failure", execution_id)
+                
+                return {
+                    "status": "modal_dispatch_failed",
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                    "error": str(modal_error),
+                    "action": "job_returned_to_queue"
+                }
+                
+            except Exception as rollback_error:
+                logger.error("❌ CRITICAL: Failed to return job %s to queue: %s", execution_id, rollback_error)
+                
+                # If we can't return to queue, mark as failed to prevent infinite stuck state
+                cur.execute("""
+                    UPDATE workflow_executions
+                    SET status = 'failed',
+                        completed_at = NOW(),
+                        error_message = %s
+                    WHERE id = %s
+                """, (f"Modal dispatch failed and job rollback failed: {modal_error} | {rollback_error}", execution_id))
+                conn.commit()
+                
+                return {
+                    "status": "critical_error",
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                    "error": f"Modal dispatch failed: {modal_error}",
+                    "rollback_error": str(rollback_error)
+                }
 
     except Exception as e:
         logger.error("❌ Job processor error: %s", e)
