@@ -66,15 +66,29 @@ try {
                     try {
                         # Get service configuration from NSSM
                         $nssmPath = "C:\Users\terminatoradmin\Desktop\terminator\scripts\nssm\nssm-2.24\win64\nssm.exe"
-                        $serviceApp = & $nssmPath get $ServiceName Application 2>$null
-                        $serviceParams = & $nssmPath get $ServiceName AppParameters 2>$null
+                        $serviceAppRaw = & $nssmPath get $ServiceName Application 2>$null
+                        $serviceParamsRaw = & $nssmPath get $ServiceName AppParameters 2>$null
                         
-                        # Clean up NSSM output (remove null characters and extra whitespace)
-                        if ($serviceApp) {
+                        # NSSM returns arrays - extract the first non-empty element
+                        $serviceApp = ""
+                        $serviceParams = ""
+                        
+                        if ($serviceAppRaw) {
+                            if ($serviceAppRaw -is [array]) {
+                                $serviceApp = ($serviceAppRaw | Where-Object { $_ -and $_.Trim() } | Select-Object -First 1)
+                            } else {
+                                $serviceApp = $serviceAppRaw
+                            }
                             $serviceApp = $serviceApp -replace '\x00', '' -replace '\s+', ' '
                             $serviceApp = $serviceApp.Trim()
                         }
-                        if ($serviceParams) {
+                        
+                        if ($serviceParamsRaw) {
+                            if ($serviceParamsRaw -is [array]) {
+                                $serviceParams = ($serviceParamsRaw | Where-Object { $_ -and $_.Trim() } | Select-Object -First 1)
+                            } else {
+                                $serviceParams = $serviceParamsRaw
+                            }
                             $serviceParams = $serviceParams -replace '\x00', '' -replace '\s+', ' '
                             $serviceParams = $serviceParams.Trim()
                         }
