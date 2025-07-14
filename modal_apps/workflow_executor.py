@@ -191,9 +191,12 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
         return False, f"Check error: {e}", check_duration_ms
 
 # MCP endpoint configuration - could be moved to secrets
-MCP_ENDPOINT = "https://barely-honest-yak.ngrok-free.app/mcp" # virtual machine
 # MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"  # Louis computer
 # MCP_ENDPOINT = "https://willingly-settling-husky.ngrok-free.app/mcp" # Matt computer
+
+# Windows VM service management endpoints (from our ngrok-powered system)
+VM_MANAGEMENT_ENDPOINT = "https://vm-windows-1.ngrok.dev"
+MCP_ENDPOINT = "https://mcp-server-1.ngrok.app/mcp"
 
 
 class CaptureOutput:
@@ -460,6 +463,104 @@ def extract_defaults_recursive(schema_node: Dict[str, Any]) -> Dict[str, Any]:
                     defaults[key] = nested_defaults
     return defaults
 
+
+async def check_mcp_server_health() -> bool:
+    """
+    Check if the MCP server is healthy and reachable.
+    Returns True if healthy, False otherwise.
+    """
+    import httpx
+    
+    try:
+        logger.info("🏥 Checking MCP server health at: %s", MCP_ENDPOINT)
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Try to reach the MCP health endpoint - properly handle the path
+            if MCP_ENDPOINT.endswith('/mcp'):
+                mcp_base_url = MCP_ENDPOINT[:-4]  # Remove last 4 characters (/mcp)
+            else:
+                mcp_base_url = MCP_ENDPOINT.rsplit('/', 1)[0]  # Remove last path segment
+            health_url = f"{mcp_base_url}/health"
+            
+            response = await client.get(
+                health_url,
+                headers={"ngrok-skip-browser-warning": "true"}
+            )
+            
+            if response.status_code == 200:
+                logger.info("✅ MCP server is healthy")
+                return True
+            else:
+                logger.warning("⚠️ MCP server returned status %d", response.status_code)
+                return False
+                
+    except Exception as e:
+        logger.warning("❌ MCP server health check failed: %s", e)
+        return False
+
+
+async def restart_windows_vm_service() -> bool:
+    """
+    Attempt to restart the Windows VM service using the management endpoint.
+    Returns True if restart was successful, False otherwise.
+    """
+    import httpx
+    
+    try:
+        logger.info("🔄 Attempting to restart Windows VM service...")
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Call the VM management endpoint to restart the service
+            response = await client.post(
+                f"{VM_MANAGEMENT_ENDPOINT}/restart",
+                headers={"ngrok-skip-browser-warning": "true"}
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success", False):
+                    logger.info("✅ Windows VM service restarted successfully")
+                    logger.info("📋 Service status: %s", result.get("service_status", {}).get("status", "Unknown"))
+                    return True
+                else:
+                    logger.error("❌ VM service restart failed: %s", result.get("error", "Unknown error"))
+                    return False
+            else:
+                logger.error("❌ VM management endpoint returned status %d", response.status_code)
+                return False
+                
+    except Exception as e:
+        logger.error("❌ Failed to restart Windows VM service: %s", e)
+        return False
+
+
+async def wait_for_mcp_server_recovery(max_wait_seconds: int = 60) -> bool:
+    """
+    Wait for the MCP server to come back online after a restart.
+    Returns True if server is back online, False if timeout.
+    """
+    import asyncio
+    
+    logger.info("⏳ Waiting for MCP server to come back online...")
+    
+    start_time = time.time()
+    retry_count = 0
+    
+    while (time.time() - start_time) < max_wait_seconds:
+        retry_count += 1
+        logger.info("🔍 Health check attempt %d...", retry_count)
+        
+        if await check_mcp_server_health():
+            recovery_time = int(time.time() - start_time)
+            logger.info("✅ MCP server is back online after %d seconds", recovery_time)
+            return True
+        
+        # Wait 5 seconds before next check
+        await asyncio.sleep(5)
+    
+    logger.error("❌ MCP server did not come back online within %d seconds", max_wait_seconds)
+    return False
+
 def log_merge_details(original, merged, path=""):
     """Recursively compares two dictionaries and logs the changes."""
     # Using sorted keys for consistent log output
@@ -560,9 +661,47 @@ async def execute_mcp_workflow(
             )
 
             if response.status_code != 200:
-                raise Exception(
-                    f"Failed to initialize MCP session: {response.status_code}"
-                )
+                # 🔄 AUTO-RESTART LOGIC: If MCP server is unreachable, try to restart it
+                if response.status_code in [404, 502, 503, 504]:  # Common "server down" errors
+                    logger.warning("🚨 MCP server unreachable (status %d). Attempting automatic restart...", response.status_code)
+                    
+                    # Check if MCP server is actually down
+                    if not await check_mcp_server_health():
+                        logger.info("🔄 Confirmed: MCP server is down. Initiating Windows VM service restart...")
+                        
+                        # Attempt to restart the Windows VM service
+                        if await restart_windows_vm_service():
+                            logger.info("✅ VM service restart initiated. Waiting for MCP server recovery...")
+                            
+                            # Wait for MCP server to come back online
+                            if await wait_for_mcp_server_recovery(max_wait_seconds=90):
+                                logger.info("🎉 MCP server recovered! Retrying workflow execution...")
+                                
+                                # Retry the MCP session initialization
+                                retry_response = await client.post(
+                                    MCP_ENDPOINT,
+                                    json=init_request,
+                                    headers={"Accept": "application/json, text/event-stream"},
+                                )
+                                
+                                if retry_response.status_code == 200:
+                                    logger.info("✅ MCP session initialized successfully after restart")
+                                    response = retry_response  # Use the successful response
+                                else:
+                                    logger.error("❌ MCP session initialization still failed after restart: %d", retry_response.status_code)
+                                    raise Exception(f"Failed to initialize MCP session after restart: {retry_response.status_code}")
+                            else:
+                                logger.error("❌ MCP server did not recover after restart")
+                                raise Exception("MCP server did not recover after Windows VM service restart")
+                        else:
+                            logger.error("❌ Failed to restart Windows VM service")
+                            raise Exception("Failed to restart Windows VM service - MCP server remains unreachable")
+                    else:
+                        logger.warning("⚠️ MCP server health check passed but session init failed")
+                        raise Exception(f"Failed to initialize MCP session: {response.status_code}")
+                else:
+                    # For other error codes, don't attempt restart
+                    raise Exception(f"Failed to initialize MCP session: {response.status_code}")
 
             # Extract session ID from response headers
             session_id = response.headers.get("Mcp-Session-Id")
@@ -795,11 +934,12 @@ async def execute_mcp_workflow(
             "error_type": type(e).__name__,
             "error_message": str(e),
             "mcp_endpoint": MCP_ENDPOINT,
+            "vm_management_endpoint": VM_MANAGEMENT_ENDPOINT,
             "workflow_id": workflow_data.get("id", "unknown"),
             "workflow_name": workflow_data.get("name", "unknown"),
         }
 
-        # Check if it's an HTTP error
+        # Check if it's an HTTP error and add restart context
         if (
             "HTTP" in str(e)
             or "400" in str(e)
@@ -809,11 +949,21 @@ async def execute_mcp_workflow(
             or "500" in str(e)
         ):
             error_context["error_category"] = "mcp_http_error"
-            error_context["suggested_fix"] = (
-                "Check if MCP endpoint is running and accessible"
-            )
+            
+            # Check if this was a restart-related error
+            if "restart" in str(e).lower():
+                error_context["restart_attempted"] = True
+                error_context["suggested_fix"] = (
+                    "Automatic restart was attempted but failed. Check Windows VM service status manually."
+                )
+            else:
+                error_context["restart_attempted"] = False
+                error_context["suggested_fix"] = (
+                    "Check if MCP endpoint is running and accessible. Automatic restart will be attempted."
+                )
         else:
             error_context["error_category"] = "mcp_general_error"
+            error_context["restart_attempted"] = False
 
         logger.error("MCP Error Context: %s", json.dumps(error_context, indent=2))
 
@@ -1498,23 +1648,32 @@ if __name__ == "__main__":
     print("🌐 Powered by MCP browser control via ngrok")
     print("🗄️  Direct PostgreSQL connection using psycopg2")
     print("🔗 MCP Endpoint:", MCP_ENDPOINT)
+    print("🔄 VM Management:", VM_MANAGEMENT_ENDPOINT)
     print("\n📋 Available Functions:")
     print("  • execute_workflow() - Real browser automation execution")
     print("  • health_check() - Infrastructure and MCP health monitoring")
+    print("  • test_vm_restart_functionality() - Test auto-restart capability")
     print("\n⚡ Hybrid Architecture:")
     print("  • Vercel: Fast database queries and status checks")
     print("  • Modal: Real browser automation with MCP")
     print("  • MCP: Browser control and UI interaction")
     print("  • PostgreSQL: Direct database access via psycopg2")
+    print("  • Windows VM: Auto-restart capability via ngrok")
     print("\n🔧 Database Configuration:")
     print(f"  • Host: {DB_CONFIG['host']}")
     print(f"  • Database: {DB_CONFIG['database']}")
     print(f"  • User: {DB_CONFIG['user']}")
     print("  • Connection pooling: Optimized for performance")
+    print("\n🔄 Auto-Restart Features:")
+    print("  • Automatic MCP server health monitoring")
+    print("  • Windows VM service restart on MCP failure")
+    print("  • Smart recovery detection (90s timeout)")
+    print("  • Retry logic after successful restart")
 
     # Also log to logger so it's captured
-    logger.info("Modal app initialized with enhanced logging")
-    logger.info("Using ngrok endpoint: %s", MCP_ENDPOINT)
+    logger.info("Modal app initialized with enhanced logging and auto-restart capability")
+    logger.info("Using MCP endpoint: %s", MCP_ENDPOINT)
+    logger.info("Using VM management endpoint: %s", VM_MANAGEMENT_ENDPOINT)
 
 
 @app.function(
@@ -1696,3 +1855,6 @@ def trigger_job_check():
     """
     logger.info("🔄 Manually triggering job check...")
     return check_and_process_queued_jobs.local()
+
+
+
