@@ -8,12 +8,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight, Play } from 'lucide-react';
 import { Workflow, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 interface WorkflowCardProps {
   workflow: Workflow;
@@ -336,16 +330,14 @@ export function WorkflowCard({
                   </div>
                 ) : (
                   unifiedExecutions.map((execution, index) => (
-                  <TooltipProvider key={`exec-${execution.execution_id}`}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
                         <div 
-                          className={`px-3 py-2 transition-colors ${
+                          key={`exec-${execution.execution_id}`}
+                          className={`px-3 py-2 ${
                             index > 0 ? 'border-t border-gray-200' : ''
                           } ${
                             loadingExecutionId === execution.execution_id 
                               ? 'bg-blue-50 cursor-wait' 
-                              : 'hover:bg-gray-50 cursor-pointer'
+                              : ''
                           }`}
                           onClick={() => loadingExecutionId === null && onFetchExecutionDetails(execution.execution_id)}
                         >
@@ -496,24 +488,6 @@ export function WorkflowCard({
                             </div>
                           </div>
                         </div>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-[600px] max-h-[400px] overflow-auto">
-                        {execution.status === 'queued' ? (
-                          <p className="text-xs text-gray-500">Execution is queued, waiting to start...</p>
-                        ) : execution.status === 'running' ? (
-                          <p className="text-xs text-gray-500">Execution is currently running...</p>
-                        ) : execution.formatted_output ? (
-                          <pre className="text-xs font-mono whitespace-pre-wrap">
-                            {execution.formatted_output}
-                          </pre>
-                        ) : execution.error_message ? (
-                          <p className="text-xs">{execution.error_message}</p>
-                        ) : (
-                          <p className="text-xs text-gray-500">No output available</p>
-                        )}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
                   ))
                 )}
               </div>
