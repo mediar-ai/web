@@ -14,9 +14,10 @@ Write-Host "*** Real-time Server Log Monitor ***" -ForegroundColor Green
 Write-Host "=====================================" -ForegroundColor Green
 Write-Host ""
 
-# Log file paths
-$mcpLogFile = "C:\Users\terminatoradmin\Desktop\terminator\logs\mcp-server.log"
-$mcpErrorFile = "C:\Users\terminatoradmin\Desktop\terminator\logs\mcp-server-error.log"
+# Log file paths - Updated to use current project directory
+$projectDir = "C:\Users\terminatoradmin\Desktop\browser-workflow-capture-app-latest\windows-remote-service"
+$mcpLogFile = "$projectDir\logs\mcp-server.log"
+$mcpErrorFile = "$projectDir\logs\mcp-server.log"  # Same file since MCP logs to stderr
 $ngrokUrl = "http://127.0.0.1:4040/api/tunnels"
 $httpHealthUrl = "http://localhost:8080/health"
 
