@@ -22,6 +22,7 @@ try {
     Write-Host "  POST /restart  - Restart service"
     Write-Host "  POST /start    - Start service"
     Write-Host "  POST /stop     - Stop service"
+    Write-Host "  POST /upgrade  - Upgrade to latest version"
     Write-Host "  GET  /health   - Server health check"
     Write-Host "  GET  /version  - Get server version info"
     
@@ -63,38 +64,92 @@ try {
                 
                 "/version" {
                     try {
-                        # Get version from workspace Cargo.toml
-                        $cargoToml = Get-Content "Cargo.toml" -Raw
-                        $versionMatch = [regex]::Match($cargoToml, 'version = "([^"]+)"')
-                        $version = if ($versionMatch.Success) { $versionMatch.Groups[1].Value } else { "unknown" }
+                        # Get service configuration from NSSM
+                        $nssmPath = "C:\Users\terminatoradmin\Desktop\terminator\scripts\nssm\nssm-2.24\win64\nssm.exe"
+                        $serviceApp = & $nssmPath get $ServiceName Application 2>$null
+                        $serviceParams = & $nssmPath get $ServiceName AppParameters 2>$null
                         
-                        # Get Git commit hash
+                        # Clean up NSSM output (remove null characters and extra whitespace)
+                        if ($serviceApp) {
+                            $serviceApp = $serviceApp -replace '\x00', '' -replace '\s+', ' '
+                            $serviceApp = $serviceApp.Trim()
+                        }
+                        if ($serviceParams) {
+                            $serviceParams = $serviceParams -replace '\x00', '' -replace '\s+', ' '
+                            $serviceParams = $serviceParams.Trim()
+                        }
+                        
+                        # Determine deployment method and version
+                        $deploymentMethod = "unknown"
+                        $currentVersion = "unknown"
+                        $serviceCommand = "unknown"
+                        
+                        if ($serviceApp -and $serviceParams) {
+                            $serviceCommand = "$serviceApp $serviceParams"
+                            
+                            if ($serviceApp.EndsWith("npx.cmd") -or $serviceApp.EndsWith("npx")) {
+                                $deploymentMethod = "NPX"
+                                
+                                # Extract version from NPX command (e.g., "terminator-mcp-agent@0.8.0")
+                                $versionMatch = [regex]::Match($serviceParams, 'terminator-mcp-agent@([\d\.]+)')
+                                if ($versionMatch.Success) {
+                                    $currentVersion = $versionMatch.Groups[1].Value
+                                } else {
+                                    # If no version specified, it's using latest
+                                    $currentVersion = "latest"
+                                }
+                            } else {
+                                $deploymentMethod = "Local Binary"
+                                
+                                # Try to get version from the binary itself
+                                try {
+                                    $versionOutput = & $serviceApp --version 2>$null
+                                    if ($versionOutput -match 'terminator-mcp-agent ([\d\.]+)') {
+                                        $currentVersion = $matches[1]
+                                    }
+                                } catch {
+                                    $currentVersion = "unknown"
+                                }
+                            }
+                        }
+                        
+                        # Get latest available version from npm
+                        $latestVersion = "unknown"
+                        try {
+                            $latestVersion = (npm view terminator-mcp-agent version 2>$null).Trim()
+                        } catch {
+                            $latestVersion = "error retrieving"
+                        }
+                        
+                        # Get Git commit hash (from the management server repo)
                         $gitCommit = try { git rev-parse --short HEAD 2>$null } catch { "unknown" }
                         
-                        # Get binary info
-                        $binaryPath = "target\release\terminator-mcp-agent.exe"
-                        $binaryInfo = if (Test-Path $binaryPath) {
-                            $fileInfo = Get-ItemProperty $binaryPath
-                            @{
-                                size = $fileInfo.Length
-                                build_date = $fileInfo.LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-                                path = $binaryPath
-                            }
-                        } else {
-                            @{
-                                size = "unknown"
-                                build_date = "unknown"
-                                path = "not found"
-                            }
+                        # Check if service is running
+                        $serviceStatus = "unknown"
+                        try {
+                            $service = Get-Service $ServiceName -ErrorAction SilentlyContinue
+                            $serviceStatus = if ($service) { $service.Status.ToString() } else { "not found" }
+                        } catch {
+                            $serviceStatus = "error"
+                        }
+                        
+                        # Determine update availability
+                        $updateAvailable = $false
+                        if ($currentVersion -ne "unknown" -and $latestVersion -ne "unknown" -and $latestVersion -ne "error retrieving") {
+                            $updateAvailable = $currentVersion -ne $latestVersion
                         }
                         
                         $responseData = @{
                             success = $true
-                            version = $version
-                            git_commit = $gitCommit
-                            binary = $binaryInfo
                             service = $ServiceName
                             server = "NSSM Service Manager"
+                            deployment_method = $deploymentMethod
+                            current_version = $currentVersion
+                            latest_version = $latestVersion
+                            update_available = $updateAvailable
+                            service_status = $serviceStatus
+                            service_command = $serviceCommand
+                            git_commit = $gitCommit
                             timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                         }
                         $response.StatusCode = 200
@@ -225,10 +280,123 @@ try {
                     }
                 }
                 
+                "/upgrade" {
+                    if ($method -eq "POST") {
+                        try {
+                            $responseData = @{
+                                success = $true
+                                action = "upgrade"
+                                steps = @()
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            
+                            # Step 1: Get latest version info
+                            Write-Host "Getting latest version info..."
+                            try {
+                                $latestVersion = (npm view terminator-mcp-agent version 2>$null).Trim()
+                                $responseData.steps += "Latest version: $latestVersion"
+                                Write-Host "Latest version: $latestVersion"
+                            } catch {
+                                throw "Failed to get latest version info"
+                            }
+                            
+                            # Step 2: Test NPX functionality
+                            Write-Host "Testing NPX functionality..."
+                            try {
+                                $npxPath = Get-Command npx.cmd -ErrorAction SilentlyContinue
+                                if (-not $npxPath) {
+                                    $npxPath = Get-Command npx -ErrorAction SilentlyContinue
+                                }
+                                if (-not $npxPath) {
+                                    throw "NPX not found in PATH"
+                                }
+                                $responseData.steps += "NPX found at: $($npxPath.Path)"
+                                Write-Host "NPX found at: $($npxPath.Path)"
+                            } catch {
+                                throw "NPX is not available: $($_.Exception.Message)"
+                            }
+                            
+                            # Step 3: Stop the service
+                            Write-Host "Stopping service..."
+                            Stop-Service $ServiceName -ErrorAction Stop
+                            $responseData.steps += "Service stopped"
+                            Start-Sleep -Seconds 2
+                            
+                            # Step 4: Clear NPX cache to ensure fresh download
+                            Write-Host "Clearing NPX cache..."
+                            try {
+                                $cacheResult = & npm cache clean --force 2>&1
+                                $responseData.steps += "NPM cache cleared"
+                            } catch {
+                                $responseData.steps += "NPM cache clear failed (continuing anyway)"
+                            }
+                            
+                            try {
+                                if (Get-Command npx -ErrorAction SilentlyContinue) {
+                                    $npxResult = & npx clear-npx-cache 2>&1
+                                    $responseData.steps += "NPX cache cleared"
+                                }
+                            } catch {
+                                $responseData.steps += "NPX cache clear failed (continuing anyway)"
+                            }
+                            
+                            # Step 5: Update service to use NPX with specific version
+                            Write-Host "Updating service configuration to use NPX..."
+                            $nssmPath = "C:\Users\terminatoradmin\Desktop\terminator\scripts\nssm\nssm-2.24\win64\nssm.exe"
+                            
+                            # Configure service to use NPX with specific version
+                            & $nssmPath set $ServiceName Application $npxPath.Path
+                            & $nssmPath set $ServiceName AppParameters "-y terminator-mcp-agent@$latestVersion --port 3000 --transport http"
+                            
+                            $responseData.steps += "Service configured to use NPX with version $latestVersion"
+                            Write-Host "Service configured to use NPX with version $latestVersion"
+                            
+                            # Step 6: Start the service
+                            Write-Host "Starting service with NPX..."
+                            Start-Service $ServiceName -ErrorAction Stop
+                            $responseData.steps += "Service started with NPX version $latestVersion"
+                            Start-Sleep -Seconds 3
+                            
+                            # Step 7: Verify service is running
+                            $service = Get-Service $ServiceName
+                            if ($service.Status -eq "Running") {
+                                $responseData.steps += "Service successfully running with NPX"
+                                Write-Host "Service successfully running with NPX"
+                            } else {
+                                throw "Service failed to start properly"
+                            }
+                            
+                            # Step 8: Get final status
+                            $responseData.message = "Service upgraded successfully to NPX version $latestVersion"
+                            $responseData.service_status = @{
+                                status = $service.Status.ToString()
+                                name = $service.Name
+                            }
+                            $responseData.current_version = $latestVersion
+                            $responseData.deployment_method = "NPX"
+                            $responseData.npx_command = "npx terminator-mcp-agent@$latestVersion --port 3000 --transport http"
+                            $responseData.steps += "Upgrade completed successfully"
+                            
+                            $response.StatusCode = 200
+                        } catch {
+                            $responseData = @{
+                                success = $false
+                                action = "upgrade"
+                                error = $_.Exception.Message
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = 500
+                        }
+                    } else {
+                        $responseData = @{ error = "Method not allowed. Use POST." }
+                        $response.StatusCode = 405
+                    }
+                }
+                
                 default {
                     $responseData = @{ 
                         error = "Endpoint not found"
-                        available_endpoints = @("/health", "/version", "/status", "/restart", "/start", "/stop")
+                        available_endpoints = @("/health", "/version", "/status", "/restart", "/start", "/stop", "/upgrade")
                     }
                     $response.StatusCode = 404
                 }
