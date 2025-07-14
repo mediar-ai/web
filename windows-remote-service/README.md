@@ -106,6 +106,74 @@ curl -X POST "https://mcp-server-1.ngrok.app/tools/click_element" \
 | POST | `/restart` | Restart service | `{"success": true, "action": "restart", "message": "Service restarted successfully"}` |
 | POST | `/upgrade` | Upgrade to latest version | `{"success": true, "action": "upgrade", "steps": [...]}` |
 
+## 🔄 Deployment Method Switching
+
+### Manual Commands (PowerShell Required)
+
+The management server currently **does not support** switching deployment methods via curl. These operations require manual PowerShell commands:
+
+#### Switch to Local Binary
+```powershell
+$nssmPath = "C:\Users\terminatoradmin\Desktop\terminator\scripts\nssm\nssm-2.24\win64\nssm.exe"
+$binaryPath = "C:\Users\terminatoradmin\Desktop\terminator\target\release\terminator-mcp-agent.exe"
+
+# Stop service
+& $nssmPath stop MCPServer
+
+# Update to local binary
+& $nssmPath set MCPServer Application $binaryPath
+& $nssmPath set MCPServer AppParameters "--port 3000 --transport http"
+
+# Start service
+& $nssmPath start MCPServer
+```
+
+#### Switch to NPX
+```powershell
+$nssmPath = "C:\Users\terminatoradmin\Desktop\terminator\scripts\nssm\nssm-2.24\win64\nssm.exe"
+
+# Stop service
+& $nssmPath stop MCPServer
+
+# Update to NPX
+& $nssmPath set MCPServer Application "C:\Program Files\nodejs\npx.cmd"
+& $nssmPath set MCPServer AppParameters "-y terminator-mcp-agent@0.8.0 --port 3000 --transport http"
+
+# Start service
+& $nssmPath start MCPServer
+```
+
+#### Verify Deployment Method
+```powershell
+# Check current configuration
+& $nssmPath get MCPServer Application
+& $nssmPath get MCPServer AppParameters
+
+# Or via curl (shows deployment method)
+curl -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/version"
+```
+
+### Limitations
+- **No curl endpoints** for deployment switching
+- **Manual PowerShell required** for switching methods
+- **NPX upgrade endpoint** only works with NPX deployments
+- **Local binary** deployments cannot use `/upgrade` endpoint
+
+### Deployment Method Detection
+The `/version` endpoint automatically detects:
+- **NPX**: `"deployment_method": "NPX"` - if using `npx.cmd`
+- **Local Binary**: `"deployment_method": "Local Binary"` - if using `.exe` file
+
+### Benefits Comparison
+
+| Feature | NPX Deployment | Local Binary |
+|---------|---------------|--------------|
+| Auto-upgrade via `/upgrade` | ✅ Yes | ❌ No |
+| Version control | ✅ Automatic | 🔒 Manual |
+| Startup time | ⚠️ Slower (cache check) | ⚡ Fast |
+| Customization | ❌ No | ✅ Yes |
+| Offline capability | ⚠️ Cache dependent | ✅ Yes |
+
 ## 📊 Version Management
 
 ### NPX Caching Behavior
@@ -315,4 +383,4 @@ logs/
 
 **System Status**: ✅ **FULLY OPERATIONAL**  
 **Last Updated**: 2025-01-14  
-**Primary Use Case**: Programmatic server restart and upgrade from backend applications 
+**Primary Use Case**: Programmatic server restart and upgrade from backend applications
