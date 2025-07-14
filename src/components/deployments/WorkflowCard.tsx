@@ -221,7 +221,7 @@ export function WorkflowCard({
             {/* First line: Just the workflow title */}
             <h3 className="text-lg font-bold font-mono mb-2">{workflow.name}</h3>
             
-            {/* Second line: Version, stats, and action buttons */}
+            {/* Second line: Version, stats, play button, status, and action buttons */}
             <div className="flex items-center gap-3 mb-2 flex-wrap">
               <span className="text-xs font-mono px-2 py-1 bg-black text-white rounded">
                 v{workflow.version || '1.0.0'}
@@ -243,7 +243,28 @@ export function WorkflowCard({
                 )}
               </div>
               
-              {/* Action buttons on same line */}
+              {/* Resume/Play button */}
+              {workflow.status === 'paused' && (
+                <button
+                  onClick={handleResumeWorkflow}
+                  disabled={resumingWorkflow}
+                  className="p-1 border border-black rounded hover:bg-gray-100 transition-colors"
+                  title={resumingWorkflow ? 'Resuming...' : 'Resume workflow'}
+                >
+                  {resumingWorkflow ? (
+                    <Loader2 className="w-3 h-3 text-gray-600 animate-spin" />
+                  ) : (
+                    <Play className="w-3 h-3 text-gray-600 hover:text-black" />
+                  )}
+                </button>
+              )}
+              
+              {/* Status badge */}
+              <Badge className={getStatusBadge(workflow.status)}>
+                {workflow.status.toUpperCase()}
+              </Badge>
+              
+              {/* Action buttons */}
               <Button
                 onClick={() => setShowBatchTestDialog(true)}
                 className="bg-black text-white hover:bg-gray-800 font-mono text-xs h-6"
@@ -267,28 +288,6 @@ export function WorkflowCard({
             
             <p className="text-black text-sm mb-2">{workflow.description}</p>
             
-          </div>
-          
-          <div className="flex flex-col items-end">
-            <div className="flex items-center gap-2">
-              {workflow.status === 'paused' && (
-                <button
-                  onClick={handleResumeWorkflow}
-                  disabled={resumingWorkflow}
-                  className="p-1 border border-black rounded hover:bg-gray-100 transition-colors"
-                  title={resumingWorkflow ? 'Resuming...' : 'Resume workflow'}
-                >
-                  {resumingWorkflow ? (
-                    <Loader2 className="w-3 h-3 text-gray-600 animate-spin" />
-                  ) : (
-                    <Play className="w-3 h-3 text-gray-600 hover:text-black" />
-                  )}
-                </button>
-              )}
-              <Badge className={getStatusBadge(workflow.status)}>
-                {workflow.status.toUpperCase()}
-              </Badge>
-            </div>
           </div>
         </div>
       </CardHeader>
