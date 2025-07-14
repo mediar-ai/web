@@ -191,12 +191,16 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
         return False, f"Check error: {e}", check_duration_ms
 
 # MCP endpoint configuration - could be moved to secrets
-# MCP_ENDPOINT = "https://select-merely-gelding.ngrok-free.app/mcp"  # Louis computer
-# MCP_ENDPOINT = "https://willingly-settling-husky.ngrok-free.app/mcp" # Matt computer
+# MCP_BASE_URL = "https://select-merely-gelding.ngrok-free.app"  # Louis computer
+# MCP_BASE_URL = "https://willingly-settling-husky.ngrok-free.app"  # Matt computer
 
 # Windows VM service management endpoints (from our ngrok-powered system)
 VM_MANAGEMENT_ENDPOINT = "https://vm-windows-1.ngrok.dev"
-MCP_ENDPOINT = "https://mcp-server-1.ngrok.app/mcp"
+
+# MCP server endpoints
+MCP_BASE_URL = "https://mcp-server-1.ngrok.app"
+MCP_ENDPOINT = f"{MCP_BASE_URL}/mcp"
+MCP_HEALTH_ENDPOINT = f"{MCP_BASE_URL}/health"
 
 
 class CaptureOutput:
@@ -472,18 +476,12 @@ async def check_mcp_server_health() -> bool:
     import httpx
     
     try:
-        logger.info("🏥 Checking MCP server health at: %s", MCP_ENDPOINT)
+        logger.info("🏥 Checking MCP server health at: %s", MCP_HEALTH_ENDPOINT)
         
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Try to reach the MCP health endpoint - properly handle the path
-            if MCP_ENDPOINT.endswith('/mcp'):
-                mcp_base_url = MCP_ENDPOINT[:-4]  # Remove last 4 characters (/mcp)
-            else:
-                mcp_base_url = MCP_ENDPOINT.rsplit('/', 1)[0]  # Remove last path segment
-            health_url = f"{mcp_base_url}/health"
-            
+            # Check MCP health endpoint
             response = await client.get(
-                health_url,
+                MCP_HEALTH_ENDPOINT,
                 headers={"ngrok-skip-browser-warning": "true"}
             )
             
@@ -1582,6 +1580,7 @@ def health_check() -> Dict[str, Any]:
                 "status": "pass",
                 "message": f"MCP endpoint configured: {MCP_ENDPOINT}",
                 "endpoint": MCP_ENDPOINT,
+                "health_endpoint": MCP_HEALTH_ENDPOINT,
             }
         except Exception as e:
             health_data["checks"]["mcp_endpoint"] = {"status": "error", "error": str(e)}
@@ -1648,11 +1647,12 @@ if __name__ == "__main__":
     print("🌐 Powered by MCP browser control via ngrok")
     print("🗄️  Direct PostgreSQL connection using psycopg2")
     print("🔗 MCP Endpoint:", MCP_ENDPOINT)
+    print("🏥 MCP Health Endpoint:", MCP_HEALTH_ENDPOINT)
     print("🔄 VM Management:", VM_MANAGEMENT_ENDPOINT)
     print("\n📋 Available Functions:")
     print("  • execute_workflow() - Real browser automation execution")
     print("  • health_check() - Infrastructure and MCP health monitoring")
-    print("  • test_vm_restart_functionality() - Test auto-restart capability")
+    print("  • check_and_process_queued_jobs() - Atomic job processing with auto-restart")
     print("\n⚡ Hybrid Architecture:")
     print("  • Vercel: Fast database queries and status checks")
     print("  • Modal: Real browser automation with MCP")
@@ -1673,6 +1673,7 @@ if __name__ == "__main__":
     # Also log to logger so it's captured
     logger.info("Modal app initialized with enhanced logging and auto-restart capability")
     logger.info("Using MCP endpoint: %s", MCP_ENDPOINT)
+    logger.info("Using MCP health endpoint: %s", MCP_HEALTH_ENDPOINT)
     logger.info("Using VM management endpoint: %s", VM_MANAGEMENT_ENDPOINT)
 
 
