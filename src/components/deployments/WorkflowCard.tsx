@@ -322,7 +322,7 @@ export function WorkflowCard({
             </CollapsibleTrigger>
             
             <CollapsibleContent>
-              <div className="mt-2 max-h-[300px] overflow-y-auto p-2 border border-black rounded-lg bg-white">
+              <div className="mt-2 max-h-[300px] overflow-y-auto border border-black rounded-lg bg-white">
                 {loadingExecutions ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="flex items-center gap-2">
@@ -335,15 +335,17 @@ export function WorkflowCard({
                     <span className="text-sm text-gray-500">No execution history available</span>
                   </div>
                 ) : (
-                  unifiedExecutions.map((execution) => (
+                  unifiedExecutions.map((execution, index) => (
                   <TooltipProvider key={`exec-${execution.execution_id}`}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div 
-                          className={`bg-white px-2 py-1 border border-black rounded transition-colors ${
+                          className={`px-3 py-2 transition-colors ${
+                            index > 0 ? 'border-t border-gray-200' : ''
+                          } ${
                             loadingExecutionId === execution.execution_id 
-                              ? 'bg-blue-50 border-blue-300 cursor-wait' 
-                              : 'hover:bg-gray-50 hover:border-black cursor-pointer'
+                              ? 'bg-blue-50 cursor-wait' 
+                              : 'hover:bg-gray-50 cursor-pointer'
                           }`}
                           onClick={() => loadingExecutionId === null && onFetchExecutionDetails(execution.execution_id)}
                         >
