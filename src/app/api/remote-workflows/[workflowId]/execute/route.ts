@@ -37,6 +37,25 @@ function validateParameters(params: Record<string, unknown>, schema: Record<stri
         }
       }
       
+      // Check regex validation if provided
+      if (paramName in params && def.regex && typeof def.regex === 'string') {
+        const value = params[paramName];
+        const stringValue = String(value);
+        
+        try {
+          const regex = new RegExp(def.regex);
+          if (!regex.test(stringValue)) {
+            const customMessage = typeof def.validation_message === 'string' ? def.validation_message : `Parameter '${paramName}' does not match the required format`;
+            result.errors.push(customMessage);
+            result.isValid = false;
+          }
+        } catch (regexError) {
+          console.error(`Invalid regex pattern for parameter '${paramName}':`, def.regex, regexError);
+          result.errors.push(`Parameter '${paramName}' has an invalid regex pattern in schema`);
+          result.isValid = false;
+        }
+      }
+      
       // Check enum options if provided
       if (paramName in params && def.options && Array.isArray(def.options)) {
         const value = params[paramName];
