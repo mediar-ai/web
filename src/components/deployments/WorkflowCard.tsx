@@ -8,7 +8,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight, Play } from 'lucide-react';
 import { WorkflowWithSettings, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
-import { SettingsWorkflowCard } from '@/components/deployments/SettingsWorkflowCard';
 
 interface WorkflowCardProps {
   workflow: WorkflowWithSettings;
@@ -21,6 +20,7 @@ interface WorkflowCardProps {
   loadingExecutionId: number | null;
   loadingExecutions?: boolean;
   onBatchSubmit?: () => void;
+  isNested?: boolean; // For styling nested settings workflows
 }
 
 const getStatusBadge = (status: string) => {
@@ -68,12 +68,14 @@ export function WorkflowCard({
   workflow,
   executions,
   liveExecutions,
+  executingWorkflows,
   onFetchWorkflowDetails,
   onFetchExecutionDetails,
   loadingDetails,
   loadingExecutionId,
   loadingExecutions = false,
   onBatchSubmit,
+  isNested,
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
@@ -209,7 +211,7 @@ export function WorkflowCard({
   const shouldShowExecutionHistory = hasExecutions || loadingExecutions;
 
   return (
-    <Card className="border-black">
+    <Card className={`border-black ${isNested ? 'bg-gray-50 border-l-4 border-l-black border-t border-r border-b' : ''}`}>
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -288,19 +290,27 @@ export function WorkflowCard({
       </CardHeader>
         
       <CardContent>
-        {/* Settings Workflows Section */}
+        {/* Settings Workflows Section - Nested WorkflowCards */}
         {workflow.settings_workflows && workflow.settings_workflows.length > 0 && (
           <div className="mb-4 border-t border-gray-200 pt-4">
             <h4 className="text-sm font-mono font-bold text-black mb-3 flex items-center gap-2">
               <span>WORKFLOW SETTINGS ({workflow.settings_workflows.length})</span>
             </h4>
-            <div className="space-y-2">
+            <div className="space-y-3 ml-4">
               {workflow.settings_workflows.map((settingsWorkflow) => (
-                <SettingsWorkflowCard 
+                <WorkflowCard
                   key={settingsWorkflow.id}
-                  workflow={settingsWorkflow}
-                  onFetchDetails={onFetchWorkflowDetails}
-                  loadingDetails={loadingDetails && loadingExecutionId === settingsWorkflow.id}
+                  workflow={settingsWorkflow as WorkflowWithSettings}
+                  executions={[]} // Settings workflows don't have executions yet
+                  liveExecutions={[]} // Settings workflows don't have live executions yet
+                  executingWorkflows={executingWorkflows}
+                  onFetchWorkflowDetails={onFetchWorkflowDetails}
+                  onFetchExecutionDetails={onFetchExecutionDetails}
+                  loadingDetails={loadingDetails}
+                  loadingExecutionId={loadingExecutionId}
+                  loadingExecutions={false}
+                  onBatchSubmit={onBatchSubmit}
+                  isNested={true}
                 />
               ))}
             </div>
