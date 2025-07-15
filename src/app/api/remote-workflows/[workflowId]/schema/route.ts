@@ -393,11 +393,11 @@ export async function GET(
         example_curl: `curl -X POST \\
   ${process.env.VERCEL_URL || 'https://app.mediar.ai'}/api/remote-workflows/${workflowIdNum}/execute \\
   -H "Content-Type: application/json" \\
-  -d '${JSON.stringify(sampleRequest, null, 2)}'`,
+  -d '${JSON.stringify({ parameters: sampleRequest }, null, 2)}'`,
         example_javascript: `fetch('/api/remote-workflows/${workflowIdNum}/execute', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(${JSON.stringify(sampleRequest)})
+  body: JSON.stringify(${JSON.stringify({ parameters: sampleRequest })})
 }).then(response => response.json())`
       },
       metadata: {
