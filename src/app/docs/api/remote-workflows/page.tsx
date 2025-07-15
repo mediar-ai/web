@@ -222,8 +222,8 @@ export default function RemoteWorkflowsAPIDocsPage() {
     const baseUrl = 'https://app.mediar.ai';
     const allRequestItems = [];
 
-    // Process all static endpoints
-    endpoints.forEach(endpoint => {
+    // Process all static endpoints (excluding execute endpoints since we add them dynamically)
+    endpoints.filter(endpoint => !endpoint.path.includes('/execute')).forEach(endpoint => {
       let fullUrl = `${baseUrl}${endpoint.path}`;
 
       // Add query parameters for GET requests
