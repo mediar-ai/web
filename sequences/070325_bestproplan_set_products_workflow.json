@@ -1,0 +1,1057 @@
+{
+    "tool_name": "execute_sequence",
+    "arguments": {
+        "items": [
+            {
+                "tool_name": "navigate_browser",
+                "arguments": {
+                    "url": "https://v2preview.online.bestplanpro.com/"
+                }
+            },
+            {
+                "group_name": "Handle EULA and Software Registration (Skippable)",
+                "skippable": true,
+                "steps": [
+                    {
+                        "tool_name": "click_element",
+                        "arguments": {
+                            "selector": "role:Button|name:Accept",
+                            "timeout_ms": 1000,
+                            "include_tree": false,
+                            "retries": 1
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#16783872191045950436",
+                            "text_to_type": "70",
+                            "timeout_ms": 500,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        }
+                    },
+                    {
+                        "tool_name": "wait_for_element",
+                        "arguments": {
+                            "selector": "role:Text|name:Software Registration",
+                            "condition": "exists",
+                            "timeout_ms": 2000,
+                            "include_tree": false,
+                            "retries": 2
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#13604283145638815416",
+                            "text_to_type": "4WV-HJR-SA9",
+                            "timeout_ms": 500,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "type_into_element",
+                        "arguments": {
+                            "selector": "#14651589766163622092",
+                            "text_to_type": "louis@mediar.ai",
+                            "timeout_ms": 500,
+                            "clear_before_typing": true,
+                            "include_tree": false
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "click_element",
+                        "arguments": {
+                            "selector": "role:Button|name:Activate",
+                            "timeout_ms": 1000,
+                            "include_tree": false,
+                            "retries": 2
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "wait_for_element",
+                        "arguments": {
+                            "selector": "role:Button|name:OK",
+                            "condition": "exists",
+                            "timeout_ms": 3000,
+                            "include_tree": false,
+                            "retries": 2
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "click_element",
+                        "arguments": {
+                            "selector": "role:Button|name:OK",
+                            "timeout_ms": 1000,
+                            "include_tree": false,
+                            "retries": 2
+                        },
+                        "continue_on_error": true
+                    }
+                ]
+            },
+            {
+                "tool_name": "click_element",
+                "arguments": {
+                    "selector": "role:Text|name:Settings"
+                }
+            },
+            {
+                "tool_name": "click_element",
+                "arguments": {
+                    "selector": "role:Text|name:Set Available Products"
+                }
+            },
+            {
+                "group_name": "Select All Products",
+                "skippable": false,
+                "steps": [
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Aetna Accendo",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Aetna Accendo Medsup",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Aetna Individual Whole Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Aetna Medsup",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Aetna Protection Series",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Aflac Final Expense",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Clear Choice",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Dignity Solutions",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Easy Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Golden Solution",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Home Protector",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Innovative Solutions",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Platinum Solution Legacy Plan",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Senior Choice",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Term Made Simple",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Amicable Tribute",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Home Life Guidestar",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: American Home Life Patriot Series",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Americo Eagle Premier",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Americo HMS PLUS",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Ameritas FLX Living Benefits Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Ameritas Value Plus Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Antex Strategy Whole Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Assurant Whole Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Baltimore Life iProvide",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Baltimore Life Silver Guard",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Bankers Fidelity Final Expense",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Banner OPTerm",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: BetterLife Final Expense",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: BetterLife Single Premium",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Centrian Living Legacy",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: CICA Life Superior Choice",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Cigna Individual Whole Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Columbian Life Dignified Choice",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Corebridge GIWL",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Corebridge Select A Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Corebridge SimpliNow Legacy",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: EMC EasyLife",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Everest IA American Advantage 50 Plus",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Family Benefit Life Golden Eagle",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Federal Life Express Choice Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Fidelity Life InstaBrain Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Fidelity Life InstaTerm",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Fidelity Life RAPIDecision",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Fidelity Life RAPIDecision Senior Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: First Guaranty Insurance Security Care",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Foresters Plan Right",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Foresters Strong Foundation",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Foresters Your Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Foresters Your Term Non Medical",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: GCU Eternal Advantage",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Gerber Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Global Atlantic Simple Protection Plan",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: GPM Life Secure Mark",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: GPM Q Mark",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: GTL Heritage Plan",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: GTL Turbo Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Hero Life Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Illinois Mutual Path Protector Plus",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: John Hancock Simple Term with Vitality",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Kansas City Life Signature Term Express",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: KSKJ Final Expense",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Liberty Bankers SIMPL",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Life Shield Survivor",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Lincoln LifeElements",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Lincoln TermAccel",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Lumico Simplified Issue",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Manhattan Life Medsup",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Mutual of Omaha Living Promise",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Mutual of Omaha Medsup",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Mutual of Omaha Term Life Answers",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Mutual of Omaha Term Life Express",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Nassau Remembrance Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Nationwide YourLife",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: North American ADDvantage",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Occidental Life Clear Choice",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Occidental Life Dignity Solutions",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Occidental Life Golden Solution",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Occidental Life Innovative Solutions",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Occidental Life Platinum Solution Legacy Plan",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Occidental Life Senior Choice",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Occidental Life Tribute",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Oxford Life Simplified Issue",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Pekin Whole Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Pioneer American Independent American",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Pioneer American NorthStar Legacy",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Prosperity Family Freedom Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Prosperity New Vista",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Prosperity PrimeTerm to 100",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Protective Life Classic Choice Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Protective Life Custom Choice Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Prudential Essential Term Plus",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Prudential Essential Term Value",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Royal Arcanum Graded",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Royal Arcanum Simplified Issue",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Royal Neighbors Ensured Legacy",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: S.USA Golden Promise",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Sagicor Sage Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: SBLI Living Legacy",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: SBLI T Term",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Securico Life Final Expense",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Security National Simple Security",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Senior Life Term Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Senior Life Whole Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Sentinel Security New Vantage",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Sons of Norway Legacy Sure",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Sons of Norway Whole Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: TransAmerica FE Express Solution",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: TransAmerica Solution",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: TransAmerica Trendsetter LB",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: TransAmerica Trendsetter Super",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Trinity Golden Eagle",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: United Farm And Family Whole Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: United Home Life Whole Life",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Wellabe Final Expense",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: Wellabe Great Assurance",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    },
+                    {
+                        "tool_name": "set_toggled",
+                        "arguments": {
+                            "selector": "role:CheckBox|name: William Penn OPTerm",
+                            "state": true
+                        },
+                        "continue_on_error": true
+                    }
+                ]
+            }
+        ]
+    }
+}

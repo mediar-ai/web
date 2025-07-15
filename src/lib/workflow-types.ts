@@ -36,6 +36,9 @@ export interface Workflow {
   description: string;
   version: string;
   status: 'draft' | 'pending' | 'deployed' | 'paused' | 'failed' | 'inactive';
+  workflow_type: 'execution' | 'settings';
+  parent_workflow_id?: number | null;
+  display_order: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   automation_sequence: any; // Keeping as 'any' for now
   input_parameters: Record<string, InputParameter>;
@@ -50,6 +53,11 @@ export interface Workflow {
   success_rate: number | null;
   created_at: string;
   updated_at: string;
+}
+
+// Workflow with nested settings workflows
+export interface WorkflowWithSettings extends Workflow {
+  settings_workflows: Workflow[];
 }
 
 export type WorkflowOverview = Omit<Workflow, 'automation_sequence'>;

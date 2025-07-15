@@ -224,6 +224,9 @@ export async function GET(request: NextRequest) {
         description,
         version,
         status,
+        workflow_type,
+        parent_workflow_id,
+        display_order,
         category,
         estimated_duration_seconds,
         successful_runs,
@@ -234,6 +237,7 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at
       `)
+      .eq('workflow_type', 'execution') // Only fetch execution workflows directly
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -252,10 +256,60 @@ export async function GET(request: NextRequest) {
       throw new Error(`Database query failed: ${error.message}`);
     }
 
-    // Get total count for pagination
+    // Fetch all settings workflows for the execution workflows we just fetched
+    const workflowIds = (workflows || []).map(w => w.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let settingsWorkflows: any[] = [];
+    
+    if (workflowIds.length > 0) {
+      const { data: settings, error: settingsError } = await supabase
+        .from('deployed_workflows')
+        .select(`
+          id,
+          name,
+          description,
+          version,
+          status,
+          workflow_type,
+          parent_workflow_id,
+          display_order,
+          category,
+          estimated_duration_seconds,
+          successful_runs,
+          failed_runs,
+          cancelled_runs,
+          total_executions,
+          automation_sequence,
+          created_at,
+          updated_at
+        `)
+        .eq('workflow_type', 'settings')
+        .in('parent_workflow_id', workflowIds)
+        .order('display_order', { ascending: true });
+
+      if (!settingsError) {
+        settingsWorkflows = settings || [];
+      }
+    }
+
+    // Group settings workflows by parent_workflow_id
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const settingsByParent = settingsWorkflows.reduce((acc: Record<number, any[]>, settings) => {
+      const parentId = settings.parent_workflow_id;
+      if (parentId && !acc[parentId]) {
+        acc[parentId] = [];
+      }
+      if (parentId) {
+        acc[parentId].push(settings);
+      }
+      return acc;
+    }, {});
+
+    // Get total count for pagination (only execution workflows)
     let countQuery = supabase
       .from('deployed_workflows')
-      .select('*', { count: 'exact', head: true });
+      .select('*', { count: 'exact', head: true })
+      .eq('workflow_type', 'execution');
 
     // Apply same filters as main query
     if (status) {
@@ -295,6 +349,7 @@ export async function GET(request: NextRequest) {
         ...workflow,
         input_parameters: executionSchema, // The full schema
         sample_inputs: sampleInputs,       // The default values
+        settings_workflows: settingsByParent[workflow.id] || [], // Add nested settings workflows
       };
     });
 
