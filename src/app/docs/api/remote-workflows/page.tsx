@@ -72,6 +72,164 @@ export default function RemoteWorkflowsAPIDocsPage() {
   const [dynamicResponses, setDynamicResponses] = useState<Record<string, string>>({});
   const [loadingResponses, setLoadingResponses] = useState(false);
   
+  // Copy-to-clipboard state
+  const [copiedStates, setCopiedStates] = useState<Record<string, string>>({});
+  
+  // Copy to clipboard utility function
+  const copyToClipboard = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedStates(prev => ({ ...prev, [key]: 'Copied!' }));
+      setTimeout(() => {
+        setCopiedStates(prev => ({ ...prev, [key]: '' }));
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+      setCopiedStates(prev => ({ ...prev, [key]: 'Failed' }));
+      setTimeout(() => {
+        setCopiedStates(prev => ({ ...prev, [key]: '' }));
+      }, 2000);
+    }
+  };
+  
+  // Generate dynamic request examples
+  const generateRequestExamples = (endpoint: EndpointDefinition) => {
+    const baseUrl = 'https://app.mediar.ai';
+    let fullUrl = `${baseUrl}${endpoint.path}`;
+    
+    // Replace dynamic path parameters with real values
+    if (endpoint.path.includes('[workflowId]')) {
+      const firstWorkflowId = Object.keys(workflowSchemas)[0] || '1';
+      fullUrl = fullUrl.replace('[workflowId]', firstWorkflowId);
+    }
+    
+    if (endpoint.path.includes('[executionId]')) {
+      // Try to get a real execution ID from dynamic responses
+      let executionId = '44'; // fallback
+      try {
+        const listExecutionsResponse = dynamicResponses['list-executions'];
+        if (listExecutionsResponse) {
+          const parsed = JSON.parse(listExecutionsResponse);
+          if (parsed.executions && parsed.executions.length > 0) {
+            executionId = parsed.executions[0].execution_id.toString();
+          }
+        }
+             } catch {
+         // Use fallback
+       }
+      fullUrl = fullUrl.replace('[executionId]', executionId);
+    }
+    
+    // Generate query parameters example for GET endpoints with params
+    if (endpoint.method === 'GET' && endpoint.queryParams && endpoint.queryParams.length > 0) {
+      const sampleParams = [];
+      
+      for (const param of endpoint.queryParams.slice(0, 2)) { // Show first 2 params as example
+        if (param.name === 'limit') {
+          sampleParams.push('limit=10');
+        } else if (param.name === 'workflow_id' && Object.keys(workflowSchemas).length > 0) {
+          sampleParams.push(`workflow_id=${Object.keys(workflowSchemas)[0]}`);
+        } else if (param.name === 'status') {
+          sampleParams.push('status=active');
+        } else if (param.name === 'include_results') {
+          sampleParams.push('include_results=false');
+        }
+      }
+      
+      if (sampleParams.length > 0) {
+        fullUrl += '?' + sampleParams.join('&');
+      }
+    }
+    
+    // Generate curl example
+    const generateCurl = () => {
+      let curl = `curl -X ${endpoint.method} "${fullUrl}"`;
+      
+      if (endpoint.method !== 'GET') {
+        curl += ` \\\n  -H "Content-Type: application/json"`;
+      }
+      
+      if (endpoint.requestBody) {
+        // Use properly formatted JSON for curl
+        const bodyData = endpoint.requestBody;
+        curl += ` \\\n  -d '${bodyData}'`;
+      }
+      
+      return curl;
+    };
+    
+    // Generate JavaScript fetch example
+    const generateJavaScript = () => {
+      let js = `const response = await fetch('${fullUrl}'`;
+      
+      if (endpoint.method !== 'GET' || endpoint.requestBody) {
+        js += `, {\n  method: '${endpoint.method}'`;
+        if (endpoint.method !== 'GET') {
+          js += `,\n  headers: {\n    'Content-Type': 'application/json'\n  }`;
+        }
+        if (endpoint.requestBody) {
+          // Parse and re-stringify to ensure valid JSON
+          try {
+            const parsedBody = JSON.parse(endpoint.requestBody);
+            js += `,\n  body: JSON.stringify(${JSON.stringify(parsedBody, null, 4)})`;
+                     } catch {
+             js += `,\n  body: JSON.stringify(${endpoint.requestBody})`;
+           }
+        }
+        js += `\n}`;
+      }
+      
+      js += `);\nconst data = await response.json();\nconsole.log(data);`;
+      return js;
+    };
+    
+    // Generate Postman collection item
+    const generatePostman = () => {
+      const urlParts = new URL(fullUrl);
+      const postmanItem = {
+        name: endpoint.title,
+        request: {
+          method: endpoint.method,
+          header: endpoint.method !== 'GET' ? [
+            {
+              key: "Content-Type",
+              value: "application/json"
+            }
+          ] : [],
+          url: {
+            raw: fullUrl,
+            protocol: urlParts.protocol.replace(':', ''),
+            host: [urlParts.hostname],
+            port: urlParts.port || (urlParts.protocol === 'https:' ? '443' : '80'),
+            path: urlParts.pathname.split('/').filter(p => p),
+            query: urlParts.search ? urlParts.search.substring(1).split('&').map(param => {
+              const [key, value] = param.split('=');
+              return { key, value };
+            }) : []
+          },
+          body: endpoint.requestBody ? {
+            mode: "raw",
+            raw: endpoint.requestBody,
+            options: {
+              raw: {
+                language: "json"
+              }
+            }
+          } : undefined
+        },
+        response: []
+      };
+      
+      return JSON.stringify(postmanItem, null, 2);
+    };
+    
+    return {
+      curl: generateCurl(),
+      javascript: generateJavaScript(),
+      postman: generatePostman()
+    };
+  };
+
   useEffect(() => {
     mermaid.initialize({ 
       startOnLoad: true,
@@ -907,6 +1065,65 @@ graph TB
             </pre>
           </div>
         )}
+        
+        {/* Request Examples - Copy to Clipboard */}
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold mb-3">Request Examples</h3>
+          {(() => {
+            const examples = generateRequestExamples(endpoint);
+            return (
+              <div className="space-y-4">
+                {/* curl Example */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-md font-medium">curl</h4>
+                    <button
+                      onClick={() => copyToClipboard(examples.curl, `${endpoint.id}-curl`)}
+                      className="px-3 py-1 bg-white text-black border border-black rounded hover:bg-black hover:text-white transition-colors text-sm font-mono"
+                    >
+                      {copiedStates[`${endpoint.id}-curl`] || '📋 Copy curl'}
+                    </button>
+                  </div>
+                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
+{examples.curl}
+                  </pre>
+                </div>
+                
+                {/* JavaScript Example */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-md font-medium">JavaScript</h4>
+                    <button
+                      onClick={() => copyToClipboard(examples.javascript, `${endpoint.id}-js`)}
+                      className="px-3 py-1 bg-white text-black border border-black rounded hover:bg-black hover:text-white transition-colors text-sm font-mono"
+                    >
+                      {copiedStates[`${endpoint.id}-js`] || '📋 Copy JS'}
+                    </button>
+                  </div>
+                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
+{examples.javascript}
+                  </pre>
+                </div>
+                
+                {/* Postman Example */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-md font-medium">Postman Collection Item</h4>
+                    <button
+                      onClick={() => copyToClipboard(examples.postman, `${endpoint.id}-postman`)}
+                      className="px-3 py-1 bg-white text-black border border-black rounded hover:bg-black hover:text-white transition-colors text-sm font-mono"
+                    >
+                      {copiedStates[`${endpoint.id}-postman`] || '📋 Copy Postman'}
+                    </button>
+                  </div>
+                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
+{examples.postman}
+                  </pre>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
         
         {/* Response */}
         {endpoint.response && (
