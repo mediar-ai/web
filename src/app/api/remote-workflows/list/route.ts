@@ -292,9 +292,43 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Group settings workflows by parent_workflow_id
+    // Helper function to process workflow schema (shared logic for all workflow types)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const settingsByParent = settingsWorkflows.reduce((acc: Record<number, any[]>, settings) => {
+    const processWorkflowSchema = (workflow: any) => {
+      let executionSchema: JSONObject = {};
+      let sampleInputs: JSONObject = {};
+
+      try {
+        if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
+          // Analyze the automation sequence for conditional logic
+          const { coreVariables, conditionalVariables } = analyzeAutomationSequence(workflow.automation_sequence);
+          
+          // Merge core and conditional variables into a hierarchical schema
+          const hierarchicalSchema = { ...coreVariables, ...conditionalVariables };
+          
+          // Transform the schema for UI (convert enum to select, etc.)
+          executionSchema = transformVariablesToSchema(hierarchicalSchema);
+          
+          // Extract default values from the hierarchical schema
+          sampleInputs = extractDefaults(executionSchema);
+        }
+      } catch (e) {
+        console.error(`Error parsing schema for workflow ${workflow.id}:`, e);
+      }
+      
+      return {
+        ...workflow,
+        input_parameters: executionSchema, // The full schema
+        sample_inputs: sampleInputs,       // The default values
+      };
+    };
+
+    // Process settings workflows using the existing logic
+    const processedSettingsWorkflows = settingsWorkflows.map(processWorkflowSchema);
+
+    // Group processed settings workflows by parent_workflow_id
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const settingsByParent = processedSettingsWorkflows.reduce((acc: Record<number, any[]>, settings) => {
       const parentId = settings.parent_workflow_id;
       if (parentId && !acc[parentId]) {
         acc[parentId] = [];
@@ -322,36 +356,11 @@ export async function GET(request: NextRequest) {
 
     const { count: totalCount } = await countQuery;
 
-    // Format workflows with computed fields
-    const formattedWorkflows = (workflows || []).map(workflow => {
-      let executionSchema: JSONObject = {};
-      let sampleInputs: JSONObject = {};
-
-      try {
-        if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
-          // Analyze the automation sequence for conditional logic
-          const { coreVariables, conditionalVariables } = analyzeAutomationSequence(workflow.automation_sequence);
-          
-          // Merge core and conditional variables into a hierarchical schema
-          const hierarchicalSchema = { ...coreVariables, ...conditionalVariables };
-          
-          // Transform the schema for UI (convert enum to select, etc.)
-          executionSchema = transformVariablesToSchema(hierarchicalSchema);
-          
-          // Extract default values from the hierarchical schema
-          sampleInputs = extractDefaults(executionSchema);
-        }
-      } catch (e) {
-        console.error(`Error parsing schema for workflow ${workflow.id}:`, e);
-      }
-      
-      return {
-        ...workflow,
-        input_parameters: executionSchema, // The full schema
-        sample_inputs: sampleInputs,       // The default values
-        settings_workflows: settingsByParent[workflow.id] || [], // Add nested settings workflows
-      };
-    });
+    // Format execution workflows using the same processing function
+    const formattedWorkflows = (workflows || []).map(workflow => ({
+      ...processWorkflowSchema(workflow),
+      settings_workflows: settingsByParent[workflow.id] || [], // Add nested settings workflows
+    }));
 
     return NextResponse.json({
       success: true,
