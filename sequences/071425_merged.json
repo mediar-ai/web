@@ -299,7 +299,7 @@
                   "tool_name":"click_element",
                   "arguments":{
                      "selector":"{{selectors.eula_accept_button}}",
-                     "timeout_ms":1000,
+                     "timeout_ms":100,
                      "include_tree":false,
                      "retries":0
                   },
@@ -310,7 +310,7 @@
                   "arguments":{
                      "selector":"{{selectors.dob_field}}",
                      "value":"{{applicant_dob}}",
-                     "timeout_ms":400,
+                     "timeout_ms":100,
                      "include_tree":false
                   }
                },
@@ -319,7 +319,7 @@
                   "arguments":{
                      "selector":"{{selectors.software_reg_text}}",
                      "condition":"exists",
-                     "timeout_ms":2000,
+                     "timeout_ms":200,
                      "include_tree":false,
                      "retries":2
                   },
@@ -330,7 +330,7 @@
                   "arguments":{
                      "selector":"{{selectors.reg_key_field}}",
                      "value":"{{registration_key}}",
-                     "timeout_ms":500,
+                     "timeout_ms":100,
                      "include_tree":false
                   },
                   "continue_on_error":true
@@ -340,7 +340,7 @@
                   "arguments":{
                      "selector":"{{selectors.reg_email_field}}",
                      "value":"{{registration_email}}",
-                     "timeout_ms":500,
+                     "timeout_ms":100,
                      "include_tree":false
                   },
                   "continue_on_error":true
@@ -349,7 +349,7 @@
                   "tool_name":"click_element",
                   "arguments":{
                      "selector":"{{selectors.activate_button}}",
-                     "timeout_ms":1000,
+                     "timeout_ms":100,
                      "include_tree":false,
                      "retries":2
                   },
@@ -360,7 +360,7 @@
                   "arguments":{
                      "selector":"{{selectors.activation_ok_button}}",
                      "condition":"exists",
-                     "timeout_ms":3000,
+                     "timeout_ms":300,
                      "include_tree":false,
                      "retries":2
                   },
@@ -384,7 +384,7 @@
                   "tool_name":"invoke_element",
                   "arguments":{
                      "selector":"{{selectors.reset_button}}",
-                     "timeout_ms":2000,
+                     "timeout_ms":200,
                      "include_tree":false
                   },
                   "continue_on_error":true
@@ -549,7 +549,7 @@
             "skippable":false,
             "steps":[
                {
-                  "tool_name":"invoke_element",
+                  "tool_name":"click_element",
                   "arguments":{
                      "selector":"{{selectors.max_monthly_budget_toggle}}",
                      "timeout_ms":800,
@@ -681,7 +681,7 @@
                      "selector":"{{selectors.browser_window}}",
                      "include_tree":false
                   },
-                  "delay_ms":15000
+                  "delay_ms":100
                }
             ]
          }

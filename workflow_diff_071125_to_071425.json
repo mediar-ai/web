@@ -1,0 +1,892 @@
+{
+  "comparison": {
+    "old_file": "sequences/071125.json",
+    "new_file": "sequences/071425.json",
+    "total_differences": 134
+  },
+  "differences": [
+    {
+      "type": "added",
+      "path": "arguments.variables.quote_parser",
+      "new_value": {
+        "type": "object",
+        "label": "Quote Results Parser",
+        "default": {
+          "itemContainerDefinition": {
+            "nodeConditions": [
+              {
+                "property": "role",
+                "op": "equals",
+                "value": "Group"
+              }
+            ],
+            "childConditions": {
+              "logic": "and",
+              "conditions": [
+                {
+                  "existsChild": {
+                    "conditions": [
+                      {
+                        "property": "role",
+                        "op": "equals",
+                        "value": "Image"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "existsChild": {
+                    "conditions": [
+                      {
+                        "property": "name",
+                        "op": "contains",
+                        "value": ":"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "fieldsToExtract": {
+            "carrierProduct": {
+              "fromChild": {
+                "conditions": [
+                  {
+                    "property": "name",
+                    "op": "contains",
+                    "value": ":"
+                  }
+                ],
+                "extractProperty": "name"
+              }
+            },
+            "quoteValue": {
+              "fromChild": {
+                "conditions": [
+                  {
+                    "property": "name",
+                    "op": "startsWith",
+                    "value": "$"
+                  }
+                ],
+                "extractProperty": "name"
+              }
+            },
+            "quoteType": {
+              "fromChild": {
+                "conditions": [
+                  {
+                    "property": "name",
+                    "op": "isOneOf",
+                    "value": [
+                      "Monthly Price",
+                      "Death Benefit"
+                    ]
+                  }
+                ],
+                "extractProperty": "name"
+              }
+            },
+            "status": {
+              "fromChildren": {
+                "conditions": [
+                  {
+                    "property": "role",
+                    "op": "equals",
+                    "value": "Text"
+                  },
+                  {
+                    "property": "name",
+                    "op": "isOneOf",
+                    "value": [
+                      "Graded",
+                      "Discontinued",
+                      "Standard",
+                      "ROP"
+                    ]
+                  }
+                ],
+                "extractProperty": "name",
+                "joinWith": ", "
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.url.description",
+      "old_value": "The URL of the insurance quoting application."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.registration_key.description",
+      "old_value": "Software registration key, if required."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.registration_email.description",
+      "old_value": "Email for software registration."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.registration_email.regex",
+      "old_value": "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.registration_email.validation_message",
+      "old_value": "Please enter a valid email address."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_dob.description",
+      "old_value": "Applicant's date of birth in MM/DD/YYYY format."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_dob.regex",
+      "old_value": "(0[1-9]|1[0-2])\\/(0[1-9]|[12][0-9]|3[01])\\/\\d{4}"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_dob.validation_message",
+      "old_value": "Date of birth must be in MM/DD/YYYY format."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_height.description",
+      "old_value": "Applicant's height in feet and inches (e.g., '5 10')."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_height.regex",
+      "old_value": "^\\d \\d{1,2}$"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_height.validation_message",
+      "old_value": "Height must be in feet and inches, separated by a space, e.g., '5 10'."
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.applicant_height.label",
+      "old_value": "Applicant Height (ft)",
+      "new_value": "Applicant Height (cm)"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.applicant_height.default",
+      "old_value": "5 10",
+      "new_value": "178"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_weight.description",
+      "old_value": "Applicant's weight in pounds."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_weight.regex",
+      "old_value": "^\\d{2,3}$"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_weight.validation_message",
+      "old_value": "Weight must be a 2 or 3 digit number in pounds."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_gender.description",
+      "old_value": "Select the applicant's gender."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_state.description",
+      "old_value": "The applicant's state of residence (e.g., California)."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_state.options",
+      "old_value": [
+        "Alabama",
+        "Alaska",
+        "Arizona",
+        "Arkansas",
+        "California",
+        "Colorado",
+        "Connecticut",
+        "Delaware",
+        "Florida",
+        "Georgia",
+        "Hawaii",
+        "Idaho",
+        "Illinois",
+        "Indiana",
+        "Iowa",
+        "Kansas",
+        "Kentucky",
+        "Louisiana",
+        "Maine",
+        "Maryland",
+        "Massachusetts",
+        "Michigan",
+        "Minnesota",
+        "Mississippi",
+        "Missouri",
+        "Montana",
+        "Nebraska",
+        "Nevada",
+        "New Hampshire",
+        "New Jersey",
+        "New Mexico",
+        "New York",
+        "North Carolina",
+        "North Dakota",
+        "Ohio",
+        "Oklahoma",
+        "Oregon",
+        "Pennsylvania",
+        "Rhode Island",
+        "South Carolina",
+        "South Dakota",
+        "Tennessee",
+        "Texas",
+        "Utah",
+        "Vermont",
+        "Virginia",
+        "Washington",
+        "West Virginia",
+        "Wisconsin",
+        "Wyoming"
+      ]
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.applicant_state.type",
+      "old_value": "enum",
+      "new_value": "string"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_zip_code.description",
+      "old_value": "The applicant's 5-digit zip code."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_zip_code.regex",
+      "old_value": "^\\d{5}$"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_zip_code.validation_message",
+      "old_value": "Must be a 5-digit zip code."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.applicant_tobacco_usage.description",
+      "old_value": "Select the applicant's tobacco usage history."
+    },
+    {
+      "type": "length_change",
+      "path": "arguments.variables.applicant_tobacco_usage.options",
+      "old_length": 7,
+      "new_length": 5
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.applicant_tobacco_usage.options[1]",
+      "old_value": "Within the Last 12 months",
+      "new_value": "Cigarettes"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.applicant_tobacco_usage.options[2]",
+      "old_value": "Between 1 and 2 years ago",
+      "new_value": "Cigars"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.applicant_tobacco_usage.options[3]",
+      "old_value": "Between 2 and 3 years ago",
+      "new_value": "Vaping"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.applicant_tobacco_usage.options[4]",
+      "old_value": "Between 3 and 4 years ago",
+      "new_value": "Other"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.open_enrollment_status.description",
+      "old_value": "Is the applicant in an open enrollment period?"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.product_types.description",
+      "old_value": "An array of product types to enable."
+    },
+    {
+      "type": "length_change",
+      "path": "arguments.variables.product_types.default",
+      "old_length": 4,
+      "new_length": 2
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.product_types.default[1]",
+      "old_value": "MedSup",
+      "new_value": "Term"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.policy_coverage_type.description",
+      "old_value": "The desired type of policy coverage."
+    },
+    {
+      "type": "length_change",
+      "path": "arguments.variables.policy_coverage_type.options",
+      "old_length": 4,
+      "new_length": 5
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.policy_coverage_type.options[2]",
+      "old_value": "Best Case: ROP Coverage",
+      "new_value": "Level"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.policy_coverage_type.options[3]",
+      "old_value": "Guaranteed Issue ONLY",
+      "new_value": "Graded"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.quote_type.description",
+      "old_value": "Choose whether to quote by a maximum budget or a specific face amount."
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.quote_type.default",
+      "old_value": "Face Value",
+      "new_value": "Face Amount"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.quote_type.options[0]",
+      "old_value": "Max Monthly Budget",
+      "new_value": "Monthly Amount"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.quote_type.options[1]",
+      "old_value": "Face Value",
+      "new_value": "Face Amount"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.quote_value.description",
+      "old_value": "The value for the budget (e.g., '500') or face amount (e.g., '100000')."
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.quote_value.regex",
+      "old_value": "^\\d+$"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.variables.quote_value.validation_message",
+      "old_value": "Quote value must be a whole number, no commas or dollar signs."
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.variables.quote_value.default",
+      "old_value": "5000",
+      "new_value": "$500"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.inputs.applicant_height",
+      "old_value": "5 10",
+      "new_value": "178"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.inputs.quote_type",
+      "old_value": "Face Value",
+      "new_value": "Face Amount"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.inputs.quote_value",
+      "old_value": "5000",
+      "new_value": "$500"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.selectors.results_per_page_option_25",
+      "old_value": "role:ListItem|name:25"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.selectors.fex_checkbox_unchecked",
+      "old_value": "role:CheckBox|name:\ue632 FEX"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.selectors.fex_checkbox_checked",
+      "old_value": "role:CheckBox|name:FEX"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.selectors.medsup_checkbox_unchecked",
+      "old_value": "role:CheckBox|name:\ue632 MedSup"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.selectors.medsup_checkbox_checked",
+      "old_value": "role:CheckBox|name:MedSup"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.selectors.preneed_checkbox_unchecked",
+      "old_value": "role:CheckBox|name:\ue632 Preneed"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.selectors.preneed_checkbox_checked",
+      "old_value": "role:CheckBox|name:Preneed"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.selectors.term_checkbox_unchecked",
+      "old_value": "role:CheckBox|name:\ue632 Term"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.selectors.term_checkbox_checked",
+      "old_value": "role:CheckBox|name:Term"
+    },
+    {
+      "type": "added",
+      "path": "arguments.selectors.fex_checkbox",
+      "new_value": "role:checkbox >> nth=0"
+    },
+    {
+      "type": "added",
+      "path": "arguments.selectors.medsup_checkbox",
+      "new_value": "role:CheckBox >> nth=1"
+    },
+    {
+      "type": "added",
+      "path": "arguments.selectors.preneed_checkbox",
+      "new_value": "role:CheckBox >> nth=2"
+    },
+    {
+      "type": "added",
+      "path": "arguments.selectors.term_checkbox",
+      "new_value": "role:CheckBox >> nth=3"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.selectors.eula_accept_button",
+      "old_value": "role:dialog >> role:group >> nth=-1",
+      "new_value": "role:dialog >> role:button|name:Accept"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.selectors.coverage_type_dropdown",
+      "old_value": "rightof:name:Quote Type",
+      "new_value": "role:combobox >> nth=-1"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.selectors.view_details_text",
+      "old_value": "role:Text|View Details",
+      "new_value": "role:text|Results per page"
+    },
+    {
+      "type": "length_change",
+      "path": "arguments.steps",
+      "old_length": 11,
+      "new_length": 13
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[1].steps[0].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[2].steps[1].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[2].steps[3].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[2].steps[4].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[3].steps[0].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[4].steps[7].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[5].if",
+      "new_value": "!contains(product_types, 'FEX')"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[5].group_name",
+      "old_value": "Set Product Types",
+      "new_value": "Ensure FEX is selected"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[5].skippable",
+      "old_value": false,
+      "new_value": true
+    },
+    {
+      "type": "length_change",
+      "path": "arguments.steps[5].steps",
+      "old_length": 8,
+      "new_length": 1
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[5].steps[0].if",
+      "old_value": "contains(product_types, 'FEX')"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[5].steps[0].tool_name",
+      "old_value": "set_toggled",
+      "new_value": "click_element"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[5].steps[0].arguments.alternative_selectors",
+      "old_value": "{{selectors.fex_checkbox_unchecked}}"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[5].steps[0].arguments.state",
+      "old_value": true
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[5].steps[0].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[5].steps[0].arguments.selector",
+      "old_value": "{{selectors.fex_checkbox_checked}}",
+      "new_value": "{{selectors.fex_checkbox}}"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[6].group_name",
+      "old_value": "Enter Quote Value (Monthly)",
+      "new_value": "Ensure MedSup is selected"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[6].if",
+      "old_value": "quote_type == 'Max Monthly Budget'",
+      "new_value": "!contains(product_types, 'MedSup')"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[6].skippable",
+      "old_value": false,
+      "new_value": true
+    },
+    {
+      "type": "length_change",
+      "path": "arguments.steps[6].steps",
+      "old_length": 2,
+      "new_length": 1
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[6].steps[0].continue_on_error",
+      "new_value": true
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[6].steps[0].tool_name",
+      "old_value": "invoke_element",
+      "new_value": "click_element"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[6].steps[0].arguments.timeout_ms",
+      "old_value": 800
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[6].steps[0].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[6].steps[0].arguments.selector",
+      "old_value": "{{selectors.max_monthly_budget_toggle}}",
+      "new_value": "{{selectors.medsup_checkbox}}"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[7].group_name",
+      "old_value": "Enter Quote Value (Face Amount)",
+      "new_value": "Ensure Preneed is selected"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[7].if",
+      "old_value": "quote_type == 'Face Value'",
+      "new_value": "!contains(product_types, 'Preneed')"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[7].skippable",
+      "old_value": false,
+      "new_value": true
+    },
+    {
+      "type": "length_change",
+      "path": "arguments.steps[7].steps",
+      "old_length": 2,
+      "new_length": 1
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[7].steps[0].continue_on_error",
+      "new_value": true
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[7].steps[0].arguments.timeout_ms",
+      "old_value": 1000
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[7].steps[0].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[7].steps[0].arguments.selector",
+      "old_value": "{{selectors.face_value_toggle}}",
+      "new_value": "{{selectors.preneed_checkbox}}"
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[8].if",
+      "new_value": "!contains(product_types, 'Term')"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[8].group_name",
+      "old_value": "Set Coverage and Generate Quote",
+      "new_value": "Ensure Term is selected"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[8].skippable",
+      "old_value": false,
+      "new_value": true
+    },
+    {
+      "type": "length_change",
+      "path": "arguments.steps[8].steps",
+      "old_length": 5,
+      "new_length": 1
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[8].steps[0].continue_on_error",
+      "new_value": true
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[8].steps[0].tool_name",
+      "old_value": "wait_for_element",
+      "new_value": "click_element"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[8].steps[0].arguments.condition",
+      "old_value": "exists"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[8].steps[0].arguments.timeout_ms",
+      "old_value": 5000
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[8].steps[0].arguments.retries",
+      "old_value": 2
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[8].steps[0].arguments.selector",
+      "old_value": "{{selectors.coverage_type_dropdown}}",
+      "new_value": "{{selectors.term_checkbox}}"
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[9].if",
+      "new_value": "quote_type == 'Monthly Amount'"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[9].group_name",
+      "old_value": "Set Results Per Page and Capture Final State",
+      "new_value": "Enter Quote Value (Monthly)"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[9].skippable",
+      "old_value": true,
+      "new_value": false
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[9].steps[0].delay_ms",
+      "old_value": 100
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[9].steps[0].continue_on_error",
+      "old_value": true
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[9].steps[0].tool_name",
+      "old_value": "set_option",
+      "new_value": "invoke_element"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[9].steps[0].arguments.value",
+      "old_value": "25"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[9].steps[0].arguments.selector",
+      "old_value": "{{selectors.results_per_page_dropdown}}",
+      "new_value": "{{selectors.max_monthly_budget_toggle}}"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[9].steps[0].arguments.timeout_ms",
+      "old_value": 2000,
+      "new_value": 800
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[9].steps[1].tool_name",
+      "old_value": "get_focused_window_tree",
+      "new_value": "set_value"
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[9].steps[1].arguments.random_string",
+      "old_value": "final_tree_capture"
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[9].steps[1].arguments.selector",
+      "new_value": "{{selectors.monthly_budget_field}}"
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[9].steps[1].arguments.value",
+      "new_value": "{{quote_value}}"
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[9].steps[1].arguments.timeout_ms",
+      "new_value": 400
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[9].steps[1].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[9].steps[1].arguments.retries",
+      "new_value": 2
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[10].group_name",
+      "old_value": "Close Window",
+      "new_value": "Enter Quote Value (Face Amount)"
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[10].if",
+      "old_value": "always()",
+      "new_value": "quote_type == 'Face Amount'"
+    },
+    {
+      "type": "length_change",
+      "path": "arguments.steps[10].steps",
+      "old_length": 1,
+      "new_length": 2
+    },
+    {
+      "type": "removed",
+      "path": "arguments.steps[10].steps[0].delay_ms",
+      "old_value": 10000
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[10].steps[0].tool_name",
+      "old_value": "close_element",
+      "new_value": "click_element"
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[10].steps[0].arguments.timeout_ms",
+      "new_value": 1000
+    },
+    {
+      "type": "added",
+      "path": "arguments.steps[10].steps[0].arguments.include_tree",
+      "new_value": false
+    },
+    {
+      "type": "value_change",
+      "path": "arguments.steps[10].steps[0].arguments.selector",
+      "old_value": "{{selectors.browser_window}}",
+      "new_value": "{{selectors.face_value_toggle}}"
+    },
+    {
+      "type": "type_change",
+      "path": "arguments.output_parser",
+      "old_type": "<class 'dict'>",
+      "new_type": "<class 'str'>"
+    }
+  ]
+}

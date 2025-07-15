@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  Workflow,
+  WorkflowWithSettings,
   Execution,
   LiveExecutionStatus,
   WorkflowOverview,
@@ -46,13 +46,13 @@ const FloatingDelta = ({ value }: { value: number }) => {
 };
 
 export default function WorkflowsPage() {
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowWithSettings[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
   const [liveStats, setLiveStats] = useState({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
   const [loading, setLoading] = useState(true);
   const [executingWorkflows, setExecutingWorkflows] = useState<Set<number>>(new Set());
-  const previousWorkflows = useRef<Workflow[]>([]);
+  const previousWorkflows = useRef<WorkflowWithSettings[]>([]);
   const previousLiveStats = useRef({ total_active: 0, running: 0, queued: 0, average_progress: 0 });
   
   // New state for enhanced UI
