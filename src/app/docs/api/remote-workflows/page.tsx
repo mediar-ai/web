@@ -1,13 +1,61 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import mermaid from 'mermaid';
 
+// Types for dynamic schema data
+interface WorkflowSchema {
+  id: number;
+  name: string;
+  description: string;
+  estimated_duration_seconds?: number;
+  input_parameters: Record<string, unknown>;
+  sample_request: Record<string, unknown>;
+  validation_rules: Record<string, unknown>;
+  expected_outputs: Record<string, unknown>;
+  api_info: {
+    execute_endpoint: string;
+    method: string;
+    content_type: string;
+    example_curl: string;
+    example_javascript: string;
+  };
+  metadata: {
+    parameter_count: number;
+    has_conditional_logic: boolean;
+  };
+}
+
+// Endpoint type for consistency
+interface EndpointDefinition {
+  id: string;
+  method: string;
+  path: string;
+  title: string;
+  description: string;
+  queryParams?: Array<{
+    name: string;
+    type: string;
+    optional: boolean;
+    description: string;
+  }>;
+  requestBody?: string;
+  response: string;
+  workflowInfo?: {
+    parameterCount: number;
+    hasConditionalLogic: boolean;
+    estimatedDuration?: number;
+  };
+}
+
 export default function RemoteWorkflowsAPIDocsPage() {
   const mermaidRef = useRef<HTMLDivElement>(null);
+  const [workflowSchemas, setWorkflowSchemas] = useState<Record<number, WorkflowSchema>>({});
+  const [loadingSchemas, setLoadingSchemas] = useState(true);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
   
   useEffect(() => {
     mermaid.initialize({ 
@@ -26,6 +74,126 @@ export default function RemoteWorkflowsAPIDocsPage() {
       mermaid.contentLoaded();
     }
   }, []);
+
+  // Fetch workflow schemas dynamically
+  useEffect(() => {
+    const fetchWorkflowSchemas = async () => {
+      try {
+        setLoadingSchemas(true);
+        console.log('🔄 Fetching workflow list for dynamic documentation...');
+        
+        // First, get the list of available workflows
+        const listResponse = await fetch('/api/remote-workflows/list?limit=10');
+        const listData = await listResponse.json();
+        
+        if (!listData.success || !listData.workflows) {
+          throw new Error('Failed to fetch workflow list');
+        }
+
+        console.log(`📋 Found ${listData.workflows.length} workflows, fetching schemas...`);
+        
+        // Fetch schema for each workflow
+        const schemaPromises = listData.workflows.map(async (workflow: { id: number }) => {
+          try {
+            const schemaResponse = await fetch(`/api/remote-workflows/${workflow.id}/schema`);
+            const schemaData = await schemaResponse.json();
+            
+            if (schemaData.success) {
+              return {
+                id: workflow.id,
+                schema: {
+                  ...schemaData.workflow,
+                  ...schemaData.schema,
+                  api_info: schemaData.api_info,
+                  metadata: schemaData.metadata
+                }
+              };
+            } else {
+              console.warn(`⚠️ Failed to fetch schema for workflow ${workflow.id}:`, schemaData.error);
+              return null;
+            }
+          } catch (error) {
+            console.warn(`⚠️ Error fetching schema for workflow ${workflow.id}:`, error);
+            return null;
+          }
+        });
+
+        const schemaResults = await Promise.all(schemaPromises);
+        const schemas: Record<number, WorkflowSchema> = {};
+        
+        schemaResults.forEach(result => {
+          if (result) {
+            schemas[result.id] = result.schema;
+          }
+        });
+
+        console.log(`✅ Successfully loaded ${Object.keys(schemas).length} workflow schemas`);
+        setWorkflowSchemas(schemas);
+        setSchemaError(null);
+      } catch (error) {
+        console.error('❌ Failed to fetch workflow schemas:', error);
+        setSchemaError(error instanceof Error ? error.message : 'Unknown error');
+      } finally {
+        setLoadingSchemas(false);
+      }
+    };
+
+    fetchWorkflowSchemas();
+  }, []);
+
+  // Helper function to generate dynamic execute workflow endpoints from real schemas
+  const generateExecuteWorkflowEndpoints = (schemas: Record<number, WorkflowSchema>) => {
+    if (Object.keys(schemas).length === 0) {
+      // Return static example if no schemas loaded yet
+      return [{
+        id: 'execute-workflow-loading',
+        method: 'POST',
+        path: '/api/remote-workflows/[workflowId]/execute',
+        title: 'Execute Workflow (Loading...)',
+        description: 'Loading real workflow schemas...',
+        requestBody: `{
+  "loading": "Fetching real workflow parameters..."
+}`,
+        response: `{
+  "success": true,
+  "execution_id": 44,
+  "status": "queued",
+  "message": "Workflow execution started successfully"
+}`
+      }];
+    }
+
+    // Generate endpoints for each workflow with real schemas
+    return Object.values(schemas).map(schema => ({
+      id: `execute-workflow-${schema.id}`,
+      method: 'POST',
+      path: `/api/remote-workflows/${schema.id}/execute`,
+      title: `Execute Workflow: ${schema.name}`,
+      description: `Triggers execution of "${schema.name}" workflow with the following parameters. ${schema.metadata.has_conditional_logic ? 'This workflow has conditional logic - some parameters may be required only for specific branches.' : ''}`,
+      requestBody: JSON.stringify(schema.sample_request, null, 2),
+      response: `{
+  "success": true,
+  "execution_id": 44,
+  "workflow_id": ${schema.id},
+  "workflow_name": "${schema.name}",
+  "status": "queued",
+  "modal_call_id": "modal_1751407955657_j9p0qn5ks",
+  "created_at": "2025-01-01T20:12:35.657Z",
+  "execution_mode": "async",
+  "client_id": "web-1751407955657",
+  "message": "Workflow execution queued successfully. Modal will process it within 10 seconds. Use execution ID 44 to monitor progress.",
+  "endpoints": {
+    "status": "/api/remote-workflows/executions/44",
+    "results": "/api/remote-workflows/executions/44"
+  }
+}`,
+      workflowInfo: {
+        parameterCount: schema.metadata.parameter_count,
+        hasConditionalLogic: schema.metadata.has_conditional_logic,
+        estimatedDuration: schema.estimated_duration_seconds
+      }
+    }));
+  };
 
   const mermaidDiagram = `
 graph TB
@@ -56,7 +224,7 @@ graph TB
     style Results fill:#ddd,stroke:#666
 `;
 
-  const endpoints = [
+  const endpoints: EndpointDefinition[] = [
     {
       id: 'list-workflows',
       method: 'GET',
@@ -168,43 +336,8 @@ graph TB
   }
 }`
     },
-    {
-      id: 'execute-workflow',
-      method: 'POST',
-      path: '/api/remote-workflows/[workflowId]/execute',
-      title: 'Execute Workflow',
-      description: 'Triggers execution of a workflow with provided parameters.',
-      requestBody: `{
-  "customer_info": {
-    "state": "California",
-    "height": "5'10\\"",
-    "weight": "180",
-    "zip_code": "90210",
-    "date_of_birth": "01/15/1985"
-  },
-  "insurance_preferences": {
-    "gender": "Male",
-    "nicotine": "Never",
-    "face_value": "$100,000"
-  }
-}`,
-      response: `{
-  "success": true,
-  "execution_id": 44,
-  "status": "queued",
-  "message": "Workflow execution started successfully",
-  "modal_call_id": "modal_1751407955657_j9p0qn5ks",
-  "details": {
-    "workflow_id": 1,
-    "workflow_name": "Best Plan Pro Insurance Quote",
-    "estimated_duration_seconds": 90
-  },
-  "endpoints": {
-    "status": "/api/remote-workflows/executions/44",
-    "results": "/api/remote-workflows/executions/44"
-  }
-}`
-    },
+    // Dynamic execute workflow endpoint - will be populated from real schemas
+    ...generateExecuteWorkflowEndpoints(workflowSchemas),
     {
       id: 'list-executions',
       method: 'GET',
@@ -373,7 +506,20 @@ graph TB
           <h1 className="text-3xl font-bold">Remote Workflows API Documentation</h1>
           <span className="text-sm text-gray-500">Jul 1, 2025</span>
         </div>
-        <p className="text-muted-foreground mb-8">Complete API reference for remote workflow management and execution</p>
+        <p className="text-muted-foreground mb-4">Complete API reference for remote workflow management and execution</p>
+        
+        {/* Dynamic Schema Status - only show when there are issues */}
+        {loadingSchemas && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-blue-700 text-sm">🔄 Loading real workflow schemas to generate accurate documentation...</p>
+          </div>
+        )}
+        
+        {schemaError && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-yellow-700 text-sm">⚠️ Could not load dynamic schemas: {schemaError}. Showing static examples.</p>
+          </div>
+        )}
         
         {/* Mermaid Diagram */}
         <div className="mb-12 p-6 bg-gray-50 rounded-lg border border-gray-200">

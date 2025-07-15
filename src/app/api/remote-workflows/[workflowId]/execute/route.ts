@@ -1,6 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Validation helper functions
+interface ValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+function validateParameters(params: Record<string, unknown>, schema: Record<string, unknown>): ValidationResult {
+  const result: ValidationResult = {
+    isValid: true,
+    errors: [],
+    warnings: []
+  };
+
+  // Check required parameters
+  for (const [paramName, paramDef] of Object.entries(schema)) {
+    if (paramDef && typeof paramDef === 'object') {
+      const def = paramDef as Record<string, unknown>;
+      
+      // Check if parameter is required
+      if (def.required === true && !(paramName in params)) {
+        result.errors.push(`Required parameter '${paramName}' is missing`);
+        result.isValid = false;
+      }
+      
+      // Check parameter type if provided
+      if (paramName in params && def.type) {
+        const expectedType = def.type as string;
+        const actualValue = params[paramName];
+        
+        if (!validateParameterType(actualValue, expectedType)) {
+          result.errors.push(`Parameter '${paramName}' should be of type '${expectedType}' but received '${typeof actualValue}'`);
+          result.isValid = false;
+        }
+      }
+      
+      // Check enum options if provided
+      if (paramName in params && def.options && Array.isArray(def.options)) {
+        const value = params[paramName];
+        const validOptions = def.options.map(opt => 
+          typeof opt === 'object' && opt !== null && 'value' in opt ? opt.value : opt
+        );
+        
+        if (!validOptions.includes(value)) {
+          result.errors.push(`Parameter '${paramName}' must be one of: ${validOptions.join(', ')}`);
+          result.isValid = false;
+        }
+      }
+    }
+  }
+
+  // Check for unexpected parameters
+  for (const paramName of Object.keys(params)) {
+    if (!(paramName in schema)) {
+      result.warnings.push(`Unexpected parameter '${paramName}' will be ignored`);
+    }
+  }
+
+  return result;
+}
+
+function validateParameterType(value: unknown, expectedType: string): boolean {
+  switch (expectedType) {
+    case 'string':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number';
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'array':
+      return Array.isArray(value);
+    case 'object':
+      return typeof value === 'object' && value !== null && !Array.isArray(value);
+    case 'enum':
+    case 'select':
+      return typeof value === 'string'; // Enum values are typically strings
+    default:
+      return true; // Unknown types pass validation
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }
@@ -31,10 +112,10 @@ export async function POST(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Check if workflow exists and is executable
+    // Check if workflow exists and is executable, and fetch automation sequence for validation
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('name, status')
+      .select('name, status, automation_sequence')
       .eq('id', workflowIdNum)
       .single();
 
@@ -60,6 +141,50 @@ export async function POST(
       );
     }
 
+    // Validate parameters against workflow schema if automation sequence is available
+    let validationResult: ValidationResult | null = null;
+    if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
+      try {
+        console.log('🔍 Validating parameters against workflow schema...');
+        
+        const mainSequence = workflow.automation_sequence[0];
+        if (mainSequence?.arguments?.variables) {
+          const schema = mainSequence.arguments.variables as Record<string, unknown>;
+          validationResult = validateParameters(execution_params, schema);
+          
+          if (!validationResult.isValid) {
+            console.log('❌ Parameter validation failed:', validationResult.errors);
+            return NextResponse.json(
+              {
+                success: false,
+                error: 'Parameter validation failed',
+                validation_errors: validationResult.errors,
+                validation_warnings: validationResult.warnings,
+                execution_id: null,
+                help: {
+                  message: 'Check the workflow schema endpoint for valid parameters',
+                  schema_endpoint: `/api/remote-workflows/${workflowIdNum}/schema`,
+                  docs_url: `/docs/api/remote-workflows`
+                }
+              },
+              { status: 400 }
+            );
+          }
+          
+          if (validationResult.warnings.length > 0) {
+            console.log('⚠️ Parameter validation warnings:', validationResult.warnings);
+          }
+          
+          console.log('✅ Parameter validation passed');
+        }
+      } catch (validationError) {
+        console.warn('⚠️ Parameter validation failed due to error:', validationError);
+        // Continue execution even if validation fails - don't block workflow execution
+      }
+    } else {
+      console.log('⚠️ No automation sequence found for validation - proceeding without parameter validation');
+    }
+
     // Create execution record in database with 'queued' status
     // Modal scheduled job will pick it up and process it
     const modal_call_id = `modal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -83,7 +208,7 @@ export async function POST(
     console.log(`✅ Created execution ${execution.id} for workflow "${workflow.name}" - will be processed by Modal scheduler`);
     
     // Return immediate response - Modal will process this asynchronously
-        return NextResponse.json({ 
+    const response = { 
       success: true,
       execution_id: execution.id,
       workflow_id: workflowIdNum,
@@ -93,8 +218,24 @@ export async function POST(
       created_at: new Date().toISOString(),
       execution_mode,
       client_id,
-      message: `Workflow execution queued successfully. Modal will process it within 10 seconds. Use execution ID ${execution.id} to monitor progress.`
-    }, { status: 200 });
+      message: `Workflow execution queued successfully. Modal will process it within 10 seconds. Use execution ID ${execution.id} to monitor progress.`,
+      // Include validation info if available
+      ...(validationResult && {
+        validation: {
+          parameters_validated: true,
+          warnings: validationResult.warnings.length > 0 ? validationResult.warnings : undefined,
+          parameter_count: Object.keys(execution_params).length
+        }
+      }),
+      // Add helpful endpoints
+      endpoints: {
+        status: `/api/remote-workflows/executions/${execution.id}`,
+        results: `/api/remote-workflows/executions/${execution.id}`,
+        schema: `/api/remote-workflows/${workflowIdNum}/schema`
+      }
+    };
+
+    return NextResponse.json(response, { status: 200 });
 
   } catch (error) {
     console.error('❌ Error executing workflow:', error);
