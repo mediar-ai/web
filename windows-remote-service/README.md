@@ -19,6 +19,8 @@ Complete remote management system for the MCP (Model Context Protocol) agent as 
 
 # 2. Start management server
 powershell -ExecutionPolicy Bypass -File C:\Users\terminatoradmin\Desktop\browser-workflow-capture-app-latest\windows-remote-service\windows_service_endpoint.ps1 -Port 8080  
+# stop if needed
+Get-Process powershell | Stop-Process -Force # stop all powershell processes
 
 # 3. Start ngrok tunnels (for external access)
 ngrok start --all --config scripts/ngrok.yml
