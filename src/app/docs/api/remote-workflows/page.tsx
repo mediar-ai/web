@@ -96,52 +96,29 @@ export default function RemoteWorkflowsAPIDocsPage() {
   const generateRequestExamples = (endpoint: EndpointDefinition) => {
     const baseUrl = 'https://app.mediar.ai';
     let fullUrl = `${baseUrl}${endpoint.path}`;
-    
-    // Replace dynamic path parameters with real values
-    if (endpoint.path.includes('[workflowId]')) {
-      const firstWorkflowId = Object.keys(workflowSchemas)[0] || '1';
-      fullUrl = fullUrl.replace('[workflowId]', firstWorkflowId);
+
+    // Add query parameters for GET requests
+    if (endpoint.method === 'GET' && endpoint.queryParams) {
+      const params = new URLSearchParams();
+      endpoint.queryParams.forEach(param => {
+        if (param.name === 'status') params.append(param.name, 'active');
+        else if (param.name === 'limit') params.append(param.name, '50');
+        else if (param.name === 'workflow_id') params.append(param.name, '1');
+      });
+      const queryString = params.toString();
+      if (queryString) fullUrl += `?${queryString}`;
+    }
+
+    // Replace path parameters with real values
+    if (fullUrl.includes('[workflowId]')) {
+      const workflowId = Object.keys(workflowSchemas).length > 0 ? Object.keys(workflowSchemas)[0] : '1';
+      fullUrl = fullUrl.replace('[workflowId]', workflowId);
+    }
+    if (fullUrl.includes('[executionId]')) {
+      fullUrl = fullUrl.replace('[executionId]', '3856');
     }
     
-    if (endpoint.path.includes('[executionId]')) {
-      // Try to get a real execution ID from dynamic responses
-      let executionId = '44'; // fallback
-      try {
-        const listExecutionsResponse = dynamicResponses['list-executions'];
-        if (listExecutionsResponse) {
-          const parsed = JSON.parse(listExecutionsResponse);
-          if (parsed.executions && parsed.executions.length > 0) {
-            executionId = parsed.executions[0].execution_id.toString();
-          }
-        }
-             } catch {
-         // Use fallback
-       }
-      fullUrl = fullUrl.replace('[executionId]', executionId);
-    }
-    
-    // Generate query parameters example for GET endpoints with params
-    if (endpoint.method === 'GET' && endpoint.queryParams && endpoint.queryParams.length > 0) {
-      const sampleParams = [];
-      
-      for (const param of endpoint.queryParams.slice(0, 2)) { // Show first 2 params as example
-        if (param.name === 'limit') {
-          sampleParams.push('limit=10');
-        } else if (param.name === 'workflow_id' && Object.keys(workflowSchemas).length > 0) {
-          sampleParams.push(`workflow_id=${Object.keys(workflowSchemas)[0]}`);
-        } else if (param.name === 'status') {
-          sampleParams.push('status=active');
-        } else if (param.name === 'include_results') {
-          sampleParams.push('include_results=false');
-        }
-      }
-      
-      if (sampleParams.length > 0) {
-        fullUrl += '?' + sampleParams.join('&');
-      }
-    }
-    
-    // Generate curl example
+    // Generate curl command
     const generateCurl = () => {
       let curl = `curl -X ${endpoint.method} "${fullUrl}"`;
       
@@ -238,6 +215,145 @@ export default function RemoteWorkflowsAPIDocsPage() {
       javascript: generateJavaScript(),
       postman: generatePostman()
     };
+  };
+
+  // Generate complete collection with all endpoints
+  const generateCompleteCollection = () => {
+    const baseUrl = 'https://app.mediar.ai';
+    const allRequestItems = [];
+
+    // Process all static endpoints
+    endpoints.forEach(endpoint => {
+      let fullUrl = `${baseUrl}${endpoint.path}`;
+
+      // Add query parameters for GET requests
+      if (endpoint.method === 'GET' && endpoint.queryParams) {
+        const params = new URLSearchParams();
+        endpoint.queryParams.forEach(param => {
+          if (param.name === 'status') params.append(param.name, 'active');
+          else if (param.name === 'limit') params.append(param.name, '50');
+          else if (param.name === 'workflow_id') params.append(param.name, '1');
+        });
+        const queryString = params.toString();
+        if (queryString) fullUrl += `?${queryString}`;
+      }
+
+      // Replace path parameters with real values
+      if (fullUrl.includes('[workflowId]')) {
+        const workflowId = Object.keys(workflowSchemas).length > 0 ? Object.keys(workflowSchemas)[0] : '1';
+        fullUrl = fullUrl.replace('[workflowId]', workflowId);
+      }
+      if (fullUrl.includes('[executionId]')) {
+        fullUrl = fullUrl.replace('[executionId]', '3856');
+      }
+
+      const urlParts = new URL(fullUrl);
+      const postmanRequestItem = {
+        name: endpoint.title,
+        request: {
+          method: endpoint.method,
+          header: endpoint.method !== 'GET' ? [
+            {
+              key: "Content-Type",
+              value: "application/json"
+            }
+          ] : [],
+          url: {
+            raw: fullUrl,
+            protocol: urlParts.protocol.replace(':', ''),
+            host: [urlParts.hostname],
+            port: urlParts.port || (urlParts.protocol === 'https:' ? '443' : '80'),
+            path: urlParts.pathname.split('/').filter(p => p),
+            query: urlParts.search ? urlParts.search.substring(1).split('&').map(param => {
+              const [key, value] = param.split('=');
+              return { key, value };
+            }) : []
+          },
+          body: endpoint.requestBody ? {
+            mode: "raw",
+            raw: endpoint.requestBody,
+            options: {
+              raw: {
+                language: "json"
+              }
+            }
+          } : undefined
+        },
+        response: []
+      };
+
+      allRequestItems.push(postmanRequestItem);
+    });
+
+    // Add dynamic execute workflow endpoint if available
+    if (Object.keys(workflowSchemas).length > 0) {
+      const workflowId = Object.keys(workflowSchemas)[0];
+      const schema = workflowSchemas[parseInt(workflowId)];
+      
+      if (schema && schema.name) {
+        const executeUrl = `${baseUrl}/api/remote-workflows/${workflowId}/execute`;
+        const executeUrlParts = new URL(executeUrl);
+        
+                 // Generate sample request body from schema
+         let sampleBody = '';
+         if (schema.sample_request) {
+           sampleBody = JSON.stringify(schema.sample_request, null, 2);
+         } else if (schema.input_parameters) {
+           const sample: Record<string, unknown> = {};
+           Object.entries(schema.input_parameters).forEach(([key, param]) => {
+             if (param && typeof param === 'object' && 'default' in param) {
+               sample[key] = (param as { default: unknown }).default;
+             }
+           });
+           sampleBody = JSON.stringify(sample, null, 2);
+         }
+
+        const executeRequestItem = {
+          name: `Execute Workflow: ${schema.name}`,
+          request: {
+            method: "POST",
+            header: [
+              {
+                key: "Content-Type",
+                value: "application/json"
+              }
+            ],
+            url: {
+              raw: executeUrl,
+              protocol: executeUrlParts.protocol.replace(':', ''),
+              host: [executeUrlParts.hostname],
+              port: executeUrlParts.port || "443",
+              path: executeUrlParts.pathname.split('/').filter(p => p),
+              query: []
+            },
+            body: sampleBody ? {
+              mode: "raw",
+              raw: sampleBody,
+              options: {
+                raw: {
+                  language: "json"
+                }
+              }
+            } : undefined
+          },
+          response: []
+        };
+
+        allRequestItems.push(executeRequestItem);
+      }
+    }
+
+    // Create complete collection structure
+    const completeCollection = {
+      info: {
+        name: "Remote Workflows API - Complete Collection",
+        description: "Complete API collection with all Remote Workflows endpoints - Generated from Mediar API documentation",
+        schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+      },
+      item: allRequestItems
+    };
+    
+    return JSON.stringify(completeCollection, null, 2);
   };
 
   useEffect(() => {
@@ -1001,6 +1117,21 @@ graph TB
             <pre className="mermaid">
 {mermaidDiagram}
             </pre>
+          </div>
+
+          {/* Complete Postman Collection Button */}
+          <div className="mt-8 p-4 bg-gray-50 border border-black rounded-lg">
+            <h3 className="text-lg font-semibold mb-3">Download Complete Postman Collection</h3>
+            <p className="text-sm text-gray-700 mb-3">
+              Postman collection containing all available endpoints.
+              To import press Import button in Postman and paste from clipboard, then press Enter.
+            </p>
+            <button
+              onClick={() => copyToClipboard(generateCompleteCollection(), 'complete-postman-collection')}
+              className="px-4 py-2 bg-black text-white border border-black rounded hover:bg-gray-800 transition-colors text-sm font-medium"
+            >
+              {copiedStates['complete-postman-collection'] || '📋 Copy Complete Collection'}
+            </button>
           </div>
         </div>
       );
