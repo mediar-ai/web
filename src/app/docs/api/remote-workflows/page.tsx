@@ -127,9 +127,8 @@ export default function RemoteWorkflowsAPIDocsPage() {
       }
       
       if (endpoint.requestBody) {
-        // Use properly formatted JSON for curl
-        const bodyData = endpoint.requestBody;
-        curl += ` \\\n  -d '${bodyData}'`;
+        // The requestBody should already have parameters wrapped, so use it directly
+        curl += ` \\\n  -d '${endpoint.requestBody}'`;
       }
       
       return curl;
@@ -145,13 +144,13 @@ export default function RemoteWorkflowsAPIDocsPage() {
           js += `,\n  headers: {\n    'Content-Type': 'application/json'\n  }`;
         }
         if (endpoint.requestBody) {
-          // Parse and re-stringify to ensure valid JSON
+          // Parse and re-stringify to ensure valid JSON - requestBody should already be properly formatted
           try {
             const parsedBody = JSON.parse(endpoint.requestBody);
             js += `,\n  body: JSON.stringify(${JSON.stringify(parsedBody, null, 4)})`;
-                     } catch {
-             js += `,\n  body: JSON.stringify(${endpoint.requestBody})`;
-           }
+          } catch {
+            js += `,\n  body: JSON.stringify(${endpoint.requestBody})`;
+          }
         }
         js += `\n}`;
       }
@@ -294,19 +293,27 @@ export default function RemoteWorkflowsAPIDocsPage() {
         const executeUrl = `${baseUrl}/api/remote-workflows/${workflowId}/execute`;
         const executeUrlParts = new URL(executeUrl);
         
-                 // Generate sample request body from schema
-         let sampleBody = '';
-         if (schema.sample_request) {
-           sampleBody = JSON.stringify(schema.sample_request, null, 2);
-         } else if (schema.input_parameters) {
-           const sample: Record<string, unknown> = {};
-           Object.entries(schema.input_parameters).forEach(([key, param]) => {
-             if (param && typeof param === 'object' && 'default' in param) {
-               sample[key] = (param as { default: unknown }).default;
-             }
-           });
-           sampleBody = JSON.stringify(sample, null, 2);
-         }
+        // Generate sample request body from schema - wrap parameters under "parameters" key
+        let sampleBody = '';
+        if (schema.sample_request) {
+          // Wrap the sample_request under "parameters" key to match execute endpoint expectation
+          const wrappedRequest = {
+            parameters: schema.sample_request
+          };
+          sampleBody = JSON.stringify(wrappedRequest, null, 2);
+        } else if (schema.input_parameters) {
+          const sample: Record<string, unknown> = {};
+          Object.entries(schema.input_parameters).forEach(([key, param]) => {
+            if (param && typeof param === 'object' && 'default' in param) {
+              sample[key] = (param as { default: unknown }).default;
+            }
+          });
+          // Wrap the sample under "parameters" key
+          const wrappedRequest = {
+            parameters: sample
+          };
+          sampleBody = JSON.stringify(wrappedRequest, null, 2);
+        }
 
         const executeRequestItem = {
           name: `Execute Workflow: ${schema.name}`,
@@ -567,7 +574,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
       path: `/api/remote-workflows/${schema.id}/execute`,
       title: `Execute Workflow: ${schema.name}`,
       description: `Triggers execution of "${schema.name}" workflow with the following parameters. ${schema.metadata.has_conditional_logic ? 'This workflow has conditional logic - some parameters may be required only for specific branches.' : ''}`,
-      requestBody: JSON.stringify(schema.sample_request, null, 2),
+      requestBody: JSON.stringify({ parameters: schema.sample_request }, null, 2),
       response: `{
   "success": true,
   "execution_id": 44,
