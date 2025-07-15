@@ -388,6 +388,11 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     for (const path in dynamicValues) {
       const values = dynamicValues[path];
       if (values && values.length > 0) {
+        // Skip internal-only parameters that shouldn't be included in combinations
+        if (path === 'quote_parser' || path === 'product_types') {
+          continue;
+        }
+        
         let isControlled = false;
         let isActive = false;
 
@@ -475,7 +480,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     onCombinationsChange(totalCombinations);
   }, [dynamicValues, schema, errors, onSpecChange, onCombinationsChange]);
 
-  // Pre-filter the schema to remove controlled variables from the top-level rendering
+  // Pre-filter the schema to remove controlled variables and internal-only parameters from the top-level rendering
   const topLevelSchema = { ...schema };
   for (const key in schema) {
     const item = schema[key] as SchemaItem;
@@ -487,6 +492,10 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
       }
     }
   }
+  
+  // Remove internal-only parameters that shouldn't be exposed in the UI
+  delete topLevelSchema.quote_parser;
+  delete topLevelSchema.product_types;
 
   return (
     <div className="space-y-3 px-6 pb-6">
