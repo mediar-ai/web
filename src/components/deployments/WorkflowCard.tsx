@@ -41,18 +41,18 @@ const getStatusBadge = (status: string) => {
 const getStatusIcon = (status: string) => {
     switch (status) {
       case 'running':
-        return <Loader2 className="w-2.5 h-2.5 animate-spin" />;
+        return <Loader2 className="w-3.5 h-3.5 animate-spin" />;
       case 'completed':
-        return <CheckCircle className="w-2.5 h-2.5" />;
+        return <CheckCircle className="w-3.5 h-3.5" />;
       case 'failed':
       case 'error':
-        return <XCircle className="w-2.5 h-2.5" />;
+        return <XCircle className="w-3.5 h-3.5" />;
       case 'cancelled':
-        return <AlertCircle className="w-2.5 h-2.5" />;
+        return <AlertCircle className="w-3.5 h-3.5" />;
       case 'queued':
-        return <Clock className="w-2.5 h-2.5" />;
+        return <Clock className="w-3.5 h-3.5" />;
       default:
-        return <Activity className="w-2.5 h-2.5" />;
+        return <Activity className="w-3.5 h-3.5" />;
     }
 };
 
@@ -213,20 +213,20 @@ export function WorkflowCard({
         <div className="flex items-start justify-between">
           <div className="flex-1">
             {/* First line: Just the workflow title */}
-            <h3 className="text-lg font-bold font-mono mb-2">{workflow.name}</h3>
+            <h3 className="text-xl font-bold font-mono mb-2">{workflow.name}</h3>
             
             {/* Second line: Version, stats, play button, status, and action buttons */}
             <div className="flex items-center gap-3 mb-2 flex-wrap">
-              <span className="text-xs font-mono px-2 py-1 bg-black text-white rounded">
+              <span className="text-sm font-mono px-3 py-1.5 bg-black text-white rounded h-7 flex items-center">
                 v{workflow.version || '1.0.0'}
               </span>
               
               {/* Stats */}
-              <div className="flex items-center gap-3 text-xs font-mono text-gray-600">
+              <div className="flex items-center gap-3 text-sm font-mono text-gray-600">
                 <span>RUNS: {workflow.total_executions || 0}</span>
                 {(workflow.total_executions || 0) > 0 && (
                   <span className="text-black flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3" />
+                    <CheckCircle className="w-4 h-4" />
                     {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
                   </span>
                 )}
@@ -242,45 +242,45 @@ export function WorkflowCard({
                 <button
                   onClick={handleResumeWorkflow}
                   disabled={resumingWorkflow}
-                  className="p-1 border border-black rounded hover:bg-gray-100 transition-colors"
+                  className="p-1 border border-black rounded hover:bg-gray-100 transition-colors cursor-pointer disabled:cursor-not-allowed"
                   title={resumingWorkflow ? 'Resuming...' : 'Resume workflow'}
                 >
                   {resumingWorkflow ? (
-                    <Loader2 className="w-3 h-3 text-gray-600 animate-spin" />
+                    <Loader2 className="w-4 h-4 text-gray-600 animate-spin" />
                   ) : (
-                    <Play className="w-3 h-3 text-gray-600 hover:text-black" />
+                    <Play className="w-4 h-4 text-gray-600 hover:text-black" />
                   )}
                 </button>
               )}
               
               {/* Status badge */}
-              <Badge className={getStatusBadge(workflow.status)}>
+              <Badge className={`${getStatusBadge(workflow.status)} text-sm h-7 px-3`}>
                 {workflow.status.toUpperCase()}
               </Badge>
               
               {/* Action buttons */}
               <Button
                 onClick={() => setShowBatchTestDialog(true)}
-                className="bg-black text-white hover:bg-gray-800 font-mono text-xs h-6"
-                size="sm"
+                className="bg-black text-white hover:bg-gray-800 hover:shadow-lg font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 transform hover:scale-105 rounded-lg font-bold"
+                size="lg"
               >
-                <PlayCircle className="w-3 h-3 mr-1" />
-                Test Run
+                <PlayCircle className="w-5 h-5 mr-2" />
+                TEST RUN
               </Button>
               
               <Button 
                 onClick={() => onFetchWorkflowDetails(workflow.id)}
                 variant="black-outline"
-                size="sm"
-                className="font-mono text-xs h-6"
+                size="lg"
+                className="font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg rounded-lg font-bold border-2 hover:bg-gray-50"
                 disabled={loadingDetails}
               >
-                {loadingDetails ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-                <span className="ml-1">DETAILS</span>
+                {loadingDetails ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                <span className="ml-2">DETAILS</span>
               </Button>
             </div>
             
-            <p className="text-black text-sm mb-2">{workflow.description}</p>
+            <p className="text-black text-base mb-2">{workflow.description}</p>
             
           </div>
         </div>
@@ -289,24 +289,24 @@ export function WorkflowCard({
       <CardContent>
         {shouldShowExecutionHistory && (
           <Collapsible open={expanded} onOpenChange={setExpanded}>
-            <CollapsibleTrigger className="w-full">
+            <CollapsibleTrigger className="w-full cursor-pointer">
               <div className="flex items-center justify-between p-3 bg-gray-50 border border-black rounded hover:bg-gray-100 transition-colors cursor-pointer">
                 <div className="flex items-center gap-2">
                   {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <span className="text-sm font-bold font-mono text-black">EXECUTION HISTORY</span>
+                  <span className="text-base font-bold font-mono text-black">EXECUTION HISTORY</span>
                   <div className="flex gap-2">
                     {loadingExecutions ? (
-                      <Badge variant="black-outline" className="text-xs">
-                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Badge variant="black-outline" className="text-sm h-7 px-3">
+                        <Loader2 className="w-4 h-4 animate-spin mr-1" />
                         LOADING
                       </Badge>
                     ) : (
                       <>
                         {workflowLiveExecutions.length > 0 && (
-                          <Badge variant="black-outline" className="text-xs">{workflowLiveExecutions.length} LIVE</Badge>
+                          <Badge variant="black-outline" className="text-sm h-7 px-3">{workflowLiveExecutions.length} LIVE</Badge>
                         )}
                         {recentExecutions.length > 0 && (
-                          <Badge variant="black-outline" className="text-xs">{recentExecutions.length} RECENT</Badge>
+                          <Badge variant="black-outline" className="text-sm h-7 px-3">{recentExecutions.length} RECENT</Badge>
                         )}
                       </>
                     )}
@@ -316,58 +316,58 @@ export function WorkflowCard({
             </CollapsibleTrigger>
             
             <CollapsibleContent>
-              <div className="mt-2 max-h-[300px] overflow-y-auto border border-black rounded-lg bg-white">
+              <div className="mt-2 max-h-[400px] overflow-y-auto border border-black rounded-lg bg-white">
                 {loadingExecutions ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
-                      <span className="text-sm font-mono text-gray-600">Loading execution history...</span>
+                      <span className="text-base font-mono text-gray-600">Loading execution history...</span>
                     </div>
                   </div>
                 ) : unifiedExecutions.length === 0 ? (
                   <div className="flex items-center justify-center py-8">
-                    <span className="text-sm text-gray-500">No execution history available</span>
+                    <span className="text-base text-gray-500">No execution history available</span>
                   </div>
                 ) : (
                   unifiedExecutions.map((execution, index) => (
                         <div 
                           key={`exec-${execution.execution_id}`}
-                          className={`px-3 py-2 ${
+                          className={`px-4 py-1.5 ${
                             index > 0 ? 'border-t border-gray-200' : ''
                           } ${
                             loadingExecutionId === execution.execution_id 
                               ? 'bg-blue-50 cursor-wait' 
-                              : ''
+                              : 'cursor-pointer hover:bg-gray-50'
                           }`}
                           onClick={() => loadingExecutionId === null && onFetchExecutionDetails(execution.execution_id)}
                         >
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono text-black font-semibold">
+                            <span className="text-sm font-mono text-black font-semibold">
                               #{execution.execution_id}
                             </span>
                             {loadingExecutionId === execution.execution_id ? (
                               <div className="flex items-center gap-1">
-                                <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
-                                <span className="text-xs font-mono text-blue-600">LOADING...</span>
+                                <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                                <span className="text-sm font-mono text-blue-600">LOADING...</span>
                               </div>
                             ) : (
-                              <Badge className={`${getStatusBadge(execution.status)} h-5 px-1.5 text-xs`}>
+                              <Badge className={`${getStatusBadge(execution.status)} h-7 px-3 text-sm`}>
                                 {getStatusIcon(execution.status)}
                                 <span className="ml-0.5">{execution.status.toUpperCase()}</span>
                               </Badge>
                             )}
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground flex-wrap">
                               {execution.isLive ? (
                                 <>
                                   {execution.status === 'queued' && !execution.started_at && (
                                     <span className="flex items-center gap-0.5">
-                                      <Clock className="w-2.5 h-2.5" />
+                                      <Clock className="w-3.5 h-3.5" />
                                       Queued {new Date(execution.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                   )}
                                   {execution.status === 'running' && execution.started_at && (
                                     <span className="flex items-center gap-0.5">
-                                      <Clock className="w-2.5 h-2.5" />
+                                      <Clock className="w-3.5 h-3.5" />
                                       Started {new Date(execution.started_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                   )}
@@ -409,7 +409,7 @@ export function WorkflowCard({
                                   {execution.current_step_description && (
                                     <>
                                       <span className="text-gray-400">•</span>
-                                      <span className="text-blue-600 truncate inline-block max-w-[550px]" title={execution.current_step_description}>
+                                      <span className="text-blue-600 truncate inline-block max-w-[450px]" title={execution.current_step_description}>
                                         {execution.current_step_description}
                                       </span>
                                     </>
@@ -419,7 +419,7 @@ export function WorkflowCard({
                                 <>
                               {execution.completed_at && (
                                 <span className="flex items-center gap-0.5">
-                                  <Clock className="w-2.5 h-2.5" />
+                                  <Clock className="w-3.5 h-3.5" />
                                   {new Date(execution.completed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               )}
@@ -432,7 +432,7 @@ export function WorkflowCard({
                               {execution.status === 'completed' && execution.formatted_output && (
                                 <>
                                   <span className="text-gray-400">•</span>
-                                  <div className="flex items-center gap-1.5 text-xs">
+                                  <div className="flex items-center gap-1.5 text-sm flex-wrap">
                                     {(() => {
                                       try {
                                         const quotes = JSON.parse(execution.formatted_output);
@@ -442,7 +442,7 @@ export function WorkflowCard({
                                           const fullTitle = quotes.map(q => `${q.carrierProduct}: ${q.quoteValue || ''}`).join(', ');
                                           
                                           return (
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                               <span className="text-green-700">{quotes.length} quote{quotes.length > 1 ? 's' : ''} found:</span>
                                                   <span className="font-mono bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate max-w-[400px]" title={fullTitle}>
                                                 {quoteDisplay}
@@ -451,9 +451,9 @@ export function WorkflowCard({
                                             </div>
                                           )
                                         }
-                                        return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
+                                        return <span className="text-green-700 truncate inline-block max-w-[450px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
                                       } catch {
-                                        return <span className="text-green-700 truncate inline-block max-w-[550px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
+                                        return <span className="text-green-700 truncate inline-block max-w-[450px]" title={execution.formatted_output}>{execution.formatted_output.split('\n')[0]}</span>
                                       }
                                     })()}
                                   </div>
@@ -462,7 +462,7 @@ export function WorkflowCard({
                               {execution.status === 'failed' && (execution.error_message || execution.formatted_output) && (
                                 <>
                                   <span className="text-gray-400">•</span>
-                                      <span className="text-red-600 truncate inline-block max-w-[550px]" title={execution.error_message || execution.formatted_output || ''}>
+                                      <span className="text-red-600 truncate inline-block max-w-[450px] text-sm" title={execution.error_message || execution.formatted_output || ''}>
                                     {(() => {
                                       if (execution.error_message) return execution.error_message;
                                       if (execution.formatted_output) {
