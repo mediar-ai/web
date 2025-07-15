@@ -112,12 +112,46 @@ export async function POST(
     
     console.log(`🚀 Executing workflow ${workflowIdNum} with parameters:`, body);
     
-    // Extract parameters from request body
-    const { 
-      parameters: execution_params = {}, 
-      client_id = `web-${Date.now()}`,
-      execution_mode = 'async'
-    } = body;
+    // Strict parameter extraction - require "parameters" key
+    if (!body.parameters) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing required "parameters" key in request body',
+          expected_format: {
+            parameters: {
+              "param1": "value1",
+              "param2": "value2"
+            }
+          },
+          help: {
+            message: 'Parameters must be wrapped under "parameters" key',
+            schema_endpoint: `/api/remote-workflows/${workflowIdNum}/schema`,
+            docs_url: `/docs/api/remote-workflows`
+          }
+        },
+        { status: 400 }
+      );
+    }
+
+    if (typeof body.parameters !== 'object' || body.parameters === null) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Parameters must be a valid object',
+          received_type: typeof body.parameters,
+          help: {
+            schema_endpoint: `/api/remote-workflows/${workflowIdNum}/schema`,
+            docs_url: `/docs/api/remote-workflows`
+          }
+        },
+        { status: 400 }
+      );
+    }
+
+    const execution_params = body.parameters;
+    const client_id = body.client_id || `web-${Date.now()}`;
+    const execution_mode = body.execution_mode || 'async';
 
     console.log('✅ Extracted execution_params:', execution_params);
 
