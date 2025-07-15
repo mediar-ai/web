@@ -1,6 +1,79 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Helper function to get API parameter names from workflow schema
+async function getApiParameterNames(workflowId: number, executionParams: Record<string, unknown>) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return { error: "Database connection not available" };
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Get the workflow's automation sequence to understand parameter schema
+    const { data: workflow } = await supabase
+      .from('deployed_workflows')
+      .select('automation_sequence')
+      .eq('id', workflowId)
+      .single();
+
+    if (!workflow?.automation_sequence || !Array.isArray(workflow.automation_sequence) || workflow.automation_sequence.length === 0) {
+      return { 
+        message: "No schema available for this workflow",
+        schema_endpoint: `/api/remote-workflows/${workflowId}/schema`
+      };
+    }
+
+    // Extract the parameter schema from the automation sequence
+    const mainSequence = workflow.automation_sequence[0];
+    const variables = mainSequence?.arguments?.variables || {};
+    
+    // Flatten any nested structures to get the expected flat parameter names
+    const flattenParameterNames = (obj: Record<string, unknown>, prefix = ''): string[] => {
+      const names: string[] = [];
+      
+      for (const [key, value] of Object.entries(obj)) {
+        const fullKey = prefix ? `${prefix}.${key}` : key;
+        
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          const valueObj = value as Record<string, unknown>;
+          
+          // Check if this is a parameter definition or a nested object
+          if (valueObj.type || valueObj.description || valueObj.default !== undefined) {
+            // This is a parameter definition
+            names.push(fullKey);
+          } else {
+            // This might be a nested group - recurse
+            names.push(...flattenParameterNames(valueObj, fullKey));
+          }
+        }
+      }
+      
+      return names;
+    };
+
+    const expectedParameterNames = flattenParameterNames(variables);
+    const actualParameterNames = Object.keys(executionParams);
+
+    return {
+      expected_parameter_names: expectedParameterNames,
+      actual_parameter_names: actualParameterNames,
+      parameter_count_match: expectedParameterNames.length === actualParameterNames.length,
+      schema_endpoint: `/api/remote-workflows/${workflowId}/schema`,
+      docs_endpoint: `/docs/api/remote-workflows`
+    };
+
+  } catch (error) {
+    return { 
+      error: "Failed to analyze parameter schema",
+      details: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ executionId: string }> }
@@ -106,6 +179,22 @@ export async function GET(
         client_id: execution.client_id,
         execution_params: execution.execution_params || {},
         execution_logs: execution.execution_logs || [],
+
+        // Request Parameters - Enhanced with both original and processed formats
+        request_parameters: {
+          // The parameters as sent in the original request
+          original_request: execution.execution_params || {},
+          
+          // Also show what flat parameter names should be used for the execute endpoint
+          // by getting schema info from the workflow
+          api_parameter_names: execution.execution_params ? await getApiParameterNames(execution.workflow_id, execution.execution_params) : {},
+          
+          // Parameter count for quick reference
+          parameter_count: execution.execution_params ? Object.keys(execution.execution_params).length : 0,
+          
+          // Helper info
+          note: "Use 'original_request' to see exactly what was sent. Check API docs for current parameter schema."
+        },
         
         // Results (only if completed or failed)
         results: isCompleted ? (execution.results || {}) : null,
