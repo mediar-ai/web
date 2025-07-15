@@ -68,6 +68,10 @@ export default function RemoteWorkflowsAPIDocsPage() {
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const [selectedEndpoint, setSelectedEndpoint] = useState<string>('overview');
   
+  // New state for dynamic API responses
+  const [dynamicResponses, setDynamicResponses] = useState<Record<string, string>>({});
+  const [loadingResponses, setLoadingResponses] = useState(false);
+  
   useEffect(() => {
     mermaid.initialize({ 
       startOnLoad: true,
@@ -151,6 +155,104 @@ export default function RemoteWorkflowsAPIDocsPage() {
 
     fetchWorkflowSchemas();
   }, []);
+
+  // Fetch real API responses for documentation examples
+  useEffect(() => {
+    const fetchDynamicResponses = async () => {
+      try {
+        setLoadingResponses(true);
+        console.log('🔄 Fetching real API responses for documentation...');
+        
+        const responses: Record<string, string> = {};
+
+        // Fetch execution details from a recent execution
+        try {
+          const executionsResponse = await fetch('/api/remote-workflows/executions?limit=1');
+          const executionsData = await executionsResponse.json();
+          
+          if (executionsData.success && executionsData.executions.length > 0) {
+            const latestExecution = executionsData.executions[0];
+            const detailsResponse = await fetch(`/api/remote-workflows/executions/${latestExecution.execution_id}`);
+            const detailsData = await detailsResponse.json();
+            
+            if (detailsData.success) {
+              responses['get-execution-details'] = JSON.stringify(detailsData, null, 2);
+              console.log('✅ Fetched real execution details response');
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Could not fetch execution details:', error);
+        }
+
+        // Fetch list executions response
+        try {
+          const listResponse = await fetch('/api/remote-workflows/executions?limit=2');
+          const listData = await listResponse.json();
+          
+          if (listData.success) {
+            responses['list-executions'] = JSON.stringify(listData, null, 2);
+            console.log('✅ Fetched real executions list response');
+          }
+        } catch (error) {
+          console.warn('⚠️ Could not fetch executions list:', error);
+        }
+
+        // Fetch live execution status
+        try {
+          const liveResponse = await fetch('/api/remote-workflows/executions/live?limit=2');
+          const liveData = await liveResponse.json();
+          
+          if (liveData.success) {
+            responses['live-execution-status'] = JSON.stringify(liveData, null, 2);
+            console.log('✅ Fetched real live execution status response');
+          }
+        } catch (error) {
+          console.warn('⚠️ Could not fetch live executions:', error);
+        }
+
+        // Fetch workflow list response
+        try {
+          const workflowsResponse = await fetch('/api/remote-workflows/list?limit=2');
+          const workflowsData = await workflowsResponse.json();
+          
+          if (workflowsData.success) {
+            responses['list-workflows'] = JSON.stringify(workflowsData, null, 2);
+            console.log('✅ Fetched real workflows list response');
+          }
+        } catch (error) {
+          console.warn('⚠️ Could not fetch workflows list:', error);
+        }
+
+        // Fetch workflow details (use first available workflow)
+        if (Object.keys(workflowSchemas).length > 0) {
+          const firstWorkflowId = Object.keys(workflowSchemas)[0];
+          try {
+            const workflowResponse = await fetch(`/api/remote-workflows/${firstWorkflowId}`);
+            const workflowData = await workflowResponse.json();
+            
+            if (workflowData.success) {
+              responses['get-workflow-details'] = JSON.stringify(workflowData, null, 2);
+              console.log('✅ Fetched real workflow details response');
+            }
+          } catch (error) {
+            console.warn('⚠️ Could not fetch workflow details:', error);
+          }
+        }
+
+        console.log(`✅ Successfully loaded ${Object.keys(responses).length} dynamic API responses`);
+        setDynamicResponses(responses);
+      } catch (error) {
+        console.error('❌ Failed to fetch dynamic responses:', error);
+      } finally {
+        setLoadingResponses(false);
+      }
+    };
+
+    // Only fetch responses after schemas are loaded (so we have workflow IDs)
+    if (!loadingSchemas && Object.keys(workflowSchemas).length > 0) {
+      fetchDynamicResponses();
+    }
+  }, [loadingSchemas, workflowSchemas]);
 
   // Helper function to generate dynamic execute workflow endpoints from real schemas
   const generateExecuteWorkflowEndpoints = (schemas: Record<number, WorkflowSchema>) => {
@@ -420,6 +522,49 @@ graph TB
     "execution_params": {
       "customer_info": {...}
     },
+    "request_parameters": {
+      "original_request": {
+        "customer_info": {
+          "state": "California",
+          "height": "5'10\\"",
+          "weight": "180",
+          "zip_code": "90210",
+          "date_of_birth": "01/15/1985"
+        },
+        "insurance_preferences": {
+          "gender": "Male",
+          "nicotine": "Never",
+          "face_value": "$100,000"
+        }
+      },
+      "api_parameter_names": {
+        "expected_parameter_names": [
+          "applicant_dob",
+          "product_types", 
+          "applicant_state",
+          "applicant_gender",
+          "applicant_height",
+          "applicant_weight",
+          "registration_key",
+          "applicant_zip_code",
+          "registration_email",
+          "policy_coverage_type",
+          "open_enrollment_status",
+          "applicant_tobacco_usage",
+          "quote_type",
+          "quote_value"
+        ],
+        "actual_parameter_names": [
+          "customer_info",
+          "insurance_preferences"
+        ],
+        "parameter_count_match": false,
+        "schema_endpoint": "/api/remote-workflows/1/schema",
+        "docs_endpoint": "/docs/api/remote-workflows"
+      },
+      "parameter_count": 2,
+      "note": "Use 'original_request' to see exactly what was sent. Check API docs for current parameter schema."
+    },
     "results": {
       "error_details": "MCP endpoint test failed",
       "execution_summary": {
@@ -629,6 +774,13 @@ graph TB
               <p className="text-gray-800 text-sm">⚠️ Could not load dynamic schemas: {schemaError}. Showing static examples.</p>
             </div>
           )}
+
+          {/* Dynamic Response Status - only show when there are issues */}
+          {loadingResponses && (
+            <div className="mb-4 p-3 bg-gray-50 border border-black rounded-lg">
+              <p className="text-gray-700 text-sm">🔄 Loading real API responses to generate live documentation examples...</p>
+            </div>
+          )}
           
           {/* Overview Section */}
           <div className="mb-8">
@@ -673,6 +825,9 @@ graph TB
     // Find the selected endpoint
     const endpoint = endpoints.find(ep => ep.id === selectedEndpoint);
     if (!endpoint) return null;
+
+    // Use dynamic response if available, otherwise use static example
+    const response = dynamicResponses[endpoint.id] || endpoint.response;
 
     return (
       <div className="max-w-4xl">
@@ -738,8 +893,16 @@ graph TB
         {endpoint.response && (
           <div className="mb-8">
             <h3 className="text-lg font-semibold mb-3">Response</h3>
+            
+            {/* Show indicator only when using static data */}
+            {!dynamicResponses[endpoint.id] && (
+              <div className="mb-2 px-2 py-1 bg-gray-100 border border-gray-300 rounded text-xs text-gray-600">
+                📝 STATIC: Example response (live data not available)
+              </div>
+            )}
+            
             <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
-{endpoint.response}
+{response}
             </pre>
           </div>
         )}
