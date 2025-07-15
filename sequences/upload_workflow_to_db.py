@@ -171,9 +171,6 @@ def main():
     
     if success:
         print(f"\n✅ Upload completed successfully!")
-        print(f"📝 Next steps:")
-        print(f"  1. Deploy to Modal: modal deploy modal-apps/workflow_executor.py")
-        print(f"  2. Trigger execution: curl -X POST http://localhost:3000/api/remote-workflows/{workflow_id}/execute")
     else:
         print(f"\n❌ Upload failed!")
         sys.exit(1)
