@@ -238,14 +238,6 @@ export default function WorkflowsPage() {
           >
             API DOCS
           </Button>
-          <Button 
-            onClick={() => window.open('https://www.postman.com/matt-3648038/mediar-deployed-workflows-workspace/overview', '_blank')}
-            variant="outline" 
-            size="default" 
-            className="bg-white text-black border-black hover:bg-black hover:text-white text-base font-mono cursor-pointer"
-          >
-            POSTMAN COLLECTION
-        </Button>
         </div>
       </div>
 
