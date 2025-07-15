@@ -34,7 +34,7 @@ const FloatingDelta = ({ value }: { value: number }) => {
       {deltas.map(delta => (
         <span
           key={delta.id}
-          className={`absolute -top-2 -right-6 px-1.5 py-0.5 text-xs font-bold rounded-full animate-bounce-in-out ${
+          className={`absolute -top-2 -right-6 px-2 py-1 text-sm font-bold rounded-full animate-bounce-in-out ${
             delta.value > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
           }`}
         >
@@ -216,7 +216,7 @@ export default function WorkflowsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-lg font-mono">LOADING...</div>
+        <div className="text-xl font-mono">LOADING...</div>
       </div>
     );
   }
@@ -226,23 +226,23 @@ export default function WorkflowsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Remote Workflow Execution</h1>
-          <p className="text-muted-foreground">Execute and monitor automated workflows remotely</p>
+          <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
+          <p className="text-muted-foreground text-lg">Execute and monitor automated workflows remotely</p>
         </div>
         <div className="flex gap-2">
           <Button 
             onClick={() => window.open('/docs/api/remote-workflows', '_blank')}
             variant="outline" 
-            size="sm" 
-            className="bg-white text-black border-black hover:bg-black hover:text-white"
+            size="default" 
+            className="bg-white text-black border-black hover:bg-black hover:text-white text-base font-mono cursor-pointer"
           >
             API DOCS
           </Button>
           <Button 
             onClick={() => window.open('https://www.postman.com/matt-3648038/mediar-deployed-workflows-workspace/overview', '_blank')}
             variant="outline" 
-            size="sm" 
-            className="bg-white text-black border-black hover:bg-black hover:text-white"
+            size="default" 
+            className="bg-white text-black border-black hover:bg-black hover:text-white text-base font-mono cursor-pointer"
           >
             POSTMAN COLLECTION
         </Button>
@@ -254,8 +254,8 @@ export default function WorkflowsPage() {
         <Card className="border-black">
           <CardContent className="p-4">
             <div>
-              <p className="text-sm font-mono text-black">AVAILABLE WORKFLOWS</p>
-              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+              <p className="text-base font-mono text-black">AVAILABLE WORKFLOWS</p>
+              <p className="relative inline-block text-4xl font-mono font-bold text-black">
                 {workflows.length}
                 <FloatingDelta value={workflows.length - previousWorkflows.current.length} />
               </p>
@@ -266,13 +266,13 @@ export default function WorkflowsPage() {
         <Card className="border-black">
           <CardContent className="p-4">
             <div>
-              <p className="text-sm font-mono text-black">ACTIVE EXECUTIONS</p>
-              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+              <p className="text-base font-mono text-black">ACTIVE EXECUTIONS</p>
+              <p className="relative inline-block text-4xl font-mono font-bold text-black">
                 {liveStats.total_active}
                 <FloatingDelta value={liveStats.total_active - previousLiveStats.current.total_active} />
               </p>
               {liveStats.running > 0 && (
-                <p className="text-xs font-mono text-black mt-1">
+                <p className="text-sm font-mono text-black mt-1">
                   {liveStats.running} RUNNING • {Math.round(liveStats.average_progress)}% AVG
                 </p>
               )}
@@ -283,8 +283,8 @@ export default function WorkflowsPage() {
         <Card className="border-black">
           <CardContent className="p-4">
             <div>
-              <p className="text-sm font-mono text-black">SUCCESS RATE</p>
-              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+              <p className="text-base font-mono text-black">SUCCESS RATE</p>
+              <p className="relative inline-block text-4xl font-mono font-bold text-black">
                 {successRate}%
                 <FloatingDelta value={successRate - prevSuccessRate} />
               </p>
@@ -295,8 +295,8 @@ export default function WorkflowsPage() {
         <Card className="border-black">
           <CardContent className="p-4">
             <div>
-              <p className="text-sm font-mono text-black">TOTAL EXECUTIONS</p>
-              <p className="relative inline-block text-3xl font-mono font-bold text-black">
+              <p className="text-base font-mono text-black">TOTAL EXECUTIONS</p>
+              <p className="relative inline-block text-4xl font-mono font-bold text-black">
                 {totalExecutions}
                 <FloatingDelta value={totalExecutions - prevTotalExecutions} />
               </p>
@@ -321,7 +321,7 @@ export default function WorkflowsPage() {
 
       {/* Available Workflows */}
       <div className="space-y-4">
-        <h2 className="text-xl font-bold font-mono mb-4">AVAILABLE WORKFLOWS</h2>
+        <h2 className="text-2xl font-bold font-mono mb-4">AVAILABLE WORKFLOWS</h2>
         <div className="grid gap-4">
           {workflows.map((workflow) => (
             <WorkflowCard
