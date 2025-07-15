@@ -294,7 +294,7 @@ export function WorkflowCard({
         {workflow.settings_workflows && workflow.settings_workflows.length > 0 && (
           <div className="mb-4 border-t border-gray-200 pt-4">
             <h4 className="text-sm font-mono font-bold text-black mb-3 flex items-center gap-2">
-              <span>WORKFLOW SETTINGS ({workflow.settings_workflows.length})</span>
+              <span>CONNECTED WORKFLOWS ({workflow.settings_workflows.length})</span>
             </h4>
             <div className="space-y-3 ml-4">
               {workflow.settings_workflows.map((settingsWorkflow) => (
