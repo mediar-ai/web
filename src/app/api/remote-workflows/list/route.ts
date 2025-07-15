@@ -36,6 +36,75 @@ function extractVariablesFromStep(step: WorkflowStep, variables: Set<string>) {
   extractFromValue(step.arguments);
 }
 
+// Helper function to recursively extract all steps from automation sequence
+function extractStepsFromSequence(automationSequence: JSONValue[]): JSONValue[] {
+  const allSteps: JSONValue[] = [];
+  
+  if (!automationSequence || !Array.isArray(automationSequence) || automationSequence.length === 0) {
+    return allSteps;
+  }
+  
+  const mainSequence = automationSequence[0] as JSONObject;
+  if (!mainSequence?.arguments) return allSteps;
+  
+  const steps = ((mainSequence.arguments as JSONObject).steps as JSONValue[]) || [];
+  
+  const processSteps = (stepList: JSONValue[]) => {
+    stepList.forEach((stepValue: JSONValue) => {
+      const step = stepValue as JSONObject;
+      allSteps.push(step);
+      
+      // Recursively process nested steps in groups
+      if (step.steps && Array.isArray(step.steps)) {
+        processSteps(step.steps);
+      }
+    });
+  };
+  
+  processSteps(steps);
+  return allSteps;
+}
+
+// Helper function to detect checkbox-list fields based on workflow patterns
+function detectCheckboxListFields(
+  allVariables: Record<string, JSONValue>, 
+  automationSequence: JSONValue[]
+): Record<string, boolean> {
+  const checkboxFields: Record<string, boolean> = {};
+  const allSteps = extractStepsFromSequence(automationSequence);
+  
+  Object.entries(allVariables).forEach(([varName, varDef]) => {
+    const variable = varDef as JSONObject;
+    
+    // Check if field meets checkbox-list criteria
+    if (
+      variable.type === 'array' &&
+      Array.isArray(variable.default) &&
+      variable.default.length >= 10 // Substantial predefined list
+    ) {
+      // Count set_toggled steps that use contains() pattern for this variable
+      const setToggledCount = allSteps.filter(stepValue => {
+        const step = stepValue as JSONObject;
+        return (
+          step.tool_name === 'set_toggled' &&
+          step.arguments &&
+          typeof (step.arguments as JSONObject).state === 'string' &&
+          ((step.arguments as JSONObject).state as string).includes(`contains(${varName},`)
+        );
+      }).length;
+      
+      // If step count ≈ default list length, it's likely a checkbox list
+      const defaultLength = variable.default.length;
+      if (setToggledCount >= defaultLength * 0.8) { // 80% coverage threshold
+        checkboxFields[varName] = true;
+        console.log(`🔍 Detected checkbox-list field: ${varName} (${setToggledCount}/${defaultLength} steps)`);
+      }
+    }
+  });
+  
+  return checkboxFields;
+}
+
 // Analyze automation sequence to identify conditional logic
 function analyzeAutomationSequence(automationSequence: JSONValue[]) {
   if (!automationSequence || !Array.isArray(automationSequence) || automationSequence.length === 0) {
@@ -155,8 +224,10 @@ function isVariableUsedInAnyBranch(varName: string, conditionalBranches: Record<
 }
 
 // Helper to recursively transform variables into a UI-friendly schema
-const transformVariablesToSchema = (variables: JSONObject): JSONObject => {
+const transformVariablesToSchema = (variables: JSONObject, automationSequence: JSONValue[] = []): JSONObject => {
   const schema: JSONObject = {};
+  const checkboxFields = detectCheckboxListFields(variables, automationSequence);
+  
   for (const key in variables) {
     if (Object.prototype.hasOwnProperty.call(variables, key)) {
       const variable = { ...(variables[key] as JSONObject) };
@@ -166,6 +237,15 @@ const transformVariablesToSchema = (variables: JSONObject): JSONObject => {
         variable.type = 'select';
         // Format options for the Select component
         variable.options = (variable.options as string[]).map(opt => ({ value: opt, label: opt }));
+      }
+      // Convert detected checkbox arrays to checkbox-list
+      else if (checkboxFields[key]) {
+        variable.type = 'checkbox-list';
+        variable.options = (variable.default as string[]).map(item => ({
+          value: item,
+          label: item
+        }));
+        console.log(`✅ Converted ${key} to checkbox-list with ${(variable.default as string[]).length} options`);
       }
       
       schema[key] = variable;
@@ -306,8 +386,8 @@ export async function GET(request: NextRequest) {
           // Merge core and conditional variables into a hierarchical schema
           const hierarchicalSchema = { ...coreVariables, ...conditionalVariables };
           
-          // Transform the schema for UI (convert enum to select, etc.)
-          executionSchema = transformVariablesToSchema(hierarchicalSchema);
+          // Transform the schema for UI (convert enum to select, checkbox-list, etc.)
+          executionSchema = transformVariablesToSchema(hierarchicalSchema, workflow.automation_sequence);
           
           // Extract default values from the hierarchical schema
           sampleInputs = extractDefaults(executionSchema);
