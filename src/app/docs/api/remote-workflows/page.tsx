@@ -199,7 +199,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
 
         // Fetch live execution status
         try {
-          const liveResponse = await fetch('/api/remote-workflows/executions/live?limit=2');
+          const liveResponse = await fetch('/api/remote-workflows/executions/live?limit=10');
           const liveData = await liveResponse.json();
           
           if (liveData.success) {
@@ -595,7 +595,7 @@ graph TB
       queryParams: [
         { name: 'status', type: 'string', optional: true, description: 'Filter by status ("active" for running/queued)' },
         { name: 'workflow_id', type: 'number', optional: true, description: 'Filter by workflow ID' },
-        { name: 'limit', type: 'number', optional: true, description: 'Max results (default: 50)' }
+        { name: 'limit', type: 'number', optional: true, description: 'Maximum number of executions to return (default: 50). Example: ?limit=10 for dashboard widgets.' }
       ],
       response: `{
   "success": true,
