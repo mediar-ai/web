@@ -1131,7 +1131,7 @@ graph TB
                 onClick={() => copyToClipboard(generateCompleteCollection(), 'complete-postman-collection')}
                 className="px-4 py-2 bg-black text-white border border-black rounded hover:bg-gray-800 transition-colors text-sm font-medium"
               >
-                {copiedStates['complete-postman-collection'] || '📋 Copy Complete Collection'}
+                {copiedStates['complete-postman-collection'] || '📋 Copy Complete Postman Collection of Example Requests'}
               </button>
               <button
                 onClick={() => window.open('https://www.postman.com/matt-3648038/mediar-deployed-workflows-workspace/overview', '_blank')}

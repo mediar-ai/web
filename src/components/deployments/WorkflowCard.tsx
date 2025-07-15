@@ -78,6 +78,7 @@ export function WorkflowCard({
   isNested,
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [connectedWorkflowsExpanded, setConnectedWorkflowsExpanded] = useState(false);
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
   const [resumingWorkflow, setResumingWorkflow] = useState(false);
@@ -293,27 +294,36 @@ export function WorkflowCard({
         {/* Settings Workflows Section - Nested WorkflowCards */}
         {workflow.settings_workflows && workflow.settings_workflows.length > 0 && (
           <div className="mb-4 border-t border-gray-200 pt-4">
-            <h4 className="text-sm font-mono font-bold text-black mb-3 flex items-center gap-2">
-              <span>CONNECTED WORKFLOWS ({workflow.settings_workflows.length})</span>
-            </h4>
-            <div className="space-y-3 ml-4">
-              {workflow.settings_workflows.map((settingsWorkflow) => (
-                <WorkflowCard
-                  key={settingsWorkflow.id}
-                  workflow={settingsWorkflow as WorkflowWithSettings}
-                  executions={[]} // Settings workflows don't have executions yet
-                  liveExecutions={[]} // Settings workflows don't have live executions yet
-                  executingWorkflows={executingWorkflows}
-                  onFetchWorkflowDetails={onFetchWorkflowDetails}
-                  onFetchExecutionDetails={onFetchExecutionDetails}
-                  loadingDetails={loadingDetails}
-                  loadingExecutionId={loadingExecutionId}
-                  loadingExecutions={false}
-                  onBatchSubmit={onBatchSubmit}
-                  isNested={true}
-                />
-              ))}
-            </div>
+            <Collapsible open={connectedWorkflowsExpanded} onOpenChange={setConnectedWorkflowsExpanded}>
+              <CollapsibleTrigger className="w-full cursor-pointer">
+                <div className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded transition-colors cursor-pointer">
+                  {connectedWorkflowsExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  <h4 className="text-sm font-mono font-bold text-black flex items-center gap-2">
+                    <span>CONNECTED WORKFLOWS ({workflow.settings_workflows.length})</span>
+                  </h4>
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-3 ml-4 mt-3">
+                  {workflow.settings_workflows.map((settingsWorkflow) => (
+                    <WorkflowCard
+                      key={settingsWorkflow.id}
+                      workflow={settingsWorkflow as WorkflowWithSettings}
+                      executions={[]} // Settings workflows don't have executions yet
+                      liveExecutions={[]} // Settings workflows don't have live executions yet
+                      executingWorkflows={executingWorkflows}
+                      onFetchWorkflowDetails={onFetchWorkflowDetails}
+                      onFetchExecutionDetails={onFetchExecutionDetails}
+                      loadingDetails={loadingDetails}
+                      loadingExecutionId={loadingExecutionId}
+                      loadingExecutions={false}
+                      onBatchSubmit={onBatchSubmit}
+                      isNested={true}
+                    />
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </div>
         )}
         
