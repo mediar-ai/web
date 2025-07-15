@@ -183,10 +183,10 @@ export default function RemoteWorkflowsAPIDocsPage() {
       return js;
     };
     
-    // Generate Postman collection item
+    // Generate complete Postman collection
     const generatePostman = () => {
       const urlParts = new URL(fullUrl);
-      const postmanItem = {
+      const postmanRequestItem = {
         name: endpoint.title,
         request: {
           method: endpoint.method,
@@ -219,8 +219,18 @@ export default function RemoteWorkflowsAPIDocsPage() {
         },
         response: []
       };
+
+      // Create complete Postman collection structure
+      const postmanCollection = {
+        info: {
+          name: "Remote Workflows API Collection",
+          description: `Collection for ${endpoint.title} - Generated from Mediar API documentation`,
+          schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+        },
+        item: [postmanRequestItem]
+      };
       
-      return JSON.stringify(postmanItem, null, 2);
+      return JSON.stringify(postmanCollection, null, 2);
     };
     
     return {
@@ -1108,7 +1118,7 @@ graph TB
                 {/* Postman Example */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-md font-medium">Postman Collection Item</h4>
+                    <h4 className="text-md font-medium">Postman Collection</h4>
                     <button
                       onClick={() => copyToClipboard(examples.postman, `${endpoint.id}-postman`)}
                       className="px-3 py-1 bg-white text-black border border-black rounded hover:bg-black hover:text-white transition-colors text-sm font-mono"
