@@ -42,6 +42,64 @@ function flattenSchema(schema: JsonObject, path = '', acc: Record<string, Schema
   return acc;
 }
 
+const CheckboxListField = ({ 
+  options, 
+  selectedValues, 
+  onToggle,
+  disabled = false 
+}: {
+  options: Array<{ value: string; label: string }>;
+  selectedValues: JsonValue[];
+  onToggle: (value: string, checked: boolean) => void;
+  disabled?: boolean;
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const filteredOptions = options.filter(opt => 
+    opt.label.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  
+  return (
+    <div className="w-56">
+      <Input
+        placeholder="Search options..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        className="mb-2 h-6 text-xs border-black"
+        disabled={disabled}
+      />
+      <div className="max-h-48 overflow-y-auto border border-black rounded p-2 bg-gray-50">
+        <div className="mb-2 text-xs text-gray-600 font-medium">
+          {selectedValues.length} of {options.length} selected
+        </div>
+        {filteredOptions.length > 0 ? (
+          filteredOptions.map(option => {
+            const isSelected = selectedValues.some(v => String(v) === option.value);
+            return (
+              <label 
+                key={option.value} 
+                className="flex items-center gap-2 p-1 hover:bg-gray-100 cursor-pointer text-xs rounded"
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(e) => onToggle(option.value, e.target.checked)}
+                  disabled={disabled}
+                  className="h-3 w-3"
+                />
+                <span className={isSelected ? 'font-medium' : ''}>{option.label}</span>
+              </label>
+            );
+          })
+        ) : (
+          <div className="text-xs text-gray-500 p-2 text-center">
+            {searchTerm ? 'No options match your search' : 'No options available'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const ParameterField = ({
   label,
   path,
@@ -95,6 +153,25 @@ const ParameterField = ({
   const renderDynamicInput = () => {
     const placeholder = schema.default ? `${schema.default}` : "Add a value...";
 
+    if (schema.type === 'checkbox-list' && schema.options) {
+      return (
+        <CheckboxListField
+          options={schema.options as Array<{ value: string; label: string }>}
+          selectedValues={values}
+          onToggle={(value, checked) => {
+            if (checked) {
+              const err = onAddValue(path, value);
+              if (err) setInputError(err);
+            } else {
+              const index = values.findIndex(v => String(v) === value);
+              if (index >= 0) onRemoveValue(path, index);
+            }
+          }}
+          disabled={disabled}
+        />
+      );
+    }
+
     if (schema.type === 'select' && schema.options) {
       return (
         <div className="w-56 flex gap-1">
@@ -139,6 +216,19 @@ const ParameterField = ({
       </div>
     );
   };
+
+  // Special layout for checkbox-list fields - no need for tag display
+  if (schema.type === 'checkbox-list') {
+    return (
+      <div className="grid grid-cols-3 gap-3 items-start">
+        <Label htmlFor={path} className="text-sm font-medium text-gray-700 pt-0.5 col-span-1">{label}:</Label>
+        <div className="col-span-2 flex flex-col items-start gap-1.5">
+          {renderDynamicInput()}
+          {inputError && <p className="text-red-500 text-xs">{inputError}</p>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-3 gap-3 items-start">
