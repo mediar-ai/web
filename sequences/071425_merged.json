@@ -30,14 +30,14 @@
             "regex":"(0[1-9]|1[0-2])\\/(0[1-9]|[12][0-9]|3[01])\\/\\d{4}",
             "validation_message":"Date of birth must be in MM/DD/YYYY format."
          },
-         "applicant_height":{
+         "applicant_height": {
             "type":"string",
-            "label":"Applicant Height (cm)",
-            "description":"Applicant's height in centimeters.",
-            "default":"178",
-            "regex":"^\\d{2,3}$",
-            "validation_message":"Height must be a 2 or 3 digit number in centimeters."
-         },
+            "label":"Applicant Height (ft)",
+            "description":"Applicant's height in feet and inches (e.g., '5 10').",
+            "default":"5 10",
+            "regex":"^\\d \\d{1,2}$",
+            "validation_message":"Height must be in feet and inches, separated by a space, e.g., '5 10'."
+        },
          "applicant_weight":{
             "type":"string",
             "label":"Applicant Weight (lbs)",
@@ -216,7 +216,7 @@
          "registration_key":"4WV-HJR-SA9",
          "registration_email":"louis@mediar.ai",
          "applicant_dob":"01/15/1985",
-         "applicant_height":"178",
+         "applicant_height":"5 10",
          "applicant_weight":"180",
          "applicant_gender":"Male",
          "applicant_state":"California",
