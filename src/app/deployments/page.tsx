@@ -150,7 +150,7 @@ export default function WorkflowsPage() {
   // Fetch live executions
   const fetchLiveExecutions = useCallback(async () => {
     try {
-      const response = await fetch('/api/remote-workflows/executions/live?status=active');
+      const response = await fetch('/api/remote-workflows/executions/live?status=active&limit=200');
       if (!response.ok) {
         // API endpoint might not be available yet (migration not run)
         setLiveExecutions([]);
