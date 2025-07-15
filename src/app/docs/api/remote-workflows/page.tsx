@@ -1,8 +1,6 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Card } from '@/components/ui/card';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import mermaid from 'mermaid';
 
@@ -27,6 +25,18 @@ interface WorkflowSchema {
     parameter_count: number;
     has_conditional_logic: boolean;
   };
+}
+
+// Types for validation rules
+interface ValidationRule {
+  type?: string;
+  required?: boolean;
+  description?: string;
+  options?: string[] | Array<{value: string; label: string}>;
+  conditional?: boolean;
+  branches?: string[];
+  regex?: string;
+  validation_message?: string;
 }
 
 // Endpoint type for consistency
@@ -56,6 +66,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
   const [workflowSchemas, setWorkflowSchemas] = useState<Record<number, WorkflowSchema>>({});
   const [loadingSchemas, setLoadingSchemas] = useState(true);
   const [schemaError, setSchemaError] = useState<string | null>(null);
+  const [selectedEndpoint, setSelectedEndpoint] = useState<string>('overview');
   
   useEffect(() => {
     mermaid.initialize({ 
@@ -491,131 +502,311 @@ graph TB
 
   const getMethodBadge = (method: string) => {
     const colors = {
-      GET: 'bg-black text-white',
-      POST: 'bg-gray-700 text-white',
-      PUT: 'bg-gray-600 text-white',
-      DELETE: 'bg-red-600 text-white'
+      GET: 'bg-white text-black border border-black',
+      POST: 'bg-black text-white border border-black',
+      PUT: 'bg-white text-black border border-black',
+      DELETE: 'bg-white text-black border border-black font-bold'
     };
-    return colors[method as keyof typeof colors] || 'bg-gray-500 text-white';
+    return colors[method as keyof typeof colors] || 'bg-white text-black border border-black';
+  };
+
+  // Component to display parameter validation rules
+  const ParameterValidationTable = ({ validationRules }: { validationRules: Record<string, ValidationRule> }) => {
+    if (!validationRules || Object.keys(validationRules).length === 0) {
+      return (
+        <div className="text-sm text-gray-600 italic">
+          No validation rules available for this workflow.
+        </div>
+      );
+    }
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full border border-black text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="border border-black px-3 py-2 text-left font-medium">Parameter</th>
+              <th className="border border-black px-3 py-2 text-left font-medium">Type</th>
+              <th className="border border-black px-3 py-2 text-center font-medium">Required</th>
+              <th className="border border-black px-3 py-2 text-left font-medium">Validation</th>
+              <th className="border border-black px-3 py-2 text-left font-medium">Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(validationRules).map(([param, rule]) => (
+              <tr key={param} className="hover:bg-gray-50">
+                <td className="border border-black px-3 py-2">
+                  <code className="bg-gray-100 px-1 py-0.5 rounded text-xs border border-black">{param}</code>
+                </td>
+                <td className="border border-black px-3 py-2">
+                  <Badge variant="outline" className="text-xs border-black">
+                    {rule.type || 'string'}
+                  </Badge>
+                  {rule.conditional && (
+                    <Badge variant="secondary" className="text-xs ml-1 border-black">
+                      Conditional
+                    </Badge>
+                  )}
+                </td>
+                <td className="border border-black px-3 py-2 text-center">
+                  {rule.required ? (
+                    <span className="text-black font-medium">true</span>
+                  ) : (
+                    <span className="text-gray-600">false</span>
+                  )}
+                </td>
+                <td className="border border-black px-3 py-2">
+                  <div className="space-y-1">
+                    {rule.regex && (
+                      <div>
+                        <div className="text-xs text-gray-600">Pattern:</div>
+                        <code className="bg-gray-100 px-1 py-0.5 rounded text-xs break-all border border-black">
+                          {rule.regex}
+                        </code>
+                      </div>
+                    )}
+                    {rule.options && (
+                      <div>
+                        <div className="text-xs text-gray-600">Options:</div>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(Array.isArray(rule.options) ? rule.options : []).map((option, idx) => {
+                            const optionValue = typeof option === 'string' ? option : option.value;
+                            return (
+                              <Badge key={idx} variant="outline" className="text-xs border-black">
+                                {optionValue}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {rule.branches && (
+                      <div>
+                        <div className="text-xs text-gray-600">Controls:</div>
+                        <div className="text-xs text-gray-800">
+                          {rule.branches.join(', ')}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </td>
+                <td className="border border-black px-3 py-2">
+                  <div className="text-xs text-gray-700">
+                    {rule.description}
+                    {rule.validation_message && (
+                      <div className="text-black mt-1 italic">
+                        {rule.validation_message}
+                      </div>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // Render different sections based on selectedEndpoint
+  const renderContent = () => {
+    if (selectedEndpoint === 'overview') {
+      return (
+        <div className="max-w-4xl">
+          <h1 className="text-3xl font-bold mb-2">Remote Workflows API Documentation</h1>
+          <span className="text-sm text-gray-500 mb-4 block">Jul 15, 2025</span>
+          <p className="text-muted-foreground mb-8">Complete API reference for remote workflow management and execution</p>
+          
+          {/* Dynamic Schema Status - only show when there are issues */}
+          {loadingSchemas && (
+            <div className="mb-4 p-3 bg-gray-50 border border-black rounded-lg">
+              <p className="text-gray-700 text-sm">🔄 Loading real workflow schemas to generate accurate documentation...</p>
+            </div>
+          )}
+          
+          {schemaError && (
+            <div className="mb-4 p-3 bg-gray-100 border border-black rounded-lg">
+              <p className="text-gray-800 text-sm">⚠️ Could not load dynamic schemas: {schemaError}. Showing static examples.</p>
+            </div>
+          )}
+          
+          {/* Overview Section */}
+          <div className="mb-8">
+            <h2 className="text-2xl font-semibold mb-4">Overview</h2>
+            <p className="text-gray-700 mb-4">
+              The Remote Workflows API provides endpoints for managing and executing automated workflows. 
+              All endpoints are prefixed with <code className="bg-gray-100 px-2 py-1 rounded text-sm">/api/remote-workflows</code>.
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <h3 className="font-semibold mb-2">Status Codes</h3>
+                <ul className="text-sm space-y-1">
+                  <li><code className="bg-gray-100 px-1">200</code> - Success</li>
+                  <li><code className="bg-gray-100 px-1">400</code> - Bad Request</li>
+                  <li><code className="bg-gray-100 px-1">404</code> - Not Found</li>
+                  <li><code className="bg-gray-100 px-1">500</code> - Server Error</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Rate Limiting</h3>
+                <ul className="text-sm space-y-1">
+                  <li>List endpoints: 100 req/min</li>
+                  <li>Execute endpoints: 10 req/min per workflow</li>
+                  <li>Status polling: 120 req/min</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          
+          {/* Mermaid Diagram */}
+          <div className="mb-12 p-6 bg-gray-50 rounded-lg border border-black">
+            <h2 className="text-xl font-semibold mb-4">API Structure</h2>
+            <pre className="mermaid">
+{mermaidDiagram}
+            </pre>
+          </div>
+        </div>
+      );
+    }
+
+    // Find the selected endpoint
+    const endpoint = endpoints.find(ep => ep.id === selectedEndpoint);
+    if (!endpoint) return null;
+
+    return (
+      <div className="max-w-4xl">
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-3">
+            <Badge className={getMethodBadge(endpoint.method)}>
+              {endpoint.method}
+            </Badge>
+            <code className="text-lg font-mono">{endpoint.path}</code>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">{endpoint.title}</h1>
+          <p className="text-gray-700 mt-2">{endpoint.description}</p>
+        </div>
+
+        {/* Query Parameters */}
+        {endpoint.queryParams && (
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-3">Query Parameters</h3>
+            <div className="space-y-3">
+              {endpoint.queryParams.map((param) => (
+                <div key={param.name} className="border border-black rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono border border-black">{param.name}</code>
+                    <span className="text-xs text-gray-500">({param.type}{param.optional && ', optional'})</span>
+                  </div>
+                  <p className="text-sm text-gray-600">{param.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Parameter Validation Section - only for execute endpoints */}
+        {endpoint.id.startsWith('execute-workflow-') && endpoint.workflowInfo && (
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-3">Parameter Validation</h3>
+            {(() => {
+              const workflowId = endpoint.id.replace('execute-workflow-', '');
+              const workflowSchema = workflowSchemas[parseInt(workflowId)];
+              if (workflowSchema && workflowSchema.validation_rules) {
+                return <ParameterValidationTable validationRules={workflowSchema.validation_rules as Record<string, ValidationRule>} />;
+              }
+              return (
+                <div className="text-sm text-gray-600 italic">
+                  Loading validation rules...
+                </div>
+              );
+            })()}
+          </div>
+        )}
+        
+        {/* Request Body */}
+        {endpoint.requestBody && (
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-3">Request Body</h3>
+            <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
+{endpoint.requestBody}
+            </pre>
+          </div>
+        )}
+        
+        {/* Response */}
+        {endpoint.response && (
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-3">Response</h3>
+            <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
+{endpoint.response}
+            </pre>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
-      <Card className="p-8 border-black">
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-3xl font-bold">Remote Workflows API Documentation</h1>
-          <span className="text-sm text-gray-500">Jul 1, 2025</span>
-        </div>
-        <p className="text-muted-foreground mb-4">Complete API reference for remote workflow management and execution</p>
-        
-        {/* Dynamic Schema Status - only show when there are issues */}
-        {loadingSchemas && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-blue-700 text-sm">🔄 Loading real workflow schemas to generate accurate documentation...</p>
-          </div>
-        )}
-        
-        {schemaError && (
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="text-yellow-700 text-sm">⚠️ Could not load dynamic schemas: {schemaError}. Showing static examples.</p>
-          </div>
-        )}
-        
-        {/* Mermaid Diagram */}
-        <div className="mb-12 p-6 bg-gray-50 rounded-lg border border-gray-200">
-          <h2 className="text-xl font-semibold mb-4">API Structure</h2>
-          <pre className="mermaid">
-{mermaidDiagram}
-          </pre>
+    <div className="flex min-h-screen bg-gray-50">
+      {/* Sidebar */}
+      <div className="w-80 bg-white border-r border-black flex-shrink-0 fixed left-0 top-0 h-full overflow-y-auto">
+        <div className="p-6 border-b border-black">
+          <h2 className="text-lg font-semibold text-gray-900">API Reference</h2>
+          <p className="text-sm text-gray-600 mt-1">Remote Workflows API</p>
         </div>
         
-        {/* Overview Section */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4">Overview</h2>
-          <p className="text-gray-700 mb-4">
-            The Remote Workflows API provides endpoints for managing and executing automated workflows. 
-            All endpoints are prefixed with <code className="bg-gray-100 px-2 py-1 rounded text-sm">/api/remote-workflows</code>.
-          </p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div>
-              <h3 className="font-semibold mb-2">Status Codes</h3>
-              <ul className="text-sm space-y-1">
-                <li><code className="bg-gray-100 px-1">200</code> - Success</li>
-                <li><code className="bg-gray-100 px-1">400</code> - Bad Request</li>
-                <li><code className="bg-gray-100 px-1">404</code> - Not Found</li>
-                <li><code className="bg-gray-100 px-1">500</code> - Server Error</li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-2">Rate Limiting</h3>
-              <ul className="text-sm space-y-1">
-                <li>List endpoints: 100 req/min</li>
-                <li>Execute endpoints: 10 req/min per workflow</li>
-                <li>Status polling: 120 req/min</li>
-              </ul>
-            </div>
+        <nav className="p-4">
+          {/* Overview */}
+          <div className="mb-6">
+            <button
+              onClick={() => setSelectedEndpoint('overview')}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors border border-black ${
+                selectedEndpoint === 'overview'
+                  ? 'bg-black text-white border-black'
+                  : 'bg-white text-black border-black hover:bg-gray-50'
+              }`}
+            >
+              Overview
+            </button>
           </div>
-        </div>
-        
-        {/* API Endpoints with Accordion */}
-        <div>
-          <h2 className="text-2xl font-semibold mb-4">API Endpoints</h2>
-          <Accordion type="single" collapsible className="space-y-2">
-            {endpoints.map((endpoint) => (
-              <AccordionItem key={endpoint.id} value={endpoint.id} className="border border-gray-200 rounded-lg">
-                <AccordionTrigger className="px-6 hover:no-underline hover:bg-gray-50">
-                  <div className="flex items-center gap-3 text-left">
-                    <Badge className={getMethodBadge(endpoint.method)}>
+
+          {/* Endpoints */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Endpoints</h3>
+            <div className="space-y-1">
+              {endpoints.map((endpoint) => (
+                <button
+                  key={endpoint.id}
+                  onClick={() => setSelectedEndpoint(endpoint.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors border border-black ${
+                    selectedEndpoint === endpoint.id
+                      ? 'bg-black text-white border-black'
+                      : 'bg-white text-black border-black hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge className={`${getMethodBadge(endpoint.method)} text-xs`}>
                       {endpoint.method}
                     </Badge>
-                    <code className="text-sm font-mono">{endpoint.path}</code>
-                    <span className="text-gray-600 ml-2">{endpoint.title}</span>
+                    <span className="text-sm font-medium truncate">{endpoint.title}</span>
                   </div>
-                </AccordionTrigger>
-                <AccordionContent className="px-6 pb-6">
-                  <p className="text-gray-700 mb-4">{endpoint.description}</p>
-                  
-                  {/* Query Parameters */}
-                  {endpoint.queryParams && (
-                    <div className="mb-6">
-                      <h4 className="font-semibold mb-2">Query Parameters:</h4>
-                      <div className="space-y-2">
-                        {endpoint.queryParams.map((param) => (
-                          <div key={param.name} className="flex items-start gap-2 text-sm">
-                            <code className="bg-gray-100 px-2 py-1 rounded">{param.name}</code>
-                            <span className="text-gray-600">
-                              ({param.type}{param.optional && ', optional'}) - {param.description}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Request Body */}
-                  {endpoint.requestBody && (
-                    <div className="mb-6">
-                      <h4 className="font-semibold mb-2">Request Body:</h4>
-                      <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                        <code className="text-sm">{endpoint.requestBody}</code>
-                      </pre>
-                    </div>
-                  )}
-                  
-                  {/* Response */}
-                  <div>
-                    <h4 className="font-semibold mb-2">Response:</h4>
-                    <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                      <code className="text-sm">{endpoint.response}</code>
-                    </pre>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+                  <code className="text-xs text-gray-500 font-mono block truncate">
+                    {endpoint.path}
+                  </code>
+                </button>
+              ))}
+            </div>
+          </div>
+        </nav>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto ml-80">
+        <div className="p-8">
+          {renderContent()}
         </div>
-      </Card>
+      </div>
     </div>
   );
 } 

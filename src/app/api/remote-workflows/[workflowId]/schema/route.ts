@@ -187,6 +187,74 @@ function extractDefaultsFromHierarchical(schema: Record<string, unknown>): Recor
   return defaults;
 }
 
+// Helper to filter out internal/technical parameters that API users don't need to see
+function filterInternalParameters(schema: Record<string, unknown>): Record<string, unknown> {
+  const internalParams = ['quote_parser', 'url']; // Parameters to exclude from API documentation
+  const filtered: Record<string, unknown> = {};
+  
+  for (const [key, value] of Object.entries(schema)) {
+    if (!internalParams.includes(key)) {
+      filtered[key] = value;
+    }
+  }
+  
+  console.log(`🧹 Filtered out ${Object.keys(schema).length - Object.keys(filtered).length} internal parameters: ${internalParams.filter(param => param in schema).join(', ')}`);
+  return filtered;
+}
+
+// Helper to convert conditional branch-specific parameters back to original parameter names
+// This ensures the API documentation shows what users should actually send to the execute endpoint
+function convertToApiParameterNames(schema: Record<string, unknown>): Record<string, unknown> {
+  const apiSchema: Record<string, unknown> = {};
+  
+  for (const [key, value] of Object.entries(schema)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const param = value as Record<string, unknown>;
+      
+      // Check if this is a controlling parameter with conditional branches
+      if (param.controls) {
+        // This is a controlling parameter - keep it as is
+        apiSchema[key] = param;
+        
+        // Process the conditional branches to extract original parameter names
+        const controls = param.controls as Record<string, Record<string, unknown>>;
+        const originalParams: Record<string, unknown> = {};
+        
+        // Extract unique original parameter names from all branches
+        for (const [, branchParams] of Object.entries(controls)) {
+          for (const [, branchParamDef] of Object.entries(branchParams)) {
+            const branchParam = branchParamDef as Record<string, unknown>;
+            const originalName = branchParam._originalName as string;
+            
+            if (originalName && !originalParams[originalName]) {
+              // Create the original parameter with conditional context
+              originalParams[originalName] = {
+                ...branchParam,
+                // Remove branch-specific metadata
+                _originalName: undefined,
+                _branchValue: undefined,
+                // Add conditional context
+                conditional: true,
+                availableWhen: `${key} is set`,
+                description: `${branchParam.description || ''} (Available when ${key} matches specific values)`.trim()
+              };
+            }
+          }
+        }
+        
+        // Add original parameters to the schema
+        Object.assign(apiSchema, originalParams);
+      } else {
+        // Regular parameter - keep as is
+        apiSchema[key] = param;
+      }
+    }
+  }
+  
+  console.log(`🔄 Converted conditional parameters to API-friendly format`);
+  return apiSchema;
+}
+
 // Helper to extract validation rules from schema
 function extractValidationRules(schema: Record<string, unknown>): Record<string, unknown> {
   const rules: Record<string, unknown> = {};
@@ -268,13 +336,20 @@ export async function GET(
         
         // Merge core and conditional variables into a hierarchical schema
         const mergedSchema = { ...coreVariables, ...conditionalVariables };
-        inputParameters = mergedSchema;
         
-        // Extract sample values from the schema
-        sampleRequest = extractDefaultsFromHierarchical(mergedSchema);
+        // Filter out internal/technical parameters from the public API documentation
+        const filteredSchema = filterInternalParameters(mergedSchema);
         
-        // Extract validation rules
-        validationRules = extractValidationRules(mergedSchema);
+        // Convert conditional branch-specific parameters back to original parameter names for API docs
+        // This ensures docs show what users should actually send to the execute endpoint
+        const apiReadySchema = convertToApiParameterNames(filteredSchema);
+        inputParameters = apiReadySchema;
+        
+        // Extract sample values from the API-ready schema
+        sampleRequest = extractDefaultsFromHierarchical(apiReadySchema);
+        
+        // Extract validation rules from the API-ready schema
+        validationRules = extractValidationRules(apiReadySchema);
         
         // Extract expected outputs
         const mainSequence = workflow.automation_sequence[0];
