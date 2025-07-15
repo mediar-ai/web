@@ -462,7 +462,7 @@ graph TB
         { name: 'status', type: 'string', optional: true, description: 'Filter by execution status' },
         { name: 'limit', type: 'number', optional: true, description: 'Results per page (default: 20)' },
         { name: 'offset', type: 'number', optional: true, description: 'Pagination offset (default: 0)' },
-        { name: 'include_results', type: 'boolean', optional: true, description: 'Include full results (default: false)' }
+        { name: 'include_results', type: 'boolean', optional: true, description: 'Controls output detail level and response speed. FALSE (default): ⚡ Fast concise response (~50ms) with formatted_output only - optimized for real-time dashboards and user displays. TRUE: 🐌 Slower detailed response (~200ms+) including execution_params and full results - only use when debugging or needing complete execution data. For performance-critical apps, always use FALSE.' }
       ],
       response: `{
   "success": true,
