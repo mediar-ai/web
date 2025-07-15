@@ -284,7 +284,7 @@
                {
                   "tool_name":"set_zoom",
                   "arguments":{
-                     "percentage":50
+                     "percentage":25
                   },
                   "delay_ms":500,
                   "continue_on_error":true
@@ -681,7 +681,7 @@
                      "selector":"{{selectors.browser_window}}",
                      "include_tree":false
                   },
-                  "delay_ms":10000
+                  "delay_ms":15000
                }
             ]
          }
