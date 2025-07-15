@@ -765,7 +765,15 @@ graph TB
           {/* Dynamic Schema Status - only show when there are issues */}
           {loadingSchemas && (
             <div className="mb-4 p-3 bg-gray-50 border border-black rounded-lg">
-              <p className="text-gray-700 text-sm">🔄 Loading real workflow schemas to generate accurate documentation...</p>
+              <div className="flex items-center gap-3">
+                <div className="animate-spin">
+                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full"></div>
+                </div>
+                <p className="text-gray-700 text-sm">Loading real workflow schemas to generate accurate documentation...</p>
+              </div>
+              <div className="mt-2 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                <div className="bg-black h-full rounded-full animate-pulse" style={{width: '40%'}}></div>
+              </div>
             </div>
           )}
           
@@ -778,7 +786,15 @@ graph TB
           {/* Dynamic Response Status - only show when there are issues */}
           {loadingResponses && (
             <div className="mb-4 p-3 bg-gray-50 border border-black rounded-lg">
-              <p className="text-gray-700 text-sm">🔄 Loading real API responses to generate live documentation examples...</p>
+              <div className="flex items-center gap-3">
+                <div className="animate-spin">
+                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full"></div>
+                </div>
+                <p className="text-gray-700 text-sm">Loading real API responses to generate live documentation examples...</p>
+              </div>
+              <div className="mt-2 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                <div className="bg-black h-full rounded-full animate-pulse" style={{width: '60%'}}></div>
+              </div>
             </div>
           )}
           
@@ -871,8 +887,11 @@ graph TB
                 return <ParameterValidationTable validationRules={workflowSchema.validation_rules as Record<string, ValidationRule>} />;
               }
               return (
-                <div className="text-sm text-gray-600 italic">
-                  Loading validation rules...
+                <div className="flex items-center gap-3 p-4 bg-gray-50 border border-black rounded-lg">
+                  <div className="animate-spin">
+                    <div className="w-3 h-3 border-2 border-gray-600 border-t-transparent rounded-full"></div>
+                  </div>
+                  <span className="text-sm text-gray-600 italic">Loading validation rules...</span>
                 </div>
               );
             })()}
