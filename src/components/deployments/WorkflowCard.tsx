@@ -296,9 +296,9 @@ export function WorkflowCard({
           <div className="mb-4 border-t border-gray-200 pt-4">
             <Collapsible open={connectedWorkflowsExpanded} onOpenChange={setConnectedWorkflowsExpanded}>
               <CollapsibleTrigger className="w-full cursor-pointer">
-                <div className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded transition-colors cursor-pointer">
+                <div className="flex items-center gap-2 p-3 bg-gray-50 border border-black rounded hover:bg-gray-100 transition-colors cursor-pointer">
                   {connectedWorkflowsExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <h4 className="text-sm font-mono font-bold text-black flex items-center gap-2">
+                  <h4 className="text-base font-bold font-mono text-black">
                     <span>CONNECTED WORKFLOWS ({workflow.settings_workflows.length})</span>
                   </h4>
                 </div>
