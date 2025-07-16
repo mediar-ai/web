@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { XCircle, Terminal, FileText, Loader2 } from 'lucide-react';
 import { CopyToClipboardButton } from '@/components/common/CopyToClipboardButton';
+import { CodeBlock, JsonBlock, ApiRequestBlock } from '@/components/ui/code-block';
 import { Execution } from '@/lib/workflow-types';
 import { getStatusBadge, getStatusIcon, formatDuration } from './utils';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -157,40 +158,28 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                   )}
                   
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold">API Request</h4>
-                      <CopyToClipboardButton
-                        contentToCopy={`POST /api/remote-workflows/${execution.workflow_id}/execute\nContent-Type: application/json\n\n${JSON.stringify(execution.execution_params || {}, null, 2)}`}
-                      />
-                    </div>
-                    <pre className="bg-gray-900 text-gray-100 p-3 rounded-lg font-mono text-sm overflow-x-auto">
-                      <div className="text-green-400">POST /api/remote-workflows/{execution.workflow_id}/execute</div>
-                      <div className="text-gray-400 text-xs mb-2">Content-Type: application/json</div>
-                      {execution.execution_params && Object.keys(execution.execution_params).length > 0 ? (
-                        <code className="text-sm text-white">
-                          {JSON.stringify(execution.execution_params, null, 2)}
-                        </code>
-                      ) : (
-                        <code className="text-sm text-gray-500">
-                          {"// No parameters provided for this execution."}
-                        </code>
-                      )}
-                    </pre>
+                    <ApiRequestBlock
+                      method="POST"
+                      url={`/api/remote-workflows/${execution.workflow_id}/execute`}
+                      headers={{ 'Content-Type': 'application/json' }}
+                      body={execution.execution_params && Object.keys(execution.execution_params).length > 0 
+                        ? execution.execution_params 
+                        : "// No parameters provided for this execution."
+                      }
+                      title="API Request"
+                      size="sm"
+                    />
                   </div>
                   
                   {execution.formatted_output && (
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold">Formatted Output</h4>
-                        <CopyToClipboardButton
-                          contentToCopy={execution.formatted_output || ''}
-                        />
-                      </div>
-                      <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto whitespace-pre-wrap">
-                        <code className="text-sm">
-                          {execution.formatted_output}
-                        </code>
-                      </pre>
+                      <CodeBlock
+                        title="Formatted Output"
+                        language="json"
+                        size="sm"
+                      >
+                        {execution.formatted_output}
+                      </CodeBlock>
                     </div>
                   )}
                 </div>
@@ -239,19 +228,15 @@ export function ExecutionDetailsDialog({ execution, open, onOpenChange }: Execut
                 <div className="space-y-4">
                   {execution.results ? (
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm text-muted-foreground">
-                          The final JSON output produced by the workflow.
-                        </p>
-                        <CopyToClipboardButton
-                          contentToCopy={JSON.stringify(execution.results, null, 2)}
-                        />
-                      </div>
-                      <pre className="p-3 text-xs overflow-auto border border-black rounded-md">
-                        <code>
-                          {JSON.stringify(execution.results, null, 2)}
-                        </code>
-                      </pre>
+                      <p className="text-sm text-muted-foreground mb-2">
+                        The final JSON output produced by the workflow.
+                      </p>
+                                             <JsonBlock
+                         data={execution.results}
+                         title="Results"
+                         size="sm"
+                         theme="light"
+                       />
                     </div>
                   ) : (
                     <Alert className="text-center">

@@ -89,18 +89,18 @@ export async function GET() {
       Math.floor((Date.now() - new Date(failedLocks[0].updated_at).getTime()) / 1000) : 0;
     
     // Calculate success rate
-    const successRate = totalProcessed + totalFailed > 0 
+      const successRate = totalProcessed + totalFailed > 0 
       ? ((totalProcessed / (totalProcessed + totalFailed)) * 100)
       : 100;
-    
-    // Determine health status
-    let healthStatus = 'healthy';
+
+      // Determine health status
+      let healthStatus = 'healthy';
     if (staleLocksCount > 5 || failedToday > 20) {
-      healthStatus = 'failing';
+        healthStatus = 'failing';
     } else if (staleLocksCount > 0 || failedToday > 5 || successRate < 95) {
-      healthStatus = 'degraded';
-    }
-    
+        healthStatus = 'degraded';
+      }
+
     // Get user failure summaries
     const userFailures = Object.entries(
       (locksByStatus['failed'] || []).reduce((acc: Record<string, { userId: string; failureCount: number; latestFailure: string; longestStuckDuration: number }>, lock: ProcessingLock) => {
@@ -146,11 +146,11 @@ export async function GET() {
       failedCount,
       failedToday,
       successRate: parseFloat(successRate.toFixed(1)),
-      healthStatus,
-      staleLocksCount,
+        healthStatus,
+        staleLocksCount,
       staleLocksDetails,
-      oldestPendingAge,
-      latestFailureAge,
+        oldestPendingAge,
+        latestFailureAge,
       userFailures,
       recentFailures
     });

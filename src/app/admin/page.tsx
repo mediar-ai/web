@@ -333,7 +333,7 @@ function AuthenticatedAdminPage({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          action: 'clear_stale_locks'
+          action: 'clearStaleProcessing'
         })
       });
       

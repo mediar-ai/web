@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Terminal } from 'lucide-react';
-import { CopyToClipboardButton } from '@/components/common/CopyToClipboardButton';
+import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
 import { WorkflowOverview } from '@/lib/workflow-types';
 import { formatDuration } from './utils';
 
@@ -111,31 +111,21 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
             <Separator />
             
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold mb-3">Sample Input</h4>
-                <CopyToClipboardButton
-                  contentToCopy={JSON.stringify(workflow.sample_inputs, null, 2)}
-                />
-              </div>
-              <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto">
-                <code className="text-sm">
-                  {JSON.stringify(workflow.sample_inputs, null, 2)}
-                </code>
-              </pre>
+              <JsonBlock
+                data={workflow.sample_inputs}
+                title="Sample Input"
+                theme="light"
+                size="sm"
+              />
             </div>
             
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold mb-3">Expected Outputs</h4>
-                <CopyToClipboardButton
-                  contentToCopy={JSON.stringify(workflow.expected_outputs, null, 2)}
-                />
-              </div>
-              <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto">
-                <code className="text-sm">
-                  {JSON.stringify(workflow.expected_outputs, null, 2)}
-                </code>
-              </pre>
+              <JsonBlock
+                data={workflow.expected_outputs}
+                title="Expected Outputs"
+                theme="light"
+                size="sm"
+              />
             </div>
           </TabsContent>
           
@@ -148,45 +138,30 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
             </Alert>
             
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold">cURL Example</h4>
-                <CopyToClipboardButton
-                  contentToCopy={`curl -X POST \\
-https://app.mediar.ai/api/remote-workflows/${workflow.id}/execute \\
--H "Content-Type: application/json" \\
--d '${JSON.stringify(workflow.sample_inputs || {}, null, 2)}'`}
-                />
-              </div>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                <code className="text-sm">
+              <CodeBlock
+                language="curl"
+                title="cURL Example"
+                size="sm"
+              >
 {`curl -X POST \\
 https://app.mediar.ai/api/remote-workflows/${workflow.id}/execute \\
 -H "Content-Type: application/json" \\
 -d '${JSON.stringify(workflow.sample_inputs || {}, null, 2)}'`}
-                </code>
-              </pre>
+              </CodeBlock>
             </div>
             
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold">JavaScript Example</h4>
-                <CopyToClipboardButton
-                  contentToCopy={`fetch('/api/remote-workflows/${workflow.id}/execute', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify(${JSON.stringify(workflow.sample_inputs || {}, null, 2)})
-}).then(response => response.json())`}
-                />
-              </div>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                <code className="text-sm">
+              <CodeBlock
+                language="javascript"
+                title="JavaScript Example"
+                size="sm"
+              >
 {`fetch('/api/remote-workflows/${workflow.id}/execute', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json' },
 body: JSON.stringify(${JSON.stringify(workflow.sample_inputs || {}, null, 2)})
 }).then(response => response.json())`}
-                </code>
-              </pre>
+              </CodeBlock>
             </div>
           </TabsContent>
         </Tabs>
