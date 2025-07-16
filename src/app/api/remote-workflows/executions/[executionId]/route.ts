@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { cacheResponse, extractRequestParams, normalizeEndpointPath } from '@/lib/responseCache';
 
 // Helper function to get API parameter names from workflow schema
 async function getApiParameterNames(workflowId: number, executionParams: Record<string, unknown>) {
@@ -105,14 +106,25 @@ export async function GET(
 
     if (error || !execution) {
       console.error('❌ Error fetching execution:', error);
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Execution ${executionIdNum} not found`,
-          timestamp: new Date().toISOString()
-        },
-        { status: 404 }
-      );
+      
+      const errorResponse = {
+        success: false,
+        error: `Execution ${executionIdNum} not found`,
+        timestamp: new Date().toISOString()
+      };
+
+      // Cache the error response for documentation
+      const endpointPath = normalizeEndpointPath('/api/remote-workflows/executions/[executionId]');
+      const requestParams = extractRequestParams(request, { executionId });
+      await cacheResponse({
+        endpointPath,
+        httpMethod: 'GET',
+        statusCode: 404,
+        responseBody: errorResponse,
+        requestParams
+      });
+
+      return NextResponse.json(errorResponse, { status: 404 });
     }
 
     // Get workflow details
@@ -267,19 +279,44 @@ export async function GET(
       timestamp: new Date().toISOString()
     };
 
+    // Cache the successful response for documentation
+    const endpointPath = normalizeEndpointPath('/api/remote-workflows/executions/[executionId]');
+    const requestParams = extractRequestParams(request, { executionId });
+    await cacheResponse({
+      endpointPath,
+      httpMethod: 'GET',
+      statusCode: 200,
+      responseBody: response,
+      requestParams
+    });
+
     return NextResponse.json(response);
     
   } catch (error) {
     console.error('❌ Error getting execution details:', error);
     
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to retrieve execution details',
-        details: error instanceof Error ? error.message : String(error),
-        timestamp: new Date().toISOString()
-      },
-      { status: 500 }
-    );
+    const errorResponse = {
+      success: false,
+      error: 'Failed to retrieve execution details',
+      details: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString()
+    };
+
+    // Cache the error response for documentation
+    try {
+      const endpointPath = normalizeEndpointPath('/api/remote-workflows/executions/[executionId]');
+      const requestParams = extractRequestParams(request);
+      await cacheResponse({
+        endpointPath,
+        httpMethod: 'GET',
+        statusCode: 500,
+        responseBody: errorResponse,
+        requestParams
+      });
+    } catch (cacheError) {
+      console.warn('Failed to cache error response:', cacheError);
+    }
+    
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 } 
