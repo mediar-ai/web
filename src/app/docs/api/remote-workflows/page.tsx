@@ -604,6 +604,111 @@ export default function RemoteWorkflowsAPIDocsPage() {
     }));
   };
 
+  // Helper function to generate dynamic execute-sync workflow endpoints from real schemas
+  const generateExecuteSyncWorkflowEndpoints = (schemas: Record<number, WorkflowSchema>) => {
+    if (Object.keys(schemas).length === 0) {
+      // Return static example if no schemas loaded yet
+      return [{
+        id: 'execute-sync-workflow-loading',
+        method: 'POST',
+        path: '/api/remote-workflows/[workflowId]/execute-sync',
+        title: 'Execute Workflow Synchronously (Loading...)',
+        description: 'Loading real workflow schemas...',
+        requestBody: `{
+  "loading": "Fetching real workflow parameters..."
+}`,
+        response: `{
+  "success": true,
+  "execution_id": 44,
+  "status": "completed",
+  "message": "Workflow execution completed synchronously"
+}`
+      }];
+    }
+
+    // Generate sync endpoints for each workflow with real schemas
+    return Object.values(schemas).map(schema => ({
+      id: `execute-sync-workflow-${schema.id}`,
+      method: 'POST',
+      path: `/api/remote-workflows/${schema.id}/execute-sync`,
+      title: `Execute Workflow Synchronously: ${schema.name}`,
+      description: `Executes "${schema.name}" workflow synchronously and returns results immediately. Waits up to 5 minutes for completion. Perfect for applications that need immediate results without polling. ${schema.metadata.has_conditional_logic ? 'This workflow has conditional logic - some parameters may be required only for specific branches.' : ''}`,
+      queryParams: [
+        { name: 'full_detailed_response', type: 'boolean', optional: true, description: 'When true, includes raw data, execution logs, and detailed information. When false (default), returns basic response with results only.' }
+      ],
+      requestBody: JSON.stringify({ parameters: schema.sample_request }, null, 2),
+      response: `{
+  "success": true,
+  "execution": {
+    "execution_id": 44,
+    "workflow_id": ${schema.id},
+    "workflow_name": "${schema.name}",
+    "status": "completed",
+    "is_successful": true,
+    "created_at": "2025-01-01T20:12:35.657Z",
+    "started_at": "2025-01-01T20:12:36.000Z",
+    "completed_at": "2025-01-01T20:14:28.000Z",
+    "execution_duration_seconds": 112,
+    "runtime_seconds": 112,
+    "progress_percentage": 100,
+    "total_steps": 15,
+    "modal_call_id": "modal_sync_1751407955657_j9p0qn5ks",
+    "execution_params": {
+      "state": "California",
+      "gender": "Male",
+      "age": 35
+    },
+    "request_parameters": {
+      "original_request": {
+        "state": "California",
+        "gender": "Male", 
+        "age": 35
+      },
+      "parameter_count": 3,
+      "note": "Parameters as sent in the original request"
+    },
+    "results": {
+      "quotes": [
+        {
+          "company": "Best Plan Pro",
+          "monthly_premium": "$45.67",
+          "coverage_amount": "$500,000"
+        }
+      ],
+      "execution_summary": {
+        "workflow_completed": true
+      },
+      "performance_metrics": {
+        "successful_steps": 15,
+        "failed_steps": 0,
+        "total_steps": 15
+      }
+    },
+    "formatted_output": "✅ Successfully found 1 insurance quote:\\n\\n💰 Best Plan Pro: $45.67/month for $500,000 coverage",
+    "summary": {
+      "execution_successful": true,
+      "workflow_completed": true,
+      "steps_completed": 15,
+      "steps_failed": 0,
+      "quotes_found": 1,
+      "error_stage": null
+    }
+  },
+  "response_metadata": {
+    "execution_mode": "synchronous",
+    "detail_level": "basic",
+    "note": "Synchronous execution completed. Returns basic response without raw data or execution logs."
+  },
+  "timestamp": "2025-01-01T20:14:28.000Z"
+}`,
+      workflowInfo: {
+        parameterCount: schema.metadata.parameter_count,
+        hasConditionalLogic: schema.metadata.has_conditional_logic,
+        estimatedDuration: schema.estimated_duration_seconds
+      }
+    }));
+  };
+
   const mermaidDiagram = `
 graph TB
     subgraph "Remote Workflows API"
@@ -613,7 +718,8 @@ graph TB
         Root --> WF["/[workflowId]<br/>GET: Workflow details"]
         Root --> Exec["/executions<br/>GET: List executions"]
         
-        WF --> Execute["/execute<br/>POST: Execute workflow"]
+        WF --> Execute["/execute<br/>POST: Execute workflow (async)"]
+        WF --> ExecuteSync["/execute-sync<br/>POST: Execute workflow (sync)"]
         
         Exec --> Live["/live<br/>GET: Live execution status"]
         Exec --> ExecDetail["/[executionId]<br/>GET: Execution details"]
@@ -627,6 +733,7 @@ graph TB
     style WF fill:#f9f9f9,stroke:#000
     style Exec fill:#f9f9f9,stroke:#000
     style Execute fill:#f9f9f9,stroke:#000
+    style ExecuteSync fill:#e6f3ff,stroke:#000
     style Live fill:#f9f9f9,stroke:#000
     style ExecDetail fill:#f9f9f9,stroke:#000
     style Status fill:#ddd,stroke:#666
@@ -747,6 +854,8 @@ graph TB
     },
     // Dynamic execute workflow endpoint - will be populated from real schemas
     ...generateExecuteWorkflowEndpoints(workflowSchemas),
+    // Dynamic execute-sync workflow endpoint - will be populated from real schemas
+    ...generateExecuteSyncWorkflowEndpoints(workflowSchemas),
     {
       id: 'list-executions',
       method: 'GET',
