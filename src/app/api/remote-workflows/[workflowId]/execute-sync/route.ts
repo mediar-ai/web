@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { cacheResponse, extractRequestParams, normalizeEndpointPath } from '@/lib/responseCache';
 
 // Types for execution and workflow data
 interface ExecutionResults {
@@ -289,8 +290,23 @@ export async function POST(
       const totalTimeSeconds = Math.floor((Date.now() - startTime) / 1000);
       console.log(`✅ Synchronous execution ${execution.id} completed in ${totalTimeSeconds}s`);
 
+      // Format the response
+      const responseData = formatExecutionResponse(completedExecution, updatedWorkflow || workflow, full_detailed_response);
+      
+      // Cache the successful response for documentation
+      const endpointPath = normalizeEndpointPath(`/api/remote-workflows/[workflowId]/execute-sync`);
+      const requestParams = extractRequestParams(request, { workflowId });
+      await cacheResponse({
+        endpointPath,
+        httpMethod: 'POST',
+        statusCode: 200,
+        responseBody: responseData,
+        requestParams,
+        executionTimeMs: totalTimeSeconds * 1000
+      });
+
       // Return formatted response
-      return NextResponse.json(formatExecutionResponse(completedExecution, updatedWorkflow || workflow, full_detailed_response));
+      return NextResponse.json(responseData);
 
     } catch {
       // Execution timed out - return partial response
