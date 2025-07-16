@@ -4,6 +4,7 @@ import time
 import random
 import re
 import asyncio
+import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from contextlib import AsyncExitStack
@@ -1808,14 +1809,46 @@ def check_and_process_queued_jobs():
     
     SMART CLAIMING: Only claims a job if no execution is currently running,
     preventing Modal's internal queue from building up.
+    
+    COORDINATOR LOCKING: Uses coordinator locks to prevent multiple scheduler
+    instances from running simultaneously, ensuring true sequential processing.
     """
     conn = None
     cur = None
+    coordinator_id = f"workflow-coordinator-{uuid.uuid4().hex[:8]}-{int(time.time())}"
 
     try:
         # Connect to database
         conn = get_database_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # 🔒 COORDINATOR LOCK: Prevent multiple scheduler instances from running simultaneously
+        # This is the critical fix for the race condition that caused concurrent job processing
+        try:
+            cur.execute("""
+                INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
+                VALUES ('workflow-coordinator', 0, %s, 'in_progress', NOW() + INTERVAL '5 minutes')
+                ON CONFLICT (user_id, event_id) DO NOTHING
+                RETURNING id
+            """, (coordinator_id,))
+            
+            if not cur.fetchone():
+                logger.debug("⏸️  Another workflow coordinator is already running, skipping to prevent concurrent processing")
+                return {
+                    "status": "skipped",
+                    "reason": "coordinator_already_running",
+                    "coordinator_id": coordinator_id
+                }
+            
+            conn.commit()
+            logger.debug("🔒 Acquired workflow coordinator lock: %s", coordinator_id)
+        except Exception as lock_error:
+            logger.error("❌ Failed to acquire coordinator lock: %s", lock_error)
+            return {
+                "status": "coordinator_lock_failed",
+                "error": str(lock_error),
+                "coordinator_id": coordinator_id
+            }
 
         # Periodically clean up stale executions (every 60 calls = ~1 minute)
         # Use a simple counter based on current timestamp
@@ -1849,7 +1882,8 @@ def check_and_process_queued_jobs():
             return {
                 "status": "skipped",
                 "reason": "execution_already_running",
-                "running_count": running_count
+                "running_count": running_count,
+                "coordinator_id": coordinator_id
             }
 
         # 🚫 WORKFLOW-SPECIFIC FAILURE PATTERN CHECK: Peek at next job's workflow and check for failure patterns
@@ -1865,7 +1899,10 @@ def check_and_process_queued_jobs():
         next_job = cur.fetchone()
         if not next_job:
             # No queued jobs found
-            return {"status": "no_jobs_found"}
+            return {
+                "status": "no_jobs_found",
+                "coordinator_id": coordinator_id
+            }
         
         next_workflow_id = next_job["workflow_id"]
         
@@ -1878,7 +1915,8 @@ def check_and_process_queued_jobs():
                 "status": "blocked",
                 "reason": block_reason,
                 "workflow_id": next_workflow_id,
-                "check_duration_ms": check_duration_ms
+                "check_duration_ms": check_duration_ms,
+                "coordinator_id": coordinator_id
             }
         else:
             logger.debug("✅ Pre-claim check passed for workflow %d, proceeding to claim job (took %dms)", next_workflow_id, check_duration_ms)
@@ -1921,7 +1959,10 @@ def check_and_process_queued_jobs():
 
         if not job_to_process:
             # This is the normal state when the queue is empty.
-            return {"status": "no_jobs_found"}
+            return {
+                "status": "no_jobs_found",
+                "coordinator_id": coordinator_id
+            }
 
         # If we get here, we have successfully claimed a job.
         execution_id = job_to_process["id"]
@@ -1955,7 +1996,8 @@ def check_and_process_queued_jobs():
                 "status": "job_claimed",
                 "execution_id": execution_id,
                 "workflow_id": workflow_id,
-                "modal_future": str(modal_future)
+                "modal_future": str(modal_future),
+                "coordinator_id": coordinator_id
             }
             
         except Exception as modal_error:
@@ -1980,7 +2022,8 @@ def check_and_process_queued_jobs():
                     "execution_id": execution_id,
                     "workflow_id": workflow_id,
                     "error": str(modal_error),
-                    "action": "job_returned_to_queue"
+                    "action": "job_returned_to_queue",
+                    "coordinator_id": coordinator_id
                 }
                 
             except Exception as rollback_error:
@@ -2001,7 +2044,8 @@ def check_and_process_queued_jobs():
                     "execution_id": execution_id,
                     "workflow_id": workflow_id,
                     "error": f"Modal dispatch failed: {modal_error}",
-                    "rollback_error": str(rollback_error)
+                    "rollback_error": str(rollback_error),
+                    "coordinator_id": coordinator_id
                 }
 
     except Exception as e:
@@ -2009,9 +2053,25 @@ def check_and_process_queued_jobs():
         # Rollback any transaction if an error occurs before commit
         if conn:
             conn.rollback()
-        return {"status": "error", "error": str(e)}
+        return {
+            "status": "error", 
+            "error": str(e),
+            "coordinator_id": coordinator_id if 'coordinator_id' in locals() else "unknown"
+        }
 
     finally:
+        # 🔓 COORDINATOR LOCK RELEASE: Always release the coordinator lock
+        try:
+            if cur and conn and 'coordinator_id' in locals():
+                cur.execute("""
+                    DELETE FROM processing_locks 
+                    WHERE user_id = 'workflow-coordinator' AND event_id = 0 AND processor_id = %s
+                """, (coordinator_id,))
+                conn.commit()
+                logger.debug("🔓 Released workflow coordinator lock: %s", coordinator_id)
+        except Exception as unlock_error:
+            logger.error("❌ Failed to release coordinator lock %s: %s", coordinator_id, unlock_error)
+        
         if cur:
             cur.close()
         if conn:
