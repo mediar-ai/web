@@ -371,23 +371,9 @@ export default function WorkflowsPage() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
-            <p className="text-muted-foreground text-lg">Execute and monitor automated workflows remotely</p>
-          </div>
-          
-          {/* Connection Status Indicator */}
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
-            realtimeConnected 
-              ? 'bg-green-100 text-green-800 border border-green-200' 
-              : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
-          }`}>
-            <div className={`w-2 h-2 rounded-full ${
-              realtimeConnected ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'
-            }`} />
-            {realtimeConnected ? 'Realtime Connected' : 'Polling Mode'}
-          </div>
+        <div>
+          <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
+          <p className="text-muted-foreground text-lg">Execute and monitor automated workflows remotely</p>
         </div>
         <div className="flex gap-2">
           <Button 
@@ -487,6 +473,7 @@ export default function WorkflowsPage() {
               loadingDetails={loadingDetails}
               loadingExecutionId={loadingExecutionId}
               loadingExecutions={loadingExecutions}
+              realtimeConnected={realtimeConnected}
 
               onBatchSubmit={() => {
                 fetchExecutions();
