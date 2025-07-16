@@ -479,7 +479,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
       const values = dynamicValues[path];
       if (values && values.length > 0) {
         // Skip internal-only parameters that shouldn't be included in combinations
-        if (path === 'quote_parser' || path === 'product_types' || path === 'products_parser') {
+        if (path === 'quote_parser' || path === 'products_parser') {
           continue;
         }
         
@@ -585,7 +585,6 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
   
   // Remove internal-only parameters that shouldn't be exposed in the UI
   delete topLevelSchema.quote_parser;
-  delete topLevelSchema.product_types;
   delete topLevelSchema.products_parser;
 
   return (

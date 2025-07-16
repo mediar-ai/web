@@ -63,8 +63,24 @@ function validateParameters(params: Record<string, unknown>, schema: Record<stri
           typeof opt === 'object' && opt !== null && 'value' in opt ? opt.value : opt
         );
         
-        if (!validOptions.includes(value)) {
-          result.errors.push(`Parameter '${paramName}' must be one of: ${validOptions.join(', ')}`);
+        // Handle array fields - validate each element
+        if (def.type === 'array' && Array.isArray(value)) {
+          const invalidElements = value.filter(element => !validOptions.includes(element));
+          if (invalidElements.length > 0) {
+            result.errors.push(`Parameter '${paramName}' contains invalid values: ${invalidElements.join(', ')}. Valid options are: ${validOptions.join(', ')}`);
+            result.isValid = false;
+          }
+        }
+        // Handle single-value fields  
+        else if (def.type !== 'array') {
+          if (!validOptions.includes(value)) {
+            result.errors.push(`Parameter '${paramName}' must be one of: ${validOptions.join(', ')}`);
+            result.isValid = false;
+          }
+        }
+        // Handle case where array is expected but non-array provided
+        else if (def.type === 'array' && !Array.isArray(value)) {
+          result.errors.push(`Parameter '${paramName}' should be an array but received '${typeof value}'`);
           result.isValid = false;
         }
       }

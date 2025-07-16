@@ -76,28 +76,48 @@ function detectCheckboxListFields(
   Object.entries(allVariables).forEach(([varName, varDef]) => {
     const variable = varDef as JSONObject;
     
-    // Check if field meets checkbox-list criteria
-    if (
-      variable.type === 'array' &&
-      Array.isArray(variable.default) &&
-      variable.default.length >= 10 // Substantial predefined list
-    ) {
-      // Count set_toggled steps that use contains() pattern for this variable
-      const setToggledCount = allSteps.filter(stepValue => {
+    // Rule 1: Simple heuristic - array type with options
+    if (variable.type === 'array' && Array.isArray(variable.options)) {
+      checkboxFields[varName] = true;
+      console.log(`🔍 Detected checkbox-list field: ${varName} (array with options)`);
+      return;
+    }
+    
+    // Rule 2: Array type with default values (fallback for when options aren't explicit)
+    if (variable.type === 'array' && Array.isArray(variable.default) && variable.default.length > 0) {
+      // Check for automation sequence patterns to confirm checkbox behavior
+      const hasCheckboxPatterns = allSteps.some(stepValue => {
         const step = stepValue as JSONObject;
-        return (
-          step.tool_name === 'set_toggled' &&
-          step.arguments &&
-          typeof (step.arguments as JSONObject).state === 'string' &&
-          ((step.arguments as JSONObject).state as string).includes(`contains(${varName},`)
-        );
-      }).length;
+        
+        // Pattern A: set_toggled with contains()
+        if (step.tool_name === 'set_toggled' && 
+            step.arguments &&
+            typeof (step.arguments as JSONObject).state === 'string' &&
+            ((step.arguments as JSONObject).state as string).includes(`contains(${varName},`)) {
+          return true;
+        }
+        
+        // Pattern B: Conditional groups with contains() or !contains()
+        if (step.if && typeof step.if === 'string' &&
+            (step.if.includes(`contains(${varName},`) || 
+             step.if.includes(`!contains(${varName},`))) {
+          return true;
+        }
+        
+        // Pattern C: Group names that suggest checkbox behavior
+        if (step.group_name && typeof step.group_name === 'string' &&
+            step.if && typeof step.if === 'string' &&
+            (step.if.includes(`contains(${varName},`) || 
+             step.if.includes(`!contains(${varName},`))) {
+          return true;
+        }
+        
+        return false;
+      });
       
-      // If step count ≈ default list length, it's likely a checkbox list
-      const defaultLength = variable.default.length;
-      if (setToggledCount >= defaultLength * 0.8) { // 80% coverage threshold
+      if (hasCheckboxPatterns) {
         checkboxFields[varName] = true;
-        console.log(`🔍 Detected checkbox-list field: ${varName} (${setToggledCount}/${defaultLength} steps)`);
+        console.log(`🔍 Detected checkbox-list field: ${varName} (array with contains() patterns)`);
       }
     }
   });
@@ -241,11 +261,42 @@ const transformVariablesToSchema = (variables: JSONObject, automationSequence: J
       // Convert detected checkbox arrays to checkbox-list
       else if (checkboxFields[key]) {
         variable.type = 'checkbox-list';
-        variable.options = (variable.default as string[]).map(item => ({
-          value: item,
-          label: item
-        }));
-        console.log(`✅ Converted ${key} to checkbox-list with ${(variable.default as string[]).length} options`);
+        
+        // Use explicit options if available
+        if (Array.isArray(variable.options)) {
+          variable.options = (variable.options as string[]).map(item => ({
+            value: item,
+            label: item
+          }));
+        }
+        // Fallback: generate options from default values
+        else if (Array.isArray(variable.default)) {
+          variable.options = (variable.default as string[]).map(item => ({
+            value: item,
+            label: item
+          }));
+        }
+        
+        console.log(`✅ Converted ${key} to checkbox-list with ${Array.isArray(variable.options) ? variable.options.length : 0} options`);
+      }
+      // Simple fallback: if it's an array type, convert to checkbox-list
+      else if (variable.type === 'array') {
+        variable.type = 'checkbox-list';
+        
+        // Generate options from available sources
+        if (Array.isArray(variable.options)) {
+          variable.options = (variable.options as string[]).map(item => ({
+            value: item,
+            label: item
+          }));
+        } else if (Array.isArray(variable.default)) {
+          variable.options = (variable.default as string[]).map(item => ({
+            value: item,
+            label: item
+          }));
+        }
+        
+        console.log(`✅ Converted ${key} to checkbox-list (simple array fallback) with ${Array.isArray(variable.options) ? variable.options.length : 0} options`);
       }
       
       schema[key] = variable;
