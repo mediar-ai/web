@@ -224,10 +224,30 @@ export default function RemoteWorkflowsAPIDocsPage() {
   // Generate complete collection with all endpoints
   const generateCompleteCollection = () => {
     const baseUrl = 'https://app.mediar.ai';
-    const allRequestItems = [];
+    const allRequestItems: Array<{
+      name: string;
+      request: {
+        method: string;
+        header: Array<{ key: string; value: string }>;
+        url: {
+          raw: string;
+          protocol: string;
+          host: string[];
+          port: string;
+          path: string[];
+          query: Array<{ key: string; value: string }>;
+        };
+        body?: {
+          mode: string;
+          raw: string;
+          options: { raw: { language: string } };
+        };
+      };
+      response: unknown[];
+    }> = [];
 
-    // Process all static endpoints (excluding execute endpoints since we add them dynamically)
-    endpoints.filter(endpoint => !endpoint.path.includes('/execute')).forEach(endpoint => {
+    // Process ALL endpoints dynamically (including execute and execute-sync endpoints)
+    endpoints.forEach(endpoint => {
       let fullUrl = `${baseUrl}${endpoint.path}`;
 
       // Add query parameters for GET requests
@@ -288,72 +308,6 @@ export default function RemoteWorkflowsAPIDocsPage() {
 
       allRequestItems.push(postmanRequestItem);
     });
-
-    // Add dynamic execute workflow endpoint if available
-    if (Object.keys(workflowSchemas).length > 0) {
-      const workflowId = Object.keys(workflowSchemas)[0];
-      const schema = workflowSchemas[parseInt(workflowId)];
-      
-      if (schema && schema.name) {
-        const executeUrl = `${baseUrl}/api/remote-workflows/${workflowId}/execute`;
-        const executeUrlParts = new URL(executeUrl);
-        
-        // Generate sample request body from schema - wrap parameters under "parameters" key
-        let sampleBody = '';
-        if (schema.sample_request) {
-          // Wrap the sample_request under "parameters" key to match execute endpoint expectation
-          const wrappedRequest = {
-            parameters: schema.sample_request
-          };
-          sampleBody = JSON.stringify(wrappedRequest, null, 2);
-        } else if (schema.input_parameters) {
-          const sample: Record<string, unknown> = {};
-          Object.entries(schema.input_parameters).forEach(([key, param]) => {
-            if (param && typeof param === 'object' && 'default' in param) {
-              sample[key] = (param as { default: unknown }).default;
-            }
-          });
-          // Wrap the sample under "parameters" key
-          const wrappedRequest = {
-            parameters: sample
-          };
-          sampleBody = JSON.stringify(wrappedRequest, null, 2);
-        }
-
-        const executeRequestItem = {
-          name: `Execute Workflow: ${schema.name}`,
-          request: {
-            method: "POST",
-            header: [
-              {
-                key: "Content-Type",
-                value: "application/json"
-              }
-            ],
-            url: {
-              raw: executeUrl,
-              protocol: executeUrlParts.protocol.replace(':', ''),
-              host: [executeUrlParts.hostname],
-              port: executeUrlParts.port || "443",
-              path: executeUrlParts.pathname.split('/').filter(p => p),
-              query: []
-            },
-            body: sampleBody ? {
-              mode: "raw",
-              raw: sampleBody,
-              options: {
-                raw: {
-                  language: "json"
-                }
-              }
-            } : undefined
-          },
-          response: []
-        };
-
-        allRequestItems.push(executeRequestItem);
-      }
-    }
 
     // Create complete collection structure
     const completeCollection = {
@@ -671,7 +625,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
       title: `Execute Workflow Synchronously: ${schema.name}`,
       description: `Executes "${schema.name}" workflow synchronously and returns results immediately. Waits up to 5 minutes for completion. Perfect for applications that need immediate results without polling. ${schema.metadata.has_conditional_logic ? 'This workflow has conditional logic - some parameters may be required only for specific branches.' : ''}`,
       queryParams: [
-        { name: 'full_detailed_response', type: 'boolean', optional: true, description: 'When true, includes raw data, execution logs, and detailed information. When false (default), returns basic response with results only.' }
+        { name: 'full_detailed_response', type: 'boolean', optional: true, description: 'When true, includes raw data and execution logs. When false (default), returns basic response without raw data or execution logs.' }
       ],
       requestBody: JSON.stringify({ parameters: schema.sample_request }, null, 2),
       response: `{
@@ -944,7 +898,7 @@ graph TB
       title: 'Get Execution Details',
       description: 'Retrieves complete details about a specific execution including logs, results, and formatted output.',
       queryParams: [
-        { name: 'full_detailed_response', type: 'boolean', optional: true, description: 'When true, includes raw data, execution logs, and schema analysis. When false (default), returns basic response with formatted output only.' }
+        { name: 'full_detailed_response', type: 'boolean', optional: true, description: 'When true, includes raw data, execution logs, and schema analysis. When false (default), returns basic response only.' }
       ],
       response: `{
   "success": true,
