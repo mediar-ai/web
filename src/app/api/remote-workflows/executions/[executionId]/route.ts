@@ -83,6 +83,10 @@ export async function GET(
     const executionIdNum = parseInt(executionId);
     console.log(`⚡ Unified execution details for ${executionIdNum}...`);
     
+    // Get URL parameters for controlling response detail level
+    const { searchParams } = new URL(request.url);
+    const full_detailed_response = searchParams.get('full_detailed_response') === 'true';
+    
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -178,22 +182,29 @@ export async function GET(
         modal_call_id: execution.modal_call_id,
         client_id: execution.client_id,
         execution_params: execution.execution_params || {},
-        execution_logs: execution.execution_logs || [],
+        
+        // Include execution logs only in detailed response
+        ...(full_detailed_response && {
+          execution_logs: execution.execution_logs || []
+        }),
 
         // Request Parameters - Enhanced with both original and processed formats
         request_parameters: {
           // The parameters as sent in the original request
           original_request: execution.execution_params || {},
           
-          // Also show what flat parameter names should be used for the execute endpoint
-          // by getting schema info from the workflow
-          api_parameter_names: execution.execution_params ? await getApiParameterNames(execution.workflow_id, execution.execution_params) : {},
-          
           // Parameter count for quick reference
           parameter_count: execution.execution_params ? Object.keys(execution.execution_params).length : 0,
           
+          // Include expensive schema analysis only in detailed response
+          ...(full_detailed_response && {
+            api_parameter_names: execution.execution_params ? await getApiParameterNames(execution.workflow_id, execution.execution_params) : {}
+          }),
+          
           // Helper info
-          note: "Use 'original_request' to see exactly what was sent. Check API docs for current parameter schema."
+          note: full_detailed_response 
+            ? "Use 'original_request' to see exactly what was sent. Check API docs for current parameter schema."
+            : "Use 'original_request' to see exactly what was sent. Add '?full_detailed_response=true' for schema analysis."
         },
         
         // Results (only if completed or failed)
@@ -202,15 +213,17 @@ export async function GET(
         // Human-friendly formatted output (if available)
         formatted_output: execution.formatted_output || null,
         
-        // Raw data (for debugging)
-        raw_data: {
-          raw_logs: execution.raw_logs || null,
-          raw_mcp_response: execution.raw_mcp_response || null,
-          execution_logs: execution.execution_logs || [],
-          has_raw_logs: !!execution.raw_logs,
-          has_mcp_response: !!execution.raw_mcp_response,
-          has_execution_logs: !!(execution.execution_logs && execution.execution_logs.length > 0)
-        },
+        // Include raw data only in detailed response (for debugging)
+        ...(full_detailed_response && {
+          raw_data: {
+            raw_logs: execution.raw_logs || null,
+            raw_mcp_response: execution.raw_mcp_response || null,
+            execution_logs: execution.execution_logs || [],
+            has_raw_logs: !!execution.raw_logs,
+            has_mcp_response: !!execution.raw_mcp_response,
+            has_execution_logs: !!(execution.execution_logs && execution.execution_logs.length > 0)
+          }
+        }),
         
         // Summary
         summary: {
@@ -223,24 +236,33 @@ export async function GET(
           error_stage: execution.results?.error_stage || (hasError ? 'execution' : null)
         },
         
-        // Metadata
-        timestamps: {
-          created_at: execution.created_at,
-          updated_at: execution.updated_at,
-          started_at: execution.started_at,
-          completed_at: execution.completed_at,
-          checked_at: new Date().toISOString()
-        },
-        
-        // Navigation
-        related_endpoints: {
-          workflow_details: `/api/remote-workflows/${execution.workflow_id}`,
-          all_executions: `/api/remote-workflows/executions?workflow_id=${execution.workflow_id}`,
-          execute_workflow: `/api/remote-workflows/${execution.workflow_id}/execute`
-        },
+        // Include detailed metadata only in detailed response
+        ...(full_detailed_response && {
+          timestamps: {
+            created_at: execution.created_at,
+            updated_at: execution.updated_at,
+            started_at: execution.started_at,
+            completed_at: execution.completed_at,
+            checked_at: new Date().toISOString()
+          },
+          
+          // Navigation
+          related_endpoints: {
+            workflow_details: `/api/remote-workflows/${execution.workflow_id}`,
+            all_executions: `/api/remote-workflows/executions?workflow_id=${execution.workflow_id}`,
+            execute_workflow: `/api/remote-workflows/${execution.workflow_id}/execute`
+          }
+        }),
         
         // Polling hint
         next_poll_in_seconds: isRunning ? 2 : null
+      },
+      response_metadata: {
+        full_detailed_response,
+        detail_level: full_detailed_response ? 'full' : 'basic',
+        note: full_detailed_response 
+          ? 'Showing full detailed response including raw data, execution logs, and schema analysis'
+          : 'Showing basic response. Add "?full_detailed_response=true" to include raw data, execution logs, and schema analysis'
       },
       timestamp: new Date().toISOString()
     };
