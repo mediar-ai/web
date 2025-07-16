@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight, Play } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight, Play, Upload } from 'lucide-react';
 import { WorkflowWithSettings, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
+import { VersionUploadDialog } from '@/components/deployments/VersionUploadDialog';
 
 interface WorkflowCardProps {
   workflow: WorkflowWithSettings;
@@ -271,6 +272,26 @@ export function WorkflowCard({
                 <PlayCircle className="w-5 h-5 mr-2" />
                 TEST RUN
               </Button>
+              
+              <VersionUploadDialog 
+                workflowId={workflow.id}
+                workflowName={workflow.name}
+                onUploadSuccess={() => {
+                  // Refresh the workflow data after successful upload
+                  if (onBatchSubmit) {
+                    onBatchSubmit();
+                  }
+                }}
+              >
+                <Button
+                  variant="black-outline"
+                  size="lg"
+                  className="font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg rounded-lg font-bold border-2 hover:bg-gray-50"
+                >
+                  <Upload className="w-5 h-5 mr-2" />
+                  UPLOAD VERSION
+                </Button>
+              </VersionUploadDialog>
               
               <Button 
                 onClick={() => onFetchWorkflowDetails(workflow.id)}
