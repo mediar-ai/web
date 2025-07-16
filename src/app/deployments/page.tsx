@@ -13,6 +13,7 @@ import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
 import { supabase } from '@/lib/supabase';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 // Floating Delta Component
 const FloatingDelta = ({ value }: { value: number }) => {
@@ -64,6 +65,10 @@ export default function WorkflowsPage() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(null);
   const [loadingExecutions, setLoadingExecutions] = useState(true);
+
+  // Add connection status tracking
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [pollingInterval, setPollingInterval] = useState<number | null>(null);
 
   // Fetch workflows
   const fetchWorkflows = useCallback(async (showLoading = true) => {
@@ -180,103 +185,155 @@ export default function WorkflowsPage() {
     fetchLiveExecutions();
   }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
 
+  // Enhanced polling fallback system
+  useEffect(() => {
+    let pollTimer: NodeJS.Timeout | null = null;
+    
+    if (pollingInterval && pollingInterval > 0) {
+      console.log(`📊 [POLLING] Starting enhanced polling every ${pollingInterval}ms`);
+      
+      const doPoll = () => {
+        console.log('📊 [POLLING] Refreshing data...');
+        fetchLiveExecutions();
+        fetchExecutions(false);
+        fetchWorkflows(false);
+      };
+      
+      // Initial poll
+      doPoll();
+      
+      // Set up interval
+      pollTimer = setInterval(doPoll, pollingInterval);
+    }
+    
+    return () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        console.log('📊 [POLLING] Stopped polling');
+      }
+    };
+  }, [pollingInterval, fetchLiveExecutions, fetchExecutions, fetchWorkflows]);
+
   // Real-time subscriptions for live updates
   useEffect(() => {
-    console.log('📡 Setting up real-time subscriptions for workflow updates...');
-    
-    const channel = supabase
-      .channel('workflow-dashboard-updates')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'deployed_workflows'
-      }, (payload) => {
-        console.log('📡 [WORKFLOWS] Database change detected:', {
-          eventType: payload.eventType,
-          timestamp: new Date().toISOString(),
-          table: 'deployed_workflows'
-        });
-        // Refresh workflows when they change (schema, status, etc.)
-        fetchWorkflows(false);
-      })
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'workflow_executions'
-      }, () => {
-        console.log('📡 [EXECUTIONS] New execution detected:', {
-          eventType: 'INSERT',
-          timestamp: new Date().toISOString(),
-          table: 'workflow_executions'
-        });
-        // Refresh executions when new ones are created
-        fetchExecutions(false);
-        fetchLiveExecutions();
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'workflow_executions'
-      }, () => {
-        console.log('📡 [EXECUTIONS] Execution status updated:', {
-          eventType: 'UPDATE',
-          timestamp: new Date().toISOString(),
-          table: 'workflow_executions'
-        });
-        // Refresh executions when status changes (running, completed, failed)
-        fetchExecutions(false);
-        fetchLiveExecutions();
-      })
-      .subscribe((status, err) => {
-        console.log('📡 [SUBSCRIPTION] Real-time subscription status changed:', {
-          status,
-          error: err,
-          timestamp: new Date().toISOString(),
-          channel: 'workflow-dashboard-updates'
-        });
-        
-        if (err) {
-          console.error('📡 [SUBSCRIPTION] Real-time subscription error:', err);
+    let channel: RealtimeChannel | null = null;
+    let retryTimeout: NodeJS.Timeout | null = null;
+    let connectionAttempts = 0;
+    const MAX_RETRY_ATTEMPTS = 5;
+    const RETRY_DELAY = 2000;
+
+    const setupRealtimeSubscription = async () => {
+      try {
+        connectionAttempts++;
+        console.log(`📡 [SUBSCRIPTION] Attempt ${connectionAttempts}/${MAX_RETRY_ATTEMPTS} - Setting up realtime subscription...`);
+
+        // Clean up existing channel
+        if (channel) {
+          await supabase.removeChannel(channel);
+          channel = null;
         }
+
+        // Create channel with improved configuration
+        channel = supabase
+          .channel('workflow-dashboard-updates', {
+            config: {
+              broadcast: { self: false },
+              presence: { key: 'user_id' }
+            }
+          })
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'workflow_executions'
+          }, (payload: { eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+            console.log('📡 [REALTIME] workflow_executions change:', payload);
+            
+            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+              // Force refresh execution data to get latest changes
+              fetchLiveExecutions();
+              
+              // Also refresh the main executions list if needed
+              if (payload.eventType === 'INSERT') {
+                // New execution created - refresh the main list too
+                fetchExecutions(false);
+              }
+            }
+          })
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'deployed_workflows'
+          }, (payload: { eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+            console.log('📡 [REALTIME] deployed_workflows change:', payload);
+            // Refetch workflows when they change
+            fetchWorkflows();
+          })
+          .subscribe(async (status: string, err?: Error) => {
+            console.log('📡 [SUBSCRIPTION] Status change:', {
+              status,
+              error: err,
+              timestamp: new Date().toISOString(),
+              attempt: connectionAttempts
+            });
+            
+            if (status === 'SUBSCRIBED') {
+              console.log('📡 [SUBSCRIPTION] ✅ Successfully connected to realtime');
+              setRealtimeConnected(true);
+              connectionAttempts = 0; // Reset counter on success
+              
+              // Clear any pending retries
+              if (retryTimeout) {
+                clearTimeout(retryTimeout);
+                retryTimeout = null;
+              }
+              
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+              console.log(`📡 [SUBSCRIPTION] ⚠️ Connection failed: ${status}`);
+              
+              // If we have retry attempts left, try again
+              if (connectionAttempts < MAX_RETRY_ATTEMPTS) {
+                console.log(`📡 [SUBSCRIPTION] 🔄 Retrying in ${RETRY_DELAY}ms...`);
+                retryTimeout = setTimeout(() => {
+                  setupRealtimeSubscription();
+                }, RETRY_DELAY);
+              } else {
+                console.log('📡 [SUBSCRIPTION] ❌ Max retry attempts reached, falling back to polling');
+                setRealtimeConnected(false);
+                // Fall back to polling every 10 seconds
+                setPollingInterval(10000);
+              }
+            }
+          });
+
+      } catch (error) {
+        console.error('📡 [SUBSCRIPTION] Setup error:', error);
         
-        if (status === 'SUBSCRIBED') {
-          console.log('📡 [SUBSCRIPTION] ✅ Successfully connected to real-time updates');
-        } else if (status === 'TIMED_OUT' || status === 'CLOSED') {
-          console.log('📡 [SUBSCRIPTION] ⚠️ Real-time connection lost, falling back to polling');
+        // Retry if we haven't exceeded max attempts
+        if (connectionAttempts < MAX_RETRY_ATTEMPTS) {
+          retryTimeout = setTimeout(() => {
+            setupRealtimeSubscription();
+          }, RETRY_DELAY);
+        } else {
+          console.log('📡 [SUBSCRIPTION] Falling back to polling mode');
+          setRealtimeConnected(false);
+          setPollingInterval(10000);
         }
-      });
-
-    console.log('📡 [SUBSCRIPTION] Channel created, attempting to subscribe...');
-
-    // Periodic health check for subscription status
-    const healthCheck = setInterval(() => {
-      const channelState = channel.state;
-      console.log('📡 [HEALTH_CHECK] Real-time subscription health:', {
-        state: channelState,
-        timestamp: new Date().toISOString(),
-        isConnected: channelState === 'joined'
-      });
-    }, 30000); // Check every 30 seconds
-
-    // Fallback polling for live execution status (reduced frequency)
-    // Some execution status changes might not trigger database updates
-    const liveExecutionsInterval = setInterval(() => {
-      fetchLiveExecutions();
-    }, 10000); // Check every 10 seconds for live status
-
-    // Periodic workflow refresh as safety net (much less frequent)
-    const workflowsInterval = setInterval(() => {
-      fetchWorkflows(false);
-    }, 300000); // Refresh every 5 minutes as fallback
-
-    return () => {
-      console.log('📡 [CLEANUP] Unsubscribing from real-time updates...');
-      clearInterval(healthCheck);
-      supabase.removeChannel(channel);
-      clearInterval(liveExecutionsInterval);
-      clearInterval(workflowsInterval);
+      }
     };
-  }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
+
+    // Initial setup
+    setupRealtimeSubscription();
+
+    // Cleanup function
+    return () => {
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [fetchLiveExecutions, fetchWorkflows]);
 
   useEffect(() => {
     previousWorkflows.current = workflows;
@@ -314,9 +371,23 @@ export default function WorkflowsPage() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
-          <p className="text-muted-foreground text-lg">Execute and monitor automated workflows remotely</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
+            <p className="text-muted-foreground text-lg">Execute and monitor automated workflows remotely</p>
+          </div>
+          
+          {/* Connection Status Indicator */}
+          <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
+            realtimeConnected 
+              ? 'bg-green-100 text-green-800 border border-green-200' 
+              : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${
+              realtimeConnected ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'
+            }`} />
+            {realtimeConnected ? 'Realtime Connected' : 'Polling Mode'}
+          </div>
         </div>
         <div className="flex gap-2">
           <Button 
