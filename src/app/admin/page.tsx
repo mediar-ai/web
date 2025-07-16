@@ -221,6 +221,32 @@ function AuthenticatedAdminPage({
   const [inviteRole, setInviteRole] = useState('org:member');
   const [inviteStatus, setInviteStatus] = useState<{message: string, error: boolean} | null>(null);
 
+  // Processing health state
+  const [processingHealth, setProcessingHealth] = useState<{
+    processedToday: number;
+    pendingCount: number;
+    failedCount: number;
+    failedToday: number;
+    successRate: number;
+    healthStatus: string;
+    staleLocksCount: number;
+    staleLocksDetails: Array<{
+      userId: string;
+      eventId: string;
+      createdAt: string;
+      staleFor: string;
+      staleMinutes: number;
+    }>;
+    oldestPendingAge: number;
+    latestFailureAge: number;
+    userFailures: any[];
+    recentFailures: any[];
+  } | null>(null);
+  
+  const [processingHealthCollapsed, setProcessingHealthCollapsed] = useState(true);
+  const [staleLocksExpanded, setStaleLocksExpanded] = useState(false);
+  const [failedEventsExpanded, setFailedEventsExpanded] = useState(false);
+
   // Column widths state and localStorage persistence
   const defaultColumnWidths = useMemo(() => ({
     user: 300,
@@ -282,6 +308,47 @@ function AuthenticatedAdminPage({
       }
     }
   }, [defaultColumnWidths]);
+
+  // Fetch processing health data
+  const fetchProcessingHealth = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/processing-health');
+      if (response.ok) {
+        const healthData = await response.json();
+        setProcessingHealth(healthData);
+      } else {
+        console.error('Failed to fetch processing health:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching processing health:', error);
+    }
+  }, []);
+
+  // Clear stale processing locks
+  const clearStaleLocks = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/processing-actions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'clear_stale_locks'
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Stale locks cleared:', result);
+        // Refresh processing health data to reflect changes
+        await fetchProcessingHealth();
+      } else {
+        console.error('Failed to clear stale locks:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error clearing stale locks:', error);
+    }
+  }, [fetchProcessingHealth]);
 
   // Save column widths to localStorage
   const saveColumnWidths = useCallback((widths: Record<string, number>) => {
@@ -460,61 +527,56 @@ function AuthenticatedAdminPage({
   useEffect(() => {
     const initialFetch = async () => {
       setLoading(true);
-      await fetchSessions();
+      await Promise.all([
+        fetchSessions(),
+        fetchProcessingHealth()
+      ]);
       setLoading(false);
     }
+    
     initialFetch();
-
-    // Use intelligent polling instead of realtime (more reliable with Clerk auth)
-    console.log('[Admin] Setting up intelligent polling for live updates...');
     
-    let pollingInterval: NodeJS.Timeout;
-    let isPolling = false;
-    
-    const startPolling = () => {
-      if (isPolling) return;
-      isPolling = true;
-      
-             // Poll every 2 seconds when page is visible, 30s when hidden
-       const getInterval = () => document.hidden ? 30000 : 2000;
-      
-             const poll = async () => {
-         if (!document.hidden) {
-           console.log('[Admin] 🔄 Polling for updates...');
-           liveRefreshSessions(); // Direct call for polling - no debounce needed
-         }
-         
-         // Schedule next poll with current interval
-         pollingInterval = setTimeout(poll, getInterval());
-       };
-      
-      // Start first poll after 2 seconds  
-      pollingInterval = setTimeout(poll, 2000);
+    // Set up polling for data updates
+    const pollData = () => {
+      liveRefreshSessions();
+      fetchProcessingHealth();
     };
     
     // Handle visibility changes to adjust polling frequency
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         console.log('[Admin] 👁️ Page visible - refreshing immediately');
-        // Immediate refresh when page becomes visible with indicator
-        liveRefreshSessions();
+        pollData();
       }
       console.log(`[Admin] Polling frequency: ${document.hidden ? '30s' : '2s'}`);
     };
     
-    // Start polling and set up visibility listener
+    // Set up polling interval - 2s when active, 30s when hidden
+    const getInterval = () => document.hidden ? 30000 : 2000;
+    let pollingInterval: NodeJS.Timeout;
+    
+    const startPolling = () => {
+      const poll = () => {
+        if (!document.hidden) {
+          console.log('[Admin] 🔄 Polling for updates...');
+          pollData();
+        }
+        pollingInterval = setTimeout(poll, getInterval());
+      };
+      pollingInterval = setTimeout(poll, 2000); // Start after 2s
+    };
+    
     startPolling();
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     console.log('[Admin] ✅ Intelligent polling enabled - updates every 2s when active, 30s when hidden');
 
     return () => {
-      isPolling = false;
       clearTimeout(pollingInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       console.log('[Admin] 🛑 Polling stopped');
     };
-  }, [fetchSessions, liveRefreshSessions, debouncedFetchSessions]);
+  }, [fetchSessions, liveRefreshSessions, debouncedFetchSessions, fetchProcessingHealth]);
 
   const handleEditName = (userId: string, currentName: string) => {
     setEditingUser(userId);
@@ -794,6 +856,200 @@ function AuthenticatedAdminPage({
           </CardContent>
         </Card>
       </div>
+      
+      {/* Processing Health Section - Collapsible - Global Admins Only */}
+      {isGlobalAdmin && (
+        <div className="mb-6">
+        <button
+          onClick={() => setProcessingHealthCollapsed(!processingHealthCollapsed)}
+          className="flex items-center justify-between w-full p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors mb-4"
+        >
+          <h3 className="text-lg font-semibold text-gray-900">Processing Health</h3>
+          <span className="text-gray-500">
+            {processingHealthCollapsed ? '▼' : '▲'}
+          </span>
+        </button>
+        
+        {!processingHealthCollapsed && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 mb-4">
+              {/* Health Status Card - B&W */}
+              <Card className="border border-gray-300">
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <p className="text-sm font-mono text-gray-600">HEALTH STATUS</p>
+                    <p className="text-2xl font-mono font-bold text-gray-900">
+                      {processingHealth?.healthStatus?.toUpperCase() || 'UNKNOWN'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {processingHealth?.successRate?.toFixed(1) || '0'}% Success Rate
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Processed Today Card - B&W */}
+              <Card className="border border-gray-300">
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <p className="text-sm font-mono text-gray-600">PROCESSED TODAY</p>
+                    <p className="text-2xl font-mono font-bold text-gray-900">
+                      {processingHealth?.processedToday || 0}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Pending Events Card - B&W */}
+              <Card className="border border-gray-300">
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <p className="text-sm font-mono text-gray-600">PENDING</p>
+                    <p className="text-2xl font-mono font-bold text-gray-900">
+                      {processingHealth?.pendingCount || 0}
+                    </p>
+                    {processingHealth?.oldestPendingAge && processingHealth.oldestPendingAge > 300 && (
+                      <p className="text-xs text-gray-600 mt-1">
+                        Oldest: {Math.floor(processingHealth.oldestPendingAge / 60)}m ago
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Failed Events Card - B&W with Details */}
+              <Card className="border border-gray-300">
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <p className="text-sm font-mono text-gray-600">FAILED TODAY</p>
+                    <p className="text-2xl font-mono font-bold text-gray-900">
+                      {processingHealth?.failedToday || 0}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Total: {processingHealth?.failedCount || 0}
+                    </p>
+                    {processingHealth?.recentFailures && processingHealth.recentFailures.length > 0 && (
+                      <button
+                        onClick={() => setFailedEventsExpanded(!failedEventsExpanded)}
+                        className="text-xs text-gray-500 hover:text-gray-700 mt-1 underline"
+                      >
+                        {failedEventsExpanded ? 'Hide Recent Failures' : 'Show Recent Failures'}
+                      </button>
+                    )}
+                  </div>
+                  {failedEventsExpanded && processingHealth?.recentFailures && (
+                    <div className="mt-3 border-t border-gray-200 pt-3">
+                      <div className="text-left space-y-2">
+                        {processingHealth.recentFailures.slice(0, 5).map((failure, idx) => (
+                          <div key={idx} className="text-xs bg-gray-50 p-2 rounded">
+                            <div className="font-mono text-gray-700">
+                              Event: {failure.event_id}
+                            </div>
+                            <div className="text-gray-500">
+                              User: {failure.user_id.substring(0, 8)}...
+                            </div>
+                            <div className="text-red-600">
+                              {new Date(failure.updated_at).toLocaleString()}
+                            </div>
+                          </div>
+                        ))}
+                        {processingHealth.recentFailures.length > 5 && (
+                          <div className="text-xs text-gray-500 text-center pt-1">
+                            ...and {processingHealth.recentFailures.length - 5} more recent failures
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Stale Locks Card - B&W with Details */}
+              <Card className="border border-gray-300">
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <p className="text-sm font-mono text-gray-600">STALE LOCKS</p>
+                    <p className="text-2xl font-mono font-bold text-gray-900">
+                      {processingHealth?.staleLocksCount || 0}
+                    </p>
+                    {processingHealth?.staleLocksCount && processingHealth.staleLocksCount > 0 && (
+                      <>
+                        <p className="text-xs text-gray-600 mt-1">⚠ Action Required</p>
+                        <button
+                          onClick={() => setStaleLocksExpanded(!staleLocksExpanded)}
+                          className="text-xs text-gray-500 hover:text-gray-700 mt-1 underline"
+                        >
+                          {staleLocksExpanded ? 'Hide Details' : 'Show Details'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {staleLocksExpanded && processingHealth?.staleLocksDetails && (
+                    <div className="mt-3 border-t border-gray-200 pt-3">
+                      <div className="text-left space-y-2">
+                        {processingHealth.staleLocksDetails.slice(0, 5).map((lock, idx) => (
+                          <div key={idx} className="text-xs bg-gray-50 p-2 rounded">
+                            <div className="font-mono text-gray-700">
+                              Event: {lock.eventId}
+                            </div>
+                            <div className="text-gray-500">
+                              User: {lock.userId.substring(0, 8)}...
+                            </div>
+                            <div className="text-red-600 font-semibold">
+                              Stale for: {lock.staleFor}
+                            </div>
+                          </div>
+                        ))}
+                        {processingHealth.staleLocksDetails.length > 5 && (
+                          <div className="text-xs text-gray-500 text-center pt-1">
+                            ...and {processingHealth.staleLocksDetails.length - 5} more
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* User Alerts Card - B&W */}
+              <Card className="border border-gray-300">
+                <CardContent className="p-4">
+                  <div className="text-center">
+                    <p className="text-sm font-mono text-gray-600">USER ALERTS</p>
+                    <p className="text-2xl font-mono font-bold text-gray-900">
+                      {processingHealth?.userFailures?.length || 0}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Users with issues
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Action Buttons - B&W */}
+            {((processingHealth?.staleLocksCount || 0) > 0 || (processingHealth?.failedToday || 0) > 0) && (
+              <div className="flex gap-2 mb-4">
+                {(processingHealth?.staleLocksCount || 0) > 0 && (
+                  <button
+                    onClick={clearStaleLocks}
+                    className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors text-sm font-medium"
+                  >
+                    Clear Stale Locks ({processingHealth?.staleLocksCount})
+                  </button>
+                )}
+                <button
+                  onClick={fetchProcessingHealth}
+                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium"
+                >
+                  Refresh Health Data
+                </button>
+              </div>
+            )}
+          </>
+        )}
+        </div>
+      )}
       
       <table className="w-full text-sm text-left" style={{ tableLayout: 'fixed' }}>
         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
