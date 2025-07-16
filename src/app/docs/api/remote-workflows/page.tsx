@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { CodeBlock } from '@/components/ui/code-block';
+import { Menu, X } from 'lucide-react';
 import mermaid from 'mermaid';
 
 // Types for dynamic schema data
@@ -75,6 +76,9 @@ export default function RemoteWorkflowsAPIDocsPage() {
   
   // Copy-to-clipboard state
   const [copiedStates, setCopiedStates] = useState<Record<string, string>>({});
+  
+  // Mobile sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   
   // Copy to clipboard utility function
   const copyToClipboard = async (text: string, key: string) => {
@@ -1295,9 +1299,34 @@ graph TB
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gray-50 relative">
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white border border-black rounded-lg shadow-lg hover:bg-gray-50 transition-colors"
+        aria-label="Toggle sidebar"
+      >
+        {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      </button>
+
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 z-30 bg-black bg-opacity-50"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="w-80 bg-white border-r border-black flex-shrink-0 fixed left-0 top-0 h-full overflow-y-auto">
+      <div className={`
+        w-80 bg-white border-r border-black flex-shrink-0 h-full overflow-y-auto z-40
+        lg:fixed lg:left-0 lg:top-0
+        ${sidebarOpen 
+          ? 'fixed left-0 top-0 translate-x-0' 
+          : 'fixed left-0 top-0 -translate-x-full lg:translate-x-0'
+        }
+        transition-transform duration-300 ease-in-out
+      `}>
         <div className="p-6 border-b border-black">
           <h2 className="text-lg font-semibold text-gray-900">API Reference</h2>
           <p className="text-sm text-gray-600 mt-1">Remote Workflows API</p>
@@ -1307,7 +1336,10 @@ graph TB
           {/* Overview */}
           <div className="mb-6">
             <button
-              onClick={() => setSelectedEndpoint('overview')}
+              onClick={() => {
+                setSelectedEndpoint('overview');
+                setSidebarOpen(false); // Close mobile sidebar after selection
+              }}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors border border-black ${
                 selectedEndpoint === 'overview'
                   ? 'bg-black text-white border-black'
@@ -1325,7 +1357,10 @@ graph TB
               {endpoints.map((endpoint) => (
                 <button
                   key={endpoint.id}
-                  onClick={() => setSelectedEndpoint(endpoint.id)}
+                  onClick={() => {
+                    setSelectedEndpoint(endpoint.id);
+                    setSidebarOpen(false); // Close mobile sidebar after selection
+                  }}
                   className={`w-full text-left px-3 py-2 rounded-lg transition-colors border border-black ${
                     selectedEndpoint === endpoint.id
                       ? 'bg-black text-white border-black'
@@ -1349,8 +1384,8 @@ graph TB
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto ml-80">
-        <div className="p-8">
+      <div className="flex-1 overflow-auto lg:ml-80">
+        <div className="p-8 pt-16 lg:pt-8">
           {renderContent()}
         </div>
       </div>
