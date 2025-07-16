@@ -22,6 +22,7 @@ interface WorkflowCardProps {
   loadingExecutions?: boolean;
   onBatchSubmit?: () => void;
   isNested?: boolean; // For styling nested settings workflows
+  realtimeConnected?: boolean; // Connection status for display
 }
 
 const getStatusBadge = (status: string) => {
@@ -77,6 +78,7 @@ export function WorkflowCard({
   loadingExecutions = false,
   onBatchSubmit,
   isNested,
+  realtimeConnected = false,
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [connectedWorkflowsExpanded, setConnectedWorkflowsExpanded] = useState(false);
@@ -369,6 +371,17 @@ export function WorkflowCard({
                         {recentExecutions.length > 0 && (
                           <Badge variant="black-outline" className="text-sm h-7 px-3">{recentExecutions.length} RECENT</Badge>
                         )}
+                        {/* Connection Status */}
+                        <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${
+                          realtimeConnected 
+                            ? 'bg-green-100 text-green-800 border border-green-200' 
+                            : 'bg-gray-100 text-gray-700 border border-gray-300'
+                        }`}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${
+                            realtimeConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
+                          }`} />
+                          {realtimeConnected ? 'REALTIME' : 'POLLING'}
+                        </div>
                       </>
                     )}
                   </div>
