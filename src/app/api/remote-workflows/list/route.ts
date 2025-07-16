@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { cacheResponse } from '@/lib/responseCache';
 
 type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue>;
 type JSONObject = { [x: string]: JSONValue };
@@ -488,7 +489,7 @@ export async function GET(request: NextRequest) {
       settings_workflows: settingsByParent[workflow.id] || [], // Add nested settings workflows
     }));
 
-    return NextResponse.json({
+    const responseData = {
       success: true,
       workflows: formattedWorkflows,
       pagination: {
@@ -506,7 +507,24 @@ export async function GET(request: NextRequest) {
         }
       },
       timestamp: new Date().toISOString()
+    };
+
+    // Cache the response for documentation
+    await cacheResponse({
+      endpointPath: '/api/remote-workflows/list',
+      httpMethod: 'GET',
+      statusCode: 200,
+      responseBody: responseData,
+      requestParams: {
+        category: category || null,
+        status: status || null,
+        limit,
+        offset
+      },
+      executionTimeMs: 50 // placeholder
     });
+
+    return NextResponse.json(responseData);
 
   } catch (error) {
     console.error('❌ Error listing workflows:', error);
