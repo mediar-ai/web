@@ -13,7 +13,7 @@ const getArrayFields = async (workflowId: number, supabase: ReturnType<typeof cr
   try {
     // Fetch workflow data to get automation sequence
     const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
+      .from('deployed_workflows_with_sequence')
       .select('automation_sequence')
       .eq('id', workflowId)
       .single();

@@ -1061,27 +1061,34 @@ def execute_workflow(
         # and update the execution record with that info.
         logger.info("🚀 Executing workflow ID %s for execution record %s", workflow_id, execution_id)
 
-        # Get workflow details from database
-        cur.execute("SELECT * FROM deployed_workflows WHERE id = %s", (workflow_id,))
+        # Get workflow details from database with current active version
+        # Using the compatibility view to get automation_sequence from the active version
+        cur.execute("SELECT * FROM deployed_workflows_with_sequence WHERE id = %s", (workflow_id,))
         workflow = cur.fetchone()
 
         if not workflow:
             raise Exception(f"Workflow {workflow_id} not found")
 
-        # Calculate total steps and update the execution record
+        if not workflow.get("automation_sequence"):
+            raise Exception(f"Workflow {workflow_id} has no active version or automation_sequence")
+
+        # Calculate total steps and update the execution record with version tracking
         automation_sequence = workflow.get("automation_sequence", [{}])[0]
         arguments = automation_sequence.get("arguments", {})
         # The canonical key for the list of execution groups is now 'steps'.
         steps_list = arguments.get("steps", [])
         total_steps = len(steps_list)
         
+        # Update execution with total steps and version information for traceability
         cur.execute(
             """
             UPDATE workflow_executions
-            SET total_steps = %s
+            SET total_steps = %s,
+                workflow_version_id = %s,
+                workflow_version_number = %s
             WHERE id = %s
             """,
-            (total_steps, execution_id)
+            (total_steps, workflow.get("current_version_id"), workflow.get("version"), execution_id)
         )
         conn.commit()
 

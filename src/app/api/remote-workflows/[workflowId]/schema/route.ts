@@ -304,9 +304,9 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Fetch workflow data
+    // Fetch workflow data with active version
     const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
+      .from('deployed_workflows_with_sequence')
       .select('id, name, description, version, status, automation_sequence, estimated_duration_seconds')
       .eq('id', workflowIdNum)
       .single();

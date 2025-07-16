@@ -15,7 +15,7 @@ async function getApiParameterNames(workflowId: number, executionParams: Record<
     
     // Get the workflow's automation sequence to understand parameter schema
     const { data: workflow } = await supabase
-      .from('deployed_workflows')
+      .from('deployed_workflows_with_sequence')
       .select('automation_sequence')
       .eq('id', workflowId)
       .single();
