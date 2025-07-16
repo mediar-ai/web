@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+interface ProcessingLock {
+  status: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  event_id: string;
+}
+
 export async function GET() {
   try {
     const supabase = createClient(
@@ -21,11 +29,11 @@ export async function GET() {
     }
     
     // Group by status
-    const locksByStatus = (locks || []).reduce((acc: any, lock: any) => {
+    const locksByStatus = (locks || []).reduce((acc: Record<string, ProcessingLock[]>, lock: ProcessingLock) => {
       if (!acc[lock.status]) acc[lock.status] = [];
       acc[lock.status].push(lock);
       return acc;
-    }, {});
+    }, {} as Record<string, ProcessingLock[]>);
     
     // Calculate basic counts
     const totalProcessed = locksByStatus['completed']?.length || 0;
@@ -35,11 +43,11 @@ export async function GET() {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
-    const processedToday = locksByStatus['completed']?.filter((lock: any) => 
+    const processedToday = locksByStatus['completed']?.filter((lock: ProcessingLock) => 
       new Date(lock.updated_at) >= todayStart
     ).length || 0;
     
-    const failedToday = locksByStatus['failed']?.filter((lock: any) => 
+    const failedToday = locksByStatus['failed']?.filter((lock: ProcessingLock) => 
       new Date(lock.updated_at) >= todayStart
     ).length || 0;
     
@@ -48,13 +56,13 @@ export async function GET() {
     
     // Check for stale locks (in_progress for more than 10 minutes)
     const staleThreshold = new Date(now.getTime() - 10 * 60 * 1000); // 10 minutes ago
-    const staleLocks = (locksByStatus['in_progress'] || []).filter((lock: any) => 
+    const staleLocks = (locksByStatus['in_progress'] || []).filter((lock: ProcessingLock) => 
       new Date(lock.created_at) < staleThreshold
     );
     const staleLocksCount = staleLocks.length;
     
     // Enhanced stale lock details with staleness duration
-    const staleLocksDetails = staleLocks.map((lock: any) => {
+    const staleLocksDetails = staleLocks.map((lock: ProcessingLock) => {
       const staleMinutes = Math.floor((now.getTime() - new Date(lock.created_at).getTime()) / (1000 * 60));
       const staleHours = Math.floor(staleMinutes / 60);
       const staleDuration = staleHours > 0 
@@ -68,7 +76,7 @@ export async function GET() {
         staleFor: staleDuration,
         staleMinutes: staleMinutes
       };
-    }).sort((a: any, b: any) => b.staleMinutes - a.staleMinutes); // Sort by most stale first
+    }).sort((a: { staleMinutes: number }, b: { staleMinutes: number }) => b.staleMinutes - a.staleMinutes); // Sort by most stale first
     
     // Calculate oldest pending age and latest failure age
     const pendingLocks = locksByStatus['in_progress'] || [];
@@ -95,7 +103,7 @@ export async function GET() {
     
     // Get user failure summaries
     const userFailures = Object.entries(
-      (locksByStatus['failed'] || []).reduce((acc: any, lock: any) => {
+      (locksByStatus['failed'] || []).reduce((acc: Record<string, { userId: string; failureCount: number; latestFailure: string; longestStuckDuration: number }>, lock: ProcessingLock) => {
         const userId = lock.user_id;
         if (!acc[userId]) {
           acc[userId] = {
@@ -115,14 +123,14 @@ export async function GET() {
         }
         return acc;
       }, {})
-    ).map(([_, data]) => data)
-     .sort((a: any, b: any) => b.failureCount - a.failureCount)
+    ).map(([, data]) => data)
+     .sort((a: { failureCount: number }, b: { failureCount: number }) => b.failureCount - a.failureCount)
      .slice(0, 10);
     
     // Get recent failures (last 10)
     const recentFailures = (locksByStatus['failed'] || [])
       .slice(0, 10)
-      .map((lock: any) => ({
+      .map((lock: ProcessingLock) => ({
         userId: lock.user_id,
         eventId: lock.event_id || 'unknown',
         failedAt: lock.updated_at,

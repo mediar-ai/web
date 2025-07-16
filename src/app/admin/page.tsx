@@ -239,8 +239,8 @@ function AuthenticatedAdminPage({
     }>;
     oldestPendingAge: number;
     latestFailureAge: number;
-    userFailures: any[];
-    recentFailures: any[];
+    userFailures: Array<Record<string, unknown>>;
+    recentFailures: Array<Record<string, unknown>>;
   } | null>(null);
   
   const [processingHealthCollapsed, setProcessingHealthCollapsed] = useState(true);
@@ -943,13 +943,13 @@ function AuthenticatedAdminPage({
                         {processingHealth.recentFailures.slice(0, 5).map((failure, idx) => (
                           <div key={idx} className="text-xs bg-gray-50 p-2 rounded">
                             <div className="font-mono text-gray-700">
-                              Event: {failure.event_id}
+                              Event: {failure.event_id as string}
                             </div>
                             <div className="text-gray-500">
-                              User: {failure.user_id.substring(0, 8)}...
+                              User: {String(failure.user_id).substring(0, 8)}...
                             </div>
                             <div className="text-red-600">
-                              {new Date(failure.updated_at).toLocaleString()}
+                              {new Date(failure.updated_at as string).toLocaleString()}
                             </div>
                           </div>
                         ))}

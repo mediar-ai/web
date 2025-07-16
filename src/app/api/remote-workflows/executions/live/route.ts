@@ -25,8 +25,6 @@ interface LiveExecutionStatus {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('⚡ Fetching live execution status...');
-    
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
