@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { cacheResponse } from '@/lib/responseCache';
 
 interface LiveExecutionStatus {
   id: number;
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
           .reduce((acc, e) => acc + e.progress_percentage, 0) / totalRunning)
       : 0;
 
-    return NextResponse.json({
+    const responseData = {
       success: true,
       data: {
         executions: liveExecutions,
@@ -103,18 +104,44 @@ export async function GET(request: NextRequest) {
           timestamp: new Date().toISOString()
         }
       }
+    };
+
+    // Cache the response for documentation
+    await cacheResponse({
+      endpointPath: '/api/remote-workflows/executions/live',
+      httpMethod: 'GET',
+      statusCode: 200,
+      responseBody: responseData,
+      requestParams: {
+        status: status_filter,
+        workflow_id: workflow_id ? parseInt(workflow_id) : null,
+        limit
+      },
+      executionTimeMs: 50 // placeholder
     });
+
+    return NextResponse.json(responseData);
 
   } catch (error) {
     console.error('Failed to fetch live executions:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        data: null
-      },
-      { status: 500 }
-    );
+    
+    const errorResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      data: null
+    };
+
+    // Cache the error response for documentation
+    await cacheResponse({
+      endpointPath: '/api/remote-workflows/executions/live',
+      httpMethod: 'GET',
+      statusCode: 500,
+      responseBody: errorResponse,
+      requestParams: {},
+      executionTimeMs: 25
+    });
+    
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }
 
@@ -132,13 +159,22 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!execution_id || progress_percentage === undefined) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'execution_id and progress_percentage are required'
-        },
-        { status: 400 }
-      );
+      const errorResponse = {
+        success: false,
+        error: 'execution_id and progress_percentage are required'
+      };
+
+      // Cache the error response for documentation
+      await cacheResponse({
+        endpointPath: '/api/remote-workflows/executions/live',
+        httpMethod: 'POST',
+        statusCode: 400,
+        responseBody: errorResponse,
+        requestParams: body,
+        executionTimeMs: 10
+      });
+
+      return NextResponse.json(errorResponse, { status: 400 });
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -171,7 +207,7 @@ export async function POST(request: NextRequest) {
         .eq('id', execution_id);
     }
 
-    return NextResponse.json({
+    const responseData = {
       success: true,
       message: 'Execution progress updated successfully',
       data: {
@@ -179,17 +215,44 @@ export async function POST(request: NextRequest) {
         progress_percentage,
         updated_at: new Date().toISOString()
       }
+    };
+
+    // Cache the response for documentation
+    await cacheResponse({
+      endpointPath: '/api/remote-workflows/executions/live',
+      httpMethod: 'POST',
+      statusCode: 200,
+      responseBody: responseData,
+      requestParams: {
+        execution_id,
+        progress_percentage,
+        current_step_index,
+        total_steps
+      },
+      executionTimeMs: 75
     });
+
+    return NextResponse.json(responseData);
 
   } catch (error) {
     console.error('Failed to update execution progress:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    
+    const errorResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+
+    // Cache the error response for documentation
+    await cacheResponse({
+      endpointPath: '/api/remote-workflows/executions/live',
+      httpMethod: 'POST',
+      statusCode: 500,
+      responseBody: errorResponse,
+      requestParams: {},
+      executionTimeMs: 25
+    });
+    
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }
 
