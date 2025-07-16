@@ -6,6 +6,55 @@ import fs from 'fs';
 type JsonValue = string | number | boolean | { [x: string]: JsonValue } | Array<JsonValue>;
 type JsonObject = { [x: string]: JsonValue };
 
+// Helper function to fetch workflow schema and identify array fields  
+const getArrayFields = async (workflowId: number, supabase: ReturnType<typeof createClient>): Promise<Set<string>> => {
+  const arrayFields = new Set<string>();
+  
+  try {
+    // Fetch workflow data to get automation sequence
+    const { data: workflow, error: workflowError } = await supabase
+      .from('deployed_workflows')
+      .select('automation_sequence')
+      .eq('id', workflowId)
+      .single();
+
+    if (workflowError || !workflow) {
+      console.warn(`⚠️ Could not fetch workflow ${workflowId} for schema analysis:`, workflowError?.message);
+      return arrayFields;
+    }
+
+    if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
+      const mainSequence = workflow.automation_sequence[0];
+      const variables = mainSequence?.arguments?.variables || {};
+      
+      // Recursively find array-type fields
+      const findArrayFields = (obj: Record<string, JsonValue>, prefix = '') => {
+        Object.entries(obj).forEach(([key, value]) => {
+          const fullKey = prefix ? `${prefix}.${key}` : key;
+          
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            const valueObj = value as Record<string, JsonValue>;
+            // Check if this is a parameter definition
+            if (valueObj.type === 'array') {
+              arrayFields.add(fullKey);
+              console.log(`🔍 Identified array field: ${fullKey}`);
+            } else if (!valueObj.type && !valueObj.description && !valueObj.hasOwnProperty('default')) {
+              // This might be a nested group - recurse
+              findArrayFields(valueObj, fullKey);
+            }
+          }
+        });
+      };
+      
+      findArrayFields(variables);
+    }
+  } catch (error) {
+    console.warn('⚠️ Error analyzing workflow schema for array fields:', error);
+  }
+  
+  return arrayFields;
+};
+
 // Helper function to set a value at a nested path
 const set = (obj: JsonObject, path: string, value: JsonValue) => {
   const keys = path.split('.');
@@ -22,26 +71,45 @@ const set = (obj: JsonObject, path: string, value: JsonValue) => {
 };
 
 // Helper to generate combinations with conditional logic awareness
-const getCombinations = (dynamicParams: Record<string, JsonValue[]>) : JsonObject[] => {
+const getCombinations = async (dynamicParams: Record<string, JsonValue[]>, arrayFields: Set<string>) : Promise<JsonObject[]> => {
   const keys = Object.keys(dynamicParams);
   if (keys.length === 0) return [{}];
 
-  // Check if we have conditional logic (branch-specific parameters)
+  // Separate checkbox fields from true dynamic iteration parameters
+  const checkboxParams: Record<string, JsonValue[]> = {};
+  const iterationParams: Record<string, JsonValue[]> = {};
+  
+  console.log('🔍 CHECKBOX vs ITERATION ANALYSIS:');
+  
+  for (const [paramName, paramValues] of Object.entries(dynamicParams)) {
+    if (arrayFields.has(paramName)) {
+      // This is a checkbox/array field - treat the entire selection as static
+      checkboxParams[paramName] = paramValues;
+      console.log(`📋 Checkbox field: ${paramName} = [${paramValues.join(', ')}] (treated as single selection)`);
+    } else {
+      // This is a true iteration parameter
+      iterationParams[paramName] = paramValues;
+      console.log(`🔄 Iteration field: ${paramName} = [${paramValues.join(', ')}] (will create ${paramValues.length} combinations)`);
+    }
+  }
+
+  // Check if we have conditional logic (branch-specific parameters) in iteration params
   const controllingParams: Record<string, JsonValue[]> = {};
   const branchSpecificParams: Record<string, string[]> = {}; // Maps controlling param values to their branch-specific param names
-  const regularParams: Record<string, JsonValue[]> = {};
+  const regularIterationParams: Record<string, JsonValue[]> = {};
 
-  // Identify controlling parameters and their branch-specific parameters
-  for (const [paramName, paramValues] of Object.entries(dynamicParams)) {
+  // Identify controlling parameters and their branch-specific parameters from iteration params only
+  for (const [paramName, paramValues] of Object.entries(iterationParams)) {
     // Look for parameters that have branch-specific variants
     // For example: quote_type controls quote_value_face_value and quote_value_max_monthly_budget
     
     // Check if there are parameters that follow the pattern: {base}_{branch_value}
     // where {base} is derived from this parameter's name and {branch_value} matches one of this parameter's values
+    const iterationKeys = Object.keys(iterationParams);
     const hasBranchSpecific = paramValues.some(value => {
       const normalizedValue = (value as string).toLowerCase().replace(/\s+/g, '_');
       // Look for parameters that end with this normalized value
-      return keys.some(key => 
+      return iterationKeys.some(key => 
         key !== paramName && 
         key.toLowerCase().endsWith('_' + normalizedValue)
       );
@@ -56,7 +124,7 @@ const getCombinations = (dynamicParams: Record<string, JsonValue[]>) : JsonObjec
         const normalizedValue = (value as string).toLowerCase().replace(/\s+/g, '_');
         
         // Find parameters that end with this normalized value
-        const matchingBranchParams = keys.filter(key => 
+        const matchingBranchParams = iterationKeys.filter(key => 
           key !== paramName && 
           key.toLowerCase().endsWith('_' + normalizedValue)
         );
@@ -75,8 +143,8 @@ const getCombinations = (dynamicParams: Record<string, JsonValue[]>) : JsonObjec
       );
       
       if (!isBranchSpecific) {
-        // This is a regular parameter
-        regularParams[paramName] = paramValues;
+        // This is a regular iteration parameter
+        regularIterationParams[paramName] = paramValues;
       }
     }
   }
@@ -84,54 +152,77 @@ const getCombinations = (dynamicParams: Record<string, JsonValue[]>) : JsonObjec
   console.log('🔍 CONDITIONAL LOGIC DEBUG:');
   console.log('📋 Controlling params:', controllingParams);
   console.log('🌿 Branch-specific params:', branchSpecificParams);
-  console.log('📝 Regular params:', regularParams);
+  console.log('📝 Regular iteration params:', regularIterationParams);
+
+  let iterationCombinations: JsonObject[] = [];
 
   if (Object.keys(controllingParams).length > 0) {
-    // We have conditional logic - calculate combinations per branch
-    const allCombinations: JsonObject[] = [];
-    
+    // We have conditional logic - calculate combinations per branch for iteration params only
     Object.entries(controllingParams).forEach(([controlParam, controlValues]) => {
       controlValues.forEach(controlValue => {
         // For this specific branch, calculate combinations
         const branchParams: Record<string, JsonValue[]> = {
-          ...regularParams,
+          ...regularIterationParams,
           [controlParam]: [controlValue] // Include the controlling parameter with this specific value
         };
         
         // Add branch-specific parameters for this control value
         const branchSpecificParamNames = branchSpecificParams[controlValue as string] || [];
         branchSpecificParamNames.forEach(branchParamName => {
-          if (dynamicParams[branchParamName]) {
+          if (iterationParams[branchParamName]) {
             // Map back to original parameter name for the execution
             // e.g., "quote_value_face_value" -> "quote_value"
             const parts = branchParamName.split('_');
             const originalParamName = parts.slice(0, -1).join('_'); // Remove the last part (branch identifier)
-            branchParams[originalParamName] = dynamicParams[branchParamName];
+            branchParams[originalParamName] = iterationParams[branchParamName];
           }
         });
         
-        console.log(`🌿 Branch "${controlValue}" params:`, branchParams);
+        console.log(`🌿 Branch "${controlValue}" iteration params:`, branchParams);
         
-        // Generate combinations for this branch
-        const branchCombinations = generateCartesianProduct(branchParams);
+        // Generate combinations for this branch (iteration params only)
+        const branchCombinations = generateCartesianProduct(branchParams, new Set()); // No array preservation for iteration params
         console.log(`🧮 Branch "${controlValue}" combinations (${branchCombinations.length}):`, branchCombinations);
         
-        allCombinations.push(...branchCombinations);
+        iterationCombinations.push(...branchCombinations);
       });
     });
     
-    console.log(`🎯 Total conditional combinations: ${allCombinations.length}`);
-    return allCombinations;
+    console.log(`🎯 Total iteration combinations: ${iterationCombinations.length}`);
   } else {
-    // No conditional logic, use simple Cartesian product
-    const combinations = generateCartesianProduct(dynamicParams);
-    console.log(`🧮 Simple combinations: ${combinations.length}`);
-    return combinations;
+    // No conditional logic, use simple Cartesian product for iteration params
+    iterationCombinations = generateCartesianProduct(iterationParams, new Set()); // No array preservation for iteration params
+    console.log(`🧮 Simple iteration combinations: ${iterationCombinations.length}`);
   }
+
+  // If no iteration parameters, create one base combination
+  if (Object.keys(iterationParams).length === 0) {
+    iterationCombinations = [{}];
+    console.log(`📌 No iteration params - using single base combination`);
+  }
+
+  // Now merge checkbox selections with each iteration combination
+  const finalCombinations: JsonObject[] = [];
+  
+  for (const iterationCombo of iterationCombinations) {
+    const finalCombo: JsonObject = { ...iterationCombo };
+    
+    // Add checkbox selections as complete arrays (not individual values)
+    for (const [checkboxParam, checkboxValues] of Object.entries(checkboxParams)) {
+      finalCombo[checkboxParam] = checkboxValues; // Use the full array as selected
+    }
+    
+    finalCombinations.push(finalCombo);
+  }
+
+  console.log(`🎯 Final combinations (iteration × checkbox merging): ${finalCombinations.length}`);
+  console.log(`📋 Sample final combination:`, finalCombinations[0]);
+  
+  return finalCombinations;
 };
 
-// Helper function to generate Cartesian product
-const generateCartesianProduct = (params: Record<string, JsonValue[]>): JsonObject[] => {
+// Helper function to generate Cartesian product with array field preservation
+const generateCartesianProduct = (params: Record<string, JsonValue[]>, arrayFields: Set<string>): JsonObject[] => {
   const keys = Object.keys(params);
   if (keys.length === 0) return [{}];
   
@@ -143,7 +234,9 @@ const generateCartesianProduct = (params: Record<string, JsonValue[]>): JsonObje
     
     for (const combination of combinations) {
       for (const value of values) {
-        newCombinations.push({ ...combination, [key]: value });
+        // Preserve array structure for array-type fields
+        const finalValue = arrayFields.has(key) ? [value] : value;
+        newCombinations.push({ ...combination, [key]: finalValue });
       }
     }
     
@@ -187,7 +280,8 @@ export async function POST(
     const isSingleExecution = Object.keys(dynamic_parameters).length === 0;
     
     // Generate all unique parameter combinations
-    const combinations = isSingleExecution ? [{}] : getCombinations(dynamic_parameters);
+    const arrayFields = await getArrayFields(workflowIdNum, createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!));
+    const combinations = isSingleExecution ? [{}] : await getCombinations(dynamic_parameters, arrayFields);
     
     console.log('🎯 BATCH EXECUTE: Generated combinations:', combinations.length);
     console.log('📋 BATCH EXECUTE: Combination details:', JSON.stringify(combinations, null, 2));

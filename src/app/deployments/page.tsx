@@ -12,6 +12,7 @@ import {
 import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
+import { supabase } from '@/lib/supabase';
 
 // Floating Delta Component
 const FloatingDelta = ({ value }: { value: number }) => {
@@ -179,15 +180,103 @@ export default function WorkflowsPage() {
     fetchLiveExecutions();
   }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
 
-  // Auto-refresh executions and live status
+  // Real-time subscriptions for live updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchExecutions(false); // Refresh executions without showing loading state
+    console.log('📡 Setting up real-time subscriptions for workflow updates...');
+    
+    const channel = supabase
+      .channel('workflow-dashboard-updates')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'deployed_workflows'
+      }, (payload) => {
+        console.log('📡 [WORKFLOWS] Database change detected:', {
+          eventType: payload.eventType,
+          timestamp: new Date().toISOString(),
+          table: 'deployed_workflows'
+        });
+        // Refresh workflows when they change (schema, status, etc.)
+        fetchWorkflows(false);
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'workflow_executions'
+      }, () => {
+        console.log('📡 [EXECUTIONS] New execution detected:', {
+          eventType: 'INSERT',
+          timestamp: new Date().toISOString(),
+          table: 'workflow_executions'
+        });
+        // Refresh executions when new ones are created
+        fetchExecutions(false);
+        fetchLiveExecutions();
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'workflow_executions'
+      }, () => {
+        console.log('📡 [EXECUTIONS] Execution status updated:', {
+          eventType: 'UPDATE',
+          timestamp: new Date().toISOString(),
+          table: 'workflow_executions'
+        });
+        // Refresh executions when status changes (running, completed, failed)
+        fetchExecutions(false);
+        fetchLiveExecutions();
+      })
+      .subscribe((status, err) => {
+        console.log('📡 [SUBSCRIPTION] Real-time subscription status changed:', {
+          status,
+          error: err,
+          timestamp: new Date().toISOString(),
+          channel: 'workflow-dashboard-updates'
+        });
+        
+        if (err) {
+          console.error('📡 [SUBSCRIPTION] Real-time subscription error:', err);
+        }
+        
+        if (status === 'SUBSCRIBED') {
+          console.log('📡 [SUBSCRIPTION] ✅ Successfully connected to real-time updates');
+        } else if (status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.log('📡 [SUBSCRIPTION] ⚠️ Real-time connection lost, falling back to polling');
+        }
+      });
+
+    console.log('📡 [SUBSCRIPTION] Channel created, attempting to subscribe...');
+
+    // Periodic health check for subscription status
+    const healthCheck = setInterval(() => {
+      const channelState = channel.state;
+      console.log('📡 [HEALTH_CHECK] Real-time subscription health:', {
+        state: channelState,
+        timestamp: new Date().toISOString(),
+        isConnected: channelState === 'joined'
+      });
+    }, 30000); // Check every 30 seconds
+
+    // Fallback polling for live execution status (reduced frequency)
+    // Some execution status changes might not trigger database updates
+    const liveExecutionsInterval = setInterval(() => {
       fetchLiveExecutions();
-      fetchWorkflows(false); // Refresh workflows without showing loading state
-    }, 2000); // Refresh every 2 seconds for live updates
-    return () => clearInterval(interval);
-  }, [fetchExecutions, fetchLiveExecutions, fetchWorkflows]);
+    }, 10000); // Check every 10 seconds for live status
+
+    // Periodic workflow refresh as safety net (much less frequent)
+    const workflowsInterval = setInterval(() => {
+      fetchWorkflows(false);
+    }, 300000); // Refresh every 5 minutes as fallback
+
+    return () => {
+      console.log('📡 [CLEANUP] Unsubscribing from real-time updates...');
+      clearInterval(healthCheck);
+      supabase.removeChannel(channel);
+      clearInterval(liveExecutionsInterval);
+      clearInterval(workflowsInterval);
+    };
+  }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
 
   useEffect(() => {
     previousWorkflows.current = workflows;

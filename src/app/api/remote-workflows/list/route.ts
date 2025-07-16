@@ -79,7 +79,6 @@ function detectCheckboxListFields(
     // Rule 1: Simple heuristic - array type with options
     if (variable.type === 'array' && Array.isArray(variable.options)) {
       checkboxFields[varName] = true;
-      console.log(`🔍 Detected checkbox-list field: ${varName} (array with options)`);
       return;
     }
     
@@ -117,7 +116,6 @@ function detectCheckboxListFields(
       
       if (hasCheckboxPatterns) {
         checkboxFields[varName] = true;
-        console.log(`🔍 Detected checkbox-list field: ${varName} (array with contains() patterns)`);
       }
     }
   });
@@ -277,7 +275,6 @@ const transformVariablesToSchema = (variables: JSONObject, automationSequence: J
           }));
         }
         
-        console.log(`✅ Converted ${key} to checkbox-list with ${Array.isArray(variable.options) ? variable.options.length : 0} options`);
       }
       // Simple fallback: if it's an array type, convert to checkbox-list
       else if (variable.type === 'array') {
@@ -296,7 +293,6 @@ const transformVariablesToSchema = (variables: JSONObject, automationSequence: J
           }));
         }
         
-        console.log(`✅ Converted ${key} to checkbox-list (simple array fallback) with ${Array.isArray(variable.options) ? variable.options.length : 0} options`);
       }
       
       schema[key] = variable;
@@ -328,7 +324,6 @@ const extractDefaults = (schema: JSONObject): JSONObject => {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('⚡ Fast workflow list from Vercel...');
     
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;

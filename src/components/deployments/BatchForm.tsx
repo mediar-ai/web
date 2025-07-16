@@ -537,7 +537,16 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
           globalParams.forEach(key => {
             const values = params[key];
             if (values && values.length > 0) {
-              branchCombinations *= values.length;
+              const schemaItem = schema[key] as SchemaItem;
+              // Checkbox fields contribute 1 combination (all selected values are one parameter)
+              // Other field types contribute values.length combinations (each value is separate)
+              if (schemaItem.type === 'checkbox-list') {
+                branchCombinations *= 1;
+                console.log(`🔍 Global checkbox field ${key}: contributing 1 combination (${values.length} selected values)`);
+              } else {
+                branchCombinations *= values.length;
+                console.log(`🔍 Global ${schemaItem.type || 'field'} ${key}: contributing ${values.length} combinations`);
+              }
             }
           });
           
@@ -546,7 +555,16 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
           Object.keys(branchParams).forEach(bpKey => {
             const values = params[bpKey];
             if (values && values.length > 0) {
-              branchCombinations *= values.length;
+              const branchSchemaItem = branchParams[bpKey];
+              // Checkbox fields contribute 1 combination (all selected values are one parameter)
+              // Other field types contribute values.length combinations (each value is separate)
+              if (branchSchemaItem.type === 'checkbox-list') {
+                branchCombinations *= 1;
+                console.log(`🔍 Branch checkbox field ${bpKey}: contributing 1 combination (${values.length} selected values)`);
+              } else {
+                branchCombinations *= values.length;
+                console.log(`🔍 Branch ${branchSchemaItem.type || 'field'} ${bpKey}: contributing ${values.length} combinations`);
+              }
             }
           });
           totalCombinations += branchCombinations;
@@ -554,9 +572,19 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
 
       } else {
         totalCombinations = 1;
-        Object.values(params).forEach(values => {
-          if (values.length > 0) {
-            totalCombinations *= values.length;
+        Object.keys(params).forEach(key => {
+          const values = params[key];
+          if (values && values.length > 0) {
+            const schemaItem = schema[key] as SchemaItem;
+            // Checkbox fields contribute 1 combination (all selected values are one parameter)
+            // Other field types contribute values.length combinations (each value is separate)
+            if (schemaItem.type === 'checkbox-list') {
+              totalCombinations *= 1;
+              console.log(`🔍 Checkbox field ${key}: contributing 1 combination (${values.length} selected values)`);
+            } else {
+              totalCombinations *= values.length;
+              console.log(`🔍 ${schemaItem.type || 'Field'} ${key}: contributing ${values.length} combinations`);
+            }
           }
         });
       }
