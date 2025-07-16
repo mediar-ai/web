@@ -452,90 +452,127 @@ export default function RemoteWorkflowsAPIDocsPage() {
     fetchWorkflowSchemas();
   }, []);
 
-  // Fetch real API responses for documentation examples
+  // Fetch cached API responses for documentation examples
   useEffect(() => {
-    const fetchDynamicResponses = async () => {
+    const fetchCachedResponses = async () => {
       try {
         setLoadingResponses(true);
-        console.log('🔄 Fetching real API responses for documentation...');
+        console.log('🔄 Fetching cached API responses for documentation...');
+        console.log('✅ Filtering for successful responses only (status 200) for documentation examples');
         
         const responses: Record<string, string> = {};
 
-        // Fetch execution details from a recent execution
-        try {
-          const executionsResponse = await fetch('/api/remote-workflows/executions?limit=1');
-          const executionsData = await executionsResponse.json();
-          
-          if (executionsData.success && executionsData.executions.length > 0) {
-            const latestExecution = executionsData.executions[0];
-            const detailsResponse = await fetch(`/api/remote-workflows/executions/${latestExecution.execution_id}`);
-            const detailsData = await detailsResponse.json();
-            
-            if (detailsData.success) {
-              responses['get-execution-details'] = JSON.stringify(detailsData, null, 2);
-              console.log('✅ Fetched real execution details response');
-            }
-          }
-        } catch (error) {
-          console.warn('⚠️ Could not fetch execution details:', error);
+                 // Helper function to get latest successful cached response
+         const getCachedResponse = async (endpoint: string, method: string) => {
+           try {
+             const encodedEndpoint = encodeURIComponent(endpoint);
+             const cacheResponse = await fetch(`/api/response-cache?endpoint=${encodedEndpoint}&method=${method}&latest=true&success_only=true`);
+             const cacheData = await cacheResponse.json();
+             
+             if (cacheData.success && cacheData.responses.length > 0) {
+               // Since we filtered for success_only, we can take the first response
+               const latestSuccessResponse = cacheData.responses[0];
+               return latestSuccessResponse.response_body;
+             }
+             return null;
+           } catch (error) {
+             console.warn(`⚠️ Could not fetch cached response for ${endpoint}:`, error);
+             return null;
+           }
+         };
+
+        // Fetch cached execution details response
+        const executionDetailsResponse = await getCachedResponse('/api/remote-workflows/executions/[executionId]', 'GET');
+        if (executionDetailsResponse) {
+          responses['get-execution-details'] = JSON.stringify(executionDetailsResponse, null, 2);
+          console.log('✅ Fetched cached execution details response');
         }
 
-        // Fetch list executions response
-        try {
-          const listResponse = await fetch('/api/remote-workflows/executions?limit=2');
-          const listData = await listResponse.json();
-          
-          if (listData.success) {
-            responses['list-executions'] = JSON.stringify(listData, null, 2);
-            console.log('✅ Fetched real executions list response');
-          }
-        } catch (error) {
-          console.warn('⚠️ Could not fetch executions list:', error);
+        // Fetch cached list executions response
+        const listExecutionsResponse = await getCachedResponse('/api/remote-workflows/executions', 'GET');
+        if (listExecutionsResponse) {
+          responses['list-executions'] = JSON.stringify(listExecutionsResponse, null, 2);
+          console.log('✅ Fetched cached list executions response');
         }
 
-        // Fetch live execution status
-        try {
-          const liveResponse = await fetch('/api/remote-workflows/executions/live?limit=10');
-          const liveData = await liveResponse.json();
-          
-          if (liveData.success) {
-            responses['live-execution-status'] = JSON.stringify(liveData, null, 2);
-            console.log('✅ Fetched real live execution status response');
-          }
-        } catch (error) {
-          console.warn('⚠️ Could not fetch live executions:', error);
+        // Fetch cached list workflows response
+        const listWorkflowsResponse = await getCachedResponse('/api/remote-workflows/list', 'GET');
+        if (listWorkflowsResponse) {
+          responses['list-workflows'] = JSON.stringify(listWorkflowsResponse, null, 2);
+          console.log('✅ Fetched cached list workflows response');
         }
 
-        // Fetch workflow list response
-        try {
-          const workflowsResponse = await fetch('/api/remote-workflows/list?limit=2');
-          const workflowsData = await workflowsResponse.json();
+        // Fetch cached get workflow details response and apply to all workflow detail endpoints
+        const getWorkflowDetailsResponse = await getCachedResponse('/api/remote-workflows/[workflowId]', 'GET');
+        if (getWorkflowDetailsResponse) {
+          const detailsResponseString = JSON.stringify(getWorkflowDetailsResponse, null, 2);
           
-          if (workflowsData.success) {
-            responses['list-workflows'] = JSON.stringify(workflowsData, null, 2);
-            console.log('✅ Fetched real workflows list response');
-          }
-        } catch (error) {
-          console.warn('⚠️ Could not fetch workflows list:', error);
+          // Apply the cached response to all get workflow details endpoints (for each workflow schema)
+          Object.keys(workflowSchemas).forEach(workflowId => {
+            responses[`get-workflow-details-${workflowId}`] = detailsResponseString;
+          });
+          
+          console.log(`✅ Fetched cached get workflow details response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
         }
 
-        // Fetch workflow details (use first available workflow)
-        if (Object.keys(workflowSchemas).length > 0) {
-          const firstWorkflowId = Object.keys(workflowSchemas)[0];
+                 // Fetch cached execute-sync response and apply to all workflow execute-sync endpoints
+         const executeSyncResponse = await getCachedResponse('/api/remote-workflows/[workflowId]/execute-sync', 'POST');
+         if (executeSyncResponse) {
+           const executeSyncResponseString = JSON.stringify(executeSyncResponse, null, 2);
+           
+           // Apply the cached response to all execute-sync endpoints (for each workflow schema)
+           Object.keys(workflowSchemas).forEach(workflowId => {
+             responses[`execute-sync-workflow-${workflowId}`] = executeSyncResponseString;
+           });
+           
+           console.log(`✅ Fetched cached execute-sync response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
+         }
+
+        // Fetch cached live execution status response
+        const liveExecutionStatusResponse = await getCachedResponse('/api/remote-workflows/executions/live', 'GET');
+        if (liveExecutionStatusResponse) {
+          responses['live-execution-status'] = JSON.stringify(liveExecutionStatusResponse, null, 2);
+          console.log('✅ Fetched cached live execution status response');
+        }
+
+        // If no cached responses available, fall back to live API calls for critical endpoints
+        if (Object.keys(responses).length === 0) {
+          console.log('🔄 No cached responses found, falling back to live API calls...');
+          
+          // Fallback: Fetch live execution details
           try {
-            const workflowResponse = await fetch(`/api/remote-workflows/${firstWorkflowId}`);
-            const workflowData = await workflowResponse.json();
+            const executionsResponse = await fetch('/api/remote-workflows/executions?limit=1');
+            const executionsData = await executionsResponse.json();
             
-            if (workflowData.success) {
-              responses['get-workflow-details'] = JSON.stringify(workflowData, null, 2);
-              console.log('✅ Fetched real workflow details response');
+            if (executionsData.success && executionsData.executions.length > 0) {
+              const latestExecution = executionsData.executions[0];
+              const detailsResponse = await fetch(`/api/remote-workflows/executions/${latestExecution.execution_id}`);
+              const detailsData = await detailsResponse.json();
+              
+              if (detailsData.success) {
+                responses['get-execution-details'] = JSON.stringify(detailsData, null, 2);
+                console.log('✅ Fetched live execution details response (fallback)');
+              }
             }
           } catch (error) {
-            console.warn('⚠️ Could not fetch workflow details:', error);
+            console.warn('⚠️ Could not fetch live execution details:', error);
+          }
+
+          // Fallback: Fetch live list executions
+          try {
+            const listResponse = await fetch('/api/remote-workflows/executions?limit=2');
+            const listData = await listResponse.json();
+            
+            if (listData.success) {
+              responses['list-executions'] = JSON.stringify(listData, null, 2);
+              console.log('✅ Fetched live executions list response (fallback)');
+            }
+          } catch (error) {
+            console.warn('⚠️ Could not fetch executions list:', error);
           }
         }
 
-        console.log(`✅ Successfully loaded ${Object.keys(responses).length} dynamic API responses`);
+        console.log(`✅ Successfully loaded ${Object.keys(responses).length} API responses (${Object.keys(responses).length > 0 ? 'cached + fallback' : 'fallback only'})`);
         setDynamicResponses(responses);
       } catch (error) {
         console.error('❌ Failed to fetch dynamic responses:', error);
@@ -546,7 +583,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
 
     // Only fetch responses after schemas are loaded (so we have workflow IDs)
     if (!loadingSchemas && Object.keys(workflowSchemas).length > 0) {
-      fetchDynamicResponses();
+      fetchCachedResponses();
     }
   }, [loadingSchemas, workflowSchemas]);
 
@@ -740,6 +777,63 @@ graph TB
     style Results fill:#ddd,stroke:#666
 `;
 
+  // Helper function to generate dynamic get workflow details endpoints from real schemas
+  const generateGetWorkflowDetailsEndpoints = (schemas: Record<number, WorkflowSchema>) => {
+    if (Object.keys(schemas).length === 0) {
+      // Return static example if no schemas loaded yet
+      return [{
+        id: 'get-workflow-details-loading',
+        method: 'GET',
+        path: '/api/remote-workflows/[workflowId]',
+        title: 'Get Workflow Details (Loading...)',
+        description: 'Loading real workflow schemas...',
+        response: `{
+  "success": true,
+  "workflow": {
+    "id": 1,
+    "name": "Loading...",
+    "status": "loading"
+  }
+}`
+      }];
+    }
+
+    // Generate details endpoints for each workflow with real schemas
+    return Object.values(schemas).map(schema => ({
+      id: `get-workflow-details-${schema.id}`,
+      method: 'GET',
+      path: `/api/remote-workflows/${schema.id}`,
+      title: `Get Workflow Details: ${schema.name}`,
+      description: `Retrieves comprehensive details about the "${schema.name}" workflow including automation sequence, validation checks, and execution information.`,
+      response: `{
+  "success": true,
+  "workflow": {
+    "id": ${schema.id},
+    "name": "${schema.name}",
+    "description": "${schema.description}",
+    "status": "deployed",
+    "trigger_info": {
+      "endpoint": "/api/remote-workflows/${schema.id}/execute",
+      "method": "POST",
+      "required_headers": ["Content-Type: application/json"],
+      "is_executable": true
+    },
+    "automation_sequence": [...],
+    "input_parameters": ${JSON.stringify(schema.sample_request, null, 6)},
+    "usage_examples": {
+      "curl_example": "curl -X POST https://app.mediar.ai/api/remote-workflows/${schema.id}/execute...",
+      "javascript_example": "fetch('/api/remote-workflows/${schema.id}/execute'...)"
+    }
+  }
+}`,
+      workflowInfo: {
+        parameterCount: schema.metadata.parameter_count,
+        hasConditionalLogic: schema.metadata.has_conditional_logic,
+        estimatedDuration: schema.estimated_duration_seconds
+      }
+    }));
+  };
+
   const endpoints: EndpointDefinition[] = [
     {
       id: 'list-workflows',
@@ -788,70 +882,8 @@ graph TB
   }
 }`
     },
-    {
-      id: 'get-workflow-details',
-      method: 'GET',
-      path: '/api/remote-workflows/[workflowId]',
-      title: 'Get Workflow Details',
-      description: 'Retrieves comprehensive details about a specific workflow including automation sequence, validation checks, and recent executions.',
-      response: `{
-  "success": true,
-  "workflow": {
-    "id": 1,
-    "name": "Best Plan Pro Insurance Quote",
-    "description": "Automated life insurance quote generation",
-    "version": "1.0.0",
-    "status": "active",
-    "trigger_info": {
-      "endpoint": "/api/remote-workflows/1/execute",
-      "method": "POST",
-      "required_headers": ["Content-Type: application/json"],
-      "modal_function": "execute_workflow",
-      "deployment_status": "deployed",
-      "is_executable": true
-    },
-    "automation_sequence": [
-      {
-        "action": "navigate",
-        "url": "https://bestplanpro.com",
-        "description": "Navigate to Best Plan Pro website"
-      }
-    ],
-    "validation_checks": [
-      {
-        "name": "age_validation",
-        "description": "Verify age is within acceptable range (18-75)",
-        "type": "input_validation"
-      }
-    ],
-    "error_handling": [
-      {
-        "error_type": "element_not_found",
-        "action": "retry",
-        "retry_count": 3
-      }
-    ],
-    "input_parameters": {
-      "state": {
-        "type": "string",
-        "required": true,
-        "description": "State name"
-      }
-    },
-    "performance_metrics": {
-      "successful_runs": 4,
-      "failed_runs": 27,
-      "total_executions": 31,
-      "success_rate": 13
-    },
-    "recent_executions": [],
-    "usage_examples": {
-      "curl_example": "curl -X POST...",
-      "javascript_example": "fetch('/api/remote-workflows/1/execute'..."
-    }
-  }
-}`
-    },
+    // Dynamic get workflow details endpoints - will be populated from real schemas
+    ...generateGetWorkflowDetailsEndpoints(workflowSchemas),
     // Dynamic execute workflow endpoint - will be populated from real schemas
     ...generateExecuteWorkflowEndpoints(workflowSchemas),
     // Dynamic execute-sync workflow endpoint - will be populated from real schemas
