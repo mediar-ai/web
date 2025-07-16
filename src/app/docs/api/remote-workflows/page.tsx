@@ -802,6 +802,9 @@ graph TB
       path: '/api/remote-workflows/executions/[executionId]',
       title: 'Get Execution Details',
       description: 'Retrieves complete details about a specific execution including logs, results, and formatted output.',
+      queryParams: [
+        { name: 'full_detailed_response', type: 'boolean', optional: true, description: 'When true, includes raw data, execution logs, and schema analysis. When false (default), returns basic response with formatted output only.' }
+      ],
       response: `{
   "success": true,
   "execution": {
