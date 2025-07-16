@@ -168,8 +168,10 @@ export async function POST(
     const execution_params = body.parameters;
     const client_id = body.client_id || `web-${Date.now()}`;
     const execution_mode = body.execution_mode || 'async';
+    const include_cache = body.include_cache === true; // New cache parameter
 
     console.log('✅ Extracted execution_params:', execution_params);
+    console.log(`🔧 Cache enabled: ${include_cache}`);
 
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -252,6 +254,95 @@ export async function POST(
       }
     } else {
       console.log('⚠️ No automation sequence found for validation - proceeding without parameter validation');
+    }
+
+    // ✨ NEW: Check cache first if requested
+    if (include_cache) {
+      try {
+        const cacheResponse = await fetch(`${request.url.split('/api')[0]}/api/remote-workflows/cache`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            workflow_id: workflowIdNum,
+            parameters: execution_params
+          })
+        });
+
+        if (cacheResponse.ok) {
+          const cacheData = await cacheResponse.json();
+          
+          if (cacheData.success && cacheData.cached) {
+            console.log(`🚀 Cache HIT! Returning cached results and queuing background execution`);
+            
+            // Create background execution record
+            const modal_call_id = `modal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            const { data: execution, error: executionError } = await supabase
+              .from('workflow_executions')
+              .insert({
+                workflow_id: workflowIdNum,
+                client_id,
+                status: 'queued',
+                execution_params: execution_params,
+                modal_call_id
+              })
+              .select()
+              .single();
+
+            if (executionError) {
+              throw executionError;
+            }
+
+            console.log(`✅ Created background execution ${execution.id} for cache refresh`);
+            
+            // Return cached results with background execution info
+            return NextResponse.json({
+              success: true,
+              cached: true,
+              execution_id: execution.id, // Background execution for freshness
+              workflow_id: workflowIdNum,
+              workflow_name: workflow.name,
+              status: 'queued', // Background execution status
+              modal_call_id: modal_call_id,
+              created_at: new Date().toISOString(),
+              execution_mode,
+              client_id,
+              message: `Cache hit! Returning instant results from execution ${cacheData.cache_info.source_execution_id}. Background execution ${execution.id} queued for cache refresh.`,
+              
+              // Cached results
+              cached_results: {
+                quotes: cacheData.data.quotes,
+                source_execution_id: cacheData.cache_info.source_execution_id,
+                cache_timestamp: cacheData.cache_info.cache_timestamp,
+                speed_improvement: cacheData.cache_info.speed_improvement
+              },
+              
+              // Include validation info if available
+              ...(validationResult && {
+                validation: {
+                  parameters_validated: true,
+                  warnings: validationResult.warnings.length > 0 ? validationResult.warnings : undefined,
+                  parameter_count: Object.keys(execution_params).length
+                }
+              }),
+              
+              // Add helpful endpoints
+              endpoints: {
+                status: `/api/remote-workflows/executions/${execution.id}`,
+                results: `/api/remote-workflows/executions/${execution.id}`,
+                schema: `/api/remote-workflows/${workflowIdNum}/schema`
+              }
+            }, { status: 200 });
+          }
+        }
+      } catch (cacheError) {
+        console.warn('⚠️ Cache lookup failed, proceeding with normal execution:', cacheError);
+        // Continue with normal execution if cache fails
+      }
+
+      console.log(`⏳ No cache hit, proceeding with normal execution...`);
     }
 
     // Create execution record in database with 'queued' status
