@@ -341,9 +341,9 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build query with filters
+    // Build query with filters - using compatibility view for automation_sequence
     let query = supabase
-      .from('deployed_workflows')
+      .from('deployed_workflows_with_sequence')
       .select(`
         id,
         name,
@@ -389,7 +389,7 @@ export async function GET(request: NextRequest) {
     
     if (workflowIds.length > 0) {
       const { data: settings, error: settingsError } = await supabase
-        .from('deployed_workflows')
+        .from('deployed_workflows_with_sequence')
         .select(`
           id,
           name,

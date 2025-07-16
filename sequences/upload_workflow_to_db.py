@@ -1,176 +1,154 @@
 #!/usr/bin/env python3
 """
-Upload workflow JSON to database with correct structure.
-This script reads a workflow JSON file and uploads it to the deployed_workflows table
-with the proper structure expected by the Modal app.
+Version-aware workflow upload script.
+Uses the new versioning API to create new versions instead of overwriting existing ones.
 
-Usage: python upload_workflow_to_db.py <workflow_id> <json_file_path>
+Usage: python sequences/upload_workflow_to_db.py <workflow_id> <json_file_path>
+
+This script has been updated to work with the new workflow versioning system.
+It now creates new versions instead of overwriting existing automation sequences.
 """
 
 import json
 import sys
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor, Json
+import requests
 from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv('.env.local')
+load_dotenv('../.env.local')
 
-def get_db_connection():
-    """Get database connection from environment variables"""
-    # Try to get individual components first
-    db_host = os.getenv('SUPABASE_DB_HOST')
-    db_name = os.getenv('SUPABASE_DB_NAME', 'postgres')
-    db_user = os.getenv('SUPABASE_DB_USER')
-    db_password = os.getenv('SUPABASE_DB_PASSWORD')
-    db_port = os.getenv('SUPABASE_DB_PORT', '5432')
+def upload_workflow_via_api(workflow_id, json_file_path):
+    """Upload workflow using the versioning API instead of direct database access."""
     
-    # If individual components not found, try DATABASE_URL or SUPABASE_CONN_STRING
-    if not all([db_host, db_user, db_password]):
-        database_url = os.getenv('DATABASE_URL') or os.getenv('SUPABASE_CONN_STRING')
-        if database_url:
-            # Parse DATABASE_URL
-            import urllib.parse
-            url = urllib.parse.urlparse(database_url)
-            db_host = url.hostname
-            db_port = url.port or 5432
-            db_user = url.username
-            db_password = url.password
-            db_name = url.path[1:] if url.path else 'postgres'
-    
-    if not all([db_host, db_user, db_password]):
-        raise ValueError("Database credentials not found in environment variables")
-    
-    return psycopg2.connect(
-        host=db_host,
-        database=db_name,
-        user=db_user,
-        password=db_password,
-        port=db_port
-    )
-
-def upload_workflow(workflow_id, json_file_path):
-    """Upload workflow JSON to database with correct structure"""
+    print(f"🚀 Version-Aware Workflow Upload")
+    print(f"📁 Workflow ID: {workflow_id}")
+    print(f"📄 Source file: {json_file_path}")
+    print(f"Started at: {datetime.now()}")
     
     # Read the JSON file
-    print(f"📖 Reading workflow from {json_file_path}...")
+    print(f"\n📖 Reading workflow from {json_file_path}...")
+    
+    if not os.path.exists(json_file_path):
+        print(f"❌ File not found: {json_file_path}")
+        return False
+    
     with open(json_file_path, 'r') as f:
         workflow_data = json.load(f)
     
-    # The Modal app expects the automation_sequence field to contain an array
-    # Check if the loaded data is already in the correct format
+    # Prepare automation sequence
     if isinstance(workflow_data, list):
-        # If it's a list, it needs to be wrapped
         automation_sequence = workflow_data
-        print("📦 Wrapping array in automation_sequence field...")
+        print("📦 Using array as automation_sequence...")
     elif isinstance(workflow_data, dict) and 'automation_sequence' in workflow_data:
-        # If it already has automation_sequence, use it as is
         automation_sequence = workflow_data['automation_sequence']
-        print("✅ File already has automation_sequence field")
+        print("✅ Found automation_sequence field in file")
     else:
-        # Otherwise, wrap it in an array
         automation_sequence = [workflow_data]
         print("📦 Wrapping object in automation_sequence array...")
     
     # Log the structure for debugging
     print(f"\n📊 Structure Analysis:")
-    print(f"  - Type of automation_sequence: {type(automation_sequence)}")
+    print(f"  - Type: {type(automation_sequence)}")
     if isinstance(automation_sequence, list) and len(automation_sequence) > 0:
-        print(f"  - Length of array: {len(automation_sequence)}")
+        print(f"  - Array length: {len(automation_sequence)}")
         first_item = automation_sequence[0]
-        print(f"  - Type of first item: {type(first_item)}")
+        print(f"  - First item type: {type(first_item)}")
         if isinstance(first_item, dict):
-            print(f"  - Keys in first item: {list(first_item.keys())}")
-            if 'tool_name' in first_item:
-                print(f"  - tool_name: {first_item['tool_name']}")
-            if 'arguments' in first_item and isinstance(first_item['arguments'], dict):
-                if 'items' in first_item['arguments']:
-                    print(f"  - Number of items: {len(first_item['arguments']['items'])}")
+            print(f"  - First item keys: {list(first_item.keys())}")
     
-    # Connect to database
-    print(f"\n🔌 Connecting to database...")
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
+    # Prepare request payload for versioning API
+    payload = {
+        "automation_sequence": automation_sequence,
+        "change_notes": f"Updated via upload script from {os.path.basename(json_file_path)}",
+        "set_as_active": True  # Activate the new version immediately
+    }
+    
+    # Use local development server
+    api_base = 'http://localhost:3000'
+    api_endpoint = f"{api_base}/api/remote-workflows/{workflow_id}/versions"
+    
+    print(f"\n📤 Creating new version via API:")
+    print(f"   - Endpoint: {api_endpoint}")
+    print(f"   - Will activate new version immediately")
     
     try:
-        # Check if workflow exists
-        cur.execute("SELECT id, name FROM deployed_workflows WHERE id = %s", (workflow_id,))
-        existing = cur.fetchone()
+        # Make API request to create new version
+        response = requests.post(
+            api_endpoint,
+            json=payload,
+            headers={'Content-Type': 'application/json'},
+            timeout=30
+        )
         
-        if not existing:
-            print(f"❌ Workflow with ID {workflow_id} not found!")
+        if response.status_code == 201:
+            result = response.json()
+            print(f"\n✅ Successfully created new version!")
+            print(f"   - Version: {result['version']['version_number']}")
+            print(f"   - Version ID: {result['version']['id']}")
+            print(f"   - Is Active: {result['version']['is_active']}")
+            print(f"   - Total Versions: {result['workflow']['total_versions']}")
+            print(f"   - ✅ Version activated and ready for execution")
+            
+            return True
+        
+        elif response.status_code == 409:
+            error_data = response.json()
+            print(f"❌ Version conflict: {error_data.get('error', 'Version already exists')}")
+            print(f"💡 The automation sequence may be identical to the current version")
             return False
         
-        print(f"✅ Found workflow: {existing['name']} (ID: {existing['id']})")
-        
-        # Update the automation_sequence field
-        # Use Json wrapper to ensure proper JSONB encoding
-        print(f"\n📤 Uploading automation sequence to database...")
-        cur.execute("""
-            UPDATE deployed_workflows 
-            SET automation_sequence = %s,
-                updated_at = %s
-            WHERE id = %s
-        """, (
-            Json(automation_sequence),  # This ensures proper JSONB encoding
-            datetime.utcnow(),
-            workflow_id
-        ))
-        
-        # Commit the transaction
-        conn.commit()
-        print(f"✅ Successfully updated workflow {workflow_id}")
-        
-        # Verify the update
-        print(f"\n🔍 Verifying update...")
-        cur.execute("""
-            SELECT 
-                jsonb_typeof(automation_sequence) as type,
-                jsonb_array_length(automation_sequence) as array_length,
-                automation_sequence->0->>'tool_name' as first_tool_name,
-                jsonb_array_length(automation_sequence->0->'arguments'->'items') as items_count
-            FROM deployed_workflows 
-            WHERE id = %s
-        """, (workflow_id,))
-        
-        result = cur.fetchone()
-        print(f"\n📊 Verification Results:")
-        print(f"  - JSON type: {result['type']}")
-        print(f"  - Array length: {result['array_length']}")
-        print(f"  - First tool name: {result['first_tool_name']}")
-        print(f"  - Items count: {result['items_count']}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error updating workflow: {e}")
-        conn.rollback()
+        else:
+            print(f"❌ Upload failed with status {response.status_code}")
+            try:
+                error_data = response.json()
+                print(f"   Error: {error_data.get('error', 'Unknown error')}")
+                if 'details' in error_data:
+                    print(f"   Details: {error_data['details']}")
+            except:
+                print(f"   Response: {response.text}")
+            return False
+            
+    except requests.exceptions.ConnectionError:
+        print(f"❌ Connection failed to {api_endpoint}")
+        print(f"💡 Make sure your development server is running (npm run dev)")
         return False
-    finally:
-        cur.close()
-        conn.close()
+    except requests.exceptions.Timeout:
+        print(f"❌ Request timeout")
+        return False
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        return False
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: python upload_workflow_to_db.py <workflow_id> <json_file_path>")
-        print("Example: python upload_workflow_to_db.py 1 sequences/quoting_070325.json")
+        print("❌ Usage: python upload_workflow_to_db.py <workflow_id> <json_file_path>")
+        print("\nExample:")
+        print("  python upload_workflow_to_db.py 1 bestproplan_workflow.json")
+        print("\n🔄 Note: This script now uses the versioning system!")
+        print("  - Creates new versions instead of overwriting")
+        print("  - Maintains complete version history")
+        print("  - Activates new version automatically")
         sys.exit(1)
     
-    workflow_id = int(sys.argv[1])
+    workflow_id = sys.argv[1]
     json_file_path = sys.argv[2]
     
-    if not os.path.exists(json_file_path):
-        print(f"❌ File not found: {json_file_path}")
+    # Convert workflow_id to int for validation
+    try:
+        workflow_id_int = int(workflow_id)
+    except ValueError:
+        print(f"❌ Invalid workflow ID: {workflow_id}. Must be a number.")
         sys.exit(1)
     
-    print(f"🚀 Uploading workflow from {json_file_path} to workflow ID {workflow_id}")
-    
-    success = upload_workflow(workflow_id, json_file_path)
+    success = upload_workflow_via_api(workflow_id_int, json_file_path)
     
     if success:
-        print(f"\n✅ Upload completed successfully!")
+        print(f"\n🎉 Upload completed successfully!")
+        print(f"\n💡 Next steps:")
+        print(f"   - Check version history: python ../scripts/upload_workflow_version.py {workflow_id} --list-versions")
+        print(f"   - Test the workflow via API or web interface")
     else:
         print(f"\n❌ Upload failed!")
         sys.exit(1)

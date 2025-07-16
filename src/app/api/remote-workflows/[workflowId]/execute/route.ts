@@ -183,7 +183,7 @@ export async function POST(
     
     // Check if workflow exists and is executable, and fetch automation sequence for validation
     const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
+      .from('deployed_workflows_with_sequence')
       .select('name, status, automation_sequence')
       .eq('id', workflowIdNum)
       .single();

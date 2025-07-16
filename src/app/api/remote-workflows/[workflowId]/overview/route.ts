@@ -185,7 +185,7 @@ export async function GET(
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   const { data: workflow, error } = await supabase
-    .from('deployed_workflows')
+    .from('deployed_workflows_with_sequence')
     .select(`
       id,
       name,
