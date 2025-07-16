@@ -137,17 +137,25 @@ def release_processing_lock(cur, conn, user_id, event_id, processor_id, status):
 def cleanup_expired_locks(cur, conn):
     """Smart cleanup of expired and stale processing locks"""
     try:
-        # First, clean up obviously expired/completed locks
+        # First, clean up completed locks (keep failed locks for audit trail)
         cur.execute("""
             DELETE FROM processing_locks 
-            WHERE expires_at < NOW() OR status IN ('completed', 'failed')
+            WHERE status = 'completed'
+        """)
+        
+        # Mark expired locks as failed (preserve audit trail)
+        cur.execute("""
+            UPDATE processing_locks 
+            SET status = 'failed', updated_at = NOW()
+            WHERE expires_at < NOW() AND status = 'in_progress'
         """)
         basic_cleanup = cur.rowcount
         
-        # Smart cleanup: Remove locks older than 10 minutes (instead of 30)
+        # Smart cleanup: Mark stale locks as failed (instead of deleting)
         # This handles cases where Modal apps are stopped manually
         cur.execute("""
-            DELETE FROM processing_locks 
+            UPDATE processing_locks 
+            SET status = 'failed', updated_at = NOW()
             WHERE status = 'in_progress' 
               AND created_at < NOW() - INTERVAL '10 minutes'
         """)
@@ -1147,6 +1155,11 @@ def process_all_events_for_user(user_id: str):
                     release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
                     event_processed_or_failed = True
                     
+                except modal.exception.ClientClosed as modal_error:
+                    print(f"🔌 Modal client disconnected for event {event_id}: {modal_error}")
+                    # Release lock with failed status - Modal infrastructure failure
+                    release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['FAILED'])
+                    event_processed_or_failed = True  # Don't retry Modal client failures
                 except Exception as event_error:
                     print(f"❌ Error processing event {event_id}: {event_error}")
                     # Release lock with failed status
