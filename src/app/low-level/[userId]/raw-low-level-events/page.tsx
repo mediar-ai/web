@@ -5,6 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { JsonBlock } from '@/components/ui/code-block';
 import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -435,9 +436,13 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                         <Clipboard className="h-4 w-4" />
                       )}
                     </Button>
-                    <pre className="p-2 text-xs overflow-auto">
-                      {JSON.stringify(event.payload, null, 2)}
-                    </pre>
+                    <JsonBlock
+                      data={event.payload}
+                      theme="light"
+                      size="sm"
+                      showCopy={true}
+                      maxHeight="300px"
+                    />
                   </CardContent>
                 </motion.div>
               )}

@@ -544,7 +544,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
                 branchCombinations *= 1;
                 console.log(`🔍 Global checkbox field ${key}: contributing 1 combination (${values.length} selected values)`);
               } else {
-                branchCombinations *= values.length;
+              branchCombinations *= values.length;
                 console.log(`🔍 Global ${schemaItem.type || 'field'} ${key}: contributing ${values.length} combinations`);
               }
             }
@@ -562,7 +562,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
                 branchCombinations *= 1;
                 console.log(`🔍 Branch checkbox field ${bpKey}: contributing 1 combination (${values.length} selected values)`);
               } else {
-                branchCombinations *= values.length;
+              branchCombinations *= values.length;
                 console.log(`🔍 Branch ${branchSchemaItem.type || 'field'} ${bpKey}: contributing ${values.length} combinations`);
               }
             }
@@ -582,7 +582,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
               totalCombinations *= 1;
               console.log(`🔍 Checkbox field ${key}: contributing 1 combination (${values.length} selected values)`);
             } else {
-              totalCombinations *= values.length;
+            totalCombinations *= values.length;
               console.log(`🔍 ${schemaItem.type || 'Field'} ${key}: contributing ${values.length} combinations`);
             }
           }

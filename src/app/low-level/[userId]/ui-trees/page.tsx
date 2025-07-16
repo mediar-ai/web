@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { JsonBlock } from '@/components/ui/code-block';
 import DiffView from '@/components/low-level/DiffView';
 import { preprocessTree } from '@/lib/diff';
 import { diffLines } from 'diff';
@@ -329,9 +330,12 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
                              </div>
 
                             {diffMode === 'raw' && (
-                                <pre className="p-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 rounded">
-                                    {JSON.stringify(JSON.parse(currentTree), null, 2)}
-                                </pre>
+                                <JsonBlock
+                                    data={JSON.parse(currentTree)}
+                                    theme="light"
+                                    size="sm"
+                                    maxHeight="400px"
+                                />
                             )}
                             {diffMode === 'previous' && previousTree && (
                                 <DiffView oldTree={previousTree} newTree={currentTree} />

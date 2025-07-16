@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { CodeBlock } from '@/components/ui/code-block';
 import mermaid from 'mermaid';
 
 // Types for dynamic schema data
@@ -1215,10 +1216,13 @@ graph TB
         {/* Request Body */}
         {endpoint.requestBody && (
           <div className="mb-8">
-            <h3 className="text-lg font-semibold mb-3">Request Body</h3>
-            <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
-{endpoint.requestBody}
-            </pre>
+            <CodeBlock
+              language="json"
+              title="Request Body"
+              size="sm"
+            >
+              {endpoint.requestBody}
+            </CodeBlock>
           </div>
         )}
         
@@ -1231,50 +1235,35 @@ graph TB
               <div className="space-y-4">
                 {/* curl Example */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-md font-medium">curl</h4>
-                    <button
-                      onClick={() => copyToClipboard(examples.curl, `${endpoint.id}-curl`)}
-                      className="px-3 py-1 bg-white text-black border border-black rounded hover:bg-black hover:text-white transition-colors text-sm font-mono"
-                    >
-                      {copiedStates[`${endpoint.id}-curl`] || '📋 Copy curl'}
-                    </button>
-                  </div>
-                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
-{examples.curl}
-                  </pre>
+                  <CodeBlock
+                    language="curl"
+                    title="curl"
+                    size="sm"
+                  >
+                    {examples.curl}
+                  </CodeBlock>
                 </div>
                 
                 {/* JavaScript Example */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-md font-medium">JavaScript</h4>
-                    <button
-                      onClick={() => copyToClipboard(examples.javascript, `${endpoint.id}-js`)}
-                      className="px-3 py-1 bg-white text-black border border-black rounded hover:bg-black hover:text-white transition-colors text-sm font-mono"
-                    >
-                      {copiedStates[`${endpoint.id}-js`] || '📋 Copy JS'}
-                    </button>
-                  </div>
-                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
-{examples.javascript}
-                  </pre>
+                  <CodeBlock
+                    language="javascript"
+                    title="JavaScript"
+                    size="sm"
+                  >
+                    {examples.javascript}
+                  </CodeBlock>
                 </div>
                 
                 {/* Postman Example */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-md font-medium">Postman Collection</h4>
-                    <button
-                      onClick={() => copyToClipboard(examples.postman, `${endpoint.id}-postman`)}
-                      className="px-3 py-1 bg-white text-black border border-black rounded hover:bg-black hover:text-white transition-colors text-sm font-mono"
-                    >
-                      {copiedStates[`${endpoint.id}-postman`] || '📋 Copy Postman'}
-                    </button>
-                  </div>
-                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
-{examples.postman}
-                  </pre>
+                  <CodeBlock
+                    language="json"
+                    title="Postman Collection"
+                    size="sm"
+                  >
+                    {examples.postman}
+                  </CodeBlock>
                 </div>
               </div>
             );
@@ -1293,9 +1282,12 @@ graph TB
               </div>
             )}
             
-            <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto border border-black">
-{response}
-            </pre>
+            <CodeBlock
+              language="json"
+              size="sm"
+            >
+              {response}
+            </CodeBlock>
           </div>
         )}
       </div>

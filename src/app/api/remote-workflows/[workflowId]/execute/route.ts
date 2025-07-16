@@ -73,8 +73,8 @@ function validateParameters(params: Record<string, unknown>, schema: Record<stri
         }
         // Handle single-value fields  
         else if (def.type !== 'array') {
-          if (!validOptions.includes(value)) {
-            result.errors.push(`Parameter '${paramName}' must be one of: ${validOptions.join(', ')}`);
+        if (!validOptions.includes(value)) {
+          result.errors.push(`Parameter '${paramName}' must be one of: ${validOptions.join(', ')}`);
             result.isValid = false;
           }
         }

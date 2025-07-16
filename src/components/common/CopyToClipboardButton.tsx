@@ -31,7 +31,7 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
 
   return (
     <Button
-      variant="outline"
+      variant="black-outline"
       size="sm"
       className="h-7 px-2"
       onClick={handleCopy}

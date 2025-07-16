@@ -90,8 +90,8 @@ function detectCheckboxListFields(
         
         // Pattern A: set_toggled with contains()
         if (step.tool_name === 'set_toggled' && 
-            step.arguments &&
-            typeof (step.arguments as JSONObject).state === 'string' &&
+          step.arguments &&
+          typeof (step.arguments as JSONObject).state === 'string' &&
             ((step.arguments as JSONObject).state as string).includes(`contains(${varName},`)) {
           return true;
         }
@@ -287,10 +287,10 @@ const transformVariablesToSchema = (variables: JSONObject, automationSequence: J
             label: item
           }));
         } else if (Array.isArray(variable.default)) {
-          variable.options = (variable.default as string[]).map(item => ({
-            value: item,
-            label: item
-          }));
+        variable.options = (variable.default as string[]).map(item => ({
+          value: item,
+          label: item
+        }));
         }
         
       }
