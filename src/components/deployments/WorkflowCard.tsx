@@ -298,25 +298,46 @@ export function WorkflowCard({
             {/* First line: Just the workflow title */}
             <h3 className="text-xl font-bold font-mono mb-2">{workflow.name}</h3>
             
-            {/* Second line: Version, stats, play button, status, and action buttons */}
+            {/* Second line: stats, play button, status, and action buttons */}
             <div className="flex items-center gap-3 mb-2 flex-wrap">
-              <span className="text-sm font-mono px-3 py-1.5 bg-black text-white rounded h-7 flex items-center">
-                v{workflow.version || '1.0.0'}
-              </span>
               
-              {/* Stats */}
-              <div className="flex items-center gap-3 text-sm font-mono text-gray-600">
-                <span>RUNS: {workflow.total_executions || 0}</span>
-                {(workflow.total_executions || 0) > 0 && (
-                  <span className="text-black flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" />
-                    {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
-                  </span>
+              {/* Enhanced Stats - Overall and Current Version */}
+              <div className="flex items-center gap-3 text-sm font-mono">
+                {/* Overall Stats */}
+                <div className="flex items-center gap-2 text-gray-600">
+                  <span>TOTAL: {workflow.total_executions || 0}</span>
+                  {(workflow.total_executions || 0) > 0 && (
+                    <span className="text-black flex items-center gap-1">
+                      <CheckCircle className="w-4 h-4" />
+                      {Math.round(((workflow.successful_runs || 0) / (workflow.total_executions || 1)) * 100)}%
+                    </span>
+                  )}
+                </div>
+                
+                {/* Current Version Stats */}
+                {workflow.current_version_stats && workflow.current_version_stats.total_executions > 0 && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-black font-semibold">
+                        v{workflow.version_info?.current_version}: {workflow.current_version_stats.total_executions}
+                      </span>
+                      <span className="text-black flex items-center gap-1 font-bold">
+                        <CheckCircle className="w-4 h-4" />
+                        {workflow.current_version_stats.success_rate}%
+                      </span>
+                    </div>
+                  </>
                 )}
+                
+                {/* Duration */}
                 {workflow.estimated_duration_seconds && (
-                  <span className="text-black">
-                    in {workflow.estimated_duration_seconds} sec.
-                  </span>
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-black">
+                      in {workflow.estimated_duration_seconds} sec.
+                    </span>
+                  </>
                 )}
               </div>
               
@@ -367,7 +388,7 @@ export function WorkflowCard({
                   className="font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg rounded-lg font-bold border-2 hover:bg-gray-50"
                 >
                   <Upload className="w-5 h-5 mr-2" />
-                  UPLOAD VERSION
+                  UPLOAD
                 </Button>
               </VersionUploadDialog>
               
