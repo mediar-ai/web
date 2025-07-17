@@ -342,29 +342,31 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build query with filters - using compatibility view for automation_sequence
+    // Build query with filters - using statistics summary view for version-specific stats
+    // Only fetch top-level workflows (no parent_workflow_id) to avoid duplicates
     let query = supabase
-      .from('deployed_workflows_with_sequence')
+      .from('workflow_statistics_summary')
       .select(`
         id,
         name,
         description,
-        version,
+        current_version,
         status,
-        workflow_type,
-        parent_workflow_id,
-        display_order,
         category,
         estimated_duration_seconds,
-        successful_runs,
-        failed_runs,
-        cancelled_runs,
-        total_executions,
-        automation_sequence,
+        overall_total_executions,
+        overall_successful_runs,
+        overall_failed_runs,
+        overall_success_rate,
+        current_version_total_executions,
+        current_version_successful_runs,
+        current_version_failed_runs,
+        current_version_success_rate,
+        current_version_avg_duration,
+        total_versions,
         created_at,
         updated_at
       `)
-      .eq('workflow_type', 'execution') // Only fetch execution workflows directly
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -383,8 +385,25 @@ export async function GET(request: NextRequest) {
       throw new Error(`Database query failed: ${error.message}`);
     }
 
-    // Fetch all settings workflows for the execution workflows we just fetched
+    // Fetch automation sequences for the workflows (needed for input parameter detection)
     const workflowIds = (workflows || []).map(w => w.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const automationSequences: Record<number, any> = {};
+    
+    if (workflowIds.length > 0) {
+      const { data: sequences, error: sequencesError } = await supabase
+        .from('deployed_workflows_with_sequence')
+        .select('id, automation_sequence, workflow_type, parent_workflow_id, display_order')
+        .in('id', workflowIds);
+      
+      if (!sequencesError && sequences) {
+        sequences.forEach(seq => {
+          automationSequences[seq.id] = seq;
+        });
+      }
+    }
+
+    // Fetch all settings workflows for the execution workflows we just fetched
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let settingsWorkflows: any[] = [];
     
@@ -466,11 +485,11 @@ export async function GET(request: NextRequest) {
       return acc;
     }, {});
 
-    // Get total count for pagination (only execution workflows)
+    // Get total count for pagination (only top-level workflows without parents)
     let countQuery = supabase
       .from('deployed_workflows')
       .select('*', { count: 'exact', head: true })
-      .eq('workflow_type', 'execution');
+      .is('parent_workflow_id', null); // Only top-level workflows
 
     // Apply same filters as main query
     if (status) {
@@ -483,11 +502,52 @@ export async function GET(request: NextRequest) {
 
     const { count: totalCount } = await countQuery;
 
-    // Format execution workflows using the same processing function
-    const formattedWorkflows = (workflows || []).map(workflow => ({
-      ...processWorkflowSchema(workflow),
-      settings_workflows: settingsByParent[workflow.id] || [], // Add nested settings workflows
-    }));
+    // Format execution workflows, filtering out child workflows (those with parent_workflow_id)
+    const formattedWorkflows = (workflows || [])
+      .filter(workflow => {
+        // Only include top-level workflows (those without a parent)
+        const parentId = automationSequences[workflow.id]?.parent_workflow_id;
+        return !parentId; // Include only if no parent_workflow_id
+      })
+      .map(workflow => {
+        // Merge automation sequence and other missing fields
+        const workflowWithSequence = {
+          ...workflow,
+          // Map new field names to expected names for backward compatibility
+          version: workflow.current_version,
+          successful_runs: workflow.overall_successful_runs,
+          failed_runs: workflow.overall_failed_runs,
+          total_executions: workflow.overall_total_executions,
+          // Add automation sequence from separate query
+          automation_sequence: automationSequences[workflow.id]?.automation_sequence,
+          workflow_type: automationSequences[workflow.id]?.workflow_type || 'execution',
+          parent_workflow_id: automationSequences[workflow.id]?.parent_workflow_id,
+          display_order: automationSequences[workflow.id]?.display_order || 0,
+          // Add version-specific statistics as additional fields
+          current_version_stats: {
+            successful_runs: workflow.current_version_successful_runs,
+            failed_runs: workflow.current_version_failed_runs,
+            total_executions: workflow.current_version_total_executions,
+            success_rate: workflow.current_version_success_rate,
+            average_duration_seconds: workflow.current_version_avg_duration,
+          },
+          overall_stats: {
+            successful_runs: workflow.overall_successful_runs,
+            failed_runs: workflow.overall_failed_runs,
+            total_executions: workflow.overall_total_executions,
+            success_rate: workflow.overall_success_rate,
+          },
+          version_info: {
+            current_version: workflow.current_version,
+            total_versions: workflow.total_versions,
+          }
+        };
+        
+        return {
+          ...processWorkflowSchema(workflowWithSequence),
+          settings_workflows: settingsByParent[workflow.id] || [], // Add nested settings workflows
+        };
+      });
 
     const responseData = {
       success: true,

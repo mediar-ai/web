@@ -51,6 +51,24 @@ export interface Workflow {
   cancelled_runs: number;
   total_executions: number;
   success_rate: number | null;
+  // Version-specific statistics
+  current_version_stats?: {
+    successful_runs: number;
+    failed_runs: number;
+    total_executions: number;
+    success_rate: number;
+    average_duration_seconds?: number;
+  };
+  overall_stats?: {
+    successful_runs: number;
+    failed_runs: number;
+    total_executions: number;
+    success_rate: number;
+  };
+  version_info?: {
+    current_version: string;
+    total_versions: number;
+  };
   created_at: string;
   updated_at: string;
 }

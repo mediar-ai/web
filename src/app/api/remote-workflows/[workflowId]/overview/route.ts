@@ -185,22 +185,34 @@ export async function GET(
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   const { data: workflow, error } = await supabase
-    .from('deployed_workflows_with_sequence')
+    .from('workflow_statistics_summary')
     .select(`
       id,
       name,
       description,
-      version,
+      current_version,
       status,
       category,
-      estimated_duration_seconds,
-      successful_runs,
-      failed_runs,
-      total_executions,
-      automation_sequence,
+      overall_total_executions,
+      overall_successful_runs,
+      overall_failed_runs,
+      overall_success_rate,
+      current_version_total_executions,
+      current_version_successful_runs,
+      current_version_failed_runs,
+      current_version_success_rate,
+      current_version_avg_duration,
+      total_versions,
       created_at,
       updated_at
     `)
+    .eq('id', workflowId)
+    .single();
+
+  // Get automation_sequence from the main table
+  const { data: workflowSequence, error: sequenceError } = await supabase
+    .from('deployed_workflows_with_sequence')
+    .select('automation_sequence')
     .eq('id', workflowId)
     .single();
 
@@ -208,8 +220,16 @@ export async function GET(
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 
+  if (sequenceError) {
+    return NextResponse.json({ success: false, error: 'Failed to fetch workflow sequence: ' + sequenceError.message }, { status: 500 });
+  }
+
   if (!workflow) {
     return NextResponse.json({ success: false, error: 'Workflow not found' }, { status: 404 });
+  }
+
+  if (!workflowSequence) {
+    return NextResponse.json({ success: false, error: 'Workflow sequence not found' }, { status: 404 });
   }
 
   let executionSchema = {};
@@ -217,9 +237,9 @@ export async function GET(
   let expectedOutputs = {};
 
   try {
-    if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
+    if (workflowSequence.automation_sequence && Array.isArray(workflowSequence.automation_sequence) && workflowSequence.automation_sequence.length > 0) {
       // Analyze the automation sequence for conditional logic
-      const { coreVariables, conditionalVariables } = analyzeAutomationSequence(workflow.automation_sequence);
+      const { coreVariables, conditionalVariables } = analyzeAutomationSequence(workflowSequence.automation_sequence);
       
       // Merge core and conditional variables into a hierarchical schema
       executionSchema = { ...coreVariables, ...conditionalVariables };
@@ -248,7 +268,7 @@ export async function GET(
       sampleInputs = extractDefaultsFromHierarchical(executionSchema);
       
       // Extract expected outputs
-      const mainSequence = workflow.automation_sequence[0];
+      const mainSequence = workflowSequence.automation_sequence[0];
       if (mainSequence.arguments && mainSequence.arguments.output_parser && mainSequence.arguments.output_parser.fieldsToExtract) {
         expectedOutputs = Object.keys(mainSequence.arguments.output_parser.fieldsToExtract).reduce((acc, key) => {
           acc[key] = "dynamically extracted";
@@ -264,23 +284,41 @@ export async function GET(
     id: workflow.id,
     name: workflow.name,
     description: workflow.description,
-    version: workflow.version,
+    version: workflow.current_version,
     status: workflow.status,
     is_executable: workflow.status === 'deployed',
     category: workflow.category,
-    estimated_duration_seconds: workflow.estimated_duration_seconds,
+    estimated_duration_seconds: workflow.current_version_avg_duration,
     input_parameters: executionSchema,
     expected_outputs: expectedOutputs,
     sample_inputs: sampleInputs,
     performance_metrics: {
-      successful_runs: workflow.successful_runs,
-      failed_runs: workflow.failed_runs,
-      total_executions: workflow.total_executions,
-      success_rate: workflow.total_executions > 0
-        ? Math.round((workflow.successful_runs / workflow.total_executions) * 100)
-        : 0,
+      // Overall workflow statistics (across all versions)
+      overall: {
+        successful_runs: workflow.overall_successful_runs,
+        failed_runs: workflow.overall_failed_runs,
+        total_executions: workflow.overall_total_executions,
+        success_rate: workflow.overall_success_rate,
+      },
+      // Current version statistics
+      current_version: {
+        successful_runs: workflow.current_version_successful_runs,
+        failed_runs: workflow.current_version_failed_runs,
+        total_executions: workflow.current_version_total_executions,
+        success_rate: workflow.current_version_success_rate,
+        average_duration_seconds: workflow.current_version_avg_duration,
+      },
+      // Legacy fields for backward compatibility
+      successful_runs: workflow.overall_successful_runs,
+      failed_runs: workflow.overall_failed_runs,
+      total_executions: workflow.overall_total_executions,
+      success_rate: workflow.overall_success_rate,
     },
-    automation_sequence: workflow.automation_sequence,
+    version_info: {
+      current_version: workflow.current_version,
+      total_versions: workflow.total_versions,
+    },
+    automation_sequence: workflowSequence.automation_sequence,
     created_at: workflow.created_at,
     updated_at: workflow.updated_at,
   };
