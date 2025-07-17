@@ -99,24 +99,41 @@ export function WorkflowCard({
   const fetchExecutionDetails = useCallback(async (executionId: number): Promise<Record<string, unknown> | null> => {
     try {
       const response = await fetch(`/api/remote-workflows/executions/${executionId}`);
+      
+      if (!response.ok) {
+        console.warn(`Execution details API returned ${response.status} for execution ${executionId}`);
+        return null;
+      }
+      
       const data = await response.json();
       
       if (data.success && data.execution?.execution_params) {
+        console.log(`✅ Fetched execution details for ${executionId}, status: ${data.execution.status}`);
         return data.execution.execution_params;
+      } else {
+        console.log(`ℹ️ No execution parameters available for execution ${executionId}`);
+        return null;
       }
-      return null;
     } catch (error) {
-      console.error('Failed to fetch execution details for', executionId, error);
+      // Network or parsing error - log but don't throw since this is enhancement feature
+      console.warn(`Failed to fetch execution details for ${executionId}:`, error);
       return null;
     }
   }, []);
 
   // Cache lookup function for pending executions
   const lookupCacheForExecution = useCallback(async (executionId: number) => {
-    // First, get the execution parameters
+    // First check if this execution is still in a pending state that makes sense for cache lookup
+    const currentExecution = liveExecutions.find(exec => exec.id === executionId);
+    if (!currentExecution || !['queued', 'running'].includes(currentExecution.status)) {
+      console.log(`⚠️ Skipping cache lookup for execution ${executionId}: not in pending state (current status: ${currentExecution?.status || 'not found'})`);
+      return;
+    }
+
+    // Get the execution parameters
     const executionParams = await fetchExecutionDetails(executionId);
     if (!executionParams) {
-      console.log('No execution parameters found for execution', executionId);
+      console.log(`No execution parameters found for execution ${executionId}`);
       return;
     }
 
@@ -130,6 +147,11 @@ export function WorkflowCard({
         }),
       });
 
+      if (!response.ok) {
+        console.warn(`Cache lookup API returned ${response.status} for execution ${executionId}`);
+        return;
+      }
+
       const data = await response.json();
       if (data.success && data.cached) {
         setExecutionCacheResults(prev => new Map(prev).set(executionId, {
@@ -139,11 +161,16 @@ export function WorkflowCard({
           execution_duration_seconds: data.execution?.execution_duration_seconds,
           cached: true
         }));
+        console.log(`✅ Cache hit found for execution ${executionId} from execution ${data.cache_info?.source_execution_id}`);
+      } else {
+        console.log(`ℹ️ No cache available for execution ${executionId} parameters`);
       }
     } catch (error) {
-      console.error('Cache lookup failed for execution', executionId, error);
+      // Log the error but don't throw - this is a non-critical enhancement feature
+      console.warn(`Cache lookup failed for execution ${executionId}:`, error);
+      // Don't set any cache results on error to avoid confusion
     }
-  }, [workflow.id, fetchExecutionDetails, setExecutionCacheResults]);
+  }, [workflow.id, fetchExecutionDetails, setExecutionCacheResults, liveExecutions]);
 
   // Resume workflow function
   const handleResumeWorkflow = async () => {
