@@ -257,7 +257,10 @@ export async function POST(
 
     // ✨ NEW: Check cache first for instant results
     try {
-      const cacheResponse = await fetch(`${request.url.split('/api')[0]}/api/remote-workflows/cache`, {
+      // Pass detailed response parameter to cache endpoint to maintain consistency
+      const cacheUrl = `${request.url.split('/api')[0]}/api/remote-workflows/cache${full_detailed_response ? '?detailed_output=true' : ''}`;
+      
+      const cacheResponse = await fetch(cacheUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -290,29 +293,19 @@ export async function POST(
 
           console.log(`📋 Dispatched background execution ${backgroundExecution.data?.id} to keep cache fresh`);
 
-          // Return cache results with background execution info
+          // Return cache results with background execution info (using new cache response structure)
+          const cachedExecution = cacheData.execution;
+          
           return NextResponse.json({
             success: true,
             cached: true,
             execution: {
-              execution_id: cacheData.data.execution_id,
-              workflow_id: workflowIdNum,
-              workflow_name: workflow.name,
-              workflow_description: workflow.description || 'No description available',
-              workflow_version: workflow.version || '1.0.0',
-              workflow_category: workflow.category || 'general',
+              // Use cached execution data with background execution info
+              ...cachedExecution,
               
-              status: 'completed',
-              is_successful: true,
-              has_failed: false,
-              has_error: false,
-              
-              created_at: cacheData.cache_info.cache_timestamp,
-              quotes: cacheData.data.quotes,
-              
+              // Override with background execution details for freshness tracking
               request_parameters: {
-                original_request: parameters,
-                parameter_count: Object.keys(parameters).length,
+                ...cachedExecution.request_parameters,
                 note: `Instant cache response from execution ${cacheData.cache_info.source_execution_id}. Background execution ${backgroundExecution.data?.id} queued for freshness.`
               }
             },
