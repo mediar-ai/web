@@ -350,13 +350,14 @@ export default function WorkflowsPage() {
     setExecutingWorkflows(currentlyExecuting);
   }, [liveExecutions]);
 
-  const totalExecutions = workflows.reduce((total, workflow) => total + (workflow.total_executions || 0), 0);
-  const prevTotalExecutions = previousWorkflows.current.reduce((total, workflow) => total + (workflow.total_executions || 0), 0);
+  // Calculate stats using deployed version data (current_version_stats) instead of overall historical data
+  const totalExecutions = workflows.reduce((total, workflow) => total + (workflow.current_version_stats?.total_executions || 0), 0);
+  const prevTotalExecutions = previousWorkflows.current.reduce((total, workflow) => total + (workflow.current_version_stats?.total_executions || 0), 0);
   
-  const totalSuccessfulRuns = workflows.reduce((acc, w) => acc + (w.successful_runs || 0), 0);
+  const totalSuccessfulRuns = workflows.reduce((acc, w) => acc + (w.current_version_stats?.successful_runs || 0), 0);
   const successRate = totalExecutions > 0 ? Math.round((totalSuccessfulRuns / totalExecutions) * 100) : 0;
 
-  const prevTotalSuccessfulRuns = previousWorkflows.current.reduce((acc, w) => acc + (w.successful_runs || 0), 0);
+  const prevTotalSuccessfulRuns = previousWorkflows.current.reduce((acc, w) => acc + (w.current_version_stats?.successful_runs || 0), 0);
   const prevSuccessRate = prevTotalExecutions > 0 ? Math.round((prevTotalSuccessfulRuns / prevTotalExecutions) * 100) : 0;
 
   if (loading) {
