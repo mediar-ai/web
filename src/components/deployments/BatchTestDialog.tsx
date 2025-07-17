@@ -4,10 +4,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Database } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 import { BatchForm } from '@/components/deployments/BatchForm';
-import { CacheResultsPopup } from '@/components/deployments/CacheResultsPopup';
 import { Workflow } from '@/lib/workflow-types';
 
 type JsonValue = string | number | boolean | { [x: string]: JsonValue } | Array<JsonValue> | null;
@@ -34,21 +33,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSpecValid, setIsSpecValid] = useState(true);
   
-  // Cache-related state
-  const [cacheResult, setCacheResult] = useState<{
-    cached: boolean;
-    cache_hit_id?: number;
-    status?: 'completed' | 'failed';
-    quotes_found?: number;
-    execution_duration_seconds?: number;
-    error_message?: string;
-    created_at?: string;
-    cache_source?: 'hash' | 'jsonb';
-    query_time?: number;
-  } | null>(null);
-  const [showCachePopup, setShowCachePopup] = useState(false);
-  const [isCheckingCache, setIsCheckingCache] = useState(false);
-  const [executionStatus, setExecutionStatus] = useState<'pending' | 'queued' | 'running' | 'completed' | 'failed'>('pending');
+
 
   // Create a storage key specific to this workflow
   const storageKey = workflow ? `test-run-${workflow.id}` : '';
@@ -96,31 +81,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
     setIsSpecValid(isValid);
   }, []);
 
-  // Cache lookup function
-  const checkCache = useCallback(async (parameters: JsonObject) => {
-    if (!workflow) return null;
-    
-    setIsCheckingCache(true);
-    try {
-      const response = await fetch(`/api/remote-workflows/cache?workflow_id=${workflow.id}&detailed_output=false`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ parameters }),
-      });
 
-      const data = await response.json();
-      console.log('🎯 Cache lookup result:', data);
-      
-      if (data.success && data.cached) {
-        return data;
-      }
-    } catch (error) {
-      console.error('❌ Cache lookup error:', error);
-    } finally {
-      setIsCheckingCache(false);
-    }
-    return null;
-  }, [workflow]);
 
   const handleBatchSubmit = async () => {
     if (!workflow || !batchSpec || totalCombinations === 0) return;
@@ -129,29 +90,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
     console.log('🔢 BatchTestDialog: Total combinations:', totalCombinations);
     
     setIsSubmitting(true);
-    setExecutionStatus('pending');
-    
-    // First, check cache for single-parameter executions
-    if (totalCombinations === 1) {
-      const parameters = { ...batchSpec.static_parameters };
-      // Add dynamic parameters (should only be single values for combination count = 1)
-      Object.entries(batchSpec.dynamic_parameters).forEach(([key, values]) => {
-        if (values.length > 0) {
-          parameters[key] = values[0];
-        }
-      });
-      
-      // Check cache first
-      const cacheHit = await checkCache(parameters);
-      if (cacheHit) {
-        setCacheResult(cacheHit);
-        setShowCachePopup(true);
-        console.log('💾 Cache hit found, showing results while executing live...');
-      }
-    }
-    
     try {
-      setExecutionStatus('queued');
       const response = await fetch(`/api/remote-workflows/${workflow.id}/batch-execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -164,13 +103,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
       if (data.success) {
         console.log('✅ BatchTestDialog: Batch submission successful');
         console.log('🎯 BatchTestDialog: Execution IDs:', data.execution_ids);
-        setExecutionStatus('running');
-        
-        // Only close dialog if we didn't show cache results
-        if (!showCachePopup) {
-          onOpenChange(false);
-        }
-        
+        onOpenChange(false);
         if (onSubmit) {
           onSubmit();
         }
@@ -220,15 +153,10 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                 <Button 
                   className="ml-4" 
                   size="default" 
-                  disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 5000 || !isSpecValid || isCheckingCache}
+                  disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 5000 || !isSpecValid}
                   onClick={handleBatchSubmit}
                 >
-                  {isCheckingCache ? (
-                    <div className="flex items-center gap-2">
-                      <Database className="w-4 h-4" />
-                      Checking Cache...
-                    </div>
-                  ) : isSubmitting ? (
+                  {isSubmitting ? (
                     <div className="flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Submitting...
@@ -267,14 +195,6 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
           </Card>
         </div>
       </DialogContent>
-      
-      {/* Cache Results Popup */}
-      <CacheResultsPopup
-        cacheResult={cacheResult}
-        isVisible={showCachePopup}
-        executionStatus={executionStatus}
-        onClose={() => setShowCachePopup(false)}
-      />
     </Dialog>
   );
 } 

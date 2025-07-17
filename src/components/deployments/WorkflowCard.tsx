@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -85,6 +85,65 @@ export function WorkflowCard({
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
   const [resumingWorkflow, setResumingWorkflow] = useState(false);
+  
+  // Cache-related state for showing preview results for pending executions
+  const [executionCacheResults, setExecutionCacheResults] = useState<Map<number, {
+    quotes_found?: number;
+    status?: 'completed' | 'failed';
+    error_message?: string;
+    execution_duration_seconds?: number;
+    cached: boolean;
+  }>>(new Map());
+
+  // Fetch execution details to get parameters needed for cache lookup
+  const fetchExecutionDetails = useCallback(async (executionId: number): Promise<Record<string, unknown> | null> => {
+    try {
+      const response = await fetch(`/api/remote-workflows/executions/${executionId}`);
+      const data = await response.json();
+      
+      if (data.success && data.execution?.execution_params) {
+        return data.execution.execution_params;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to fetch execution details for', executionId, error);
+      return null;
+    }
+  }, []);
+
+  // Cache lookup function for pending executions
+  const lookupCacheForExecution = useCallback(async (executionId: number) => {
+    // First, get the execution parameters
+    const executionParams = await fetchExecutionDetails(executionId);
+    if (!executionParams) {
+      console.log('No execution parameters found for execution', executionId);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/remote-workflows/cache?detailed_output=false`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          workflow_id: workflow.id, 
+          parameters: executionParams 
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success && data.cached) {
+        setExecutionCacheResults(prev => new Map(prev).set(executionId, {
+          quotes_found: data.execution?.quotes?.length || 0,
+          status: data.execution?.status || 'completed',
+          error_message: data.execution?.error_message,
+          execution_duration_seconds: data.execution?.execution_duration_seconds,
+          cached: true
+        }));
+      }
+    } catch (error) {
+      console.error('Cache lookup failed for execution', executionId, error);
+    }
+  }, [workflow.id, fetchExecutionDetails, setExecutionCacheResults]);
 
   // Resume workflow function
   const handleResumeWorkflow = async () => {
@@ -117,6 +176,21 @@ export function WorkflowCard({
     }
   };
 
+  // Effect to trigger cache lookups for pending executions
+  useEffect(() => {
+    const pendingExecutions = liveExecutions.filter(exec => 
+      exec.workflow_id === workflow.id && 
+      (exec.status === 'queued' || exec.status === 'running')
+    );
+
+    // Only lookup cache for executions we haven't already checked
+    pendingExecutions.forEach(exec => {
+      if (!executionCacheResults.has(exec.id)) {
+        lookupCacheForExecution(exec.id);
+      }
+    });
+  }, [liveExecutions, workflow.id, executionCacheResults, lookupCacheForExecution]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setLocalTimeOffsets(prev => {
@@ -146,6 +220,8 @@ export function WorkflowCard({
     
     return () => clearInterval(timer);
   }, [liveExecutions, workflow.id]);
+
+
 
   const workflowLiveExecutions = liveExecutions
     .filter(exec => exec.workflow_id === workflow.id)
@@ -485,6 +561,27 @@ export function WorkflowCard({
                                       <span className="text-gray-400">•</span>
                                       <span className="text-blue-600 truncate inline-block max-w-[450px]" title={execution.current_step_description}>
                                         {execution.current_step_description}
+                                      </span>
+                                    </>
+                                  )}
+                                  {/* Cache preview for pending executions */}
+                                  {executionCacheResults.has(execution.execution_id) && (
+                                    <>
+                                      <span className="text-gray-400">•</span>
+                                      <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 border border-blue-200 rounded text-xs">
+                                        <span className="text-blue-600 font-mono">CACHE:</span>
+                                                                                 {(() => {
+                                           const cacheResult = executionCacheResults.get(execution.execution_id);
+                                           if (!cacheResult) return null;
+                                           
+                                           if (cacheResult.quotes_found) {
+                                             return <span className="text-green-600 font-semibold">{cacheResult.quotes_found} quotes ({formatDuration(cacheResult.execution_duration_seconds)})</span>;
+                                           } else if (cacheResult.status === 'failed') {
+                                             return <span className="text-red-600 font-semibold">Failed ({formatDuration(cacheResult.execution_duration_seconds)})</span>;
+                                           } else {
+                                             return <span className="text-green-600 font-semibold">Available ({formatDuration(cacheResult.execution_duration_seconds)})</span>;
+                                           }
+                                         })()}
                                       </span>
                                     </>
                                   )}
