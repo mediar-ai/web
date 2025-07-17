@@ -172,8 +172,12 @@ const getCombinations = async (dynamicParams: Record<string, JsonValue[]>, array
           if (iterationParams[branchParamName]) {
             // Map back to original parameter name for the execution
             // e.g., "quote_value_face_value" -> "quote_value"
-            const parts = branchParamName.split('_');
-            const originalParamName = parts.slice(0, -1).join('_'); // Remove the last part (branch identifier)
+            // Use the actual branch value to calculate the correct suffix to remove
+            const normalizedBranchValue = (controlValue as string).toLowerCase().replace(/\s+/g, '_');
+            const suffix = `_${normalizedBranchValue}`;
+            const originalParamName = branchParamName.endsWith(suffix) 
+              ? branchParamName.slice(0, -suffix.length)
+              : branchParamName; // Fallback to original name if suffix doesn't match
             branchParams[originalParamName] = iterationParams[branchParamName];
           }
         });
