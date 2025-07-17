@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
       console.log(`⚡ Running BASIC cache query with minimal fields`);
       const { data, error } = await supabase
         .from('workflow_executions')
-        .select('id, formatted_output, created_at, execution_duration_seconds, results, started_at, completed_at, error_message, status')
+        .select('id, formatted_output, created_at, execution_duration_seconds, started_at, completed_at, error_message, status')
         .eq('workflow_id', workflowIdNum)
         .in('status', ['completed', 'failed'])
         .eq('execution_params_hash', parametersHash)
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
         console.log(`🔄 Fallback BASIC JSONB query with minimal fields`);
         const { data, error } = await supabase
           .from('workflow_executions')
-          .select('id, formatted_output, created_at, execution_duration_seconds, results, started_at, completed_at, error_message, status')
+          .select('id, formatted_output, created_at, execution_duration_seconds, started_at, completed_at, error_message, status')
           .eq('workflow_id', workflowIdNum)
           .in('status', ['completed', 'failed'])
           .eq('execution_params', JSON.stringify(parameters))
@@ -276,10 +276,20 @@ export async function POST(request: NextRequest) {
         runtimeSeconds = Math.floor((completedAt.getTime() - createdAt.getTime()) / 1000);
       }
 
-      // Extract quote count from results for additional metadata
+      // Extract quote count from formatted_output for additional metadata (since results not fetched in basic mode)
       let quoteCount = 0;
-      if (cacheHit.results && typeof cacheHit.results === 'object' && cacheHit.results.quotes) {
-        quoteCount = Array.isArray(cacheHit.results.quotes) ? cacheHit.results.quotes.length : 0;
+      try {
+        if (cacheHit.formatted_output) {
+          const quotes = typeof cacheHit.formatted_output === 'string' 
+            ? JSON.parse(cacheHit.formatted_output)
+            : cacheHit.formatted_output;
+          quoteCount = Array.isArray(quotes) ? quotes.length : 0;
+        }
+      } catch {
+        // If formatted_output isn't parseable JSON, try to extract from results if available (detailed mode)
+        if (cacheHit.results && typeof cacheHit.results === 'object' && cacheHit.results.quotes) {
+          quoteCount = Array.isArray(cacheHit.results.quotes) ? cacheHit.results.quotes.length : 0;
+        }
       }
 
       const originalDuration = cacheHit.execution_duration_seconds || runtimeSeconds;
