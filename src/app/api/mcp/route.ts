@@ -49,6 +49,9 @@ export async function POST(request: NextRequest) {
         const { name, arguments: toolArgs } = body.params;
         console.log('🔧 [MCP API] Executing tool:', name, 'with args:', toolArgs);
         
+        // Ensure tools cache is populated first
+        await workflowDiscovery.getTools();
+        
         // Get the cached tool from discovery
         const cachedTool = workflowDiscovery.getTool(name);
         if (!cachedTool) {
