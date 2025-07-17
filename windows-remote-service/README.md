@@ -14,19 +14,25 @@ Complete remote management system for the MCP (Model Context Protocol) agent as 
 
 ### Local Setup (Windows VM)
 ```powershell
-# 1. Install the service
+# 1. Install the MCP service
 .\install-mcp-service-nssm.ps1
 
-# 2. Start management server
+# 2. Install lock prevention (NEW!)
+.\install-lock-prevention.ps1
+
+# 3. Start management server
 powershell -ExecutionPolicy Bypass -File C:\Users\terminatoradmin\Desktop\browser-workflow-capture-app-latest\windows-remote-service\windows_service_endpoint.ps1 -Port 8080  
 # stop if needed
 Get-Process powershell | Stop-Process -Force # stop all powershell processes
 
-# 3. Start ngrok tunnels (for external access)
+# 4. Start ngrok tunnels (for external access)
 ngrok start --all --config scripts/ngrok.yml
 
-# 4. Monitor logs
+# 5. Monitor logs
 .\monitor_all_logs.ps1
+
+# 6. Test lock prevention (optional)
+.\test-lock-prevention.ps1
 ```
 
 ### External Access Commands
@@ -41,8 +47,35 @@ curl -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/statu
 # Restart service (PRIMARY USE CASE)
 curl -X POST -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/restart"
 
+# Restart with specific version (NEW!)
+curl -X POST -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/restart-version?version=0.8.1"
+
 # Upgrade to latest version
 curl -X POST -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/upgrade"
+
+# Lock Prevention Commands (NEW!)
+# Check lock prevention status
+curl -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/lock-prevention/status"
+
+# Safe RDP disconnect (use before disconnecting RDP)
+curl -X POST -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/lock-prevention/tscon"
+
+# Restart lock prevention service
+curl -X POST -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/lock-prevention/restart"
+
+# Local Lock Prevention Commands
+# Test lock prevention manually
+.\test-lock-prevention.ps1
+
+# Run lock prevention in different modes
+.\prevent-vm-lock-clean.ps1 -Mode interactive
+.\prevent-vm-lock-clean.ps1 -Mode service  
+.\prevent-vm-lock-clean.ps1 -Mode tscon-only
+.\prevent-vm-lock-clean.ps1 -Mode status
+
+# Safe RDP disconnect (alternative methods)
+.\safe-disconnect-fixed.ps1
+.\rdp-disconnect-safe.bat
 
 # MCP Server Commands
 # Health check
@@ -106,7 +139,91 @@ curl -X POST "https://mcp-server-1.ngrok.app/tools/click_element" \
 | POST | `/start` | Start service | `{"success": true, "action": "start", "message": "Service started successfully"}` |
 | POST | `/stop` | Stop service | `{"success": true, "action": "stop", "message": "Service stopped successfully"}` |
 | POST | `/restart` | Restart service | `{"success": true, "action": "restart", "message": "Service restarted successfully"}` |
+| POST | `/restart-version` | Restart with specific version | `{"success": true, "action": "restart-version", "version": "0.8.1", "steps": [...]}` |
 | POST | `/upgrade` | Upgrade to latest version | `{"success": true, "action": "upgrade", "steps": [...]}` |
+
+## 🎯 Version Management (External Control)
+
+### **NEW: Remote Version Control** 🚀
+
+You can now **remotely restart the MCP service with any specific version** without manual VM access:
+
+#### **Restart with Specific Version**
+```bash
+# Method 1: Query Parameter (Recommended)
+curl -X POST -H "ngrok-skip-browser-warning: true" \
+  "https://vm-windows-1.ngrok.dev/restart-version?version=0.8.1"
+
+# Method 2: JSON Body
+curl -X POST -H "ngrok-skip-browser-warning: true" \
+  -H "Content-Type: application/json" \
+  -d '{"version":"0.8.1"}' \
+  "https://vm-windows-1.ngrok.dev/restart-version"
+
+# Latest version (same as /upgrade)
+curl -X POST -H "ngrok-skip-browser-warning: true" \
+  "https://vm-windows-1.ngrok.dev/restart-version?version=latest"
+```
+
+#### **Response Format**
+```json
+{
+  "success": true,
+  "action": "restart-version",
+  "message": "Service restarted with version 0.8.1 successfully",
+  "version": "0.8.1",
+  "steps": [
+    "Stopping MCP service...",
+    "Updating to version: 0.8.1",
+    "Service configured for version: 0.8.1",
+    "Starting MCP service...",
+    "Service status: Running"
+  ],
+  "service_status": {
+    "status": "Running",
+    "name": "MCPServer"
+  },
+  "timestamp": "2025-01-15T16:56:28.133Z"
+}
+```
+
+#### **Common Versions to Use**
+- `0.8.1` - Stable version
+- `0.9.0` - Feature update
+- `0.9.3` - Latest stable (as of Jan 2025)
+- `latest` - Always gets newest available
+
+#### **Production Integration**
+```javascript
+// JavaScript/Node.js example
+const restartWithVersion = async (version) => {
+  const response = await fetch(
+    `https://vm-windows-1.ngrok.dev/restart-version?version=${version}`, 
+    {
+      method: 'POST',
+      headers: { 'ngrok-skip-browser-warning': 'true' }
+    }
+  );
+  return await response.json();
+};
+
+// Usage
+await restartWithVersion('0.8.1');
+```
+
+```python
+# Python example
+import requests
+
+def restart_with_version(version):
+    url = f"https://vm-windows-1.ngrok.dev/restart-version?version={version}"
+    headers = {'ngrok-skip-browser-warning': 'true'}
+    response = requests.post(url, headers=headers)
+    return response.json()
+
+# Usage
+result = restart_with_version('0.8.1')
+```
 
 ## 🔄 Deployment Method Switching
 
@@ -347,16 +464,23 @@ curl -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/statu
 ## 📁 File Structure
 ```
 windows-remote-service/
-├── install-mcp-service-nssm.ps1    # Service installation
+├── install-mcp-service-nssm.ps1     # Service installation
 ├── windows_service_endpoint.ps1     # HTTP management server
-├── upgrade-mcp-service.ps1          # Command-line upgrade
-├── monitor_all_logs.ps1             # Log monitoring
-├── ngrok.yml                        # Ngrok configuration
-└── README.md                        # This documentation
+├── upgrade-mcp-service.ps1           # Command-line upgrade
+├── monitor_all_logs.ps1              # Log monitoring
+├── ngrok.yml                         # Ngrok configuration
+├── README.md                         # This documentation
+├── install-lock-prevention.ps1      # Lock prevention service installer
+├── prevent-vm-lock-clean.ps1         # Lock prevention utility (clean version)
+├── test-lock-prevention.ps1          # Lock prevention test suite
+├── safe-disconnect-fixed.ps1         # Safe RDP disconnect (PowerShell)
+├── rdp-disconnect-safe.bat           # Safe RDP disconnect (batch)
+└── LOCK_PREVENTION_SETUP.md          # Lock prevention documentation
 
 logs/
-├── mcp-server.log                   # Service output
-└── mcp-server-error.log            # Service errors
+├── mcp-server.log                    # Service output
+├── mcp-server-error.log             # Service errors
+└── lock-prevention.log              # Lock prevention service logs
 ```
 
 ## 🎯 Success Indicators
@@ -384,5 +508,6 @@ logs/
 ---
 
 **System Status**: ✅ **FULLY OPERATIONAL**  
-**Last Updated**: 2025-01-14  
-**Primary Use Case**: Programmatic server restart and upgrade from backend applications
+**Last Updated**: 2025-01-15  
+**Primary Use Case**: Remote MCP version control, server restart, and upgrade from backend applications with VM lock prevention  
+**NEW FEATURE**: 🚀 **External Version Control** - Restart with any specific MCP version via API

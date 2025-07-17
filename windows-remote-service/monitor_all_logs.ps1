@@ -5,6 +5,7 @@ param(
     [switch]$ShowNgrok = $true,
     [switch]$ShowMCP = $true,
     [switch]$ShowHTTP = $true,
+    [switch]$ShowLockPrevention = $true,
     [int]$RefreshSeconds = 2
 )
 
@@ -14,12 +15,15 @@ Write-Host "*** Real-time Server Log Monitor ***" -ForegroundColor Green
 Write-Host "=====================================" -ForegroundColor Green
 Write-Host ""
 
-# Log file paths - Updated to use current project directory
-$projectDir = "C:\Users\terminatoradmin\Desktop\browser-workflow-capture-app-latest\windows-remote-service"
-$mcpLogFile = "$projectDir\logs\mcp-server.log"
-$mcpErrorFile = "$projectDir\logs\mcp-server.log"  # Same file since MCP logs to stderr
+# Log file paths
+$mcpLogFile = "C:\Users\terminatoradmin\Desktop\terminator\logs\mcp-server.log"
+$mcpErrorFile = "C:\Users\terminatoradmin\Desktop\terminator\logs\mcp-server-error.log"
+$lockPreventionLogFile = "logs\lock-prevention.log"
+$lockPreventionStdoutFile = "logs\lock-prevention-stdout.log"
+$lockPreventionStderrFile = "logs\lock-prevention-stderr.log"
 $ngrokUrl = "http://127.0.0.1:4040/api/tunnels"
 $httpHealthUrl = "http://localhost:8080/health"
+$lockPreventionHealthUrl = "http://localhost:8080/lock-prevention/status"
 
 # Function to display colored output
 function Write-ColoredLog {
@@ -130,7 +134,36 @@ try {
         }
         Write-Host ""
         
-        # 2. HTTP Management Server Status
+        # 2. Lock Prevention Status
+        if ($ShowLockPrevention) {
+            Write-Host "LOCK PREVENTION STATUS" -ForegroundColor Cyan
+            Write-Host "-------------------------" -ForegroundColor Cyan
+            $lockService = Get-Service -Name "VMLockPrevention" -ErrorAction SilentlyContinue
+            if ($lockService) {
+                $statusColor = if ($lockService.Status -eq "Running") { "Green" } else { "Red" }
+                Write-ColoredLog "Service: $($lockService.Status)" -Color $statusColor -Prefix "LOCK"
+                
+                # Try to get detailed status via HTTP endpoint
+                try {
+                    $lockHttpStatus = Invoke-RestMethod -Uri $lockPreventionHealthUrl -TimeoutSec 2 -ErrorAction SilentlyContinue
+                    if ($lockHttpStatus -and $lockHttpStatus.success) {
+                        $lockInfo = $lockHttpStatus.lock_prevention
+                        Write-ColoredLog "TSCON Enabled: $($lockInfo.TsconEnabled)" -Color White -Prefix "LOCK"
+                        Write-ColoredLog "Power Mgmt: $($lockInfo.PowerManagementEnabled)" -Color White -Prefix "LOCK"
+                        Write-ColoredLog "Activity Sim: $($lockInfo.ActivitySimulationEnabled)" -Color White -Prefix "LOCK"
+                        Write-ColoredLog "Sessions: $($lockInfo.CurrentSessions.Count)" -Color White -Prefix "LOCK"
+                    }
+                } catch {
+                    Write-ColoredLog "HTTP endpoint not available" -Color Yellow -Prefix "LOCK"
+                }
+            } else {
+                Write-ColoredLog "Service: Not Installed" -Color Red -Prefix "LOCK"
+                Write-ColoredLog "Run: .\install-lock-prevention.ps1" -Color Yellow -Prefix "LOCK"
+            }
+            Write-Host ""
+        }
+
+        # 3. HTTP Management Server Status
         if ($ShowHTTP) {
             Write-Host "HTTP MANAGEMENT SERVER" -ForegroundColor Cyan
             Write-Host "-------------------------" -ForegroundColor Cyan
@@ -145,7 +178,7 @@ try {
             Write-Host ""
         }
         
-        # 3. Ngrok Status
+        # 4. Ngrok Status
         if ($ShowNgrok) {
             Write-Host "NGROK TUNNEL" -ForegroundColor Cyan
             Write-Host "---------------" -ForegroundColor Cyan
@@ -165,7 +198,7 @@ try {
             Write-Host ""
         }
         
-        # 4. MCP Server Logs
+        # 5. MCP Server Logs
         if ($ShowMCP) {
             Write-Host "MCP SERVER LOGS (Last 5 lines)" -ForegroundColor Cyan
             Write-Host "-----------------------------" -ForegroundColor Cyan
@@ -194,7 +227,28 @@ try {
             Write-Host ""
         }
         
-        # 5. Recent HTTP Requests (simulated)
+        # 6. Lock Prevention Logs
+        if ($ShowLockPrevention -and (Test-Path $lockPreventionLogFile)) {
+            Write-Host "LOCK PREVENTION LOGS (Last 5 lines)" -ForegroundColor Cyan
+            Write-Host "-----------------------------------" -ForegroundColor Cyan
+            $lockLogs = Get-LastLines -FilePath $lockPreventionLogFile -Lines 5
+            if ($lockLogs.Count -gt 0) {
+                foreach ($line in $lockLogs) {
+                    if ($line.Trim() -ne "") {
+                        $logColor = "White"
+                        if ($line -match "\[ERROR\]") { $logColor = "Red" }
+                        elseif ($line -match "\[WARNING\]") { $logColor = "Yellow" }
+                        elseif ($line -match "reconnected|transferred|success") { $logColor = "Green" }
+                        Write-ColoredLog $line -Color $logColor -Prefix "LOCK"
+                    }
+                }
+            } else {
+                Write-ColoredLog "No logs yet" -Color Yellow -Prefix "LOCK"
+            }
+            Write-Host ""
+        }
+        
+        # 7. Recent HTTP Requests (simulated)
         Write-Host "RECENT ACTIVITY" -ForegroundColor Cyan
         Write-Host "-------------------" -ForegroundColor Cyan
         Write-ColoredLog "For detailed HTTP logs, open: http://127.0.0.1:4040" -Color Yellow -Prefix "INFO"
