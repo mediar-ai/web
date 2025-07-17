@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
   
   // Get URL parameters for controlling response detail level
   const { searchParams } = new URL(request.url);
-  const detailed_output = searchParams.get('detailed_output') === 'true';
+  const full_detailed_response = searchParams.get('full_detailed_response') === 'true';
   
   try {
     const body = await request.json();
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
 
     const workflowIdNum = parseInt(workflow_id.toString());
     
-    console.log(`🔍 Cache lookup for workflow ${workflowIdNum} with parameters (detail_level: ${detailed_output ? 'full' : 'basic'}):`, parameters);
+    console.log(`🔍 Cache lookup for workflow ${workflowIdNum} with parameters (full_detailed_response: ${full_detailed_response}):`, parameters);
 
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
     // Optimized cache lookup query using parameter hash for maximum speed
     let cacheResults, cacheError;
     
-    if (detailed_output) {
+    if (full_detailed_response) {
       // Detailed query: Include ALL fields including heavy debugging data (raw_logs, raw_mcp_response, execution_logs)
       console.log(`🔍 Running DETAILED cache query with debugging fields`);
       const { data, error } = await supabase
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
     if (cacheResults && cacheResults.length === 0) {
       console.log(`🔄 Hash lookup missed, falling back to JSONB lookup`);
       
-      if (detailed_output) {
+      if (full_detailed_response) {
         console.log(`🔄 Fallback DETAILED JSONB query with all fields`);
         const { data, error } = await supabase
           .from('workflow_executions')
@@ -288,6 +288,34 @@ export async function POST(request: NextRequest) {
       const isSuccessful = cacheHit.status === 'completed';
       console.log(`✅ Cache HIT! Execution ${cacheHit.id} (${cacheHit.status}) - ${queryTime}ms vs ${originalDuration}s original`);
 
+      // Return minimal response with only formatted_output when full_detailed_response is false
+      if (!full_detailed_response) {
+        return NextResponse.json({
+          success: true,
+          cached: true,
+          execution: {
+            execution_id: cacheHit.id,
+            workflow_id: workflowIdNum,
+            status: cacheHit.status,
+            formatted_output: cacheHit.formatted_output || null,
+          },
+          cache_info: {
+            source_execution_id: cacheHit.id,
+            cache_timestamp: cacheHit.created_at,
+            original_duration_seconds: originalDuration,
+            cache_query_time_ms: queryTime,
+            speed_improvement: `${speedImprovement}x faster`,
+            quote_count: quoteCount
+          },
+          response_metadata: {
+            execution_mode: 'synchronous_cached',
+            full_detailed_response: false,
+            note: 'Concise cached response with only formatted_output. Add "?full_detailed_response=true" for complete details.'
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
       // Build comprehensive response matching execution details endpoint structure
       const response = {
         success: true,
@@ -326,21 +354,12 @@ export async function POST(request: NextRequest) {
           error_details: cacheHit.error_message || null,
           
           // Execution details (conditional based on query type)
-          ...(detailed_output && {
-            modal_call_id: cacheHit.modal_call_id,
-            client_id: cacheHit.client_id,
-            execution_params: cacheHit.execution_params || {},
-          }),
-          
-          // Basic mode gets parameters from request, not from database
-          ...(!detailed_output && {
-            modal_call_id: null,
-            client_id: null,
-            execution_params: parameters,  // Use request parameters instead of DB lookup
-          }),
+          modal_call_id: full_detailed_response ? cacheHit.modal_call_id : null,
+          client_id: full_detailed_response ? cacheHit.client_id : null,
+          execution_params: full_detailed_response ? (cacheHit.execution_params || {}) : (parameters as Record<string, unknown>),
           
                           // Include execution logs only in detailed response
-        ...(detailed_output && 'execution_logs' in cacheHit && {
+        ...(full_detailed_response && 'execution_logs' in cacheHit && {
           execution_logs: cacheHit.execution_logs || []
         }),
 
@@ -353,14 +372,14 @@ export async function POST(request: NextRequest) {
           parameter_count: Object.keys(parameters).length,
           
           // Include expensive schema analysis only in detailed response
-          ...(detailed_output && {
+          ...(full_detailed_response && {
             api_parameter_names: await getApiParameterNames(workflowIdNum, parameters)
           }),
           
           // Helper info
-          note: detailed_output 
+          note: full_detailed_response 
             ? "Cache response with full parameter analysis. Use 'original_request' to see exactly what was sent."
-            : "Cache response with basic parameters. Add '?detailed_output=true' for schema analysis."
+            : "Cache response with basic parameters. Add '?full_detailed_response=true' for schema analysis."
         },
         
         // Results (cached executions always have results)
@@ -371,7 +390,7 @@ export async function POST(request: NextRequest) {
         formatted_output: cacheHit.formatted_output || null,
         
         // Include raw data only in detailed response (for debugging)
-        ...(detailed_output && 'raw_logs' in cacheHit && {
+        ...(full_detailed_response && 'raw_logs' in cacheHit && {
           raw_data: {
             raw_logs: cacheHit.raw_logs || null,
             raw_mcp_response: cacheHit.raw_mcp_response || null,
@@ -394,7 +413,7 @@ export async function POST(request: NextRequest) {
           },
           
           // Include detailed metadata only in detailed response
-          ...(detailed_output && {
+          ...(full_detailed_response && {
             timestamps: {
               created_at: cacheHit.created_at,
               ...(cacheHit.updated_at && { updated_at: cacheHit.updated_at }),
@@ -424,10 +443,10 @@ export async function POST(request: NextRequest) {
         },
         response_metadata: {
           execution_mode: 'cached',
-          detail_level: detailed_output ? 'full' : 'basic',
-          note: detailed_output 
+          detail_level: full_detailed_response ? 'full' : 'basic',
+          note: full_detailed_response 
             ? 'Full detailed cached response including raw data, execution logs, and schema analysis'
-            : 'Basic cached response. Add "?detailed_output=true" to include raw data, execution logs, and schema analysis'
+            : 'Basic cached response. Add "?full_detailed_response=true" to include raw data, execution logs, and schema analysis'
         },
         timestamp: new Date().toISOString()
       };
@@ -446,8 +465,8 @@ export async function POST(request: NextRequest) {
         data: null,
         response_metadata: {
           execution_mode: 'cached',
-          detail_level: detailed_output ? 'full' : 'basic',
-          note: detailed_output 
+          detail_level: full_detailed_response ? 'full' : 'basic',
+          note: full_detailed_response 
             ? 'Cache miss - no detailed data available. Execute workflow to generate cached results.'
             : 'Cache miss - no basic data available. Execute workflow to generate cached results.'
         },
@@ -470,7 +489,7 @@ export async function POST(request: NextRequest) {
         },
         response_metadata: {
           execution_mode: 'cached',
-          detail_level: detailed_output ? 'full' : 'basic',
+          detail_level: full_detailed_response ? 'full' : 'basic',
           note: 'Cache lookup error occurred'
         },
         timestamp: new Date().toISOString()

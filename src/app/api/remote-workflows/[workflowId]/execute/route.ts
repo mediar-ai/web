@@ -264,8 +264,8 @@ export async function POST(
     // ✨ NEW: Check cache first if requested
     if (include_cache) {
       try {
-        // Pass detailed response parameter to cache endpoint (map full_detailed_response to detailed_output)
-        const cacheUrl = `${request.url.split('/api')[0]}/api/remote-workflows/cache${full_detailed_response ? '?detailed_output=true' : ''}`;
+        // Pass detailed response parameter to cache endpoint
+        const cacheUrl = `${request.url.split('/api')[0]}/api/remote-workflows/cache${full_detailed_response ? '?full_detailed_response=true' : ''}`;
         
         const cacheResponse = await fetch(cacheUrl, {
           method: 'POST',
