@@ -102,6 +102,25 @@ function formatExecutionResponse(execution: ExecutionData, workflow: WorkflowDat
   const hasFailed = execution.status === 'failed' || execution.status === 'error';
   const hasError = hasFailed || !!execution.error_message;
 
+  // Return minimal response with only formatted_output when full_detailed_response is false
+  if (!full_detailed_response) {
+    return {
+      success: true,
+      execution: {
+        execution_id: execution.id,
+        workflow_id: execution.workflow_id,
+        status: execution.status,
+        formatted_output: execution.formatted_output || null,
+      },
+      response_metadata: {
+        execution_mode: 'synchronous',
+        full_detailed_response: false,
+        note: 'Concise response with only formatted_output. Add "?full_detailed_response=true" for complete details.'
+      },
+      timestamp: new Date().toISOString()
+    };
+  }
+
   return {
     success: true,
     execution: {
@@ -185,10 +204,8 @@ function formatExecutionResponse(execution: ExecutionData, workflow: WorkflowDat
     },
     response_metadata: {
       execution_mode: 'synchronous',
-      detail_level: full_detailed_response ? 'full' : 'basic',
-      note: full_detailed_response 
-        ? 'Synchronous execution completed. Returns full detailed response including raw data and execution logs.'
-        : 'Synchronous execution completed. Returns basic response without raw data or execution logs. Add "?full_detailed_response=true" for complete details.'
+      full_detailed_response: full_detailed_response,
+      note: 'Synchronous execution completed. Returns full detailed response including results, summary, and raw data.'
     },
     timestamp: new Date().toISOString()
   };
@@ -208,7 +225,7 @@ export async function POST(
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
     
-    console.log(`🔄 Synchronous execution request for workflow ${workflowIdNum} (detail_level: ${full_detailed_response ? 'full' : 'basic'})...`);
+    console.log(`🔄 Synchronous execution request for workflow ${workflowIdNum} (full_detailed_response: ${full_detailed_response})...`);
 
     // Parse request body
     const body = await request.json();
