@@ -278,7 +278,7 @@
                      "selector":"{{selectors.browser_window}}",
                      "include_tree":false
                   },
-                  "delay_ms":500,
+                  "delay_ms":300,
                   "continue_on_error":true
                },
                {
@@ -286,7 +286,7 @@
                   "arguments":{
                      "percentage":25
                   },
-                  "delay_ms":500,
+                  "delay_ms":300,
                   "continue_on_error":true
                }
             ]
@@ -395,7 +395,7 @@
                      "key":"{Enter}"
                   },
                   "continue_on_error":true,
-                  "delay_ms":1000
+                  "delay_ms":500
                }
             ]
          },
