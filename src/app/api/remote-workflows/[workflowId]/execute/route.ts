@@ -126,7 +126,11 @@ export async function POST(
     const workflowIdNum = parseInt(workflowId);
     const body = await request.json();
     
-    console.log(`🚀 Executing workflow ${workflowIdNum} with parameters:`, body);
+    // Extract detailed response preference from URL query params or request body
+    const { searchParams } = new URL(request.url);
+    const full_detailed_response = searchParams.get('full_detailed_response') === 'true' || body.full_detailed_response === true;
+    
+    console.log(`🚀 Executing workflow ${workflowIdNum} with parameters (detail_level: ${full_detailed_response ? 'full' : 'basic'}):`, body);
     
     // Strict parameter extraction - require "parameters" key
     if (!body.parameters) {
@@ -172,6 +176,7 @@ export async function POST(
 
     console.log('✅ Extracted execution_params:', execution_params);
     console.log(`🔧 Cache enabled: ${include_cache}`);
+    console.log(`🔍 Full detailed response requested: ${full_detailed_response}`);
 
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -259,7 +264,10 @@ export async function POST(
     // ✨ NEW: Check cache first if requested
     if (include_cache) {
       try {
-        const cacheResponse = await fetch(`${request.url.split('/api')[0]}/api/remote-workflows/cache`, {
+        // Pass detailed response parameter to cache endpoint (map full_detailed_response to detailed_output)
+        const cacheUrl = `${request.url.split('/api')[0]}/api/remote-workflows/cache${full_detailed_response ? '?detailed_output=true' : ''}`;
+        
+        const cacheResponse = await fetch(cacheUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -297,7 +305,9 @@ export async function POST(
 
             console.log(`✅ Created background execution ${execution.id} for cache refresh`);
             
-            // Return cached results with background execution info
+            // Return cached results with background execution info (using new cache response structure)
+            const cachedExecution = cacheData.execution;
+            
             return NextResponse.json({
               success: true,
               cached: true,
@@ -311,9 +321,9 @@ export async function POST(
               client_id,
               message: `Cache hit! Returning instant results from execution ${cacheData.cache_info.source_execution_id}. Background execution ${execution.id} queued for cache refresh.`,
               
-              // Cached results
+              // Cached results (using new structure)
               cached_results: {
-                quotes: cacheData.data.quotes,
+                quotes: cachedExecution.quotes,
                 source_execution_id: cacheData.cache_info.source_execution_id,
                 cache_timestamp: cacheData.cache_info.cache_timestamp,
                 speed_improvement: cacheData.cache_info.speed_improvement

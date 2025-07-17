@@ -1,6 +1,109 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Type definition for workflow execution cache hit
+interface WorkflowExecutionCacheHit {
+  id: number;
+  formatted_output?: string | null;
+  created_at: string;
+  execution_duration_seconds?: number | null;
+  results?: {
+    quotes?: unknown[];
+    performance_metrics?: {
+      successful_steps?: number;
+      failed_steps?: number;
+      total_steps?: number;
+    };
+  } | null;
+  raw_logs?: string | null;
+  raw_mcp_response?: unknown | null;
+  execution_logs?: unknown[] | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  updated_at?: string | null;
+  progress_percentage?: number | null;
+  current_step_index?: number | null;
+  total_steps?: number | null;
+  error_message?: string | null;
+  modal_call_id?: string | null;
+  client_id?: string | null;
+  execution_params?: Record<string, unknown> | null;
+  status: 'completed' | 'failed';
+}
+
+// Helper function to get API parameter names from workflow schema (copied from execution details endpoint)
+async function getApiParameterNames(workflowId: number, executionParams: Record<string, unknown>) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return { error: "Database connection not available" };
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Get the workflow's automation sequence to understand parameter schema
+    const { data: workflow } = await supabase
+      .from('deployed_workflows_with_sequence')
+      .select('automation_sequence')
+      .eq('id', workflowId)
+      .single();
+
+    if (!workflow?.automation_sequence || !Array.isArray(workflow.automation_sequence) || workflow.automation_sequence.length === 0) {
+      return { 
+        message: "No schema available for this workflow",
+        schema_endpoint: `/api/remote-workflows/${workflowId}/schema`
+      };
+    }
+
+    // Extract the parameter schema from the automation sequence
+    const mainSequence = workflow.automation_sequence[0];
+    const variables = mainSequence?.arguments?.variables || {};
+    
+    // Flatten any nested structures to get the expected flat parameter names
+    const flattenParameterNames = (obj: Record<string, unknown>, prefix = ''): string[] => {
+      const names: string[] = [];
+      
+      for (const [key, value] of Object.entries(obj)) {
+        const fullKey = prefix ? `${prefix}.${key}` : key;
+        
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          const valueObj = value as Record<string, unknown>;
+          
+          // Check if this is a parameter definition or a nested object
+          if (valueObj.type || valueObj.description || valueObj.default !== undefined) {
+            // This is a parameter definition
+            names.push(fullKey);
+          } else {
+            // This might be a nested group - recurse
+            names.push(...flattenParameterNames(valueObj, fullKey));
+          }
+        }
+      }
+      
+      return names;
+    };
+
+    const expectedParameterNames = flattenParameterNames(variables);
+    const actualParameterNames = Object.keys(executionParams);
+
+    return {
+      expected_parameter_names: expectedParameterNames,
+      actual_parameter_names: actualParameterNames,
+      parameter_count_match: expectedParameterNames.length === actualParameterNames.length,
+      schema_endpoint: `/api/remote-workflows/${workflowId}/schema`,
+      docs_endpoint: `/docs/api/remote-workflows`
+    };
+
+  } catch (error) {
+    return { 
+      error: "Failed to analyze parameter schema",
+      details: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
 /**
  * Cache endpoint for instant quote retrieval based on parameters
  * 
@@ -12,6 +115,10 @@ import { createClient } from '@supabase/supabase-js';
  */
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
+  
+  // Get URL parameters for controlling response detail level
+  const { searchParams } = new URL(request.url);
+  const detailed_output = searchParams.get('detailed_output') === 'true';
   
   try {
     const body = await request.json();
@@ -33,7 +140,7 @@ export async function POST(request: NextRequest) {
 
     const workflowIdNum = parseInt(workflow_id.toString());
     
-    console.log(`🔍 Cache lookup for workflow ${workflowIdNum} with parameters:`, parameters);
+    console.log(`🔍 Cache lookup for workflow ${workflowIdNum} with parameters (detail_level: ${detailed_output ? 'full' : 'basic'}):`, parameters);
 
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -45,15 +152,88 @@ export async function POST(request: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Cache lookup query - get latest matching execution
-    const { data: cacheResults, error: cacheError } = await supabase
-      .from('workflow_executions')
-      .select('id, formatted_output, created_at, execution_duration_seconds, results')
-      .eq('workflow_id', workflowIdNum)
-      .eq('status', 'completed')
-      .eq('execution_params', JSON.stringify(parameters))
-      .order('id', { ascending: false })
-      .limit(1);
+    // Generate parameter hash for ultra-fast lookup (with consistent key ordering)
+    const crypto = await import('crypto');
+    
+    // Helper function to sort JSON keys consistently (matching PostgreSQL JSONB behavior)
+    const sortJsonKeys = (obj: unknown): unknown => {
+      if (obj === null || typeof obj !== 'object') return obj;
+      if (Array.isArray(obj)) return obj.map(sortJsonKeys);
+      
+      const sortedObj: Record<string, unknown> = {};
+      Object.keys(obj as Record<string, unknown>).sort().forEach(key => {
+        sortedObj[key] = sortJsonKeys((obj as Record<string, unknown>)[key]);
+      });
+      return sortedObj;
+    };
+    
+    const sortedParameters = sortJsonKeys(parameters);
+    const parametersJson = JSON.stringify(sortedParameters);
+    const parametersHash = crypto.createHash('md5').update(parametersJson).digest('hex');
+    
+    console.log(`🎯 Using hash-based lookup: ${parametersHash}`);
+
+    // Optimized cache lookup query using parameter hash for maximum speed
+    let cacheResults, cacheError;
+    
+    if (detailed_output) {
+      // Detailed query: Include ALL fields including heavy debugging data (raw_logs, raw_mcp_response, execution_logs)
+      console.log(`🔍 Running DETAILED cache query with debugging fields`);
+      const { data, error } = await supabase
+        .from('workflow_executions')
+        .select('id, formatted_output, created_at, execution_duration_seconds, results, raw_logs, raw_mcp_response, execution_logs, started_at, completed_at, updated_at, progress_percentage, current_step_index, total_steps, error_message, modal_call_id, client_id, execution_params, status')
+        .eq('workflow_id', workflowIdNum)
+        .in('status', ['completed', 'failed'])
+        .eq('execution_params_hash', parametersHash)
+        .order('id', { ascending: false })
+        .limit(1);
+      cacheResults = data;
+      cacheError = error;
+    } else {
+      // Basic query: MINIMAL fields for maximum speed (excludes ALL heavy/optional debugging data)
+      console.log(`⚡ Running BASIC cache query with minimal fields`);
+      const { data, error } = await supabase
+        .from('workflow_executions')
+        .select('id, formatted_output, created_at, execution_duration_seconds, results, started_at, completed_at, error_message, status')
+        .eq('workflow_id', workflowIdNum)
+        .in('status', ['completed', 'failed'])
+        .eq('execution_params_hash', parametersHash)
+        .order('id', { ascending: false })
+        .limit(1);
+      cacheResults = data;
+      cacheError = error;
+    }
+
+    // Fallback to JSONB lookup if hash lookup didn't find anything (for backwards compatibility)
+    if (cacheResults && cacheResults.length === 0) {
+      console.log(`🔄 Hash lookup missed, falling back to JSONB lookup`);
+      
+      if (detailed_output) {
+        console.log(`🔄 Fallback DETAILED JSONB query with all fields`);
+        const { data, error } = await supabase
+          .from('workflow_executions')
+          .select('id, formatted_output, created_at, execution_duration_seconds, results, raw_logs, raw_mcp_response, execution_logs, started_at, completed_at, updated_at, progress_percentage, current_step_index, total_steps, error_message, modal_call_id, client_id, execution_params, status')
+          .eq('workflow_id', workflowIdNum)
+          .in('status', ['completed', 'failed'])
+          .eq('execution_params', JSON.stringify(parameters))
+          .order('id', { ascending: false })
+          .limit(1);
+        cacheResults = data;
+        cacheError = error;
+      } else {
+        console.log(`🔄 Fallback BASIC JSONB query with minimal fields`);
+        const { data, error } = await supabase
+          .from('workflow_executions')
+          .select('id, formatted_output, created_at, execution_duration_seconds, results, started_at, completed_at, error_message, status')
+          .eq('workflow_id', workflowIdNum)
+          .in('status', ['completed', 'failed'])
+          .eq('execution_params', JSON.stringify(parameters))
+          .order('id', { ascending: false })
+          .limit(1);
+        cacheResults = data;
+        cacheError = error;
+      }
+    }
 
     if (cacheError) {
       throw cacheError;
@@ -62,8 +242,15 @@ export async function POST(request: NextRequest) {
     const queryTime = Date.now() - startTime;
 
     if (cacheResults && cacheResults.length > 0) {
-      const cacheHit = cacheResults[0];
+      const cacheHit = cacheResults[0] as WorkflowExecutionCacheHit;
       
+      // Get workflow details for enhanced response
+      const { data: workflow } = await supabase
+        .from('deployed_workflows')
+        .select('id, name, description, version, category')
+        .eq('id', workflowIdNum)
+        .single();
+
       // Parse formatted output for quotes
       let quotes = [];
       try {
@@ -77,20 +264,156 @@ export async function POST(request: NextRequest) {
         quotes = [];
       }
 
+      // Calculate execution metrics
+      const startedAt = cacheHit.started_at ? new Date(cacheHit.started_at) : null;
+      const completedAt = cacheHit.completed_at ? new Date(cacheHit.completed_at) : null;
+      const createdAt = cacheHit.created_at ? new Date(cacheHit.created_at) : null;
+      
+      let runtimeSeconds = 0;
+      if (startedAt && completedAt) {
+        runtimeSeconds = Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000);
+      } else if (createdAt && completedAt) {
+        runtimeSeconds = Math.floor((completedAt.getTime() - createdAt.getTime()) / 1000);
+      }
+
       // Extract quote count from results for additional metadata
       let quoteCount = 0;
       if (cacheHit.results && typeof cacheHit.results === 'object' && cacheHit.results.quotes) {
         quoteCount = Array.isArray(cacheHit.results.quotes) ? cacheHit.results.quotes.length : 0;
       }
 
-      const originalDuration = cacheHit.execution_duration_seconds || 0;
+      const originalDuration = cacheHit.execution_duration_seconds || runtimeSeconds;
       const speedImprovement = originalDuration > 0 ? Math.round((originalDuration * 1000) / queryTime) : 0;
 
-      console.log(`✅ Cache HIT! Execution ${cacheHit.id} (${queryTime}ms vs ${originalDuration}s original)`);
+      const isSuccessful = cacheHit.status === 'completed';
+      console.log(`✅ Cache HIT! Execution ${cacheHit.id} (${cacheHit.status}) - ${queryTime}ms vs ${originalDuration}s original`);
 
-      return NextResponse.json({
+      // Build comprehensive response matching execution details endpoint structure
+      const response = {
         success: true,
         cached: true,
+        execution: {
+          // Basic info
+          execution_id: cacheHit.id,
+          workflow_id: workflowIdNum,
+          workflow_name: workflow?.name || 'Unknown Workflow',
+          workflow_description: workflow?.description || 'No description available',
+          workflow_version: workflow?.version || '1.0.0',
+          workflow_category: workflow?.category || 'general',
+          
+          // Status info (based on actual cached execution status)
+          status: cacheHit.status,
+          is_running: false,
+          is_completed: true,
+          is_successful: isSuccessful,
+          has_failed: !isSuccessful,
+          has_error: !isSuccessful && !!cacheHit.error_message,
+          
+          // Timing info
+          created_at: cacheHit.created_at,
+          started_at: cacheHit.started_at,
+          completed_at: cacheHit.completed_at,
+          execution_duration_seconds: originalDuration,
+          runtime_seconds: runtimeSeconds,
+          
+          // Progress info (available in detailed mode, defaults in basic mode)
+          progress_percentage: cacheHit.progress_percentage || 100,
+          current_step_index: cacheHit.current_step_index || 0,
+          total_steps: cacheHit.total_steps || 0,
+          
+          // Error info (from cached execution)
+          error_message: cacheHit.error_message || null,
+          error_details: cacheHit.error_message || null,
+          
+          // Execution details (conditional based on query type)
+          ...(detailed_output && {
+            modal_call_id: cacheHit.modal_call_id,
+            client_id: cacheHit.client_id,
+            execution_params: cacheHit.execution_params || {},
+          }),
+          
+          // Basic mode gets parameters from request, not from database
+          ...(!detailed_output && {
+            modal_call_id: null,
+            client_id: null,
+            execution_params: parameters,  // Use request parameters instead of DB lookup
+          }),
+          
+                          // Include execution logs only in detailed response
+        ...(detailed_output && 'execution_logs' in cacheHit && {
+          execution_logs: cacheHit.execution_logs || []
+        }),
+
+        // Request Parameters - Enhanced with schema analysis for detailed response
+        request_parameters: {
+          // The parameters as sent in the original request
+          original_request: parameters,
+          
+          // Parameter count for quick reference
+          parameter_count: Object.keys(parameters).length,
+          
+          // Include expensive schema analysis only in detailed response
+          ...(detailed_output && {
+            api_parameter_names: await getApiParameterNames(workflowIdNum, parameters)
+          }),
+          
+          // Helper info
+          note: detailed_output 
+            ? "Cache response with full parameter analysis. Use 'original_request' to see exactly what was sent."
+            : "Cache response with basic parameters. Add '?detailed_output=true' for schema analysis."
+        },
+        
+        // Results (cached executions always have results)
+        results: cacheHit.results || {},
+        quotes: quotes,
+        
+        // Human-friendly formatted output (if available)
+        formatted_output: cacheHit.formatted_output || null,
+        
+        // Include raw data only in detailed response (for debugging)
+        ...(detailed_output && 'raw_logs' in cacheHit && {
+          raw_data: {
+            raw_logs: cacheHit.raw_logs || null,
+            raw_mcp_response: cacheHit.raw_mcp_response || null,
+            execution_logs: cacheHit.execution_logs || [],
+            has_raw_logs: !!cacheHit.raw_logs,
+            has_mcp_response: !!cacheHit.raw_mcp_response,
+            has_execution_logs: !!(cacheHit.execution_logs && Array.isArray(cacheHit.execution_logs) && cacheHit.execution_logs.length > 0)
+          }
+        }),
+          
+          // Summary
+          summary: {
+            execution_successful: isSuccessful,
+            workflow_completed: isSuccessful,
+            steps_completed: cacheHit.results?.performance_metrics?.successful_steps || 0,
+            steps_failed: cacheHit.results?.performance_metrics?.failed_steps || 0,
+            total_steps_attempted: cacheHit.results?.performance_metrics?.total_steps || cacheHit.total_steps || 0,
+            quotes_found: quoteCount,
+            error_stage: isSuccessful ? null : (cacheHit.error_message ? 'execution' : 'unknown')
+          },
+          
+          // Include detailed metadata only in detailed response
+          ...(detailed_output && {
+            timestamps: {
+              created_at: cacheHit.created_at,
+              ...(cacheHit.updated_at && { updated_at: cacheHit.updated_at }),
+              started_at: cacheHit.started_at,
+              completed_at: cacheHit.completed_at,
+              checked_at: new Date().toISOString()
+            },
+            
+            // Navigation
+            related_endpoints: {
+              workflow_details: `/api/remote-workflows/${workflowIdNum}`,
+              all_executions: `/api/remote-workflows/executions?workflow_id=${workflowIdNum}`,
+              execute_workflow: `/api/remote-workflows/${workflowIdNum}/execute`
+            }
+          }),
+          
+          // No polling needed for cached results
+          next_poll_in_seconds: null
+        },
         cache_info: {
           source_execution_id: cacheHit.id,
           cache_timestamp: cacheHit.created_at,
@@ -99,15 +422,17 @@ export async function POST(request: NextRequest) {
           speed_improvement: `${speedImprovement}x faster`,
           quote_count: quoteCount
         },
-        data: {
-          quotes: quotes,
-          workflow_id: workflowIdNum,
-          execution_id: cacheHit.id,
-          // Include full results if needed for advanced use cases
-          full_results: cacheHit.results
+        response_metadata: {
+          execution_mode: 'cached',
+          detail_level: detailed_output ? 'full' : 'basic',
+          note: detailed_output 
+            ? 'Full detailed cached response including raw data, execution logs, and schema analysis'
+            : 'Basic cached response. Add "?detailed_output=true" to include raw data, execution logs, and schema analysis'
         },
         timestamp: new Date().toISOString()
-      });
+      };
+
+      return NextResponse.json(response);
     } else {
       console.log(`❌ Cache MISS for workflow ${workflowIdNum} (${queryTime}ms query)`);
       
@@ -119,6 +444,13 @@ export async function POST(request: NextRequest) {
           message: 'No cached results found for these parameters'
         },
         data: null,
+        response_metadata: {
+          execution_mode: 'cached',
+          detail_level: detailed_output ? 'full' : 'basic',
+          note: detailed_output 
+            ? 'Cache miss - no detailed data available. Execute workflow to generate cached results.'
+            : 'Cache miss - no basic data available. Execute workflow to generate cached results.'
+        },
         timestamp: new Date().toISOString()
       });
     }
@@ -135,6 +467,11 @@ export async function POST(request: NextRequest) {
         details: error instanceof Error ? error.message : String(error),
         cache_info: {
           cache_query_time_ms: queryTime
+        },
+        response_metadata: {
+          execution_mode: 'cached',
+          detail_level: detailed_output ? 'full' : 'basic',
+          note: 'Cache lookup error occurred'
         },
         timestamp: new Date().toISOString()
       },
@@ -157,22 +494,24 @@ export async function GET() {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get cache statistics
+    // Get cache statistics (including both completed and failed executions)
     const { data: stats, error: statsError } = await supabase
       .from('workflow_executions')
-      .select('workflow_id, execution_params')
-      .eq('status', 'completed')
-      .not('formatted_output', 'is', null);
+      .select('workflow_id, execution_params, status')
+      .in('status', ['completed', 'failed']);
 
     if (statsError) {
       throw statsError;
     }
 
-    // Calculate cache potential
+    // Calculate cache potential (including both completed and failed)
     const parameterCounts: Record<string, number> = {};
+    const statusBreakdown = { completed: 0, failed: 0 };
+    
     stats?.forEach(execution => {
       const key = `${execution.workflow_id}:${JSON.stringify(execution.execution_params)}`;
       parameterCounts[key] = (parameterCounts[key] || 0) + 1;
+      statusBreakdown[execution.status as 'completed' | 'failed']++;
     });
 
     const cacheablePatterns = Object.values(parameterCounts).filter(count => count > 1).length;
@@ -181,10 +520,15 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       cache_statistics: {
-        total_completed_executions: stats?.length || 0,
+        total_cacheable_executions: stats?.length || 0,
+        breakdown: {
+          completed_executions: statusBreakdown.completed,
+          failed_executions: statusBreakdown.failed
+        },
         cacheable_parameter_patterns: cacheablePatterns,
         potential_cache_hits: totalCacheableExecutions,
-        cache_hit_potential: totalCacheableExecutions > 0 ? `${Math.round((totalCacheableExecutions / (stats?.length || 1)) * 100)}%` : '0%'
+        cache_hit_potential: totalCacheableExecutions > 0 ? `${Math.round((totalCacheableExecutions / (stats?.length || 1)) * 100)}%` : '0%',
+        note: 'Cache now includes both successful and failed executions for complete coverage'
       },
       timestamp: new Date().toISOString()
     });
