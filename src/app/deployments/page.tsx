@@ -385,6 +385,14 @@ export default function WorkflowsPage() {
           >
             API DOCS
           </Button>
+          <Button 
+            onClick={() => window.open('/docs/api/mcp', '_blank')}
+            variant="outline" 
+            size="default" 
+            className="bg-white text-black border-black hover:bg-black hover:text-white text-base font-mono cursor-pointer"
+          >
+            MCP DOCS
+          </Button>
         </div>
       </div>
 
