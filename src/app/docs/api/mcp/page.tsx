@@ -16,7 +16,7 @@ interface MCPTool {
       type: string;
       description?: string;
       enum?: string[];
-      default?: any;
+      default?: string | number | boolean | string[];
     }>;
     required?: string[];
   };
@@ -48,6 +48,7 @@ interface MCPEndpoint {
 export default function MCPAPIDocsPage() {
   const mermaidRef = useRef<HTMLDivElement>(null);
   const [mcpTools, setMcpTools] = useState<MCPTool[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [mcpWorkflows, setMcpWorkflows] = useState<MCPWorkflow[]>([]);
   const [loadingTools, setLoadingTools] = useState(true);
   const [toolsError, setToolsError] = useState<string | null>(null);
@@ -670,12 +671,12 @@ graph TB
         return (
           <div className="max-w-4xl">
             <h1 className="text-2xl font-bold mb-4">Tool Not Found</h1>
-            <p>The requested tool "{toolName}" was not found.</p>
+            <p>The requested tool &quot;{toolName}&quot; was not found.</p>
           </div>
         );
       }
 
-      const workflow = mcpWorkflows.find(w => w.name === tool.name);
+
 
       return (
         <div className="max-w-4xl">
@@ -759,7 +760,7 @@ graph TB
   "params": {
     "name": "${tool.name}",
     "arguments": {${Object.entries(tool.inputSchema.properties)
-      .filter(([_, schema]) => schema.default !== undefined)
+      .filter(([, schema]) => schema.default !== undefined)
       .map(([name, schema]) => `\n      "${name}": ${JSON.stringify(schema.default)}`)
       .join(',')
     }${Object.keys(tool.inputSchema.properties).some(key => tool.inputSchema.properties[key].default !== undefined) ? '\n    ' : ''}
@@ -786,7 +787,7 @@ graph TB
     "params": {
       "name": "${tool.name}",
       "arguments": {${Object.entries(tool.inputSchema.properties)
-        .filter(([_, schema]) => schema.default !== undefined)
+        .filter(([, schema]) => schema.default !== undefined)
         .map(([name, schema]) => `\n        "${name}": ${JSON.stringify(schema.default)}`)
         .join(',')
       }${Object.keys(tool.inputSchema.properties).some(key => tool.inputSchema.properties[key].default !== undefined) ? '\n      ' : ''}
