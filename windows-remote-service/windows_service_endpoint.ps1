@@ -4,11 +4,91 @@
 
 param(
     [int]$Port = 8080,
-    [string]$ServiceName = "MCPServer"
+    [string]$ServiceName = "MCPServer",
+    [string]$LockPreventionServiceName = "VMLockPrevention"
 )
 
 Write-Host "Starting NSSM Service Management Server on port $Port"
 Write-Host "Managing service: $ServiceName"
+Write-Host "Lock prevention service: $LockPreventionServiceName"
+
+# Lock prevention helper functions
+function Get-LockPreventionStatus {
+    try {
+        $scriptDir = $PSScriptRoot
+        if (-not $scriptDir) {
+            $scriptDir = Split-Path -Parent (Get-Location)
+        }
+        $lockScript = Join-Path $scriptDir "prevent-vm-lock-clean.ps1"
+        
+        if (Test-Path $lockScript) {
+            $statusResult = & powershell -ExecutionPolicy Bypass -File $lockScript -Mode "status" 2>$null
+            if ($statusResult) {
+                return $statusResult | ConvertFrom-Json
+            }
+        }
+        
+        # Fallback: basic service status
+        $lockPreventionServiceName = "VMLockPreventionClean"
+        $service = Get-Service -Name $lockPreventionServiceName -ErrorAction SilentlyContinue
+        if ($service) {
+            # Check recent log entries
+            $logPath = Join-Path $scriptDir "logs\lock-prevention.log"
+            $lastActivity = "No recent activity"
+            if (Test-Path $logPath) {
+                $lastLogEntry = Get-Content $logPath -Tail 1
+                if ($lastLogEntry) {
+                    $lastActivity = $lastLogEntry
+                }
+            }
+            
+            return @{
+                service_status = $service.Status.ToString()
+                service_name = $service.Name
+                last_activity = $lastActivity
+                detailed_status = $true
+            }
+        } else {
+            return @{
+                service_status = "NotInstalled"
+                service_name = $lockPreventionServiceName
+                detailed_status = $false
+            }
+        }
+    }
+    catch {
+        return @{
+            error = $_.Exception.Message
+            service_status = "Error"
+        }
+    }
+}
+
+function Invoke-TsconDisconnect {
+    try {
+        $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+        $lockScript = Join-Path $scriptDir "prevent-vm-lock.ps1"
+        
+        if (Test-Path $lockScript) {
+            $result = & powershell -ExecutionPolicy Bypass -File $lockScript -Mode "tscon-only" 2>$null
+            return @{
+                success = $LASTEXITCODE -eq 0
+                message = if ($LASTEXITCODE -eq 0) { "TSCON operation completed successfully" } else { "No action needed or operation failed" }
+            }
+        } else {
+            return @{
+                success = $false
+                error = "Lock prevention script not found"
+            }
+        }
+    }
+    catch {
+        return @{
+            success = $false
+            error = $_.Exception.Message
+        }
+    }
+}
 
 # Create HTTP listener
 $listener = New-Object System.Net.HttpListener
@@ -18,13 +98,21 @@ try {
     $listener.Start()
     Write-Host "Server started! Listening on http://localhost:$Port"
     Write-Host "Available endpoints:"
-    Write-Host "  GET  /status   - Check service status"
-    Write-Host "  POST /restart  - Restart service"
-    Write-Host "  POST /start    - Start service"
-    Write-Host "  POST /stop     - Stop service"
-    Write-Host "  POST /upgrade  - Upgrade to latest version"
-    Write-Host "  GET  /health   - Server health check"
-    Write-Host "  GET  /version  - Get server version info"
+    Write-Host "  GET  /status          - Check service status"
+    Write-Host "  POST /restart         - Restart service"
+    Write-Host "  POST /restart-version - Restart with specific version (JSON: {\"version\":\"0.8.1\"} or ?version=0.8.1)"
+    Write-Host "  POST /upgrade         - Upgrade to latest version"
+    Write-Host "  POST /start           - Start service"
+    Write-Host "  POST /stop            - Stop service"
+    Write-Host "  GET  /health          - Server health check"
+    Write-Host "  GET  /version         - Get server version info"
+    Write-Host ""
+    Write-Host "Lock Prevention endpoints:"
+    Write-Host "  GET  /lock-prevention/status   - Check lock prevention status"
+    Write-Host "  POST /lock-prevention/tscon    - Execute TSCON disconnect"
+    Write-Host "  POST /lock-prevention/restart  - Restart lock prevention service"
+    Write-Host "  POST /lock-prevention/start    - Start lock prevention service"
+    Write-Host "  POST /lock-prevention/stop     - Stop lock prevention service"
     
     while ($listener.IsListening) {
         $context = $listener.GetContext()
@@ -64,106 +152,38 @@ try {
                 
                 "/version" {
                     try {
-                        # Get service configuration from NSSM
-                        $nssmPath = "C:\Users\terminatoradmin\Desktop\terminator\scripts\nssm\nssm-2.24\win64\nssm.exe"
-                        $serviceAppRaw = & $nssmPath get $ServiceName Application 2>$null
-                        $serviceParamsRaw = & $nssmPath get $ServiceName AppParameters 2>$null
+                        # Get version from workspace Cargo.toml
+                        $cargoToml = Get-Content "Cargo.toml" -Raw
+                        $versionMatch = [regex]::Match($cargoToml, 'version = "([^"]+)"')
+                        $version = if ($versionMatch.Success) { $versionMatch.Groups[1].Value } else { "unknown" }
                         
-                        # NSSM returns arrays - extract the first non-empty element
-                        $serviceApp = ""
-                        $serviceParams = ""
-                        
-                        if ($serviceAppRaw) {
-                            if ($serviceAppRaw -is [array]) {
-                                $serviceApp = ($serviceAppRaw | Where-Object { $_ -and $_.Trim() } | Select-Object -First 1)
-                            } else {
-                                $serviceApp = $serviceAppRaw
-                            }
-                            $serviceApp = $serviceApp -replace '\x00', '' -replace '\s+', ' '
-                            $serviceApp = $serviceApp.Trim()
-                        }
-                        
-                        if ($serviceParamsRaw) {
-                            if ($serviceParamsRaw -is [array]) {
-                                $serviceParams = ($serviceParamsRaw | Where-Object { $_ -and $_.Trim() } | Select-Object -First 1)
-                            } else {
-                                $serviceParams = $serviceParamsRaw
-                            }
-                            $serviceParams = $serviceParams -replace '\x00', '' -replace '\s+', ' '
-                            $serviceParams = $serviceParams.Trim()
-                        }
-                        
-                        # Determine deployment method and version
-                        $deploymentMethod = "unknown"
-                        $currentVersion = "unknown"
-                        $serviceCommand = "unknown"
-                        
-                        if ($serviceApp -and $serviceParams) {
-                            $serviceCommand = "$serviceApp $serviceParams"
-                            
-                            if ($serviceApp.EndsWith("npx.cmd") -or $serviceApp.EndsWith("npx")) {
-                                $deploymentMethod = "NPX"
-                                
-                                # Extract version from NPX command (e.g., "terminator-mcp-agent@0.8.0")
-                                $versionMatch = [regex]::Match($serviceParams, 'terminator-mcp-agent@([\d\.]+)')
-                                if ($versionMatch.Success) {
-                                    $currentVersion = $versionMatch.Groups[1].Value
-                                } else {
-                                    # If no version specified, it's using latest
-                                    $currentVersion = "latest"
-                                }
-                            } else {
-                                $deploymentMethod = "Local Binary"
-                                
-                                # Try to get version from the binary itself
-                                try {
-                                    $versionOutput = & $serviceApp --version 2>$null
-                                    if ($versionOutput -match 'terminator-mcp-agent ([\d\.]+)') {
-                                        $currentVersion = $matches[1]
-                                    }
-                                } catch {
-                                    $currentVersion = "unknown"
-                                }
-                            }
-                        }
-                        
-                        # Get latest available version from npm
-                        $latestVersion = "unknown"
-                        try {
-                            $latestVersion = (npm view terminator-mcp-agent version 2>$null).Trim()
-                        } catch {
-                            $latestVersion = "error retrieving"
-                        }
-                        
-                        # Get Git commit hash (from the management server repo)
+                        # Get Git commit hash
                         $gitCommit = try { git rev-parse --short HEAD 2>$null } catch { "unknown" }
                         
-                        # Check if service is running
-                        $serviceStatus = "unknown"
-                        try {
-                            $service = Get-Service $ServiceName -ErrorAction SilentlyContinue
-                            $serviceStatus = if ($service) { $service.Status.ToString() } else { "not found" }
-                        } catch {
-                            $serviceStatus = "error"
-                        }
-                        
-                        # Determine update availability
-                        $updateAvailable = $false
-                        if ($currentVersion -ne "unknown" -and $latestVersion -ne "unknown" -and $latestVersion -ne "error retrieving") {
-                            $updateAvailable = $currentVersion -ne $latestVersion
+                        # Get binary info
+                        $binaryPath = "target\release\terminator-mcp-agent.exe"
+                        $binaryInfo = if (Test-Path $binaryPath) {
+                            $fileInfo = Get-ItemProperty $binaryPath
+                            @{
+                                size = $fileInfo.Length
+                                build_date = $fileInfo.LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                path = $binaryPath
+                            }
+                        } else {
+                            @{
+                                size = "unknown"
+                                build_date = "unknown"
+                                path = "not found"
+                            }
                         }
                         
                         $responseData = @{
                             success = $true
+                            version = $version
+                            git_commit = $gitCommit
+                            binary = $binaryInfo
                             service = $ServiceName
                             server = "NSSM Service Manager"
-                            deployment_method = $deploymentMethod
-                            current_version = $currentVersion
-                            latest_version = $latestVersion
-                            update_available = $updateAvailable
-                            service_status = $serviceStatus
-                            service_command = $serviceCommand
-                            git_commit = $gitCommit
                             timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                         }
                         $response.StatusCode = 200
@@ -219,6 +239,141 @@ try {
                             $responseData = @{
                                 success = $false
                                 action = "restart"
+                                error = $_.Exception.Message
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = 500
+                        }
+                    } else {
+                        $responseData = @{ error = "Method not allowed. Use POST." }
+                        $response.StatusCode = 405
+                    }
+                }
+                
+                "/restart-version" {
+                    if ($method -eq "POST") {
+                        try {
+                            # Parse request body for version parameter
+                            $requestBody = [System.IO.StreamReader]::new($context.Request.InputStream).ReadToEnd()
+                            $version = "latest"
+                            
+                            if ($requestBody) {
+                                try {
+                                    $bodyObj = $requestBody | ConvertFrom-Json
+                                    if ($bodyObj.version) {
+                                        $version = $bodyObj.version
+                                    }
+                                } catch {
+                                    # If JSON parsing fails, try query string format
+                                    if ($requestBody -match "version=([^&]+)") {
+                                        $version = $matches[1]
+                                    }
+                                }
+                            }
+                            
+                            # Also check query parameters
+                            if ($context.Request.QueryString["version"]) {
+                                $version = $context.Request.QueryString["version"]
+                            }
+                            
+                            $steps = @()
+                            $nssmPath = Join-Path $PSScriptRoot "nssm-2.24\win64\nssm.exe"
+                            
+                            # Step 1: Stop service
+                            $steps += "Stopping MCP service..."
+                            & $nssmPath stop $ServiceName
+                            Start-Sleep -Seconds 3
+                            
+                            # Step 2: Update version
+                            $steps += "Updating to version: $version"
+                            if ($version -eq "latest") {
+                                $newParams = "-y terminator-mcp-agent --port 3000 --transport http"
+                            } else {
+                                $newParams = "-y terminator-mcp-agent@$version --port 3000 --transport http"
+                            }
+                            
+                            & $nssmPath set $ServiceName AppParameters $newParams
+                            $steps += "Service configured for version: $version"
+                            
+                            # Step 3: Start service
+                            $steps += "Starting MCP service..."
+                            & $nssmPath start $ServiceName
+                            Start-Sleep -Seconds 5
+                            
+                            # Step 4: Verify
+                            $service = Get-Service $ServiceName
+                            $steps += "Service status: $($service.Status)"
+                            
+                            $responseData = @{
+                                success = $true
+                                action = "restart-version"
+                                message = "Service restarted with version $version successfully"
+                                version = $version
+                                steps = $steps
+                                service_status = @{
+                                    status = $service.Status.ToString()
+                                    name = $service.Name
+                                }
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = 200
+                        } catch {
+                            $responseData = @{
+                                success = $false
+                                action = "restart-version"
+                                error = $_.Exception.Message
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = 500
+                        }
+                    } else {
+                        $responseData = @{ error = "Method not allowed. Use POST with JSON body containing 'version' parameter or query parameter ?version=X.X.X" }
+                        $response.StatusCode = 405
+                    }
+                }
+                
+                "/upgrade" {
+                    if ($method -eq "POST") {
+                        try {
+                            $steps = @()
+                            $nssmPath = Join-Path $PSScriptRoot "nssm-2.24\win64\nssm.exe"
+                            
+                            # Step 1: Stop service
+                            $steps += "Stopping MCP service..."
+                            & $nssmPath stop $ServiceName
+                            Start-Sleep -Seconds 3
+                            
+                            # Step 2: Update to latest
+                            $steps += "Updating to latest version..."
+                            $newParams = "-y terminator-mcp-agent --port 3000 --transport http"
+                            & $nssmPath set $ServiceName AppParameters $newParams
+                            $steps += "Service configured for latest version"
+                            
+                            # Step 3: Start service
+                            $steps += "Starting MCP service..."
+                            & $nssmPath start $ServiceName
+                            Start-Sleep -Seconds 5
+                            
+                            # Step 4: Verify
+                            $service = Get-Service $ServiceName
+                            $steps += "Service status: $($service.Status)"
+                            
+                            $responseData = @{
+                                success = $true
+                                action = "upgrade"
+                                message = "Service upgraded to latest version successfully"
+                                steps = $steps
+                                service_status = @{
+                                    status = $service.Status.ToString()
+                                    name = $service.Name
+                                }
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = 200
+                        } catch {
+                            $responseData = @{
+                                success = $false
+                                action = "upgrade"
                                 error = $_.Exception.Message
                                 timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                             }
@@ -294,108 +449,177 @@ try {
                     }
                 }
                 
-                "/upgrade" {
-                    if ($method -eq "POST") {
+                "/lock-prevention/status" {
+                    if ($method -eq "GET") {
                         try {
+                            $lockStatus = Get-LockPreventionStatus
                             $responseData = @{
                                 success = $true
-                                action = "upgrade"
-                                steps = @()
+                                action = "lock-prevention-status"
+                                lock_prevention = $lockStatus
                                 timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                             }
-                            
-                            # Step 1: Get latest version info
-                            Write-Host "Getting latest version info..."
-                            try {
-                                $latestVersion = (npm view terminator-mcp-agent version 2>$null).Trim()
-                                $responseData.steps += "Latest version: $latestVersion"
-                                Write-Host "Latest version: $latestVersion"
-                            } catch {
-                                throw "Failed to get latest version info"
-                            }
-                            
-                            # Step 2: Test NPX functionality
-                            Write-Host "Testing NPX functionality..."
-                            try {
-                                $npxPath = Get-Command npx.cmd -ErrorAction SilentlyContinue
-                                if (-not $npxPath) {
-                                    $npxPath = Get-Command npx -ErrorAction SilentlyContinue
-                                }
-                                if (-not $npxPath) {
-                                    throw "NPX not found in PATH"
-                                }
-                                $responseData.steps += "NPX found at: $($npxPath.Path)"
-                                Write-Host "NPX found at: $($npxPath.Path)"
-                            } catch {
-                                throw "NPX is not available: $($_.Exception.Message)"
-                            }
-                            
-                            # Step 3: Stop the service
-                            Write-Host "Stopping service..."
-                            Stop-Service $ServiceName -ErrorAction Stop
-                            $responseData.steps += "Service stopped"
-                            Start-Sleep -Seconds 2
-                            
-                            # Step 4: Clear NPX cache to ensure fresh download
-                            Write-Host "Clearing NPX cache..."
-                            try {
-                                $cacheResult = & npm cache clean --force 2>&1
-                                $responseData.steps += "NPM cache cleared"
-                            } catch {
-                                $responseData.steps += "NPM cache clear failed (continuing anyway)"
-                            }
-                            
-                            try {
-                                if (Get-Command npx -ErrorAction SilentlyContinue) {
-                                    $npxResult = & npx clear-npx-cache 2>&1
-                                    $responseData.steps += "NPX cache cleared"
-                                }
-                            } catch {
-                                $responseData.steps += "NPX cache clear failed (continuing anyway)"
-                            }
-                            
-                            # Step 5: Update service to use NPX with specific version
-                            Write-Host "Updating service configuration to use NPX..."
-                            $nssmPath = "C:\Users\terminatoradmin\Desktop\terminator\scripts\nssm\nssm-2.24\win64\nssm.exe"
-                            
-                            # Configure service to use NPX with specific version
-                            & $nssmPath set $ServiceName Application $npxPath.Path
-                            & $nssmPath set $ServiceName AppParameters "-y terminator-mcp-agent@$latestVersion --port 3000 --transport http"
-                            
-                            $responseData.steps += "Service configured to use NPX with version $latestVersion"
-                            Write-Host "Service configured to use NPX with version $latestVersion"
-                            
-                            # Step 6: Start the service
-                            Write-Host "Starting service with NPX..."
-                            Start-Service $ServiceName -ErrorAction Stop
-                            $responseData.steps += "Service started with NPX version $latestVersion"
-                            Start-Sleep -Seconds 3
-                            
-                            # Step 7: Verify service is running
-                            $service = Get-Service $ServiceName
-                            if ($service.Status -eq "Running") {
-                                $responseData.steps += "Service successfully running with NPX"
-                                Write-Host "Service successfully running with NPX"
-                            } else {
-                                throw "Service failed to start properly"
-                            }
-                            
-                            # Step 8: Get final status
-                            $responseData.message = "Service upgraded successfully to NPX version $latestVersion"
-                            $responseData.service_status = @{
-                                status = $service.Status.ToString()
-                                name = $service.Name
-                            }
-                            $responseData.current_version = $latestVersion
-                            $responseData.deployment_method = "NPX"
-                            $responseData.npx_command = "npx terminator-mcp-agent@$latestVersion --port 3000 --transport http"
-                            $responseData.steps += "Upgrade completed successfully"
-                            
                             $response.StatusCode = 200
                         } catch {
                             $responseData = @{
                                 success = $false
-                                action = "upgrade"
+                                action = "lock-prevention-status"
+                                error = $_.Exception.Message
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = 500
+                        }
+                    } else {
+                        $responseData = @{ error = "Method not allowed. Use GET." }
+                        $response.StatusCode = 405
+                    }
+                }
+                
+                "/lock-prevention/tscon" {
+                    if ($method -eq "POST") {
+                        try {
+                            $tsconResult = Invoke-TsconDisconnect
+                            $responseData = @{
+                                success = $tsconResult.success
+                                action = "tscon-disconnect"
+                                message = $tsconResult.message
+                                error = $tsconResult.error
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = if ($tsconResult.success) { 200 } else { 500 }
+                        } catch {
+                            $responseData = @{
+                                success = $false
+                                action = "tscon-disconnect"
+                                error = $_.Exception.Message
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = 500
+                        }
+                    } else {
+                        $responseData = @{ error = "Method not allowed. Use POST." }
+                        $response.StatusCode = 405
+                    }
+                }
+                
+                "/lock-prevention/restart" {
+                    if ($method -eq "POST") {
+                        try {
+                            $service = Get-Service -Name $LockPreventionServiceName -ErrorAction SilentlyContinue
+                            if ($service) {
+                                Restart-Service $LockPreventionServiceName -ErrorAction Stop
+                                Start-Sleep -Seconds 2
+                                $service = Get-Service $LockPreventionServiceName
+                                $responseData = @{
+                                    success = $true
+                                    action = "lock-prevention-restart"
+                                    message = "Lock prevention service restarted successfully"
+                                    service_status = @{
+                                        status = $service.Status.ToString()
+                                        name = $service.Name
+                                    }
+                                    timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                }
+                                $response.StatusCode = 200
+                            } else {
+                                $responseData = @{
+                                    success = $false
+                                    action = "lock-prevention-restart"
+                                    error = "Lock prevention service not found. Install it first."
+                                    timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                }
+                                $response.StatusCode = 404
+                            }
+                        } catch {
+                            $responseData = @{
+                                success = $false
+                                action = "lock-prevention-restart"
+                                error = $_.Exception.Message
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = 500
+                        }
+                    } else {
+                        $responseData = @{ error = "Method not allowed. Use POST." }
+                        $response.StatusCode = 405
+                    }
+                }
+                
+                "/lock-prevention/start" {
+                    if ($method -eq "POST") {
+                        try {
+                            $service = Get-Service -Name $LockPreventionServiceName -ErrorAction SilentlyContinue
+                            if ($service) {
+                                Start-Service $LockPreventionServiceName -ErrorAction Stop
+                                Start-Sleep -Seconds 2
+                                $service = Get-Service $LockPreventionServiceName
+                                $responseData = @{
+                                    success = $true
+                                    action = "lock-prevention-start"
+                                    message = "Lock prevention service started successfully"
+                                    service_status = @{
+                                        status = $service.Status.ToString()
+                                        name = $service.Name
+                                    }
+                                    timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                }
+                                $response.StatusCode = 200
+                            } else {
+                                $responseData = @{
+                                    success = $false
+                                    action = "lock-prevention-start"
+                                    error = "Lock prevention service not found. Install it first."
+                                    timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                }
+                                $response.StatusCode = 404
+                            }
+                        } catch {
+                            $responseData = @{
+                                success = $false
+                                action = "lock-prevention-start"
+                                error = $_.Exception.Message
+                                timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            }
+                            $response.StatusCode = 500
+                        }
+                    } else {
+                        $responseData = @{ error = "Method not allowed. Use POST." }
+                        $response.StatusCode = 405
+                    }
+                }
+                
+                "/lock-prevention/stop" {
+                    if ($method -eq "POST") {
+                        try {
+                            $service = Get-Service -Name $LockPreventionServiceName -ErrorAction SilentlyContinue
+                            if ($service) {
+                                Stop-Service $LockPreventionServiceName -ErrorAction Stop
+                                Start-Sleep -Seconds 2
+                                $service = Get-Service $LockPreventionServiceName
+                                $responseData = @{
+                                    success = $true
+                                    action = "lock-prevention-stop"
+                                    message = "Lock prevention service stopped successfully"
+                                    service_status = @{
+                                        status = $service.Status.ToString()
+                                        name = $service.Name
+                                    }
+                                    timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                }
+                                $response.StatusCode = 200
+                            } else {
+                                $responseData = @{
+                                    success = $false
+                                    action = "lock-prevention-stop"
+                                    error = "Lock prevention service not found."
+                                    timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                }
+                                $response.StatusCode = 404
+                            }
+                        } catch {
+                            $responseData = @{
+                                success = $false
+                                action = "lock-prevention-stop"
                                 error = $_.Exception.Message
                                 timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                             }
@@ -410,7 +634,7 @@ try {
                 default {
                     $responseData = @{ 
                         error = "Endpoint not found"
-                        available_endpoints = @("/health", "/version", "/status", "/restart", "/start", "/stop", "/upgrade")
+                        available_endpoints = @("/health", "/version", "/status", "/restart", "/restart-version", "/upgrade", "/start", "/stop", "/lock-prevention/status", "/lock-prevention/tscon", "/lock-prevention/restart", "/lock-prevention/start", "/lock-prevention/stop")
                     }
                     $response.StatusCode = 404
                 }
