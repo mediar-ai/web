@@ -12,6 +12,170 @@ Write-Host "Starting NSSM Service Management Server on port $Port"
 Write-Host "Managing service: $ServiceName"
 Write-Host "Lock prevention service: $LockPreventionServiceName"
 
+# User session MCP management functions
+function Get-MCPUserSessionStatus {
+    try {
+        $mcpProcess = Get-Process -Name "terminator-mcp-agent" -ErrorAction SilentlyContinue
+        if ($mcpProcess) {
+            $sessionInfo = Get-WmiObject Win32_Process | Where-Object {$_.ProcessId -eq $mcpProcess.Id} | Select-Object SessionId
+            $isInteractive = $sessionInfo.SessionId -gt 0
+            
+            # Test health endpoint
+            $healthStatus = "Unknown"
+            try {
+                $healthCheck = Invoke-WebRequest -Uri "http://localhost:3000/health" -UseBasicParsing -TimeoutSec 5
+                $healthStatus = if ($healthCheck.StatusCode -eq 200) { "Healthy" } else { "Unhealthy" }
+            } catch {
+                $healthStatus = "Unreachable"
+            }
+            
+            return @{
+                status = "Running"
+                process_id = $mcpProcess.Id
+                session_id = $sessionInfo.SessionId
+                interactive = $isInteractive
+                health = $healthStatus
+                start_time = $mcpProcess.StartTime
+                cpu_time = $mcpProcess.TotalProcessorTime.TotalSeconds
+                working_set = [math]::Round($mcpProcess.WorkingSet / 1MB, 2)
+            }
+        } else {
+            return @{
+                status = "Stopped"
+                process_id = $null
+                session_id = $null
+                interactive = $false
+                health = "Not Running"
+            }
+        }
+    } catch {
+        return @{
+            status = "Error"
+            error = $_.Exception.Message
+        }
+    }
+}
+
+function Start-MCPUserSession {
+    param([string]$Version = "0.8.1", [int]$Port = 3000)
+    
+    try {
+        # Check if already running
+        $existing = Get-Process -Name "terminator-mcp-agent" -ErrorAction SilentlyContinue
+        if ($existing) {
+            return @{
+                success = $false
+                message = "MCP Server already running (PID: $($existing.Id))"
+                process_id = $existing.Id
+            }
+        }
+        
+        # Start MCP server directly using cmd.exe (same approach as user session script)
+        $command = "npx -y terminator-mcp-agent@$Version --port $Port --transport http"
+        
+        $processArgs = @{
+            FilePath = "cmd.exe"
+            ArgumentList = @("/c", $command)
+            WindowStyle = "Hidden"
+            PassThru = $true
+        }
+        
+        $mcpProcess = Start-Process @processArgs
+        
+        # Wait a moment for startup
+        Start-Sleep 5
+        
+        # Verify it started by checking for any terminator process
+        $newProcess = Get-Process -Name "terminator-mcp-agent" -ErrorAction SilentlyContinue
+        if ($newProcess) {
+            # Get the session ID
+            $sessionInfo = Get-WmiObject Win32_Process | Where-Object {$_.ProcessId -eq $newProcess.Id} | Select-Object SessionId
+            return @{
+                success = $true
+                message = "MCP Server started successfully in user session"
+                process_id = $newProcess.Id
+                session_id = $sessionInfo.SessionId
+            }
+        } else {
+            throw "Failed to start MCP Server - process not found after startup"
+        }
+    } catch {
+        return @{
+            success = $false
+            message = "Failed to start MCP Server: $($_.Exception.Message)"
+            error = $_.Exception.Message
+        }
+    }
+}
+
+function Stop-MCPUserSession {
+    try {
+        $mcpProcess = Get-Process -Name "terminator-mcp-agent" -ErrorAction SilentlyContinue
+        if ($mcpProcess) {
+            $processId = $mcpProcess.Id
+            $mcpProcess | Stop-Process -Force
+            Start-Sleep 2
+            
+            # Verify it stopped
+            $stillRunning = Get-Process -Id $processId -ErrorAction SilentlyContinue
+            if (-not $stillRunning) {
+                return @{
+                    success = $true
+                    message = "MCP Server stopped successfully"
+                    process_id = $processId
+                }
+            } else {
+                throw "Process still running after stop attempt"
+            }
+        } else {
+            return @{
+                success = $false
+                message = "MCP Server is not running"
+            }
+        }
+    } catch {
+        return @{
+            success = $false
+            message = "Failed to stop MCP Server: $($_.Exception.Message)"
+            error = $_.Exception.Message
+        }
+    }
+}
+
+function Restart-MCPUserSession {
+    param([string]$Version = "0.8.1", [int]$Port = 3000)
+    
+    try {
+        $steps = @()
+        
+        # Stop if running
+        $stopResult = Stop-MCPUserSession
+        $steps += "Stop: $($stopResult.message)"
+        
+        # Wait a moment
+        Start-Sleep 2
+        
+        # Start with new version
+        $startResult = Start-MCPUserSession -Version $Version -Port $Port
+        $steps += "Start: $($startResult.message)"
+        
+        return @{
+            success = $startResult.success
+            message = "MCP Server restart completed"
+            steps = $steps
+            version = $Version
+            process_id = $startResult.process_id
+            session_id = $startResult.session_id
+        }
+    } catch {
+        return @{
+            success = $false
+            message = "Failed to restart MCP Server: $($_.Exception.Message)"
+            error = $_.Exception.Message
+        }
+    }
+}
+
 # Lock prevention helper functions
 function Get-LockPreventionStatus {
     try {
@@ -199,12 +363,10 @@ try {
                 
                 "/status" {
                     try {
-                        $service = Get-Service $ServiceName -ErrorAction Stop
+                        $mcpStatus = Get-MCPUserSessionStatus
                         $responseData = @{
                             success = $true
-                            status = $service.Status.ToString()
-                            name = $service.Name
-                            displayName = $service.DisplayName
+                            mcp_server = $mcpStatus
                             timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                         }
                         $response.StatusCode = 200
@@ -221,20 +383,20 @@ try {
                 "/restart" {
                     if ($method -eq "POST") {
                         try {
-                            Restart-Service $ServiceName -ErrorAction Stop
-                            Start-Sleep -Seconds 2
-                            $service = Get-Service $ServiceName
+                            $restartResult = Restart-MCPUserSession
                             $responseData = @{
-                                success = $true
+                                success = $restartResult.success
                                 action = "restart"
-                                message = "Service restarted successfully"
-                                service_status = @{
-                                    status = $service.Status.ToString()
-                                    name = $service.Name
+                                message = $restartResult.message
+                                steps = $restartResult.steps
+                                mcp_server = @{
+                                    process_id = $restartResult.process_id
+                                    session_id = $restartResult.session_id
+                                    version = $restartResult.version
                                 }
                                 timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                             }
-                            $response.StatusCode = 200
+                            $response.StatusCode = if ($restartResult.success) { 200 } else { 500 }
                         } catch {
                             $responseData = @{
                                 success = $false
@@ -255,7 +417,7 @@ try {
                         try {
                             # Parse request body for version parameter
                             $requestBody = [System.IO.StreamReader]::new($context.Request.InputStream).ReadToEnd()
-                            $version = "latest"
+                            $version = "0.8.1"
                             
                             if ($requestBody) {
                                 try {
@@ -276,47 +438,23 @@ try {
                                 $version = $context.Request.QueryString["version"]
                             }
                             
-                            $steps = @()
-                            $nssmPath = Join-Path $PSScriptRoot "nssm-2.24\win64\nssm.exe"
-                            
-                            # Step 1: Stop service
-                            $steps += "Stopping MCP service..."
-                            & $nssmPath stop $ServiceName
-                            Start-Sleep -Seconds 3
-                            
-                            # Step 2: Update version
-                            $steps += "Updating to version: $version"
-                            if ($version -eq "latest") {
-                                $newParams = "-y terminator-mcp-agent --port 3000 --transport http"
-                            } else {
-                                $newParams = "-y terminator-mcp-agent@$version --port 3000 --transport http"
-                            }
-                            
-                            & $nssmPath set $ServiceName AppParameters $newParams
-                            $steps += "Service configured for version: $version"
-                            
-                            # Step 3: Start service
-                            $steps += "Starting MCP service..."
-                            & $nssmPath start $ServiceName
-                            Start-Sleep -Seconds 5
-                            
-                            # Step 4: Verify
-                            $service = Get-Service $ServiceName
-                            $steps += "Service status: $($service.Status)"
+                            # Use user session restart with specific version
+                            $restartResult = Restart-MCPUserSession -Version $version -Port 3000
                             
                             $responseData = @{
-                                success = $true
+                                success = $restartResult.success
                                 action = "restart-version"
-                                message = "Service restarted with version $version successfully"
+                                message = "MCP Server restarted with version $version in user session"
                                 version = $version
-                                steps = $steps
-                                service_status = @{
-                                    status = $service.Status.ToString()
-                                    name = $service.Name
+                                steps = $restartResult.steps
+                                mcp_server = @{
+                                    process_id = $restartResult.process_id
+                                    session_id = $restartResult.session_id
+                                    interactive = ($restartResult.session_id -gt 0)
                                 }
                                 timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                             }
-                            $response.StatusCode = 200
+                            $response.StatusCode = if ($restartResult.success) { 200 } else { 500 }
                         } catch {
                             $responseData = @{
                                 success = $false
@@ -388,20 +526,19 @@ try {
                 "/start" {
                     if ($method -eq "POST") {
                         try {
-                            Start-Service $ServiceName -ErrorAction Stop
-                            Start-Sleep -Seconds 2
-                            $service = Get-Service $ServiceName
+                            $startResult = Start-MCPUserSession
                             $responseData = @{
-                                success = $true
+                                success = $startResult.success
                                 action = "start"
-                                message = "Service started successfully"
-                                service_status = @{
-                                    status = $service.Status.ToString()
-                                    name = $service.Name
+                                message = $startResult.message
+                                mcp_server = @{
+                                    process_id = $startResult.process_id
+                                    session_id = $startResult.session_id
+                                    interactive = ($startResult.session_id -gt 0)
                                 }
                                 timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                             }
-                            $response.StatusCode = 200
+                            $response.StatusCode = if ($startResult.success) { 200 } else { 500 }
                         } catch {
                             $responseData = @{
                                 success = $false
@@ -420,20 +557,18 @@ try {
                 "/stop" {
                     if ($method -eq "POST") {
                         try {
-                            Stop-Service $ServiceName -ErrorAction Stop
-                            Start-Sleep -Seconds 2
-                            $service = Get-Service $ServiceName
+                            $stopResult = Stop-MCPUserSession
                             $responseData = @{
-                                success = $true
+                                success = $stopResult.success
                                 action = "stop"
-                                message = "Service stopped successfully"
-                                service_status = @{
-                                    status = $service.Status.ToString()
-                                    name = $service.Name
+                                message = $stopResult.message
+                                mcp_server = @{
+                                    process_id = $stopResult.process_id
+                                    status = "Stopped"
                                 }
                                 timestamp = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                             }
-                            $response.StatusCode = 200
+                            $response.StatusCode = if ($stopResult.success) { 200 } else { 500 }
                         } catch {
                             $responseData = @{
                                 success = $false

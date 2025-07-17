@@ -5,28 +5,33 @@ Complete remote management system for the MCP (Model Context Protocol) agent as 
 ## 🚀 System Overview
 
 **Components:**
-- **MCPServer Service**: NSSM-managed terminator-mcp-agent.exe running on Windows VM (48.214.144.108:3389)
-- **HTTP Management Server**: PowerShell script on port 8080  
+- **MCP Server**: terminator-mcp-agent.exe running in interactive user session for browser automation
+- **HTTP Management Server**: PowerShell script on port 8080 for remote control
 - **Ngrok Tunnels**: External access via `https://vm-windows-1.ngrok.dev` (management) and `https://mcp-server-1.ngrok.app` (MCP server)
+- **VM Lock Prevention**: TSCON-based system to prevent desktop locking during RDP disconnection
 - **Monitoring**: Real-time logs and status dashboard
 
 ## 📋 Quick Start
 
 ### Local Setup (Windows VM)
 ```powershell
-# 1. Install the MCP service
-.\install-mcp-service-nssm.ps1
-
-# 2. Install lock prevention (NEW!)
+# 1. Install lock prevention system
 .\install-lock-prevention.ps1
 
+# 2. Start MCP Server in User Session (REQUIRED for browser automation)
+.\start-mcp-user-session.ps1
+# With specific version: .\start-mcp-user-session.ps1 -Version "0.9.0"
+# With custom port: .\start-mcp-user-session.ps1 -Port 3001
+
+# IMPORTANT: Always use this manual startup for reliable browser automation
+# Remote restart endpoints are available but manual startup is most reliable
+
 # 3. Start management server
-powershell -ExecutionPolicy Bypass -File C:\Users\terminatoradmin\Desktop\browser-workflow-capture-app-latest\windows-remote-service\windows_service_endpoint.ps1 -Port 8080  
-# stop if needed
-Get-Process powershell | Stop-Process -Force # stop all powershell processes
+powershell -ExecutionPolicy Bypass -File windows_service_endpoint.ps1 -Port 8080  
+# stop if needed: Get-Process powershell | Stop-Process -Force
 
 # 4. Start ngrok tunnels (for external access)
-ngrok start --all --config scripts/ngrok.yml
+ngrok start --all --config ngrok.yml
 
 # 5. Monitor logs
 .\monitor_all_logs.ps1
@@ -133,13 +138,13 @@ curl -X POST "https://mcp-server-1.ngrok.app/tools/click_element" \
 
 | Method | Endpoint | Description | Response |
 |--------|----------|-------------|----------|
-| GET | `/health` | Server health check | `{"status": "ok", "server": "NSSM Service Manager"}` |
+| GET | `/health` | Server health check | `{"status": "ok", "server": "MCP User Session Manager"}` |
 | GET | `/version` | Server version info | `{"success": true, "version": "0.7.9", "git_commit": "0b95c77"}` |
-| GET | `/status` | Service status | `{"success": true, "status": "Running", "name": "MCPServer"}` |
-| POST | `/start` | Start service | `{"success": true, "action": "start", "message": "Service started successfully"}` |
-| POST | `/stop` | Stop service | `{"success": true, "action": "stop", "message": "Service stopped successfully"}` |
-| POST | `/restart` | Restart service | `{"success": true, "action": "restart", "message": "Service restarted successfully"}` |
-| POST | `/restart-version` | Restart with specific version | `{"success": true, "action": "restart-version", "version": "0.8.1", "steps": [...]}` |
+| GET | `/status` | User session status | `{"success": true, "mcp_server": {"status": "Running", "session_id": 3, "interactive": true, "health": "Healthy"}}` |
+| POST | `/start` | Start in user session | `{"success": true, "action": "start", "mcp_server": {"process_id": 1234, "session_id": 3, "interactive": true}}` |
+| POST | `/stop` | Stop user session | `{"success": true, "action": "stop", "mcp_server": {"process_id": 1234, "status": "Stopped"}}` |
+| POST | `/restart` | Restart user session | `{"success": true, "action": "restart", "steps": [...], "mcp_server": {"session_id": 3}}` |
+| POST | `/restart-version` | Restart with specific version | `{"success": true, "action": "restart-version", "version": "0.8.1", "mcp_server": {"interactive": true}}` |
 | POST | `/upgrade` | Upgrade to latest version | `{"success": true, "action": "upgrade", "steps": [...]}` |
 
 ## 🎯 Version Management (External Control)
@@ -464,23 +469,27 @@ curl -H "ngrok-skip-browser-warning: true" "https://vm-windows-1.ngrok.dev/statu
 ## 📁 File Structure
 ```
 windows-remote-service/
-├── install-mcp-service-nssm.ps1     # Service installation
-├── windows_service_endpoint.ps1     # HTTP management server
-├── upgrade-mcp-service.ps1           # Command-line upgrade
-├── monitor_all_logs.ps1              # Log monitoring
+├── start-mcp-user-session.ps1       # MCP user session startup (PRIMARY METHOD)
+├── windows_service_endpoint.ps1     # HTTP management server with user session controls
+├── monitor_all_logs.ps1              # Log monitoring for user session
 ├── ngrok.yml                         # Ngrok configuration
 ├── README.md                         # This documentation
-├── install-lock-prevention.ps1      # Lock prevention service installer
+├── install-lock-prevention.ps1      # VM lock prevention system installer
 ├── prevent-vm-lock-clean.ps1         # Lock prevention utility (clean version)
 ├── test-lock-prevention.ps1          # Lock prevention test suite
 ├── safe-disconnect-fixed.ps1         # Safe RDP disconnect (PowerShell)
 ├── rdp-disconnect-safe.bat           # Safe RDP disconnect (batch)
-└── LOCK_PREVENTION_SETUP.md          # Lock prevention documentation
+├── LOCK_PREVENTION_SETUP.md          # Lock prevention documentation
+├── install-mcp-service-nssm.ps1     # DEPRECATED: Service installation (browser automation fails)
+└── upgrade-mcp-service.ps1           # DEPRECATED: Command-line upgrade (for services only)
 
 logs/
-├── mcp-server.log                    # Service output
-├── mcp-server-error.log             # Service errors
-└── lock-prevention.log              # Lock prevention service logs
+├── mcp-user-session.log             # User session MCP startup log (PRIMARY)
+├── mcp-stdout.log                   # User session MCP output
+├── mcp-stderr.log                   # User session MCP errors
+├── lock-prevention.log              # Lock prevention service logs
+├── mcp-server.log                   # DEPRECATED: Service output (Windows service)
+└── mcp-server-error.log             # DEPRECATED: Service errors (Windows service)
 ```
 
 ## 🎯 Success Indicators
@@ -496,6 +505,48 @@ logs/
 - No firewall/port blocking errors
 - Fast response times (<100ms)
 
+## 🔧 Browser Automation Fix
+
+### **🚨 CRITICAL: Session Isolation Issue**
+
+**Problem**: MCP server running as Windows service (Session 0) cannot automate browsers in interactive session (Session 3).
+
+**Symptoms**:
+- `ShellExecuteW error code: 31` when opening URLs
+- `Failed to open URL` errors
+- `Element not found` timeouts
+- Browser automation commands fail
+
+**✅ SOLUTION: Run MCP Server in User Session**
+
+```powershell
+# RECOMMENDED: Start MCP in interactive session
+.\start-mcp-user-session.ps1
+
+# Check logs to verify success
+Get-Content logs\mcp-user-session.log -Tail 10
+
+# Expected output:
+# [INFO] Running in Session: 3 (Interactive: True)  
+# [SUCCESS] ✅ SUCCESS: MCP Server running in interactive session - browser automation should work!
+```
+
+**❌ DEPRECATED: Windows Service Approach**
+```powershell
+# NOT RECOMMENDED: Windows service cannot access desktop for browser automation
+# .\nssm-2.24\win64\nssm.exe start MCPServer
+# This approach will fail with "ShellExecuteW error code: 31" for browser automation
+```
+
+**Verification**:
+```powershell
+# Check MCP process session
+Get-WmiObject Win32_Process | Where-Object {$_.Name -eq "terminator-mcp-agent.exe"} | Select-Object ProcessId, SessionId
+
+# Expected: SessionId should be 3 (or > 0 for interactive session)
+# Bad: SessionId = 0 (Windows service session, no desktop access)
+```
+
 ## 🚀 Best Practices
 
 1. **Production Setup**: Use version pinning (`-Version "0.8.0"`)
@@ -504,10 +555,11 @@ logs/
 4. **Security**: Use firewall rules and internal networks
 5. **Upgrades**: Test in development before production
 6. **Backend Integration**: Use retry logic and error handling
+7. **Browser Automation**: Always run MCP server in user session for desktop automation
 
 ---
 
 **System Status**: ✅ **FULLY OPERATIONAL**  
 **Last Updated**: 2025-01-15  
-**Primary Use Case**: Remote MCP version control, server restart, and upgrade from backend applications with VM lock prevention  
-**NEW FEATURE**: 🚀 **External Version Control** - Restart with any specific MCP version via API
+**Primary Use Case**: Remote MCP user session management for browser automation with VM lock prevention  
+**ARCHITECTURE**: 🔄 **User Session Only** - All MCP operations run in interactive desktop session for full browser automation
