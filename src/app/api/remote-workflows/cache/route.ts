@@ -28,7 +28,7 @@ interface WorkflowExecutionCacheHit {
   modal_call_id?: string | null;
   client_id?: string | null;
   execution_params?: Record<string, unknown> | null;
-  status: 'completed' | 'failed';
+  status: 'completed' | 'failed'; // Will be filtered based on failed_only parameter
 }
 
 // Helper function to get API parameter names from workflow schema (copied from execution details endpoint)
@@ -109,16 +109,26 @@ async function getApiParameterNames(workflowId: number, executionParams: Record<
  * 
  * POST /api/remote-workflows/cache
  * Body: { workflow_id: number, parameters: object }
+ * Query Parameters:
+ *   - full_detailed_response: Include raw data and debugging info (default: false)
+ *   - failed_only: Only return failed executions for debugging (default: false, returns successful only)
  * 
  * Returns cached execution results if found, enabling instant responses
  * while background executions keep cache fresh.
+ * 
+ * By default, only successful (completed) cached results are returned.
+ * This improves cache hit value since users typically want successful results.
  */
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
-  // Get URL parameters for controlling response detail level
+  // Get URL parameters for controlling response detail level and cache filtering
   const { searchParams } = new URL(request.url);
   const full_detailed_response = searchParams.get('full_detailed_response') === 'true';
+  const failed_only = searchParams.get('failed_only') === 'true';
+  
+  // Determine status filter: default to only successful results, unless specifically requesting failed ones
+  const statusFilter = failed_only ? ['failed'] : ['completed'];
   
   try {
     const body = await request.json();
@@ -178,12 +188,12 @@ export async function POST(request: NextRequest) {
     
     if (full_detailed_response) {
       // Detailed query: Include ALL fields including heavy debugging data (raw_logs, raw_mcp_response, execution_logs)
-      console.log(`🔍 Running DETAILED cache query with debugging fields`);
+      console.log(`🔍 Running DETAILED cache query with debugging fields (${failed_only ? 'failed only' : 'successful only'})`);
       const { data, error } = await supabase
         .from('workflow_executions')
         .select('id, formatted_output, created_at, execution_duration_seconds, results, raw_logs, raw_mcp_response, execution_logs, started_at, completed_at, updated_at, progress_percentage, current_step_index, total_steps, error_message, modal_call_id, client_id, execution_params, status')
         .eq('workflow_id', workflowIdNum)
-        .in('status', ['completed', 'failed'])
+        .in('status', statusFilter)
         .eq('execution_params_hash', parametersHash)
         .order('id', { ascending: false })
         .limit(1);
@@ -191,12 +201,12 @@ export async function POST(request: NextRequest) {
       cacheError = error;
     } else {
       // Basic query: MINIMAL fields for maximum speed (excludes ALL heavy/optional debugging data)
-      console.log(`⚡ Running BASIC cache query with minimal fields`);
+      console.log(`⚡ Running BASIC cache query with minimal fields (${failed_only ? 'failed only' : 'successful only'})`);
       const { data, error } = await supabase
         .from('workflow_executions')
         .select('id, formatted_output, created_at, execution_duration_seconds, started_at, completed_at, error_message, status')
         .eq('workflow_id', workflowIdNum)
-        .in('status', ['completed', 'failed'])
+        .in('status', statusFilter)
         .eq('execution_params_hash', parametersHash)
         .order('id', { ascending: false })
         .limit(1);
@@ -206,7 +216,7 @@ export async function POST(request: NextRequest) {
 
     // Fallback to JSONB lookup if hash lookup didn't find anything (for backwards compatibility)
     if (cacheResults && cacheResults.length === 0) {
-      console.log(`🔄 Hash lookup missed, falling back to JSONB lookup`);
+      console.log(`🔄 Hash lookup missed, falling back to JSONB lookup (${failed_only ? 'failed only' : 'successful only'})`);
       
       if (full_detailed_response) {
         console.log(`🔄 Fallback DETAILED JSONB query with all fields`);
@@ -214,7 +224,7 @@ export async function POST(request: NextRequest) {
           .from('workflow_executions')
           .select('id, formatted_output, created_at, execution_duration_seconds, results, raw_logs, raw_mcp_response, execution_logs, started_at, completed_at, updated_at, progress_percentage, current_step_index, total_steps, error_message, modal_call_id, client_id, execution_params, status')
           .eq('workflow_id', workflowIdNum)
-          .in('status', ['completed', 'failed'])
+          .in('status', statusFilter)
           .eq('execution_params', JSON.stringify(parameters))
           .order('id', { ascending: false })
           .limit(1);
@@ -226,7 +236,7 @@ export async function POST(request: NextRequest) {
           .from('workflow_executions')
           .select('id, formatted_output, created_at, execution_duration_seconds, started_at, completed_at, error_message, status')
           .eq('workflow_id', workflowIdNum)
-          .in('status', ['completed', 'failed'])
+          .in('status', statusFilter)
           .eq('execution_params', JSON.stringify(parameters))
           .order('id', { ascending: false })
           .limit(1);
@@ -463,22 +473,26 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(response);
     } else {
-      console.log(`❌ Cache MISS for workflow ${workflowIdNum} (${queryTime}ms query)`);
+      console.log(`❌ Cache MISS for workflow ${workflowIdNum} (${queryTime}ms query) - ${failed_only ? 'no failed' : 'no successful'} executions found`);
       
       return NextResponse.json({
         success: true,
         cached: false,
         cache_info: {
           cache_query_time_ms: queryTime,
-          message: 'No cached results found for these parameters'
+          message: `No cached ${failed_only ? 'failed' : 'successful'} results found for these parameters`,
+          filter_applied: failed_only ? 'failed_only' : 'successful_only',
+          note: failed_only 
+            ? 'Add "?failed_only=false" or remove the parameter to search for successful results instead.'
+            : 'Add "?failed_only=true" to specifically search for failed executions.'
         },
         data: null,
         response_metadata: {
           execution_mode: 'cached',
           detail_level: full_detailed_response ? 'full' : 'basic',
           note: full_detailed_response 
-            ? 'Cache miss - no detailed data available. Execute workflow to generate cached results.'
-            : 'Cache miss - no basic data available. Execute workflow to generate cached results.'
+            ? `Cache miss - no ${failed_only ? 'failed' : 'successful'} detailed data available. Execute workflow to generate cached results.`
+            : `Cache miss - no ${failed_only ? 'failed' : 'successful'} basic data available. Execute workflow to generate cached results.`
         },
         timestamp: new Date().toISOString()
       });
