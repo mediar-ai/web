@@ -99,7 +99,7 @@ export default function MCPAPIDocsPage() {
     const fetchMCPData = async () => {
       try {
         setLoadingTools(true);
-        console.log('🔄 Fetching MCP tools for documentation...');
+        console.log('Fetching MCP tools for documentation...');
         
         // Fetch tools via MCP API
         const toolsResponse = await fetch('/api/mcp', {
@@ -348,13 +348,13 @@ graph TB
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <div className="p-4 border border-black rounded-lg">
-                <h3 className="font-semibold mb-2">🔧 Available Tools</h3>
+                <h3 className="font-semibold mb-2">Available Tools</h3>
                 <p className="text-sm text-gray-700">
                   {loadingTools ? 'Loading...' : `${mcpTools.length} automation tools`} discovered from your workflow database
                 </p>
               </div>
               <div className="p-4 border border-black rounded-lg">
-                <h3 className="font-semibold mb-2">⚡ Real-time Discovery</h3>
+                <h3 className="font-semibold mb-2">Real-time Discovery</h3>
                 <p className="text-sm text-gray-700">
                   Tools are automatically discovered from deployed workflows with 30-second caching
                 </p>
@@ -366,7 +366,7 @@ graph TB
                 </p>
               </div>
               <div className="p-4 border border-black rounded-lg">
-                <h3 className="font-semibold mb-2">🚀 Integration</h3>
+                <h3 className="font-semibold mb-2">Integration</h3>
                 <p className="text-sm text-gray-700">
                   Built into Next.js app, deploys automatically to Vercel
                 </p>
@@ -797,7 +797,7 @@ graph TB
                 )}
                 className="px-4 py-2 bg-black text-white border border-black rounded hover:bg-gray-800 transition-colors text-sm font-medium"
               >
-                {copiedStates[`curl-${tool.name}`] || '📋 Copy Test Command'}
+                                  {copiedStates[`curl-${tool.name}`] || 'Copy Test Command'}
               </button>
             </div>
           </div>
@@ -858,7 +858,7 @@ graph TB
                     <span className="text-xs opacity-75 mr-2">RPC</span>
                   )}
                   {section.type === 'tool' && (
-                    <span className="text-xs opacity-75 mr-2">🔧</span>
+                    <span className="text-xs opacity-75 mr-2"></span>
                   )}
                   {section.title}
                 </button>
