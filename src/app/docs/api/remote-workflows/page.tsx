@@ -97,18 +97,132 @@ export default function RemoteWorkflowsAPIDocsPage() {
     }
   };
   
+  // Generate intelligent sample values for different parameter types
+  const generateSampleValue = (type: string, name: string): string => {
+    if (type === 'boolean') {
+      // Use context-aware boolean values
+      if (name.includes('detailed') || name.includes('full')) return 'true';
+      if (name.includes('include') || name.includes('results')) return 'false';
+      return 'true';
+    }
+    
+    if (type === 'number') {
+      if (name.includes('limit')) return '10';
+      if (name.includes('offset')) return '0';
+      if (name.includes('workflow_id')) return '1';
+      if (name.includes('execution_id')) return '44';
+      return '1';
+    }
+    
+    if (type === 'string') {
+      if (name.includes('status')) return 'active';
+      if (name.includes('category')) return 'insurance';
+      if (name.includes('method')) return 'POST';
+      return 'example';
+    }
+    
+    return 'value';
+  };
+
+  // Generate dynamic URL examples for endpoint parameters
+  const generateUrlExamples = (endpoint: EndpointDefinition) => {
+    const baseUrl = 'https://app.mediar.ai';
+    let basePath = endpoint.path;
+    
+    // Replace path parameters with real values
+    if (basePath.includes('[workflowId]')) {
+      const workflowId = Object.keys(workflowSchemas).length > 0 ? Object.keys(workflowSchemas)[0] : '1';
+      basePath = basePath.replace('[workflowId]', workflowId);
+    }
+    if (basePath.includes('[executionId]')) {
+      basePath = basePath.replace('[executionId]', '3856');
+    }
+    
+    const fullBasePath = `${baseUrl}${basePath}`;
+    
+    if (!endpoint.queryParams || endpoint.queryParams.length === 0) {
+      return [];
+    }
+
+    const examples = [];
+    
+    // 1. Default behavior (no parameters)
+    examples.push({
+      label: 'Default',
+      url: fullBasePath,
+      description: 'No parameters (uses defaults)'
+    });
+
+    // 2. Single parameter examples for each parameter
+    endpoint.queryParams.forEach(param => {
+      const sampleValue = generateSampleValue(param.type, param.name);
+      examples.push({
+        label: `Single parameter: ${param.name}`,
+        url: `${fullBasePath}?${param.name}=${sampleValue}`,
+        description: `Using ${param.name}=${sampleValue}`
+      });
+    });
+
+    // 3. Common combinations
+    if (endpoint.queryParams.length >= 2) {
+      // For list endpoints, show limit + status/workflow_id
+      const hasLimit = endpoint.queryParams.find(p => p.name === 'limit');
+      const hasStatus = endpoint.queryParams.find(p => p.name === 'status');
+      const hasWorkflowId = endpoint.queryParams.find(p => p.name === 'workflow_id');
+      
+      if (hasLimit && hasStatus) {
+        examples.push({
+          label: 'Multiple parameters',
+          url: `${fullBasePath}?limit=5&status=active`,
+          description: 'Limit results to 5 active items'
+        });
+      }
+      
+      if (hasLimit && hasWorkflowId) {
+        examples.push({
+          label: 'Filter + limit',
+          url: `${fullBasePath}?workflow_id=1&limit=10`,
+          description: 'Get 10 executions for workflow 1'
+        });
+      }
+
+      // For performance-critical endpoints, show performance optimization
+      const hasIncludeResults = endpoint.queryParams.find(p => p.name === 'include_results');
+      if (hasIncludeResults) {
+        examples.push({
+          label: '⚡ Performance optimized',
+          url: `${fullBasePath}?include_results=false&limit=20`,
+          description: 'Fast response for dashboards (exclude heavy data)'
+        });
+      }
+
+      const hasFullDetailed = endpoint.queryParams.find(p => p.name === 'full_detailed_response');
+      if (hasFullDetailed) {
+        examples.push({
+          label: '🔍 Debugging mode',
+          url: `${fullBasePath}?full_detailed_response=true`,
+          description: 'Detailed response with raw data and logs'
+        });
+      }
+    }
+
+    return examples;
+  };
+  
   // Generate dynamic request examples
   const generateRequestExamples = (endpoint: EndpointDefinition) => {
     const baseUrl = 'https://app.mediar.ai';
     let fullUrl = `${baseUrl}${endpoint.path}`;
 
-    // Add query parameters for GET requests
-    if (endpoint.method === 'GET' && endpoint.queryParams) {
+    // Add query parameters for ALL requests (not just GET)
+    if (endpoint.queryParams) {
       const params = new URLSearchParams();
       endpoint.queryParams.forEach(param => {
-        if (param.name === 'status') params.append(param.name, 'active');
-        else if (param.name === 'limit') params.append(param.name, '50');
-        else if (param.name === 'workflow_id') params.append(param.name, '1');
+        const sampleValue = generateSampleValue(param.type, param.name);
+        // Only add a few key parameters to avoid overly long URLs in examples
+        if (['status', 'limit', 'workflow_id', 'full_detailed_response'].includes(param.name)) {
+          params.append(param.name, sampleValue);
+        }
       });
       const queryString = params.toString();
       if (queryString) fullUrl += `?${queryString}`;
@@ -1289,6 +1403,29 @@ graph TB
                   <p className="text-sm text-gray-600">{param.description}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* URL Examples */}
+        {endpoint.queryParams && endpoint.queryParams.length > 0 && (
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-3">🔗 URL Examples</h3>
+            <div className="bg-gray-50 border border-black rounded-lg p-4">
+              <p className="text-sm text-gray-600 mb-3">Copy these URLs to use in your applications:</p>
+              <div className="space-y-2">
+                {generateUrlExamples(endpoint).map((example, index) => (
+                  <div key={index} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-700 min-w-fit">{example.label}:</span>
+                      <code className="bg-white px-2 py-1 rounded text-xs font-mono border border-gray-300 flex-1 break-all">
+                        {example.url}
+                      </code>
+                    </div>
+                    <p className="text-xs text-gray-500 ml-2">{example.description}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
