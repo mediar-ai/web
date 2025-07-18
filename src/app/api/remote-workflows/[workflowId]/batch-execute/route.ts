@@ -264,12 +264,16 @@ export async function POST(
     const {
       static_parameters = {},
       dynamic_parameters = {},
+      machine_id,
+      version_number,
     } = body;
 
     console.log('🚀 BATCH EXECUTE: Starting batch execution');
     console.log('📦 BATCH EXECUTE: Request body:', JSON.stringify(body, null, 2));
     console.log('🔢 BATCH EXECUTE: Dynamic parameters:', dynamic_parameters);
     console.log('📊 BATCH EXECUTE: Parameter count:', Object.keys(dynamic_parameters).length);
+    console.log('🎯 BATCH EXECUTE: Requested machine ID:', machine_id || 'default (1)');
+    console.log('📋 BATCH EXECUTE: Requested version:', version_number || 'active version');
 
     // Simple debug - write to a file since console.log isn't showing
     const debugInfo = {
@@ -318,29 +322,53 @@ export async function POST(
     }
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 🎯 Machine assignment: Default to machine ID 1 (Primary Windows VM)
-    console.log(`🔍 Assigning batch to default machine for workflow ${workflowIdNum}...`);
+    // 🎯 Machine assignment: Use selected machine or default to machine ID 1
+    const assigned_machine_id: number = machine_id || 1;
+    const assignment_reason = machine_id 
+      ? `User-selected machine for testing (ID: ${machine_id})`
+      : 'Default assignment to Primary Windows VM (batch execution)';
     
-    const assigned_machine_id: number = 1;
-    const assignment_reason = 'Default assignment to Primary Windows VM (batch execution)';
+    console.log(`🔍 Assigning batch to machine ${assigned_machine_id} for workflow ${workflowIdNum}...`);
     
-    // Look up machine endpoint
+    // Look up machine endpoint and validate it's available
     const { data: machine, error: machineError } = await supabase
       .from('remote_machines')
-      .select('mcp_endpoint')
+      .select('mcp_endpoint, name, status, health_status')
       .eq('id', assigned_machine_id)
       .single();
 
     if (machineError || !machine) {
       console.error(`❌ Failed to find machine ${assigned_machine_id}:`, machineError);
       return NextResponse.json(
-        { error: `Machine ${assigned_machine_id} not found in remote_machines table` },
-        { status: 500 }
+        { 
+          success: false,
+          error: `Machine ${assigned_machine_id} not found`,
+          details: machine_id ? 'Selected machine is not available' : 'Default machine not found'
+        },
+        { status: 400 }
       );
     }
 
+    // Validate machine is available for execution
+    if (machine.status !== 'active') {
+      console.error(`❌ Machine ${assigned_machine_id} is not active: ${machine.status}`);
+      return NextResponse.json(
+        { 
+          success: false,
+          error: `Machine "${machine.name}" is not active (status: ${machine.status})`,
+          machine_status: machine.status,
+          available_machines_endpoint: '/api/machines?status=active'
+        },
+        { status: 400 }
+      );
+    }
+
+    if (machine.health_status === 'unhealthy') {
+      console.warn(`⚠️ Machine ${assigned_machine_id} is unhealthy but proceeding with execution`);
+    }
+
     const mcp_endpoint = machine.mcp_endpoint;
-    console.log(`✅ Assigned batch to machine ID ${assigned_machine_id}: ${assignment_reason}`);
+    console.log(`✅ Assigned batch to machine ID ${assigned_machine_id} (${machine.name}): ${assignment_reason}`);
     console.log(`🔗 Machine endpoint: ${mcp_endpoint}`);
 
     const batch_id = `batch-${uuidv4()}`;
@@ -365,7 +393,9 @@ export async function POST(
         assignment_reason,
         machine_assignment_timestamp: new Date().toISOString(),
         assignment_method: 'auto',
-        mcp_endpoint
+        mcp_endpoint,
+        // Version selection field
+        version_number
       });
     }
 
