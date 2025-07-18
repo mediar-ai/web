@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import yaml from 'js-yaml';
 
 interface WorkflowVersion {
   version_id: number;
@@ -106,6 +107,56 @@ export async function POST(
       );
     }
 
+    // Helper function to detect sequence format
+    function detectSequenceFormat(content: string): 'yaml' | 'json' {
+      const trimmed = content.trim();
+      
+      // JSON detection
+      if ((trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+          (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+        return 'json';
+      }
+      
+      // YAML detection
+      if (trimmed.includes('tool_name:') || trimmed.includes('arguments:') || trimmed.includes(':\n')) {
+        return 'yaml';
+      }
+      
+      return 'yaml'; // Default to YAML for new uploads
+    }
+
+    // Process automation sequence for dual-format storage
+    let yamlContent: string;
+    let jsonbContent = null; // Only populate for legacy JSON uploads
+    let sequence_format = 'yaml';
+
+    if (typeof automation_sequence === 'string') {
+      // Raw YAML or JSON string
+      const detectedFormat = detectSequenceFormat(automation_sequence);
+      if (detectedFormat === 'yaml') {
+        yamlContent = automation_sequence;
+        sequence_format = 'yaml';
+      } else {
+        // Convert JSON string to YAML
+        const parsed = JSON.parse(automation_sequence);
+        yamlContent = yaml.dump(parsed, { indent: 2, sortKeys: false });
+        sequence_format = 'yaml';
+        // Keep JSON for backward compatibility during transition
+        jsonbContent = parsed;
+      }
+    } else if (typeof automation_sequence === 'object') {
+      // JavaScript object - convert to YAML
+      yamlContent = yaml.dump(automation_sequence, { indent: 2, sortKeys: false });
+      sequence_format = 'yaml';
+      // Keep JSON for backward compatibility during transition
+      jsonbContent = automation_sequence;
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Invalid automation_sequence format' },
+        { status: 400 }
+      );
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -158,16 +209,20 @@ export async function POST(
       );
     }
 
-    // Create new version
+    // Create new version with dual-format support
+    const versionData = {
+      workflow_id: workflowIdNum,
+      version_number: newVersionNumber,
+      automation_sequence_yaml: yamlContent,     // New YAML column
+      automation_sequence: jsonbContent,         // Legacy JSONB (null for pure YAML uploads)
+      preferred_format: sequence_format,
+      is_active: false, // Don't activate immediately
+      change_notes: change_notes || `Version ${newVersionNumber} created via API (${sequence_format} format)`
+    };
+
     const { data: newVersion, error: versionError } = await supabase
       .from('deployed_workflow_versions')
-      .insert({
-        workflow_id: workflowIdNum,
-        version_number: newVersionNumber,
-        automation_sequence,
-        is_active: false, // Don't activate immediately
-        change_notes: change_notes || `Version ${newVersionNumber} created via API`
-      })
+      .insert(versionData)
       .select()
       .single();
 

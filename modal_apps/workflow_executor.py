@@ -18,12 +18,140 @@ import collections.abc
 
 # Add contextlib for stdout/stderr capture
 import contextlib
+import yaml  # For YAML sequence loading
 
 # Configure logging to capture everything
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# SequenceLoader: Dual-Format Workflow Support (YAML + JSONB)
+# =============================================================================
+
+class SequenceLoader:
+    """Handles both YAML and JSONB sequence loading with auto-detection"""
+    
+    @staticmethod
+    def load_workflow_sequence(workflow_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Load sequence with YAML priority, JSONB fallback
+        
+        Args:
+            workflow_data: Database record from deployed_workflows_with_sequence view
+            
+        Returns:
+            List of automation sequence steps (normalized format)
+            
+        Raises:
+            ValueError: If no valid sequence found in either format
+        """
+        
+        # Priority 1: Use YAML column if available
+        yaml_sequence = workflow_data.get("automation_sequence_yaml")
+        if yaml_sequence and yaml_sequence.strip():
+            try:
+                logger.info("📄 Loading workflow from YAML column")
+                parsed = yaml.safe_load(yaml_sequence)
+                return SequenceLoader._ensure_list_format(parsed)
+            except yaml.YAMLError as e:
+                logger.warning(f"⚠️ YAML parsing failed, falling back to JSONB: {e}")
+        
+        # Priority 2: Fallback to JSONB column (legacy)
+        jsonb_sequence = workflow_data.get("automation_sequence")
+        if jsonb_sequence:
+            logger.info("📋 Loading workflow from JSONB column (legacy)")
+            if isinstance(jsonb_sequence, str):
+                parsed = json.loads(jsonb_sequence)
+            else:
+                parsed = jsonb_sequence
+            return SequenceLoader._ensure_list_format(parsed)
+        
+        raise ValueError("No automation sequence found in either YAML or JSONB columns")
+    
+    @staticmethod
+    def _ensure_list_format(sequence: Any) -> List[Dict[str, Any]]:
+        """Ensure sequence is in expected list format"""
+        if isinstance(sequence, dict):
+            return [sequence]
+        elif isinstance(sequence, list):
+            return sequence
+        else:
+            raise ValueError(f"Invalid sequence format: {type(sequence)}")
+    
+    @staticmethod  
+    def get_sequence_info(workflow_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get information about the sequence format and content
+        
+        Args:
+            workflow_data: Database record from deployed_workflows_with_sequence view
+            
+        Returns:
+            Dictionary with sequence information
+        """
+        info = {
+            'has_yaml': bool(workflow_data.get('automation_sequence_yaml')),
+            'has_jsonb': bool(workflow_data.get('automation_sequence')),
+            'format_used': workflow_data.get('sequence_format', 'unknown'),
+            'preferred_format': workflow_data.get('preferred_format', 'jsonb'),
+            'is_valid': False,
+            'step_count': 0,
+            'has_variables': False,
+            'has_steps': False
+        }
+        
+        try:
+            sequence = SequenceLoader.load_workflow_sequence(workflow_data)
+            info['is_valid'] = SequenceLoader.validate_sequence_structure(sequence)
+            
+            if info['is_valid'] and len(sequence) > 0:
+                arguments = sequence[0].get('arguments', {})
+                info['step_count'] = len(arguments.get('steps', []))
+                info['has_variables'] = bool(arguments.get('variables'))
+                info['has_steps'] = bool(arguments.get('steps'))
+                
+        except Exception as e:
+            logger.warning(f"Failed to analyze sequence: {e}")
+            
+        return info
+
+    @staticmethod
+    def validate_sequence_structure(sequence: List[Dict[str, Any]]) -> bool:
+        """
+        Validate that sequence has the expected structure
+        
+        Args:
+            sequence: Parsed sequence data
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        try:
+            if not isinstance(sequence, list) or len(sequence) == 0:
+                return False
+            
+            # Check first element has required structure
+            first_element = sequence[0]
+            if not isinstance(first_element, dict):
+                return False
+            
+            # Must have tool_name and arguments
+            if 'tool_name' not in first_element:
+                return False
+            
+            if 'arguments' not in first_element:
+                return False
+            
+            # Arguments should be a dict
+            if not isinstance(first_element['arguments'], dict):
+                return False
+            
+            return True
+            
+        except Exception:
+            return False
 
 # Create a string buffer to capture all logs
 log_buffer = io.StringIO()
@@ -51,6 +179,7 @@ image = modal.Image.debian_slim().pip_install(
         "psycopg2-binary",  # Direct database connection
         "httpx",  # HTTP client
         "websockets",  # WebSocket support
+        "PyYAML",  # YAML parsing for dual-format sequence support
         # Commenting out 'mcp' as it might not be available via pip
         # We'll handle MCP differently or mock it for now
     ]
@@ -574,19 +703,13 @@ async def execute_mcp_workflow(
     logger.info("🔌 Attempting to connect to MCP endpoint: %s", mcp_endpoint)
 
     try:
-        # Use the automation sequence from the database
-        automation_sequence = workflow_data.get("automation_sequence")
+        # Use the smart sequence loader for dual-format support
+        automation_sequence_list = SequenceLoader.load_workflow_sequence(workflow_data)
+        
+        if not automation_sequence_list or len(automation_sequence_list) == 0:
+            raise ValueError("No valid automation sequence found in workflow data")
 
-        if (
-            not automation_sequence
-            or not isinstance(automation_sequence, list)
-            or len(automation_sequence) == 0
-        ):
-            raise ValueError(
-                "automation_sequence is missing, not a list, or empty in the workflow data"
-            )
-
-        workflow_data_to_use = automation_sequence[0]
+        workflow_data_to_use = automation_sequence_list[0]
 
         tool_name = workflow_data_to_use.get("tool_name")
         arguments = workflow_data_to_use.get("arguments", {})
@@ -1073,11 +1196,22 @@ def execute_workflow(
         if not workflow.get("automation_sequence"):
             raise Exception(f"Workflow {workflow_id} has no active version or automation_sequence")
 
-        # Calculate total steps and update the execution record with version tracking
-        automation_sequence = workflow.get("automation_sequence", [{}])[0]
-        arguments = automation_sequence.get("arguments", {})
-        # The canonical key for the list of execution groups is now 'steps'.
-        steps_list = arguments.get("steps", [])
+        # Calculate total steps using the smart sequence loader
+        try:
+            automation_sequence_list = SequenceLoader.load_workflow_sequence(workflow)
+            automation_sequence = automation_sequence_list[0]
+            arguments = automation_sequence.get("arguments", {})
+            # The canonical key for the list of execution groups is now 'steps'.
+            steps_list = arguments.get("steps", [])
+            
+            # Log which format was used for debugging
+            sequence_info = SequenceLoader.get_sequence_info(workflow)
+            logger.info("📋 Loaded sequence using %s format (%d steps)", 
+                       sequence_info['format_used'], sequence_info['step_count'])
+            
+        except Exception as e:
+            logger.error("❌ Failed to load workflow sequence: %s", e)
+            raise Exception(f"Invalid workflow sequence for workflow {workflow_id}: {e}")
         total_steps = len(steps_list)
         
         # Update execution with total steps and version information for traceability
