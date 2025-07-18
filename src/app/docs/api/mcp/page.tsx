@@ -433,7 +433,7 @@ graph TB
         <div className="max-w-4xl">
           <h1 className="text-2xl font-bold mb-4">Quick Start Guide</h1>
           
-          <div className="space-y-6">
+          <div className="space-y-8">
             <div>
               <h2 className="text-xl font-semibold mb-3">1. Configure Cursor MCP</h2>
               <p className="text-gray-700 mb-3">
@@ -454,18 +454,51 @@ graph TB
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold mb-3">2. Test Connection</h2>
+              <h2 className="text-xl font-semibold mb-3">2. Install JavaScript SDK (Optional)</h2>
               <p className="text-gray-700 mb-3">
-                Verify the server is running and accessible:
+                For programmatic access, install the official MCP JavaScript SDK:
               </p>
-              <CodeBlock language="bash" title="Health Check">
-{`curl ${urls.healthCheck}`}
+              <CodeBlock language="bash" title="Install MCP SDK">
+{`npm install @modelcontextprotocol/sdk`}
               </CodeBlock>
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold mb-3">3. List Available Tools</h2>
-              <CodeBlock language="bash" title="Get Tools via MCP">
+              <h2 className="text-xl font-semibold mb-3">3. Test Connection</h2>
+              <p className="text-gray-700 mb-3">
+                Verify the server is running and accessible:
+              </p>
+              
+              <div className="space-y-4">
+                <CodeBlock language="bash" title="Health Check (curl)">
+{`curl ${urls.healthCheck}`}
+                </CodeBlock>
+
+                <CodeBlock language="javascript" title="Health Check (JavaScript SDK)">
+{`import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+// Connect to MCP server
+const transport = new StreamableHTTPClientTransport('${urls.mcpEndpoint}');
+const client = new Client(
+  { name: "your-app", version: "1.0.0" },
+  { capabilities: { tools: {} } }
+);
+
+await client.connect(transport);
+console.log('✅ Connected to MCP server');`}
+                </CodeBlock>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-xl font-semibold mb-3">4. List Available Tools</h2>
+              <p className="text-gray-700 mb-3">
+                Discover automation workflows available as MCP tools:
+              </p>
+              
+              <div className="space-y-4">
+                <CodeBlock language="bash" title="Get Tools (curl)">
 {`curl -X POST ${urls.mcpEndpoint} \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -473,12 +506,29 @@ graph TB
     "id": 1,
     "method": "tools/list"
   }'`}
-              </CodeBlock>
+                </CodeBlock>
+
+                <CodeBlock language="javascript" title="Get Tools (JavaScript SDK)">
+{`// List available tools
+const result = await client.listTools();
+
+result.tools.forEach((tool, index) => {
+  console.log(\`\${index + 1}. \${tool.name}\`);
+  console.log(\`   Description: \${tool.description}\`);
+  console.log(\`   Parameters: \${Object.keys(tool.inputSchema?.properties || {}).length}\`);
+});`}
+                </CodeBlock>
+              </div>
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold mb-3">4. Execute a Tool</h2>
-              <CodeBlock language="bash" title="Execute Insurance Product Setup">
+              <h2 className="text-xl font-semibold mb-3">5. Execute a Tool</h2>
+              <p className="text-gray-700 mb-3">
+                Execute automation workflows through the MCP interface:
+              </p>
+              
+              <div className="space-y-4">
+                <CodeBlock language="bash" title="Execute Tool (curl)">
 {`curl -X POST ${urls.mcpEndpoint} \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -493,6 +543,124 @@ graph TB
       }
     }
   }'`}
+                </CodeBlock>
+
+                <CodeBlock language="javascript" title="Execute Tool (JavaScript SDK)">
+{`// Execute insurance product setup
+const setupResult = await client.callTool({
+  name: 'insurance_set_available_products',
+  arguments: {
+    execution_mode: 'async',
+    include_cache: true
+  }
+});
+
+// Execute insurance quote
+const quoteResult = await client.callTool({
+  name: 'insurance_best_plan_pro_insurance_quote',
+  arguments: {
+    execution_mode: 'async',
+    applicant_dob: '01/15/1985',
+    applicant_height: '5 10',
+    applicant_weight: '180',
+    applicant_gender: 'Male',
+    applicant_state: 'California',
+    applicant_zip_code: '90210',
+    quote_type: 'Face Value',
+    quote_value: '50000'
+  }
+});
+
+console.log('🎯 Execution queued:', quoteResult);`}
+                </CodeBlock>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="font-semibold text-blue-900 mb-2">💡 Complete Integration Example</h3>
+              <p className="text-blue-800 text-sm mb-3">
+                For a production-ready integration class with error handling, connection management, and result parsing, see our comprehensive example:
+              </p>
+              <CodeBlock language="javascript" title="WorkflowAutomationClient Class">
+{`class WorkflowAutomationClient {
+  constructor(mcpServerUrl = '${urls.mcpEndpoint}') {
+    this.serverUrl = mcpServerUrl;
+    this.client = null;
+    this.transport = null;
+    this.isConnected = false;
+  }
+
+  async connect() {
+    if (this.isConnected) return;
+    
+    this.transport = new StreamableHTTPClientTransport(this.serverUrl);
+    this.client = new Client(
+      { name: "workflow-automation-client", version: "1.0.0" },
+      { capabilities: { tools: {} } }
+    );
+    
+    await this.client.connect(this.transport);
+    this.isConnected = true;
+  }
+
+  async getAvailableWorkflows() {
+    await this.connect();
+    const result = await this.client.listTools();
+    return result.tools.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: Object.keys(tool.inputSchema?.properties || {})
+    }));
+  }
+
+  async generateInsuranceQuote(applicantInfo) {
+    await this.connect();
+    
+    const result = await this.client.callTool({
+      name: 'insurance_best_plan_pro_insurance_quote',
+      arguments: {
+        execution_mode: 'async',
+        include_cache: true,
+        ...applicantInfo
+      }
+    });
+    
+    return this.parseExecutionResult(result);
+  }
+
+  parseExecutionResult(mcpResult) {
+    if (mcpResult.content?.[0]?.text) {
+      const data = JSON.parse(mcpResult.content[0].text);
+      return {
+        success: data.type === 'success',
+        executionId: data.execution_id,
+        workflowName: data.data?.workflow_name,
+        status: data.status,
+        message: data.message,
+        endpoints: data.data?.endpoints
+      };
+    }
+    return { success: false, message: 'Failed to parse result' };
+  }
+
+  async disconnect() {
+    if (this.client && this.isConnected) {
+      await this.client.close();
+      this.isConnected = false;
+    }
+  }
+}
+
+// Usage
+const automation = new WorkflowAutomationClient();
+const quote = await automation.generateInsuranceQuote({
+  applicant_dob: '01/15/1985',
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  quote_type: 'Face Value',
+  quote_value: '50000'
+});
+console.log('Quote Result:', quote);`}
               </CodeBlock>
             </div>
           </div>

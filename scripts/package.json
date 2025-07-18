@@ -1,0 +1,28 @@
+{
+  "name": "browser-workflow-capture-scripts",
+  "version": "1.0.0",
+  "description": "Test scripts for browser workflow capture application",
+  "type": "module",
+  "scripts": {
+    "test:mcp": "node test_mcp_sdk.js",
+    "test:mcp:local": "node test_mcp_sdk.js --local",
+    "test:mcp:production": "node test_mcp_sdk.js",
+    "health:mcp": "node test_mcp_quick.js",
+    "health:mcp:local": "node test_mcp_quick.js --local",
+    "example:mcp": "node mcp_integration_example.js",
+    "example:mcp:local": "node mcp_integration_example.js --local",
+    "quote:test": "node test_specific_quote.js",
+    "quote:test:local": "node test_specific_quote.js --local"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "workflow",
+    "automation",
+    "testing"
+  ],
+  "author": "Browser Workflow Capture Team",
+  "license": "MIT"
+} 
