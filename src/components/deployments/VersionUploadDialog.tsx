@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload, Link2, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, Link2, Loader2, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface VersionUploadDialogProps {
   workflowId: number;
@@ -23,6 +24,8 @@ interface UploadResult {
   version?: string;
   error?: string;
 }
+
+type ContentFormat = 'json' | 'yaml' | 'unknown';
 
 export function VersionUploadDialog({ 
   workflowId, 
@@ -42,16 +45,89 @@ export function VersionUploadDialog({
   // GitHub gist state
   const [gistUrl, setGistUrl] = useState('');
   
-  // Manual JSON state
-  const [manualJson, setManualJson] = useState('');
+  // Manual content state
+  const [manualContent, setManualContent] = useState('');
+  
+  // Activation control
+  const [activateImmediately, setActivateImmediately] = useState(false);
+  
+  // Format detection state
+  const [detectedFormat, setDetectedFormat] = useState<ContentFormat>('unknown');
 
   const resetState = () => {
     setSelectedFile(null);
     setFileContent('');
     setGistUrl('');
-    setManualJson('');
+    setManualContent('');
     setResult(null);
     setUploading(false);
+    setActivateImmediately(false);
+    setDetectedFormat('unknown');
+  };
+
+  // Enhanced format detection
+  const detectContentFormat = (content: string): ContentFormat => {
+    if (!content.trim()) return 'unknown';
+    
+    const trimmed = content.trim();
+    
+    // JSON detection - starts with { or [
+    if ((trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+        (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+      try {
+        JSON.parse(trimmed);
+        return 'json';
+      } catch {
+        return 'unknown';
+      }
+    }
+    
+    // YAML detection - common YAML patterns
+    if (trimmed.includes('tool_name:') || 
+        trimmed.includes('arguments:') || 
+        /^[a-zA-Z_][a-zA-Z0-9_]*:\s*$/m.test(trimmed) ||
+        /^[\s]*-\s+/.test(trimmed)) {
+      return 'yaml';
+    }
+    
+    return 'unknown';
+  };
+
+  // Validate content based on format
+  const validateContent = async (content: string, format: ContentFormat): Promise<{ isValid: boolean; error?: string }> => {
+    if (!content.trim()) {
+      return { isValid: false, error: 'Content is empty' };
+    }
+
+    try {
+      if (format === 'json') {
+        const parsed = JSON.parse(content);
+        if (typeof parsed !== 'object' || parsed === null) {
+          return { isValid: false, error: 'JSON must be an object or array' };
+        }
+        return { isValid: true };
+      } else if (format === 'yaml') {
+        // Use dynamic import for YAML parsing
+        const yamlModule = await import('js-yaml');
+        const parsed = yamlModule.load(content);
+        if (typeof parsed !== 'object' || parsed === null) {
+          return { isValid: false, error: 'YAML must represent an object or array' };
+        }
+        return { isValid: true };
+      } else {
+        return { isValid: false, error: 'Unrecognized format. Please use valid JSON or YAML.' };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Parse error';
+      return { isValid: false, error: `Invalid ${format}: ${errorMsg}` };
+    }
+  };
+
+  // Update content and detect format
+  const updateContentAndFormat = (content: string) => {
+    const format = detectContentFormat(content);
+    setDetectedFormat(format);
+    return format;
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,6 +141,7 @@ export function VersionUploadDialog({
       reader.onload = (e) => {
         const content = e.target?.result as string;
         setFileContent(content);
+        updateContentAndFormat(content);
       };
       reader.readAsText(file);
     }
@@ -89,45 +166,55 @@ export function VersionUploadDialog({
     return response.text();
   };
 
-  const validateJson = (jsonStr: string): boolean => {
-    try {
-      const parsed = JSON.parse(jsonStr);
-      return typeof parsed === 'object' && parsed !== null;
-    } catch {
-      return false;
-    }
-  };
-
   const uploadVersion = async () => {
     setUploading(true);
     setResult(null);
 
     try {
-      let automationSequence: string;
+      let content: string;
+      let sourceDescription: string;
 
-      // Get automation sequence based on active tab
+      // Get content based on active tab
       if (activeTab === 'file') {
         if (!fileContent) {
           throw new Error('No file content available');
         }
-        automationSequence = fileContent;
+        content = fileContent;
+        sourceDescription = 'File Upload';
       } else if (activeTab === 'gist') {
         if (!gistUrl.trim()) {
           throw new Error('Please enter a GitHub gist URL');
         }
-        automationSequence = await fetchGistContent(gistUrl.trim());
+        content = await fetchGistContent(gistUrl.trim());
+        updateContentAndFormat(content);
+        sourceDescription = 'GitHub Gist';
       } else if (activeTab === 'manual') {
-        if (!manualJson.trim()) {
-          throw new Error('Please enter JSON content');
+        if (!manualContent.trim()) {
+          throw new Error('Please enter content');
         }
-        automationSequence = manualJson.trim();
+        content = manualContent.trim();
+        sourceDescription = 'Manual Input';
       } else {
         throw new Error('Invalid upload method');
       }
 
-      // Validate JSON
-      if (!validateJson(automationSequence)) {
-        throw new Error('Invalid JSON format');
+      // Detect and validate format
+      const format = detectContentFormat(content);
+      const validation = await validateContent(content, format);
+      
+      if (!validation.isValid) {
+        throw new Error(validation.error || 'Content validation failed');
+      }
+
+      // Prepare automation sequence for API
+      let automationSequence: object | string;
+      if (format === 'json') {
+        automationSequence = JSON.parse(content);
+      } else if (format === 'yaml') {
+        // Send as string - API will handle YAML conversion
+        automationSequence = content;
+      } else {
+        throw new Error('Unsupported content format');
       }
 
       // Upload to API
@@ -137,9 +224,9 @@ export function VersionUploadDialog({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          automation_sequence: JSON.parse(automationSequence),
-          set_as_active: true,
-          description: `Uploaded via UI - ${activeTab === 'file' ? 'File' : activeTab === 'gist' ? 'GitHub Gist' : 'Manual Input'}`
+          automation_sequence: automationSequence,
+          set_as_active: activateImmediately,
+          change_notes: `Uploaded via UI - ${sourceDescription} (${format.toUpperCase()} format)`
         }),
       });
 
@@ -152,8 +239,8 @@ export function VersionUploadDialog({
       
       setResult({
         success: true,
-        message: `Successfully uploaded version ${data.version_number}`,
-        version: data.version_number
+        message: `Successfully uploaded version ${data.version.version_number}${activateImmediately ? ' and activated' : ''}`,
+        version: data.version.version_number
       });
 
       // Call success callback
@@ -179,11 +266,39 @@ export function VersionUploadDialog({
     }
   };
 
+  const getCurrentContent = () => {
+    if (activeTab === 'file') return fileContent;
+    if (activeTab === 'gist') return ''; // Content fetched on upload
+    if (activeTab === 'manual') return manualContent;
+    return '';
+  };
+
   const isUploadReady = () => {
     if (activeTab === 'file') return fileContent.length > 0;
     if (activeTab === 'gist') return gistUrl.trim().length > 0;
-    if (activeTab === 'manual') return manualJson.trim().length > 0;
+    if (activeTab === 'manual') return manualContent.trim().length > 0;
     return false;
+  };
+
+  const showFormatBadge = () => {
+    const content = getCurrentContent();
+    if (!content && activeTab !== 'gist') return null;
+    
+    const format = detectedFormat;
+    if (format === 'unknown') return null;
+
+    const badgeColors = {
+      json: 'bg-blue-100 text-blue-800',
+      yaml: 'bg-green-100 text-green-800'
+    };
+
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <span className={`px-2 py-1 rounded-full ${badgeColors[format]}`}>
+          {format.toUpperCase()} Format
+        </span>
+      </div>
+    );
   };
 
   return (
@@ -217,24 +332,27 @@ export function VersionUploadDialog({
               </TabsTrigger>
               <TabsTrigger value="manual" className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" />
-                Manual JSON
+                Manual Input
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="file" className="space-y-4">
               <div>
-                <Label htmlFor="file-upload">Select JSON File</Label>
+                <Label htmlFor="file-upload">Select JSON or YAML File</Label>
                 <Input
                   id="file-upload"
                   type="file"
-                  accept=".json"
+                  accept=".json,.yml,.yaml"
                   onChange={handleFileSelect}
                   className="mt-1"
                 />
                 {selectedFile && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
-                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-sm text-muted-foreground">
+                      Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                    </p>
+                    {showFormatBadge()}
+                  </div>
                 )}
               </div>
               
@@ -263,28 +381,76 @@ export function VersionUploadDialog({
                   className="mt-1"
                 />
                 <p className="text-sm text-muted-foreground mt-2">
-                  Enter the URL of a GitHub gist containing your workflow JSON
+                  Enter the URL of a GitHub gist containing your workflow JSON or YAML
                 </p>
               </div>
             </TabsContent>
 
             <TabsContent value="manual" className="space-y-4">
               <div>
-                <Label htmlFor="manual-json">JSON Content</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="manual-content">JSON or YAML Content</Label>
+                  {showFormatBadge()}
+                </div>
                 <Textarea
-                  id="manual-json"
-                  placeholder='{"automation_sequence": [...], "variables": {...}}'
-                  value={manualJson}
-                  onChange={(e) => setManualJson(e.target.value)}
+                  id="manual-content"
+                  placeholder='JSON: {"automation_sequence": [...], "variables": {...}}
+YAML:
+tool_name: workflow_name
+arguments:
+  variables: {...}
+  inputs: {...}'
+                  value={manualContent}
+                  onChange={(e) => {
+                    setManualContent(e.target.value);
+                    updateContentAndFormat(e.target.value);
+                  }}
                   className="mt-1 font-mono text-xs"
                   rows={12}
                 />
                 <p className="text-sm text-muted-foreground mt-2">
-                  Paste your workflow JSON directly here
+                  Paste your workflow JSON or YAML directly here
                 </p>
               </div>
             </TabsContent>
           </Tabs>
+
+          {/* Activation Control */}
+          <div className="border rounded-lg p-4 space-y-3">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="activate-immediately"
+                checked={activateImmediately}
+                onCheckedChange={(checked) => setActivateImmediately(checked as boolean)}
+              />
+              <Label htmlFor="activate-immediately" className="text-sm font-medium">
+                Activate this version immediately after upload
+              </Label>
+            </div>
+            
+            {activateImmediately ? (
+              <Alert className="border-amber-500 bg-amber-50">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800">
+                  <div className="font-medium">⚠️ Production Impact Warning</div>
+                  <p className="text-sm mt-1">
+                    Activating immediately will switch all new workflow executions to use this version. 
+                    Existing running executions will continue with their current version.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert className="border-green-500 bg-green-50">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800">
+                  <div className="font-medium">✅ Safe Upload Mode</div>
+                  <p className="text-sm mt-1">
+                    Version will be created but not activated. You can test and activate it later when ready.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
 
           {/* Result Display */}
           {result && (
@@ -328,7 +494,7 @@ export function VersionUploadDialog({
               ) : (
                 <>
                   <Upload className="w-4 h-4" />
-                  Upload Version
+                  {activateImmediately ? 'Upload & Activate' : 'Upload Version'}
                 </>
               )}
             </Button>
