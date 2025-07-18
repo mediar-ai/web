@@ -28,7 +28,7 @@ export class ExecutionHandler {
     // Use current origin in production, localhost in development
     this.baseUrl = baseUrl || (
       process.env.NODE_ENV === 'production' 
-        ? '' // Use relative URLs in production
+        ? (process.env.NEXT_PUBLIC_APP_URL || 'https://app.mediar.ai') // Use env var or fallback
         : 'http://localhost:3000'
     );
   }
