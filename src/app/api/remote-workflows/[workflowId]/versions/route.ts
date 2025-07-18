@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import * as yaml from 'js-yaml';
 
 interface WorkflowVersion {
   version_id: number;
@@ -139,14 +138,16 @@ export async function POST(
       } else {
         // Convert JSON string to YAML
         const parsed = JSON.parse(automation_sequence);
-        yamlContent = yaml.dump(parsed, { indent: 2, sortKeys: false });
+        const yamlModule = await import('js-yaml');
+        yamlContent = yamlModule.dump(parsed, { indent: 2, sortKeys: false });
         sequence_format = 'yaml';
         // Keep JSON for backward compatibility during transition
         jsonbContent = parsed;
       }
     } else if (typeof automation_sequence === 'object') {
       // JavaScript object - convert to YAML
-      yamlContent = yaml.dump(automation_sequence, { indent: 2, sortKeys: false });
+      const yamlModule = await import('js-yaml');
+      yamlContent = yamlModule.dump(automation_sequence, { indent: 2, sortKeys: false });
       sequence_format = 'yaml';
       // Keep JSON for backward compatibility during transition
       jsonbContent = automation_sequence;
