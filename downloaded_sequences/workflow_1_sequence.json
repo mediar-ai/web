@@ -1,0 +1,787 @@
+[
+  {
+    "arguments": {
+      "steps": [
+        {
+          "arguments": {
+            "url": "{{url}}"
+          },
+          "tool_name": "navigate_browser"
+        },
+        {
+          "steps": [
+            {
+              "delay_ms": 500,
+              "arguments": {
+                "selector": "{{selectors.browser_window}}",
+                "include_tree": false
+              },
+              "tool_name": "maximize_window",
+              "continue_on_error": true
+            },
+            {
+              "delay_ms": 500,
+              "arguments": {
+                "percentage": 25
+              },
+              "tool_name": "set_zoom",
+              "continue_on_error": true
+            }
+          ],
+          "skippable": true,
+          "group_name": "Set Window State (Skippable)"
+        },
+        {
+          "steps": [
+            {
+              "arguments": {
+                "retries": 0,
+                "selector": "{{selectors.eula_accept_button}}",
+                "timeout_ms": 100,
+                "include_tree": false
+              },
+              "tool_name": "click_element",
+              "continue_on_error": true
+            },
+            {
+              "arguments": {
+                "value": "{{applicant_dob}}",
+                "selector": "{{selectors.dob_field}}",
+                "timeout_ms": 100,
+                "include_tree": false
+              },
+              "tool_name": "set_value"
+            },
+            {
+              "arguments": {
+                "retries": 2,
+                "selector": "{{selectors.software_reg_text}}",
+                "condition": "exists",
+                "timeout_ms": 200,
+                "include_tree": false
+              },
+              "tool_name": "wait_for_element",
+              "continue_on_error": true
+            },
+            {
+              "arguments": {
+                "value": "{{registration_key}}",
+                "selector": "{{selectors.reg_key_field}}",
+                "timeout_ms": 100,
+                "include_tree": false
+              },
+              "tool_name": "set_value",
+              "continue_on_error": true
+            },
+            {
+              "arguments": {
+                "value": "{{registration_email}}",
+                "selector": "{{selectors.reg_email_field}}",
+                "timeout_ms": 100,
+                "include_tree": false
+              },
+              "tool_name": "set_value",
+              "continue_on_error": true
+            },
+            {
+              "arguments": {
+                "retries": 2,
+                "selector": "{{selectors.activate_button}}",
+                "timeout_ms": 100,
+                "include_tree": false
+              },
+              "tool_name": "click_element",
+              "continue_on_error": true
+            },
+            {
+              "arguments": {
+                "retries": 2,
+                "selector": "{{selectors.activation_ok_button}}",
+                "condition": "exists",
+                "timeout_ms": 300,
+                "include_tree": false
+              },
+              "tool_name": "wait_for_element",
+              "continue_on_error": true
+            },
+            {
+              "delay_ms": 100,
+              "arguments": {
+                "key": "{Enter}"
+              },
+              "tool_name": "press_key_global",
+              "continue_on_error": true
+            }
+          ],
+          "skippable": true,
+          "group_name": "Handle EULA and Software Registration (Skippable)"
+        },
+        {
+          "steps": [
+            {
+              "arguments": {
+                "selector": "{{selectors.reset_button}}",
+                "timeout_ms": 200,
+                "include_tree": false
+              },
+              "tool_name": "invoke_element",
+              "continue_on_error": true
+            },
+            {
+              "delay_ms": 1000,
+              "arguments": {
+                "key": "{Enter}"
+              },
+              "tool_name": "press_key_global",
+              "continue_on_error": true
+            }
+          ],
+          "skippable": true,
+          "group_name": "Reset Form (Skippable)"
+        },
+        {
+          "steps": [
+            {
+              "arguments": {
+                "value": "{{applicant_dob}}",
+                "retries": 2,
+                "selector": "{{selectors.dob_field}}",
+                "timeout_ms": 400,
+                "include_tree": false
+              },
+              "tool_name": "set_value"
+            },
+            {
+              "arguments": {
+                "value": "{{applicant_height}}",
+                "retries": 2,
+                "selector": "{{selectors.height_field}}",
+                "timeout_ms": 400,
+                "include_tree": false
+              },
+              "tool_name": "set_value"
+            },
+            {
+              "arguments": {
+                "value": "{{applicant_weight}}",
+                "retries": 2,
+                "selector": "{{selectors.weight_field}}",
+                "timeout_ms": 400,
+                "include_tree": false
+              },
+              "tool_name": "set_value"
+            },
+            {
+              "arguments": {
+                "state": true,
+                "retries": 2,
+                "selector": "role:RadioButton|name:{{applicant_gender}}",
+                "timeout_ms": 600,
+                "include_tree": false
+              },
+              "tool_name": "set_selected"
+            },
+            {
+              "arguments": {
+                "value": "{{applicant_state}}",
+                "retries": 2,
+                "selector": "{{selectors.state_field}}",
+                "timeout_ms": 400,
+                "include_tree": false
+              },
+              "tool_name": "set_value"
+            },
+            {
+              "arguments": {
+                "value": "{{applicant_zip_code}}",
+                "retries": 2,
+                "selector": "{{selectors.zip_field}}",
+                "timeout_ms": 400,
+                "include_tree": false
+              },
+              "tool_name": "set_value"
+            },
+            {
+              "arguments": {
+                "retries": 2,
+                "selector": "{{selectors.nicotine_usage_dropdown}}",
+                "timeout_ms": 600,
+                "option_name": "{{applicant_tobacco_usage}}",
+                "include_tree": false
+              },
+              "tool_name": "select_option"
+            },
+            {
+              "arguments": {
+                "selector": "role:RadioButton|name:{{open_enrollment_status}}",
+                "timeout_ms": 1000,
+                "include_tree": false
+              },
+              "tool_name": "click_element"
+            }
+          ],
+          "skippable": false,
+          "group_name": "Fill Insurance Application Form"
+        },
+        {
+          "if": "!contains(product_types, 'FEX')",
+          "steps": [
+            {
+              "arguments": {
+                "selector": "{{selectors.fex_checkbox}}",
+                "include_tree": false
+              },
+              "tool_name": "click_element",
+              "continue_on_error": true
+            }
+          ],
+          "skippable": true,
+          "group_name": "Ensure FEX is selected"
+        },
+        {
+          "if": "!contains(product_types, 'MedSup')",
+          "steps": [
+            {
+              "arguments": {
+                "selector": "{{selectors.medsup_checkbox}}",
+                "include_tree": false
+              },
+              "tool_name": "click_element",
+              "continue_on_error": true
+            }
+          ],
+          "skippable": true,
+          "group_name": "Ensure MedSup is selected"
+        },
+        {
+          "if": "!contains(product_types, 'Preneed')",
+          "steps": [
+            {
+              "arguments": {
+                "selector": "{{selectors.preneed_checkbox}}",
+                "include_tree": false
+              },
+              "tool_name": "click_element",
+              "continue_on_error": true
+            }
+          ],
+          "skippable": true,
+          "group_name": "Ensure Preneed is selected"
+        },
+        {
+          "if": "!contains(product_types, 'Term')",
+          "steps": [
+            {
+              "arguments": {
+                "selector": "{{selectors.term_checkbox}}",
+                "include_tree": false
+              },
+              "tool_name": "click_element",
+              "continue_on_error": true
+            }
+          ],
+          "skippable": true,
+          "group_name": "Ensure Term is selected"
+        },
+        {
+          "if": "quote_type == 'Max Monthly Budget'",
+          "steps": [
+            {
+              "arguments": {
+                "selector": "{{selectors.max_monthly_budget_toggle}}",
+                "timeout_ms": 800,
+                "include_tree": false
+              },
+              "tool_name": "click_element"
+            },
+            {
+              "arguments": {
+                "value": "{{quote_value}}",
+                "retries": 2,
+                "selector": "{{selectors.monthly_budget_field}}",
+                "timeout_ms": 400,
+                "include_tree": false
+              },
+              "tool_name": "set_value"
+            }
+          ],
+          "skippable": false,
+          "group_name": "Enter Quote Value (Monthly)"
+        },
+        {
+          "if": "quote_type == 'Face Value'",
+          "steps": [
+            {
+              "arguments": {
+                "selector": "{{selectors.face_value_toggle}}",
+                "timeout_ms": 1000,
+                "include_tree": false
+              },
+              "tool_name": "click_element"
+            },
+            {
+              "arguments": {
+                "value": "{{quote_value}}",
+                "retries": 2,
+                "selector": "{{selectors.face_value_field}}",
+                "timeout_ms": 400,
+                "include_tree": false
+              },
+              "tool_name": "set_value"
+            }
+          ],
+          "skippable": false,
+          "group_name": "Enter Quote Value (Face Amount)"
+        },
+        {
+          "steps": [
+            {
+              "delay_ms": 100,
+              "arguments": {
+                "retries": 2,
+                "selector": "{{selectors.coverage_type_dropdown}}",
+                "timeout_ms": 1000,
+                "include_tree": false
+              },
+              "tool_name": "click_element"
+            },
+            {
+              "delay_ms": 100,
+              "arguments": {
+                "selector": "role:ListItem|name:{{policy_coverage_type}}",
+                "timeout_ms": 2000,
+                "include_tree": false
+              },
+              "tool_name": "click_element"
+            },
+            {
+              "arguments": {
+                "retries": 2,
+                "selector": "{{selectors.run_quote_button}}",
+                "timeout_ms": 800,
+                "include_tree": false
+              },
+              "tool_name": "invoke_element"
+            },
+            {
+              "arguments": {
+                "random_string": "capture_before_wait"
+              },
+              "tool_name": "get_focused_window_tree"
+            },
+            {
+              "arguments": {
+                "timeout_ms": 240000,
+                "include_tree": false,
+                "output_parser": "{{quote_parser}}",
+                "poll_interval_ms": 2000,
+                "success_criteria": {
+                  "min_items": 1,
+                  "required_fields": [
+                    "carrierProduct",
+                    "quoteValue"
+                  ]
+                }
+              },
+              "tool_name": "wait_for_output_parser"
+            },
+            {
+              "delay_ms": 100,
+              "arguments": {
+                "selector": "{{selectors.results_per_page_dropdown}}",
+                "timeout_ms": 1000,
+                "include_tree": false
+              },
+              "tool_name": "click_element",
+              "continue_on_error": true
+            },
+            {
+              "delay_ms": 500,
+              "arguments": {
+                "selector": "role:ListItem|name:25",
+                "timeout_ms": 2000,
+                "include_tree": false
+              },
+              "tool_name": "click_element",
+              "continue_on_error": true
+            },
+            {
+              "arguments": {},
+              "tool_name": "get_focused_window_tree"
+            }
+          ],
+          "skippable": false,
+          "group_name": "Set Coverage and Generate Quote"
+        },
+        {
+          "if": "always()",
+          "steps": [
+            {
+              "delay_ms": 100,
+              "arguments": {
+                "selector": "{{selectors.browser_window}}",
+                "include_tree": false
+              },
+              "tool_name": "close_element"
+            }
+          ],
+          "skippable": false,
+          "group_name": "Close Window"
+        }
+      ],
+      "inputs": {
+        "url": "https://v2preview.online.bestplanpro.com/",
+        "quote_type": "Face Value",
+        "quote_value": "5000",
+        "applicant_dob": "01/15/1985",
+        "product_types": [
+          "FEX",
+          "MedSup",
+          "Preneed",
+          "Term"
+        ],
+        "applicant_state": "California",
+        "applicant_gender": "Male",
+        "applicant_height": "5 10",
+        "applicant_weight": "180",
+        "registration_key": "4WV-HJR-SA9",
+        "applicant_zip_code": "90210",
+        "registration_email": "louis@mediar.ai",
+        "policy_coverage_type": "Best Case: Graded Coverage",
+        "open_enrollment_status": "Yes",
+        "applicant_tobacco_usage": "Never"
+      },
+      "selectors": {
+        "dob_field": "role:Edit|name:MM/DD/YYYY",
+        "zip_field": "nativeid:zipCode",
+        "state_field": "nativeid:state",
+        "fex_checkbox": "role:checkbox >> nth=0",
+        "height_field": "role:Edit|name:Height",
+        "reset_button": "nativeid:reset",
+        "weight_field": "role:Edit|name:Weight",
+        "reg_key_field": "role:Edit|name:XXX-YYY-ZZZ",
+        "term_checkbox": "role:CheckBox >> nth=3",
+        "browser_window": "role:Window|name:Best Plan Pro Online",
+        "activate_button": "role:Button|name:Activate",
+        "medsup_checkbox": "role:CheckBox >> nth=1",
+        "reg_email_field": "role:dialog >> role:edit >> nth=1",
+        "face_value_field": "nativeid:face-value-0",
+        "preneed_checkbox": "role:CheckBox >> nth=2",
+        "run_quote_button": "nativeid:analyze",
+        "face_value_toggle": "role:Text|name:Face Value",
+        "software_reg_text": "role:Text|name:Software Registration",
+        "view_details_text": "role:text|Results per page",
+        "eula_accept_button": "role:dialog >> role:button|name:Accept",
+        "activation_ok_button": "role:button|name:OK",
+        "monthly_budget_field": "nativeid:monthly-budget-0",
+        "coverage_type_dropdown": "role:combobox >> nth=-1",
+        "nicotine_usage_dropdown": "nativeid:nicotine-selector",
+        "max_monthly_budget_toggle": "role:Text|name:Max Monthly Budget",
+        "results_per_page_dropdown": "role:combobox >> nth=-1"
+      },
+      "variables": {
+        "url": {
+          "type": "string",
+          "label": "URL",
+          "default": "https://v2preview.online.bestplanpro.com/",
+          "description": "The URL of the insurance quoting application."
+        },
+        "quote_type": {
+          "type": "enum",
+          "label": "Quote By",
+          "default": "Face Value",
+          "options": [
+            "Max Monthly Budget",
+            "Face Value"
+          ],
+          "description": "Choose whether to quote by a maximum budget or a specific face amount."
+        },
+        "quote_value": {
+          "type": "string",
+          "label": "Quote Value",
+          "regex": "^\\d+$",
+          "default": "5000",
+          "description": "The value for the budget (e.g., '500') or face amount (e.g., '100000').",
+          "validation_message": "Quote value must be a whole number, no commas or dollar signs."
+        },
+        "quote_parser": {
+          "type": "object",
+          "label": "Quote Results Parser",
+          "default": {
+            "fieldsToExtract": {
+              "status": {
+                "fromChildren": {
+                  "joinWith": ", ",
+                  "conditions": [
+                    {
+                      "op": "equals",
+                      "value": "Text",
+                      "property": "role"
+                    },
+                    {
+                      "op": "isOneOf",
+                      "value": [
+                        "Graded",
+                        "Discontinued",
+                        "Standard",
+                        "ROP"
+                      ],
+                      "property": "name"
+                    }
+                  ],
+                  "extractProperty": "name"
+                }
+              },
+              "quoteType": {
+                "fromChild": {
+                  "conditions": [
+                    {
+                      "op": "isOneOf",
+                      "value": [
+                        "Monthly Price",
+                        "Death Benefit"
+                      ],
+                      "property": "name"
+                    }
+                  ],
+                  "extractProperty": "name"
+                }
+              },
+              "quoteValue": {
+                "fromChild": {
+                  "conditions": [
+                    {
+                      "op": "startsWith",
+                      "value": "$",
+                      "property": "name"
+                    }
+                  ],
+                  "extractProperty": "name"
+                }
+              },
+              "carrierProduct": {
+                "fromChild": {
+                  "conditions": [
+                    {
+                      "op": "contains",
+                      "value": ":",
+                      "property": "name"
+                    }
+                  ],
+                  "extractProperty": "name"
+                }
+              }
+            },
+            "itemContainerDefinition": {
+              "nodeConditions": [
+                {
+                  "op": "equals",
+                  "value": "Group",
+                  "property": "role"
+                }
+              ],
+              "childConditions": {
+                "logic": "and",
+                "conditions": [
+                  {
+                    "existsChild": {
+                      "conditions": [
+                        {
+                          "op": "equals",
+                          "value": "Image",
+                          "property": "role"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "existsChild": {
+                      "conditions": [
+                        {
+                          "op": "contains",
+                          "value": ":",
+                          "property": "name"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "description": "Parser configuration for extracting quote results from the UI."
+        },
+        "applicant_dob": {
+          "type": "string",
+          "label": "Applicant DOB",
+          "regex": "(0[1-9]|1[0-2])\\/(0[1-9]|[12][0-9]|3[01])\\/\\d{4}",
+          "default": "01/15/1985",
+          "description": "Applicant's date of birth in MM/DD/YYYY format.",
+          "validation_message": "Date of birth must be in MM/DD/YYYY format."
+        },
+        "product_types": {
+          "type": "array",
+          "label": "Product Types",
+          "default": [
+            "FEX",
+            "MedSup",
+            "Preneed",
+            "Term"
+          ],
+          "options": [
+            "FEX",
+            "MedSup",
+            "Preneed",
+            "Term"
+          ],
+          "description": "An array of product types to enable."
+        },
+        "applicant_state": {
+          "type": "enum",
+          "label": "Applicant State",
+          "default": "California",
+          "options": [
+            "Alabama",
+            "Alaska",
+            "Arizona",
+            "Arkansas",
+            "California",
+            "Colorado",
+            "Connecticut",
+            "Delaware",
+            "Florida",
+            "Georgia",
+            "Hawaii",
+            "Idaho",
+            "Illinois",
+            "Indiana",
+            "Iowa",
+            "Kansas",
+            "Kentucky",
+            "Louisiana",
+            "Maine",
+            "Maryland",
+            "Massachusetts",
+            "Michigan",
+            "Minnesota",
+            "Mississippi",
+            "Missouri",
+            "Montana",
+            "Nebraska",
+            "Nevada",
+            "New Hampshire",
+            "New Jersey",
+            "New Mexico",
+            "New York",
+            "North Carolina",
+            "North Dakota",
+            "Ohio",
+            "Oklahoma",
+            "Oregon",
+            "Pennsylvania",
+            "Rhode Island",
+            "South Carolina",
+            "South Dakota",
+            "Tennessee",
+            "Texas",
+            "Utah",
+            "Vermont",
+            "Virginia",
+            "Washington",
+            "West Virginia",
+            "Wisconsin",
+            "Wyoming"
+          ],
+          "description": "The applicant's state of residence."
+        },
+        "applicant_gender": {
+          "type": "enum",
+          "label": "Applicant Gender",
+          "default": "Male",
+          "options": [
+            "Male",
+            "Female"
+          ],
+          "description": "Select the applicant's gender."
+        },
+        "applicant_height": {
+          "type": "string",
+          "label": "Applicant Height (ft)",
+          "regex": "^\\d \\d{1,2}$",
+          "default": "5 10",
+          "description": "Applicant's height in feet and inches (e.g., '5 10').",
+          "validation_message": "Height must be in feet and inches, separated by a space, e.g., '5 10'."
+        },
+        "applicant_weight": {
+          "type": "string",
+          "label": "Applicant Weight (lbs)",
+          "regex": "^\\d{2,3}$",
+          "default": "180",
+          "description": "Applicant's weight in pounds.",
+          "validation_message": "Weight must be a 2 or 3 digit number in pounds."
+        },
+        "registration_key": {
+          "type": "string",
+          "label": "Registration Key",
+          "default": "4WV-HJR-SA9",
+          "description": "Software registration key, if required."
+        },
+        "applicant_zip_code": {
+          "type": "string",
+          "label": "Applicant Zip Code",
+          "regex": "^\\d{5}$",
+          "default": "90210",
+          "description": "The applicant's 5-digit zip code.",
+          "validation_message": "Must be a 5-digit zip code."
+        },
+        "registration_email": {
+          "type": "string",
+          "label": "Registration Email",
+          "regex": "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
+          "default": "louis@mediar.ai",
+          "description": "Email for software registration.",
+          "validation_message": "Please enter a valid email address."
+        },
+        "policy_coverage_type": {
+          "type": "enum",
+          "label": "Policy Coverage Type",
+          "default": "Best Case: Graded Coverage",
+          "options": [
+            "Default",
+            "Best Case: Graded Coverage",
+            "Best Case: ROP Coverage",
+            "Guaranteed Issue ONLY"
+          ],
+          "description": "The desired type of policy coverage."
+        },
+        "open_enrollment_status": {
+          "type": "enum",
+          "label": "Open Enrollment",
+          "default": "Yes",
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "description": "Is the applicant in an open enrollment period?"
+        },
+        "applicant_tobacco_usage": {
+          "type": "enum",
+          "label": "Applicant Tobacco Usage",
+          "default": "Never",
+          "options": [
+            "Never",
+            "Within the Last 12 months",
+            "Between 1 and 2 years ago",
+            "Between 2 and 3 years ago",
+            "Between 3 and 4 years ago",
+            "Between 4 and 5 years ago",
+            "More than 5 years ago"
+          ],
+          "description": "Select the applicant's tobacco usage history."
+        }
+      },
+      "output_parser": "{{quote_parser}}"
+    },
+    "tool_name": "execute_sequence"
+  }
+]

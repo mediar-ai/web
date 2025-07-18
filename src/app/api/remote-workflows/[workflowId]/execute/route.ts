@@ -173,10 +173,12 @@ export async function POST(
     const client_id = body.client_id || `web-${Date.now()}`;
     const execution_mode = body.execution_mode || 'async';
     const include_cache = body.include_cache === true; // New cache parameter
+    const version_number = body.version_number; // Optional version to execute
 
     console.log('✅ Extracted execution_params:', execution_params);
     console.log(`🔧 Cache enabled: ${include_cache}`);
     console.log(`🔍 Full detailed response requested: ${full_detailed_response}`);
+    console.log(`📋 Version requested: ${version_number || 'active version'}`);
 
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -325,7 +327,9 @@ export async function POST(
                 assignment_reason: 'Default assignment to Primary Windows VM (cache refresh)',
                 machine_assignment_timestamp: new Date().toISOString(),
                 assignment_method: 'auto',
-                mcp_endpoint
+                mcp_endpoint,
+                // 🎯 Include version selection for background execution
+                workflow_version_number: version_number
               })
               .select()
               .single();
@@ -401,7 +405,9 @@ export async function POST(
       assignment_reason,
       machine_assignment_timestamp: new Date().toISOString(),
       assignment_method: 'auto',
-      mcp_endpoint
+      mcp_endpoint,
+      // 🎯 Include version selection
+      workflow_version_number: version_number
     };
     
     const { data: execution, error: executionError } = await supabase

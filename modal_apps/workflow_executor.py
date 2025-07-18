@@ -1151,6 +1151,7 @@ def execute_workflow(
     execution_params: Dict[str, Any] = None,
     client_id: str = None,
     execution_id: int = None,
+    version_number: str = None,  # NEW: Optional version to execute
 ) -> Dict[str, Any]:
     """
     🚀 REAL BROWSER AUTOMATION: Execute workflow using MCP browser control
@@ -1164,6 +1165,9 @@ def execute_workflow(
     - Process each automation step through real browser
     - Update progress in database
     - Return final results
+    
+    Args:
+        version_number: Optional specific version to execute. If None, uses active version.
     """
     start_time = time.time()
     conn = None
@@ -1178,6 +1182,10 @@ def execute_workflow(
         # This function's first job is to fetch the workflow, calculate steps,
         # and update the execution record with that info.
         logger.info("🚀 Executing workflow ID %s for execution record %s", workflow_id, execution_id)
+        if version_number:
+            logger.info("🎯 Using specific version: %s", version_number)
+        else:
+            logger.info("🎯 Using active version")
 
         # 🎯 Use provided MCP endpoint (required parameter)
         endpoint_base = mcp_endpoint
@@ -1185,16 +1193,52 @@ def execute_workflow(
         endpoint_health = f"{mcp_endpoint}/health"
         logger.info("🔗 Using MCP endpoint: %s", endpoint_full)
 
-        # Get workflow details from database with current active version
-        # Using the compatibility view to get automation_sequence from the active version
-        cur.execute("SELECT * FROM deployed_workflows_with_sequence WHERE id = %s", (workflow_id,))
-        workflow = cur.fetchone()
+        # 🎯 NEW: Query specific version or active version
+        if version_number:
+            # Query specific version from versions table
+            logger.info("📋 Querying specific version %s for workflow %s", version_number, workflow_id)
+            cur.execute("""
+                SELECT 
+                    w.id, w.name, w.description, w.status, w.category,
+                    w.successful_runs, w.failed_runs, w.cancelled_runs, w.total_executions,
+                    w.estimated_duration_seconds, w.workflow_type, w.parent_workflow_id, w.display_order,
+                    w.created_by, w.created_at, w.updated_at,
+                    w.current_version_id, w.total_versions,
+                    v.automation_sequence_yaml,
+                    v.automation_sequence,
+                    v.version_number as version,
+                    v.change_notes as current_version_notes,
+                    v.id as version_id,
+                    CASE 
+                        WHEN v.automation_sequence_yaml IS NOT NULL AND v.automation_sequence_yaml != '' 
+                        THEN 'yaml'
+                        ELSE 'jsonb' 
+                    END as sequence_format
+                FROM deployed_workflows w
+                JOIN deployed_workflow_versions v ON v.workflow_id = w.id
+                WHERE w.id = %s AND v.version_number = %s
+            """, (workflow_id, version_number))
+            
+            workflow = cur.fetchone()
+            
+            if not workflow:
+                raise Exception(f"Workflow {workflow_id} version {version_number} not found")
+                
+        else:
+            # Use active version (existing logic)
+            logger.info("📋 Querying active version for workflow %s", workflow_id)
+            cur.execute("SELECT * FROM deployed_workflows_with_sequence WHERE id = %s", (workflow_id,))
+            workflow = cur.fetchone()
+            
+            if not workflow:
+                raise Exception(f"Workflow {workflow_id} not found")
 
-        if not workflow:
-            raise Exception(f"Workflow {workflow_id} not found")
-
-        if not workflow.get("automation_sequence"):
-            raise Exception(f"Workflow {workflow_id} has no active version or automation_sequence")
+        # Validate we have an automation sequence
+        if not workflow.get("automation_sequence") and not workflow.get("automation_sequence_yaml"):
+            if version_number:
+                raise Exception(f"Workflow {workflow_id} version {version_number} has no automation sequence")
+            else:
+                raise Exception(f"Workflow {workflow_id} has no active version or automation_sequence")
 
         # Calculate total steps using the smart sequence loader
         try:
@@ -1223,13 +1267,14 @@ def execute_workflow(
                 workflow_version_number = %s
             WHERE id = %s
             """,
-            (total_steps, workflow.get("current_version_id"), workflow.get("version"), execution_id)
+            (total_steps, workflow.get("version_id") or workflow.get("current_version_id"), workflow.get("version"), execution_id)
         )
         conn.commit()
 
         logger.info(
-            "📋 Loaded workflow '%s' - %d groups to execute via browser",
+            "📋 Loaded workflow '%s' v%s - %d groups to execute via browser",
             workflow["name"],
+            workflow.get("version", "unknown"),
             total_steps,
         )
 
@@ -2091,7 +2136,8 @@ def check_and_process_queued_jobs():
                 workflow_executions.execution_params,
                 workflow_executions.client_id,
                 workflow_executions.assigned_machine_id,
-                workflow_executions.mcp_endpoint;
+                workflow_executions.mcp_endpoint,
+                workflow_executions.version_number;
             """,
             (modal_call_id,)
         )
@@ -2113,6 +2159,7 @@ def check_and_process_queued_jobs():
         client_id = job_to_process["client_id"]
         assigned_machine_id = job_to_process["assigned_machine_id"]
         mcp_endpoint = job_to_process["mcp_endpoint"]
+        version_number = job_to_process["version_number"]
 
         # 🎯 Validate that we have machine assignment and endpoint
         if not assigned_machine_id or not mcp_endpoint:
@@ -2145,6 +2192,7 @@ def check_and_process_queued_jobs():
                 execution_params=execution_params,
                 client_id=client_id,
                 execution_id=execution_id,
+                version_number=job_to_process.get("version_number"),  # Pass version if specified
             )
             
             # Verify the remote call was accepted

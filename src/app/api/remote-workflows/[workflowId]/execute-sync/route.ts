@@ -229,8 +229,10 @@ export async function POST(
 
     // Parse request body
     const body = await request.json();
-    const { parameters = {} } = body;
+    const { parameters = {}, version_number } = body;
     const client_id = `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    console.log(`📋 Version requested: ${version_number || 'active version'}`);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -334,7 +336,9 @@ export async function POST(
               assignment_reason: 'Default assignment to Primary Windows VM (cache refresh)',
               machine_assignment_timestamp: new Date().toISOString(),
               assignment_method: 'auto',
-              mcp_endpoint
+              mcp_endpoint,
+              // 🎯 Include version selection for background execution
+              workflow_version_number: version_number
             })
             .select()
             .single();
@@ -393,7 +397,9 @@ export async function POST(
       assignment_reason,
       machine_assignment_timestamp: new Date().toISOString(),
       assignment_method: 'auto',
-      mcp_endpoint
+      mcp_endpoint,
+      // 🎯 Include version selection
+      workflow_version_number: version_number
     };
     
     const { data: execution, error: executionError } = await supabase
