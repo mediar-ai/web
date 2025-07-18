@@ -8,64 +8,84 @@
    - Environments: .env.local
 
  ✓ Starting...
- ✓ Compiled middleware in 134ms
- ✓ Ready in 807ms
- ○ Compiling /docs/api/mcp ...
+ ✓ Compiled middleware in 141ms
+ ✓ Ready in 833ms
+ ✓ Compiled /api/remote-workflows/list in 462ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 860ms
- GET /docs/api/mcp 200 in 2973ms
- ✓ Compiled /docs/api/mcp in 3s
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 647ms
 [ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 1417ms
-⚡ Unified execution details for 5418...
+ GET /api/remote-workflows/list 200 in 873ms
+ ✓ Compiled /api/remote-workflows/executions/[executionId] in 168ms
+⚡ Unified execution details for 5442...
+⚡ Unified execution details for 5440...
+⚡ Unified execution details for 5441...
+⚡ Unified execution details for 5443...
+⚡ Unified execution details for 5438...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5440 200 in 713ms
+⚡ Unified execution details for 5437...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5442 200 in 767ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5441 200 in 783ms
+⚡ Unified execution details for 5435...
+⚡ Unified execution details for 5434...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5438 200 in 649ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5443 200 in 830ms
+⚡ Unified execution details for 5433...
+⚡ Unified execution details for 5432...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5437 200 in 182ms
+⚡ Unified execution details for 5430...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5434 200 in 188ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5435 200 in 210ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5433 200 in 179ms
+⚡ Unified execution details for 5429...
+⚡ Unified execution details for 5427...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5432 200 in 189ms
+⚡ Unified execution details for 5426...
+⚡ Unified execution details for 5425...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5430 200 in 193ms
+⚡ Unified execution details for 5424...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5429 200 in 185ms
+⚡ Unified execution details for 5422...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5427 200 in 204ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5426 200 in 186ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5425 200 in 182ms
+⚡ Unified execution details for 5421...
 ⚡ Unified execution details for 5419...
-⚡ Unified execution details for 5417...
-⚡ Unified execution details for 5415...
- ✓ Compiled /api/mcp in 245ms
-🔧 [MCP API] Received request: tools/list
-🔧 [MCP] Refreshing workflow tools...
-🔧 [MCP] Discovering workflows from database...
-🔧 [MCP API] Received request: tools/list
-🔧 [MCP] Refreshing workflow tools...
-🔧 [MCP] Discovering workflows from database...
+⚡ Unified execution details for 5418...
 [ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5419 200 in 883ms
+ GET /api/remote-workflows/executions/5424 200 in 174ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5418 200 in 902ms
+ GET /api/remote-workflows/executions/5421 200 in 179ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5415 200 in 911ms
-🔧 [MCP] Found 2 workflows
-🔧 [MCP] Generating MCP tool for workflow: Set Available Products (ID: 4)
-🔧 [MCP] Generated MCP tool: insurance_set_available_products
-🔧 [MCP] Generated tool: insurance_set_available_products (workflow 4)
-🔧 [MCP] Generating MCP tool for workflow: Best Plan Pro Insurance Quote (ID: 1)
-🔧 [MCP] Generated MCP tool: insurance_best_plan_pro_insurance_quote
-🔧 [MCP] Generated tool: insurance_best_plan_pro_insurance_quote (workflow 1)
-🔧 [MCP] Processed 2 workflow tools
-🔧 [MCP API] Serving 2 workflow tools
- POST /api/mcp 200 in 371ms
-🔧 [MCP] Found 2 workflows
-🔧 [MCP] Generating MCP tool for workflow: Set Available Products (ID: 4)
-🔧 [MCP] Generated MCP tool: insurance_set_available_products
-🔧 [MCP] Generated tool: insurance_set_available_products (workflow 4)
-🔧 [MCP] Generating MCP tool for workflow: Best Plan Pro Insurance Quote (ID: 1)
-🔧 [MCP] Generated MCP tool: insurance_best_plan_pro_insurance_quote
-🔧 [MCP] Generated tool: insurance_best_plan_pro_insurance_quote (workflow 1)
-🔧 [MCP] Processed 2 workflow tools
-🔧 [MCP API] Serving 2 workflow tools
- POST /api/mcp 200 in 385ms
+ GET /api/remote-workflows/executions/5422 200 in 204ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5417 200 in 940ms
+ GET /api/remote-workflows/executions/5419 200 in 187ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5418 200 in 188ms
+ ✓ Compiled /api/remote-workflows/cache in 174ms
 🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
   url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
   quote_type: 'Face Value',
-  quote_value: '100000',
-  applicant_dob: '01/15/1985',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
   product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
-  applicant_state: 'California',
-  applicant_gender: 'Male',
-  applicant_height: '6 0',
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
   applicant_weight: '180',
   registration_key: '4WV-HJR-SA9',
   applicant_zip_code: '90210',
@@ -74,14 +94,13 @@
   open_enrollment_status: 'Yes',
   applicant_tobacco_usage: 'Never'
 }
-🎯 Using hash-based lookup: e54cfcc72606ddd52208dde1c9e326a6
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
 ⚡ Running BASIC cache query with minimal fields (successful only)
 🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
   url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
   quote_type: 'Face Value',
-  quote_value: '5000',
-  applicant_dob: '01/15/1985',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
   product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
   applicant_state: 'California',
   applicant_gender: 'Male',
@@ -94,34 +113,13 @@
   open_enrollment_status: 'Yes',
   applicant_tobacco_usage: 'Never'
 }
-🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
 ⚡ Running BASIC cache query with minimal fields (successful only)
 🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
   url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
   quote_type: 'Face Value',
-  quote_value: '100000',
-  applicant_dob: '01/15/1985',
-  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
-  applicant_state: 'California',
-  applicant_gender: 'Male',
-  applicant_height: '6 0',
-  applicant_weight: '180',
-  registration_key: '4WV-HJR-SA9',
-  applicant_zip_code: '90210',
-  registration_email: 'louis@mediar.ai',
-  policy_coverage_type: 'Best Case: Graded Coverage',
-  open_enrollment_status: 'Yes',
-  applicant_tobacco_usage: 'Never'
-}
-🎯 Using hash-based lookup: e54cfcc72606ddd52208dde1c9e326a6
-⚡ Running BASIC cache query with minimal fields (successful only)
-🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
-  url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
-  quote_type: 'Face Value',
-  quote_value: '5000',
-  applicant_dob: '01/15/1985',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
   product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
   applicant_state: 'California',
   applicant_gender: 'Male',
@@ -134,89 +132,63 @@
   open_enrollment_status: 'Yes',
   applicant_tobacco_usage: 'Never'
 }
-🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
 ⚡ Running BASIC cache query with minimal fields (successful only)
- ✓ Compiled /api/remote-workflows/cache in 296ms
-🔧 [MCP] Refreshing workflow tools...
-🔧 [MCP] Discovering workflows from database...
-🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
-🔄 Fallback BASIC JSONB query with minimal fields
-🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
-🔄 Fallback BASIC JSONB query with minimal fields
-🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
-🔄 Fallback BASIC JSONB query with minimal fields
-🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
-🔄 Fallback BASIC JSONB query with minimal fields
-🔧 [MCP] Found 2 workflows
-🔧 [MCP] Generating MCP tool for workflow: Set Available Products (ID: 4)
-🔧 [MCP] Generated MCP tool: insurance_set_available_products
-🔧 [MCP] Generated tool: insurance_set_available_products (workflow 4)
-🔧 [MCP] Generating MCP tool for workflow: Best Plan Pro Insurance Quote (ID: 1)
-🔧 [MCP] Generated MCP tool: insurance_best_plan_pro_insurance_quote
-🔧 [MCP] Generated tool: insurance_best_plan_pro_insurance_quote (workflow 1)
-🔧 [MCP] Processed 2 workflow tools
- GET /api/mcp/workflows 200 in 321ms
-🔧 [MCP] Refreshing workflow tools...
-🔧 [MCP] Discovering workflows from database...
-❌ Cache MISS for workflow 1 (117ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 342ms
-❌ Cache MISS for workflow 1 (116ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 376ms
-❌ Cache MISS for workflow 1 (113ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 361ms
-❌ Cache MISS for workflow 1 (156ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 453ms
-🔧 [MCP] Found 2 workflows
-🔧 [MCP] Generating MCP tool for workflow: Set Available Products (ID: 4)
-🔧 [MCP] Generated MCP tool: insurance_set_available_products
-🔧 [MCP] Generated tool: insurance_set_available_products (workflow 4)
-🔧 [MCP] Generating MCP tool for workflow: Best Plan Pro Insurance Quote (ID: 1)
-🔧 [MCP] Generated MCP tool: insurance_best_plan_pro_insurance_quote
-🔧 [MCP] Generated tool: insurance_best_plan_pro_insurance_quote (workflow 1)
-🔧 [MCP] Processed 2 workflow tools
- GET /api/mcp/workflows 200 in 82ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
 [ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 2491ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 185ms
-⚡ Unified execution details for 5419...
-⚡ Unified execution details for 5417...
-⚡ Unified execution details for 5415...
-⚡ Unified execution details for 5418...
-[ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 529ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5419 200 in 221ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5415 200 in 241ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5417 200 in 247ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+ GET /api/remote-workflows/executions 200 in 2269ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
 🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
   url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
   quote_type: 'Face Value',
-  quote_value: '5000',
-  applicant_dob: '01/15/1985',
-  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
-  applicant_state: 'California',
-  applicant_gender: 'Male',
-  applicant_height: '5 10',
-  applicant_weight: '180',
-  registration_key: '4WV-HJR-SA9',
-  applicant_zip_code: '90210',
-  registration_email: 'louis@mediar.ai',
-  policy_coverage_type: 'Best Case: Graded Coverage',
-  open_enrollment_status: 'Yes',
-  applicant_tobacco_usage: 'Never'
-}
-🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
-⚡ Running BASIC cache query with minimal fields (successful only)
-🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
-  url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
-  quote_type: 'Face Value',
-  quote_value: '100000',
-  applicant_dob: '01/15/1985',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
   product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
   applicant_state: 'California',
   applicant_gender: 'Male',
@@ -229,108 +201,126 @@
   open_enrollment_status: 'Yes',
   applicant_tobacco_usage: 'Never'
 }
-🎯 Using hash-based lookup: e54cfcc72606ddd52208dde1c9e326a6
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
 ⚡ Running BASIC cache query with minimal fields (successful only)
-🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
-  url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
-  quote_type: 'Face Value',
-  quote_value: '100000',
-  applicant_dob: '01/15/1985',
-  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
-  applicant_state: 'California',
-  applicant_gender: 'Male',
-  applicant_height: '6 0',
-  applicant_weight: '180',
-  registration_key: '4WV-HJR-SA9',
-  applicant_zip_code: '90210',
-  registration_email: 'louis@mediar.ai',
-  policy_coverage_type: 'Best Case: Graded Coverage',
-  open_enrollment_status: 'Yes',
-  applicant_tobacco_usage: 'Never'
-}
-🎯 Using hash-based lookup: e54cfcc72606ddd52208dde1c9e326a6
-⚡ Running BASIC cache query with minimal fields (successful only)
-🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
-🔄 Fallback BASIC JSONB query with minimal fields
-[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5418 200 in 341ms
-🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
-🔄 Fallback BASIC JSONB query with minimal fields
-🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
-  url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
-  quote_type: 'Face Value',
-  quote_value: '5000',
-  applicant_dob: '01/15/1985',
-  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
-  applicant_state: 'California',
-  applicant_gender: 'Male',
-  applicant_height: '5 10',
-  applicant_weight: '180',
-  registration_key: '4WV-HJR-SA9',
-  applicant_zip_code: '90210',
-  registration_email: 'louis@mediar.ai',
-  policy_coverage_type: 'Best Case: Graded Coverage',
-  open_enrollment_status: 'Yes',
-  applicant_tobacco_usage: 'Never'
-}
-🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
-⚡ Running BASIC cache query with minimal fields (successful only)
-❌ Cache MISS for workflow 1 (117ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 151ms
 ❌ Cache MISS for workflow 1 (107ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 224ms
+❌ Cache MISS for workflow 1 (106ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 234ms
+❌ Cache MISS for workflow 1 (112ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 231ms
+❌ Cache MISS for workflow 1 (132ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 344ms
+❌ Cache MISS for workflow 1 (146ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 232ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (109ms query) - no successful executions found
  POST /api/remote-workflows/cache?detailed_output=false 200 in 143ms
 🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
 🔄 Fallback BASIC JSONB query with minimal fields
 🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
 🔄 Fallback BASIC JSONB query with minimal fields
-❌ Cache MISS for workflow 1 (263ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 301ms
-❌ Cache MISS for workflow 1 (185ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 205ms
-[ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1814ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 190ms
-⚡ Unified execution details for 5419...
-⚡ Unified execution details for 5418...
-⚡ Unified execution details for 5417...
-⚡ Unified execution details for 5415...
-[ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 411ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5418 200 in 271ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5415 200 in 274ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5419 200 in 328ms
 🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
   url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
   quote_type: 'Face Value',
-  quote_value: '5000',
-  applicant_dob: '01/15/1985',
-  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
-  applicant_state: 'California',
-  applicant_gender: 'Male',
-  applicant_height: '5 10',
-  applicant_weight: '180',
-  registration_key: '4WV-HJR-SA9',
-  applicant_zip_code: '90210',
-  registration_email: 'louis@mediar.ai',
-  policy_coverage_type: 'Best Case: Graded Coverage',
-  open_enrollment_status: 'Yes',
-  applicant_tobacco_usage: 'Never'
-}
-🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
-⚡ Running BASIC cache query with minimal fields (successful only)
-🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
-  url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
-  quote_type: 'Face Value',
-  quote_value: '100000',
-  applicant_dob: '01/15/1985',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
   product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
   applicant_state: 'California',
   applicant_gender: 'Male',
@@ -343,7 +333,177 @@
   open_enrollment_status: 'Yes',
   applicant_tobacco_usage: 'Never'
 }
-🎯 Using hash-based lookup: e54cfcc72606ddd52208dde1c9e326a6
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (108ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 153ms
+❌ Cache MISS for workflow 1 (104ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 149ms
+❌ Cache MISS for workflow 1 (103ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 142ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (132ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 180ms
+❌ Cache MISS for workflow 1 (131ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 171ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '6 0',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (122ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 142ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (111ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 135ms
+❌ Cache MISS for workflow 1 (107ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 133ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  use_cache: true,
+  quote_type: 'Face Value',
+  quote_value: '5000',
+  applicant_dob: '01/15/1985',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
 ⚡ Running BASIC cache query with minimal fields (successful only)
 🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
   url: 'https://v2preview.online.bestplanpro.com/',
@@ -365,22 +525,246 @@
 }
 🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
 ⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (105ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 131ms
+❌ Cache MISS for workflow 1 (117ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 147ms
+❌ Cache MISS for workflow 1 (128ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 154ms
+❌ Cache MISS for workflow 1 (105ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 121ms
 🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
 🔄 Fallback BASIC JSONB query with minimal fields
 🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
 🔄 Fallback BASIC JSONB query with minimal fields
-[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
- GET /api/remote-workflows/executions/5417 200 in 483ms
+❌ Cache MISS for workflow 1 (110ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 134ms
 ❌ Cache MISS for workflow 1 (109ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 156ms
-❌ Cache MISS for workflow 1 (123ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 166ms
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 131ms
+ ○ Compiling /docs/api/mcp ...
+ ✓ Compiled /docs/api/mcp in 2.4s
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 380ms
+ GET /docs/api/mcp 200 in 2769ms
+⚡ Unified execution details for 5441...
+⚡ Unified execution details for 5442...
+⚡ Unified execution details for 5443...
+⚡ Unified execution details for 5440...
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 571ms
+⚡ Unified execution details for 5438...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5442 200 in 228ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5441 200 in 240ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5438 200 in 182ms
+⚡ Unified execution details for 5437...
+⚡ Unified execution details for 5434...
+⚡ Unified execution details for 5435...
+ ✓ Compiled /api/mcp in 227ms
+🔧 [MCP API] Received request: tools/list
+🔧 [MCP] Refreshing workflow tools...
+🔧 [MCP] Discovering workflows from database...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5443 200 in 509ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5440 200 in 508ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5434 200 in 259ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5437 200 in 274ms
+🔧 [MCP] Found 2 workflows
+🔧 [MCP] Generating MCP tool for workflow: Set Available Products (ID: 4)
+🔧 [MCP] Generated MCP tool: insurance_set_available_products
+🔧 [MCP] Generated tool: insurance_set_available_products (workflow 4)
+🔧 [MCP] Generating MCP tool for workflow: Best Plan Pro Insurance Quote (ID: 1)
+🔧 [MCP] Generated MCP tool: insurance_best_plan_pro_insurance_quote
+🔧 [MCP] Generated tool: insurance_best_plan_pro_insurance_quote (workflow 1)
+🔧 [MCP] Processed 2 workflow tools
+🔧 [MCP API] Serving 2 workflow tools
+ POST /api/mcp 200 in 437ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5435 200 in 309ms
+⚡ Unified execution details for 5433...
+⚡ Unified execution details for 5432...
+⚡ Unified execution details for 5429...
+⚡ Unified execution details for 5430...
+⚡ Unified execution details for 5427...
+ ✓ Compiled /api/mcp/workflows in 171ms
+🔧 [MCP] Refreshing workflow tools...
+🔧 [MCP] Discovering workflows from database...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5432 200 in 193ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5430 200 in 206ms
+⚡ Unified execution details for 5426...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5433 200 in 229ms
+⚡ Unified execution details for 5425...
+⚡ Unified execution details for 5424...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5429 200 in 253ms
+🔧 [MCP] Found 2 workflows
+🔧 [MCP] Generating MCP tool for workflow: Set Available Products (ID: 4)
+🔧 [MCP] Generated MCP tool: insurance_set_available_products
+🔧 [MCP] Generated tool: insurance_set_available_products (workflow 4)
+🔧 [MCP] Generating MCP tool for workflow: Best Plan Pro Insurance Quote (ID: 1)
+🔧 [MCP] Generated MCP tool: insurance_best_plan_pro_insurance_quote
+🔧 [MCP] Generated tool: insurance_best_plan_pro_insurance_quote (workflow 1)
+🔧 [MCP] Processed 2 workflow tools
+ GET /api/mcp/workflows 200 in 255ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5427 200 in 216ms
+⚡ Unified execution details for 5422...
+⚡ Unified execution details for 5421...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5426 200 in 191ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5425 200 in 190ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5424 200 in 174ms
+⚡ Unified execution details for 5419...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5422 200 in 173ms
+⚡ Unified execution details for 5418...
 🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
   url: 'https://v2preview.online.bestplanpro.com/',
-  use_cache: true,
   quote_type: 'Face Value',
-  quote_value: '100000',
-  applicant_dob: '01/15/1985',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5421 200 in 184ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (112ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 149ms
+❌ Cache MISS for workflow 1 (112ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 143ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5418 200 in 198ms
+❌ Cache MISS for workflow 1 (133ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 156ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5419 200 in 220ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
   product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
   applicant_state: 'California',
   applicant_gender: 'Male',
@@ -393,13 +777,1380 @@
   open_enrollment_status: 'Yes',
   applicant_tobacco_usage: 'Never'
 }
-🎯 Using hash-based lookup: e54cfcc72606ddd52208dde1c9e326a6
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
 ⚡ Running BASIC cache query with minimal fields (successful only)
 🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
 🔄 Fallback BASIC JSONB query with minimal fields
 🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
 🔄 Fallback BASIC JSONB query with minimal fields
-❌ Cache MISS for workflow 1 (311ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 354ms
-❌ Cache MISS for workflow 1 (182ms query) - no successful executions found
- POST /api/remote-workflows/cache?detailed_output=false 200 in 205ms
+❌ Cache MISS for workflow 1 (111ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 135ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (112ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 133ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (103ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 129ms
+❌ Cache MISS for workflow 1 (109ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 139ms
+❌ Cache MISS for workflow 1 (101ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 131ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '6 0',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (103ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 126ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (127ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 155ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1925ms
+❌ Cache MISS for workflow 1 (98ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 131ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (124ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 152ms
+❌ Cache MISS for workflow 1 (129ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 155ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '6 0',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  use_cache: true,
+  quote_type: 'Face Value',
+  quote_value: '5000',
+  applicant_dob: '01/15/1985',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (110ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 128ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  use_cache: true,
+  quote_type: 'Face Value',
+  quote_value: '5000',
+  applicant_dob: '01/15/1985',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (116ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 146ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (115ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 154ms
+❌ Cache MISS for workflow 1 (114ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 137ms
+❌ Cache MISS for workflow 1 (140ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 176ms
+❌ Cache MISS for workflow 1 (101ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 119ms
+❌ Cache MISS for workflow 1 (150ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 178ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 171ms
+⚡ Unified execution details for 5443...
+⚡ Unified execution details for 5441...
+⚡ Unified execution details for 5442...
+⚡ Unified execution details for 5440...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5443 200 in 211ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 439ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5442 200 in 235ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5441 200 in 243ms
+⚡ Unified execution details for 5438...
+⚡ Unified execution details for 5437...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5440 200 in 271ms
+⚡ Unified execution details for 5435...
+⚡ Unified execution details for 5434...
+⚡ Unified execution details for 5433...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5438 200 in 208ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5433 200 in 174ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5435 200 in 211ms
+⚡ Unified execution details for 5432...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5434 200 in 219ms
+⚡ Unified execution details for 5430...
+⚡ Unified execution details for 5429...
+⚡ Unified execution details for 5427...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5437 200 in 310ms
+⚡ Unified execution details for 5426...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5430 200 in 200ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5427 200 in 196ms
+⚡ Unified execution details for 5425...
+⚡ Unified execution details for 5424...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5432 200 in 279ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5426 200 in 301ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5429 200 in 374ms
+⚡ Unified execution details for 5422...
+⚡ Unified execution details for 5421...
+⚡ Unified execution details for 5419...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5424 200 in 258ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5425 200 in 283ms
+⚡ Unified execution details for 5418...
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5419 200 in 183ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5422 200 in 196ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5421 200 in 199ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (116ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 143ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5418 200 in 194ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (111ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 145ms
+❌ Cache MISS for workflow 1 (110ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 145ms
+❌ Cache MISS for workflow 1 (105ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 137ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (105ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 123ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '6 0',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (126ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 143ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (111ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 143ms
+❌ Cache MISS for workflow 1 (119ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 152ms
+❌ Cache MISS for workflow 1 (114ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 147ms
+❌ Cache MISS for workflow 1 (99ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 113ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '6 0',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (95ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 114ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (108ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 142ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (93ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 132ms
+❌ Cache MISS for workflow 1 (115ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 149ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  use_cache: true,
+  quote_type: 'Face Value',
+  quote_value: '5000',
+  applicant_dob: '01/15/1985',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (141ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 173ms
+❌ Cache MISS for workflow 1 (111ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 129ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '6 0',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  use_cache: true,
+  quote_type: 'Face Value',
+  quote_value: '5000',
+  applicant_dob: '01/15/1985',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (118ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 147ms
+❌ Cache MISS for workflow 1 (138ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 170ms
+❌ Cache MISS for workflow 1 (111ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 144ms
+❌ Cache MISS for workflow 1 (109ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 131ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1966ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 211ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 384ms
+⚡ Unified execution details for 5443...
+⚡ Unified execution details for 5442...
+⚡ Unified execution details for 5441...
+⚡ Unified execution details for 5438...
+⚡ Unified execution details for 5440...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5440 200 in 240ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5442 200 in 250ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5443 200 in 253ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5438 200 in 257ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5441 200 in 268ms
+⚡ Unified execution details for 5437...
+⚡ Unified execution details for 5435...
+⚡ Unified execution details for 5434...
+⚡ Unified execution details for 5433...
+⚡ Unified execution details for 5432...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5437 200 in 209ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5434 200 in 218ms
+⚡ Unified execution details for 5430...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5432 200 in 212ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5435 200 in 248ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5433 200 in 243ms
+⚡ Unified execution details for 5429...
+⚡ Unified execution details for 5427...
+⚡ Unified execution details for 5426...
+⚡ Unified execution details for 5425...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5430 200 in 352ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5429 200 in 325ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5427 200 in 324ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5426 200 in 302ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5425 200 in 303ms
+⚡ Unified execution details for 5424...
+⚡ Unified execution details for 5422...
+⚡ Unified execution details for 5421...
+⚡ Unified execution details for 5418...
+⚡ Unified execution details for 5419...
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5424 200 in 194ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5422 200 in 194ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5421 200 in 200ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5418 200 in 202ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/[executionId] (200)
+ GET /api/remote-workflows/executions/5419 200 in 216ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (106ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 151ms
+❌ Cache MISS for workflow 1 (102ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 150ms
+❌ Cache MISS for workflow 1 (114ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 160ms
+❌ Cache MISS for workflow 1 (106ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 151ms
+❌ Cache MISS for workflow 1 (124ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 172ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '6 0',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (125ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 163ms
+❌ Cache MISS for workflow 1 (124ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 167ms
+❌ Cache MISS for workflow 1 (109ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 152ms
+❌ Cache MISS for workflow 1 (121ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 160ms
+❌ Cache MISS for workflow 1 (111ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 153ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '6 0',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '15000',
+  applicant_dob: '05/20/1975',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Texas',
+  applicant_gender: 'Female',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: f90c4f0bac8128ac19cd6341f8e831e7
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (97ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 143ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '10000',
+  applicant_dob: '01/15/1980',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: b9649ab3d8af9c8a96c26b5dc597ea94
+⚡ Running BASIC cache query with minimal fields (successful only)
+❌ Cache MISS for workflow 1 (106ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 150ms
+❌ Cache MISS for workflow 1 (110ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 151ms
+❌ Cache MISS for workflow 1 (115ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 163ms
+❌ Cache MISS for workflow 1 (138ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 188ms
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '50000',
+  applicant_dob: '03/10/1960',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'Florida',
+  applicant_gender: 'Female',
+  applicant_height: '5 6',
+  applicant_weight: '140',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '33101',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: c08f881b7f0e52ab7c994fea4f0d6e4f
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  use_cache: true,
+  quote_type: 'Face Value',
+  quote_value: '5000',
+  applicant_dob: '01/15/1985',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  quote_type: 'Face Value',
+  quote_value: '25000',
+  applicant_dob: '01/15/1995',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '6 0',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: 0033bde97f356843f833d1b15757a860
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔍 Cache lookup for workflow 1 with parameters (full_detailed_response: false): {
+  url: 'https://v2preview.online.bestplanpro.com/',
+  use_cache: true,
+  quote_type: 'Face Value',
+  quote_value: '5000',
+  applicant_dob: '01/15/1985',
+  product_types: [ 'FEX', 'MedSup', 'Preneed', 'Term' ],
+  applicant_state: 'California',
+  applicant_gender: 'Male',
+  applicant_height: '5 10',
+  applicant_weight: '180',
+  registration_key: '4WV-HJR-SA9',
+  applicant_zip_code: '90210',
+  registration_email: 'louis@mediar.ai',
+  policy_coverage_type: 'Best Case: Graded Coverage',
+  open_enrollment_status: 'Yes',
+  applicant_tobacco_usage: 'Never'
+}
+🎯 Using hash-based lookup: a71b465676f3db95ca01bbff14508167
+⚡ Running BASIC cache query with minimal fields (successful only)
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (101ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 118ms
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+🔄 Hash lookup missed, falling back to JSONB lookup (successful only)
+🔄 Fallback BASIC JSONB query with minimal fields
+❌ Cache MISS for workflow 1 (99ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 135ms
+❌ Cache MISS for workflow 1 (101ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 131ms
+❌ Cache MISS for workflow 1 (121ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 150ms
+❌ Cache MISS for workflow 1 (141ms query) - no successful executions found
+ POST /api/remote-workflows/cache?detailed_output=false 200 in 173ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 2157ms
