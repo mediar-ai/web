@@ -287,14 +287,9 @@ export function VersionUploadDialog({
     const format = detectedFormat;
     if (format === 'unknown') return null;
 
-    const badgeColors = {
-      json: 'bg-blue-100 text-blue-800',
-      yaml: 'bg-green-100 text-green-800'
-    };
-
     return (
       <div className="flex items-center gap-2 text-sm">
-        <span className={`px-2 py-1 rounded-full ${badgeColors[format]}`}>
+        <span className="px-2 py-1 rounded-full bg-black text-white border border-black">
           {format.toUpperCase()} Format
         </span>
       </div>
@@ -429,9 +424,9 @@ arguments:
             </div>
             
             {activateImmediately ? (
-              <Alert className="border-amber-500 bg-amber-50">
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                <AlertDescription className="text-amber-800">
+              <Alert className="border-black bg-gray-50">
+                <AlertTriangle className="h-4 w-4 text-black" />
+                <AlertDescription className="text-black">
                   <div className="font-medium">⚠️ Production Impact Warning</div>
                   <p className="text-sm mt-1">
                     Activating immediately will switch all new workflow executions to use this version. 
@@ -440,9 +435,9 @@ arguments:
                 </AlertDescription>
               </Alert>
             ) : (
-              <Alert className="border-green-500 bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-green-800">
+              <Alert className="border-black bg-white">
+                <CheckCircle className="h-4 w-4 text-black" />
+                <AlertDescription className="text-black">
                   <div className="font-medium">✅ Safe Upload Mode</div>
                   <p className="text-sm mt-1">
                     Version will be created but not activated. You can test and activate it later when ready.
@@ -454,14 +449,14 @@ arguments:
 
           {/* Result Display */}
           {result && (
-            <Alert className={result.success ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}>
+            <Alert className={result.success ? 'border-black bg-white' : 'border-black bg-gray-50'}>
               <div className="flex items-center gap-2">
                 {result.success ? (
-                  <CheckCircle className="w-4 h-4 text-green-600" />
+                  <CheckCircle className="w-4 h-4 text-black" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-red-600" />
+                  <AlertCircle className="w-4 h-4 text-black" />
                 )}
-                <AlertDescription className={result.success ? 'text-green-800' : 'text-red-800'}>
+                <AlertDescription className="text-black">
                   <div>
                     <p className="font-medium">{result.message}</p>
                     {result.version && (
