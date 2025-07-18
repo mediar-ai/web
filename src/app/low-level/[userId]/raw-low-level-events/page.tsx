@@ -250,8 +250,8 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           <span className="text-sm font-medium text-blue-800">
             {events.length} events loaded
           </span>
-          {events.length >= 1000 && (
-            <span className="text-xs text-blue-600">(capped at 1000)</span>
+          {events.length >= 300 && (
+            <span className="text-xs text-blue-600">(capped at 300)</span>
           )}
         </div>
         <Input
