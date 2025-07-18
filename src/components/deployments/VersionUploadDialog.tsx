@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Upload, Link2, Loader2, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
+import * as yaml from 'js-yaml';
 
 interface VersionUploadDialogProps {
   workflowId: number;
@@ -107,9 +108,7 @@ export function VersionUploadDialog({
         }
         return { isValid: true };
       } else if (format === 'yaml') {
-        // Use dynamic import for YAML parsing
-        const yamlModule = await import('js-yaml');
-        const parsed = yamlModule.load(content);
+        const parsed = yaml.load(content);
         if (typeof parsed !== 'object' || parsed === null) {
           return { isValid: false, error: 'YAML must represent an object or array' };
         }
