@@ -14,6 +14,8 @@ import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetail
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
 import { supabase } from '@/lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { useAuth, SignIn, useOrganization } from '@clerk/nextjs';
+import Link from 'next/link';
 
 // Floating Delta Component
 const FloatingDelta = ({ value }: { value: number }) => {
@@ -48,6 +50,66 @@ const FloatingDelta = ({ value }: { value: number }) => {
 };
 
 export default function WorkflowsPage() {
+  const { isLoaded, userId, has } = useAuth();
+  const { organization, membership } = useOrganization();
+  
+  // Show loading while Clerk is initializing
+  if (!isLoaded) {
+    return (
+      <div className="container mx-auto py-4">
+        <div>Loading...</div>
+      </div>
+    );
+  }
+  
+  // Show sign-in if not authenticated
+  if (!userId) {
+    return (
+      <div className="container mx-auto py-4 flex justify-center">
+        <SignIn />
+      </div>
+    );
+  }
+
+  // Check if user has required role for deployment access
+  const hasAdminRole = has({ role: 'org:admin' });
+  const hasMemberRole = has({ role: 'org:member' });
+  
+  if (!hasAdminRole && !hasMemberRole) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full space-y-8 text-center">
+          <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+          <p className="text-gray-600">You need admin or member privileges to access deployments.</p>
+          <Link href="/admin">
+            <Button variant="outline">Return to Dashboard</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Pass authentication context to the main component
+  return (
+    <AuthenticatedWorkflowsPage 
+      isAdmin={hasAdminRole}
+      organizationName={organization?.name}
+      userRole={membership?.role}
+    />
+  );
+}
+
+interface AuthenticatedWorkflowsPageProps {
+  isAdmin: boolean;
+  organizationName?: string;
+  userRole?: string;
+}
+
+function AuthenticatedWorkflowsPage({ 
+  isAdmin, 
+  organizationName, 
+  userRole 
+}: AuthenticatedWorkflowsPageProps) {
   const [workflows, setWorkflows] = useState<WorkflowWithSettings[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
@@ -375,6 +437,16 @@ export default function WorkflowsPage() {
         <div>
           <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
           <p className="text-muted-foreground text-lg">Execute and monitor automated workflows remotely</p>
+          <div className="mt-2">
+            <span className={`text-sm font-medium ${isAdmin ? 'text-blue-600' : 'text-green-600'}`}>
+              {isAdmin && organizationName ? `Admin - ${organizationName}` : organizationName ? `Member - ${organizationName}` : "Organization Access"}
+            </span>
+            {userRole && (
+              <span className="text-xs text-gray-500 ml-2">
+                Role: {userRole}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <Button 
