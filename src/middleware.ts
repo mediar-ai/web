@@ -4,9 +4,13 @@ const isAdminRoute = createRouteMatcher([
   '/admin(.*)'
 ]);
 
+const isDeploymentRoute = createRouteMatcher([
+  '/deployments(.*)'
+]);
+
 export default clerkMiddleware(async (auth, req) => {
-  // Only protect admin routes, not all routes
-  if (isAdminRoute(req)) {
+  // Protect admin and deployment routes
+  if (isAdminRoute(req) || isDeploymentRoute(req)) {
     const { userId } = await auth();
     
     // Protect admin routes by requiring authentication
