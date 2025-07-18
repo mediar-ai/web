@@ -124,33 +124,34 @@ export async function POST(
       return 'yaml'; // Default to YAML for new uploads
     }
 
-    // Process automation sequence for dual-format storage
-    let yamlContent: string;
-    let jsonbContent = null; // Only populate for legacy JSON uploads
-    let sequence_format = 'yaml';
+    // Process automation sequence for dual-format storage - store original format
+    let yamlContent: string | null = null;
+    let jsonbContent = null; 
+    let sequence_format: string;
 
     if (typeof automation_sequence === 'string') {
-      // Raw YAML or JSON string
+      // Raw YAML or JSON string - detect and store as-is
       const detectedFormat = detectSequenceFormat(automation_sequence);
       if (detectedFormat === 'yaml') {
         yamlContent = automation_sequence;
         sequence_format = 'yaml';
+        // No JSONB storage for YAML uploads
+      } else if (detectedFormat === 'json') {
+        // Store JSON in JSONB column, no YAML conversion
+        jsonbContent = JSON.parse(automation_sequence);
+        sequence_format = 'jsonb';
+        // No YAML storage for JSON uploads
       } else {
-        // Convert JSON string to YAML
-        const parsed = JSON.parse(automation_sequence);
-        const yamlModule = await import('js-yaml');
-        yamlContent = yamlModule.dump(parsed, { indent: 2, sortKeys: false });
-        sequence_format = 'yaml';
-        // Keep JSON for backward compatibility during transition
-        jsonbContent = parsed;
+        return NextResponse.json(
+          { success: false, error: 'Invalid content format. Please use valid JSON or YAML.' },
+          { status: 400 }
+        );
       }
     } else if (typeof automation_sequence === 'object') {
-      // JavaScript object - convert to YAML
-      const yamlModule = await import('js-yaml');
-      yamlContent = yamlModule.dump(automation_sequence, { indent: 2, sortKeys: false });
-      sequence_format = 'yaml';
-      // Keep JSON for backward compatibility during transition
+      // JavaScript object from UI - store in JSONB
       jsonbContent = automation_sequence;
+      sequence_format = 'jsonb';
+      // No YAML storage for object uploads
     } else {
       return NextResponse.json(
         { success: false, error: 'Invalid automation_sequence format' },
@@ -210,12 +211,12 @@ export async function POST(
       );
     }
 
-    // Create new version with dual-format support
+    // Create new version - store in original format only
     const versionData = {
       workflow_id: workflowIdNum,
       version_number: newVersionNumber,
-      automation_sequence_yaml: yamlContent,     // New YAML column
-      automation_sequence: jsonbContent,         // Legacy JSONB (null for pure YAML uploads)
+      automation_sequence_yaml: yamlContent,     // YAML content (null for JSON uploads)
+      automation_sequence: jsonbContent,         // JSONB content (null for YAML uploads)
       preferred_format: sequence_format,
       is_active: false, // Don't activate immediately
       change_notes: change_notes || `Version ${newVersionNumber} created via API (${sequence_format} format)`
