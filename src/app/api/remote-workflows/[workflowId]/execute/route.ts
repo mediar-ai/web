@@ -329,7 +329,7 @@ export async function POST(
                 assignment_method: 'auto',
                 mcp_endpoint,
                 // 🎯 Include version selection for background execution
-                workflow_version_number: version_number
+                version_number
               })
               .select()
               .single();
@@ -407,7 +407,7 @@ export async function POST(
       assignment_method: 'auto',
       mcp_endpoint,
       // 🎯 Include version selection
-      workflow_version_number: version_number
+      version_number
     };
     
     const { data: execution, error: executionError } = await supabase
