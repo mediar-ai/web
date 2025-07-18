@@ -30,7 +30,7 @@ export async function GET(
   const { userId } = await params;
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
-  const requestedLimit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 1000;
+  const requestedLimit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 300;
   let offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0;
   const SUPABASE_MAX_LIMIT = 1000;
 

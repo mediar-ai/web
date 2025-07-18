@@ -25,17 +25,14 @@ export async function GET(
   }
 
   try {
-    const { data: events, error: eventsError } = await supabaseAdmin
+    // Fetch recent events first, then filter for UI trees in memory (simpler and more reliable)
+    // Use smaller limit for UI trees since they have very large payloads
+    const { data: allEvents, error: eventsError } = await supabaseAdmin
       .from('low_level_events')
       .select('*')
       .eq('user_id', userId)
-      // This is the corrected filter. It robustly checks for the existence of the ui_tree key
-      // at both the new and old paths, which is more reliable than checking the type.
-      .or(
-        'payload->event->screen->ui_tree.not.is.null,' +
-        'payload->payload->event->screen->ui_tree.not.is.null'
-      )
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(50);
 
     if (eventsError) {
       console.error('Supabase error:', eventsError);
@@ -44,6 +41,19 @@ export async function GET(
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    // Filter for UI tree events in memory
+    const events = (allEvents || []).filter(event => {
+      try {
+        const payload = event.payload;
+        return (
+          payload?.event?.screen?.ui_tree ||
+          payload?.payload?.event?.screen?.ui_tree
+        );
+      } catch {
+        return false;
+      }
+         });
 
     return NextResponse.json({
       events: events || [],
