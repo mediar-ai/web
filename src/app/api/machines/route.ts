@@ -1,0 +1,344 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error('Supabase environment variables are not set');
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// GET /api/machines - List all machines with load information
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status') || 'active';
+    const include_load = searchParams.get('include_load') === 'true';
+    const region = searchParams.get('region');
+
+    console.log(`📋 Fetching machines with status: ${status}, include_load: ${include_load}`);
+
+    let query = supabase
+      .from(include_load ? 'available_machines_with_load' : 'remote_machines')
+      .select('*')
+      .order('priority', { ascending: true })
+      .order('name', { ascending: true });
+
+    // Apply filters
+    if (status !== 'all') {
+      query = query.eq('status', status);
+    }
+
+    if (region) {
+      query = query.eq('region', region);
+    }
+
+    const { data: machines, error } = await query;
+
+    if (error) {
+      throw new Error(`Database query failed: ${error.message}`);
+    }
+
+    // Get machine assignments summary if requested
+    let assignmentsSummary = null;
+    if (include_load) {
+      const { data: assignments } = await supabase
+        .from('workflow_machine_summary')
+        .select('*');
+      
+      assignmentsSummary = assignments || [];
+    }
+
+    // Format response
+    const formattedMachines = (machines || []).map(machine => ({
+      id: machine.id,
+      name: machine.name,
+      description: machine.description,
+      machine_type: machine.machine_type,
+      status: machine.status,
+      health_status: machine.health_status,
+      region: machine.region,
+      tags: machine.tags,
+      
+      // Connection details
+      endpoints: {
+        mcp: machine.mcp_endpoint,
+        management: machine.management_endpoint,
+        health: machine.health_endpoint
+      },
+      
+      // Capabilities and limits
+      capabilities: machine.capabilities,
+      max_concurrent_executions: machine.max_concurrent_executions,
+      priority: machine.priority,
+      
+      // Load information (only if using available_machines_with_load view)
+      ...(include_load && {
+        load_info: {
+          current_executions: machine.current_executions || 0,
+          queued_executions: machine.queued_executions || 0,
+          available_capacity: machine.available_capacity || machine.max_concurrent_executions,
+          load_percentage: machine.load_percentage || 0
+        }
+      }),
+      
+      // Performance metrics
+      performance: {
+        avg_execution_time_seconds: machine.avg_execution_time_seconds || 0,
+        success_rate_percent: machine.success_rate_percent || 0,
+        total_executions: machine.total_executions || 0
+      },
+      
+      // Health details
+      health_details: machine.health_details || {},
+      last_health_check: machine.last_health_check,
+      
+      // Metadata
+      created_at: machine.created_at,
+      updated_at: machine.updated_at
+    }));
+
+    const responseData = {
+      success: true,
+      machines: formattedMachines,
+      summary: {
+        total_machines: formattedMachines.length,
+        by_status: formattedMachines.reduce((acc: Record<string, number>, machine) => {
+          acc[machine.status] = (acc[machine.status] || 0) + 1;
+          return acc;
+        }, {}),
+        by_health: formattedMachines.reduce((acc: Record<string, number>, machine) => {
+          acc[machine.health_status] = (acc[machine.health_status] || 0) + 1;
+          return acc;
+        }, {}),
+        total_capacity: formattedMachines.reduce((sum, machine) => sum + machine.max_concurrent_executions, 0),
+        ...(include_load && {
+          current_load: formattedMachines.reduce((sum, machine) => 
+            sum + (machine.load_info?.current_executions || 0), 0),
+          available_capacity: formattedMachines.reduce((sum, machine) => 
+            sum + (machine.load_info?.available_capacity || 0), 0)
+        })
+      },
+      ...(assignmentsSummary && {
+        workflow_assignments: assignmentsSummary
+      }),
+      timestamp: new Date().toISOString()
+    };
+
+    return NextResponse.json(responseData);
+
+  } catch (error) {
+    console.error('❌ Error fetching machines:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch machines',
+        details: error instanceof Error ? error.message : String(error)
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/machines - Register a new machine
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    
+    console.log('🔧 Registering new machine:', body.name);
+
+    // Validate required fields
+    const requiredFields = ['name', 'mcp_endpoint', 'management_endpoint'];
+    for (const field of requiredFields) {
+      if (!body[field]) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Missing required field: ${field}`,
+            required_fields: requiredFields
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate machine endpoints
+    const healthCheckResult = await validateMachineEndpoints(
+      body.mcp_endpoint, 
+      body.management_endpoint,
+      body.health_endpoint
+    );
+
+    // Prepare machine data
+    const machineData = {
+      name: body.name,
+      description: body.description || null,
+      mcp_endpoint: body.mcp_endpoint,
+      management_endpoint: body.management_endpoint,
+      health_endpoint: body.health_endpoint || `${body.management_endpoint}/health`,
+      machine_type: body.machine_type || 'windows_vm',
+      capabilities: body.capabilities || {},
+      max_concurrent_executions: body.max_concurrent_executions || 1,
+      priority: body.priority || 5,
+      region: body.region || null,
+      tags: body.tags || [],
+      health_status: healthCheckResult.status,
+      health_details: healthCheckResult.details
+    };
+
+    // Insert machine into database
+    const { data: machine, error } = await supabase
+      .from('remote_machines')
+      .insert(machineData)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === '23505') { // Unique constraint violation
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Machine with this name already exists',
+            details: error.message
+          },
+          { status: 409 }
+        );
+      }
+      throw new Error(`Database insertion failed: ${error.message}`);
+    }
+
+    console.log(`✅ Machine ${machine.name} registered successfully with ID ${machine.id}`);
+
+    // Add default configurations if provided
+    if (body.default_configurations && Array.isArray(body.default_configurations)) {
+      for (const config of body.default_configurations) {
+        await supabase
+          .from('machine_configurations')
+          .insert({
+            machine_id: machine.id,
+            config_type: config.type,
+            config_name: config.name,
+            config_data: config.data,
+            is_sensitive: config.is_sensitive || false
+          });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      machine: {
+        id: machine.id,
+        name: machine.name,
+        status: machine.status,
+        health_status: machine.health_status,
+        endpoints: {
+          mcp: machine.mcp_endpoint,
+          management: machine.management_endpoint,
+          health: machine.health_endpoint
+        },
+        health_check: healthCheckResult,
+        created_at: machine.created_at
+      },
+      message: `Machine ${machine.name} registered successfully`
+    }, { status: 201 });
+
+  } catch (error) {
+    console.error('❌ Error registering machine:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to register machine',
+        details: error instanceof Error ? error.message : String(error)
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// Helper function to validate machine endpoints
+async function validateMachineEndpoints(
+  mcpEndpoint: string, 
+  managementEndpoint: string,
+  healthEndpoint?: string
+): Promise<{ status: string, details: Record<string, unknown>, response_time_ms?: number }> {
+  const results = {
+    mcp: { status: 'unknown', error: null as string | null },
+    management: { status: 'unknown', error: null as string | null },
+    health: { status: 'unknown', error: null as string | null, data: null as unknown }
+  };
+
+  const startTime = Date.now();
+
+  try {
+    // Test management endpoint health
+    const healthUrl = healthEndpoint || `${managementEndpoint}/health`;
+    
+    try {
+      const response = await fetch(healthUrl, {
+        method: 'GET',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        results.management.status = 'healthy';
+        results.health = { status: 'healthy', error: null, data };
+      } else {
+        results.management.status = 'unhealthy';
+        results.management.error = `HTTP ${response.status}`;
+      }
+    } catch (error) {
+      results.management.status = 'unreachable';
+      results.management.error = error instanceof Error ? error.message : String(error);
+    }
+
+    // Test MCP endpoint availability (basic connectivity test)
+    try {
+      const mcpHealthUrl = `${mcpEndpoint}/health`;
+      const mcpResponse = await fetch(mcpHealthUrl, {
+        method: 'GET',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (mcpResponse.ok) {
+        results.mcp.status = 'healthy';
+      } else {
+        results.mcp.status = 'unhealthy';
+        results.mcp.error = `HTTP ${mcpResponse.status}`;
+      }
+    } catch (error) {
+      results.mcp.status = 'unreachable';
+      results.mcp.error = error instanceof Error ? error.message : String(error);
+    }
+
+    const responseTime = Date.now() - startTime;
+
+    // Determine overall status
+    const overallStatus = 
+      results.management.status === 'healthy' && results.mcp.status === 'healthy' 
+        ? 'healthy'
+        : results.management.status === 'unreachable' || results.mcp.status === 'unreachable'
+        ? 'unreachable' 
+        : 'unhealthy';
+
+    return {
+      status: overallStatus,
+      details: results,
+      response_time_ms: responseTime
+    };
+
+  } catch (error) {
+    return {
+      status: 'unreachable',
+      details: {
+        ...results,
+        validation_error: error instanceof Error ? error.message : String(error)
+      },
+      response_time_ms: Date.now() - startTime
+    };
+  }
+} 

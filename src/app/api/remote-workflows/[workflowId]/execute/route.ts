@@ -261,6 +261,31 @@ export async function POST(
       console.log('⚠️ No automation sequence found for validation - proceeding without parameter validation');
     }
 
+    // 🎯 Simple machine assignment: Default to machine ID 1 (Primary Windows VM)
+    console.log(`🔍 Assigning to default machine for workflow ${workflowIdNum}...`);
+    
+    const assigned_machine_id: number = 1;
+    const assignment_reason = 'Default assignment to Primary Windows VM';
+    
+    // Look up machine endpoint
+    const { data: machine, error: machineError } = await supabase
+      .from('remote_machines')
+      .select('mcp_endpoint')
+      .eq('id', assigned_machine_id)
+      .single();
+
+    if (machineError || !machine) {
+      console.error(`❌ Failed to find machine ${assigned_machine_id}:`, machineError);
+      return NextResponse.json(
+        { error: `Machine ${assigned_machine_id} not found in remote_machines table` },
+        { status: 500 }
+      );
+    }
+
+    const mcp_endpoint = machine.mcp_endpoint;
+    console.log(`✅ Assigned to machine ID ${assigned_machine_id}: ${assignment_reason}`);
+    console.log(`🔗 Machine endpoint: ${mcp_endpoint}`);
+
     // ✨ NEW: Check cache first if requested
     if (include_cache) {
       try {
@@ -284,7 +309,7 @@ export async function POST(
           if (cacheData.success && cacheData.cached) {
             console.log(`🚀 Cache HIT! Returning cached results and queuing background execution`);
             
-            // Create background execution record
+            // Create background execution record with machine assignment
             const modal_call_id = `modal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             
             const { data: execution, error: executionError } = await supabase
@@ -294,7 +319,13 @@ export async function POST(
                 client_id,
                 status: 'queued',
                 execution_params: execution_params,
-                modal_call_id
+                modal_call_id,
+                // 🎯 Include machine assignment for background execution
+                assigned_machine_id,
+                assignment_reason: 'Default assignment to Primary Windows VM (cache refresh)',
+                machine_assignment_timestamp: new Date().toISOString(),
+                assignment_method: 'auto',
+                mcp_endpoint
               })
               .select()
               .single();
@@ -355,19 +386,27 @@ export async function POST(
       console.log(`⏳ No cache hit, proceeding with normal execution...`);
     }
 
-    // Create execution record in database with 'queued' status
-    // Modal scheduled job will pick it up and process it
+    // Create execution record in database with 'queued' status and machine assignment
+    // The appropriate Modal executor will pick it up based on assigned_machine_id
     const modal_call_id = `modal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const executionData = {
+      workflow_id: workflowIdNum,
+      client_id,
+      status: 'queued',
+      execution_params: execution_params,
+      modal_call_id,
+      // 🎯 Include machine assignment and endpoint fields
+      assigned_machine_id,
+      assignment_reason,
+      machine_assignment_timestamp: new Date().toISOString(),
+      assignment_method: 'auto',
+      mcp_endpoint
+    };
     
     const { data: execution, error: executionError } = await supabase
       .from('workflow_executions')
-      .insert({
-        workflow_id: workflowIdNum,
-        client_id,
-        status: 'queued',
-        execution_params: execution_params,
-        modal_call_id
-      })
+      .insert(executionData)
       .select()
       .single();
 

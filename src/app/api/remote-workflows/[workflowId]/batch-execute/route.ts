@@ -318,6 +318,31 @@ export async function POST(
     }
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // 🎯 Machine assignment: Default to machine ID 1 (Primary Windows VM)
+    console.log(`🔍 Assigning batch to default machine for workflow ${workflowIdNum}...`);
+    
+    const assigned_machine_id: number = 1;
+    const assignment_reason = 'Default assignment to Primary Windows VM (batch execution)';
+    
+    // Look up machine endpoint
+    const { data: machine, error: machineError } = await supabase
+      .from('remote_machines')
+      .select('mcp_endpoint')
+      .eq('id', assigned_machine_id)
+      .single();
+
+    if (machineError || !machine) {
+      console.error(`❌ Failed to find machine ${assigned_machine_id}:`, machineError);
+      return NextResponse.json(
+        { error: `Machine ${assigned_machine_id} not found in remote_machines table` },
+        { status: 500 }
+      );
+    }
+
+    const mcp_endpoint = machine.mcp_endpoint;
+    console.log(`✅ Assigned batch to machine ID ${assigned_machine_id}: ${assignment_reason}`);
+    console.log(`🔗 Machine endpoint: ${mcp_endpoint}`);
+
     const batch_id = `batch-${uuidv4()}`;
     const jobsToInsert = [];
 
@@ -328,12 +353,19 @@ export async function POST(
         set(finalParams, key, combo[key]);
       }
       
+      // 🎯 Include machine assignment and endpoint fields for each job
       jobsToInsert.push({
         workflow_id: workflowIdNum,
         status: 'queued',
         execution_params: finalParams,
         batch_id: batch_id,
-        client_id: `batch-run-${batch_id}`
+        client_id: `batch-run-${batch_id}`,
+        // Machine assignment fields
+        assigned_machine_id,
+        assignment_reason,
+        machine_assignment_timestamp: new Date().toISOString(),
+        assignment_method: 'auto',
+        mcp_endpoint
       });
     }
 

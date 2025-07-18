@@ -191,17 +191,10 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
         logger.error("❌ Error in pre-claim failure pattern check for workflow %d: %s (took %dms)", workflow_id, e, check_duration_ms)
         return False, f"Check error: {e}", check_duration_ms
 
-# MCP endpoint configuration - could be moved to secrets
-# MCP_BASE_URL = "https://select-merely-gelding.ngrok-free.app"  # Louis computer
-# MCP_BASE_URL = "https://willingly-settling-husky.ngrok-free.app"  # Matt computer
-
 # Windows VM service management endpoints (from our ngrok-powered system)
 VM_MANAGEMENT_ENDPOINT = "https://vm-windows-1.ngrok.dev"
 
-# MCP server endpoints
-MCP_BASE_URL = "https://mcp-server-1.ngrok.app"
-MCP_ENDPOINT = f"{MCP_BASE_URL}/mcp"
-MCP_HEALTH_ENDPOINT = f"{MCP_BASE_URL}/health"
+# Note: MCP endpoints are now passed dynamically via mcp_endpoint parameter
 
 
 class CaptureOutput:
@@ -469,7 +462,7 @@ def extract_defaults_recursive(schema_node: Dict[str, Any]) -> Dict[str, Any]:
     return defaults
 
 
-async def check_mcp_server_health() -> bool:
+async def check_mcp_server_health(health_endpoint: str) -> bool:
     """
     Check if the MCP server is healthy and reachable.
     Returns True if healthy, False otherwise.
@@ -477,12 +470,12 @@ async def check_mcp_server_health() -> bool:
     import httpx
     
     try:
-        logger.info("🏥 Checking MCP server health at: %s", MCP_HEALTH_ENDPOINT)
+        logger.info("🏥 Checking MCP server health at: %s", health_endpoint)
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             # Check MCP health endpoint
             response = await client.get(
-                MCP_HEALTH_ENDPOINT,
+                health_endpoint,
                 headers={"ngrok-skip-browser-warning": "true"}
             )
             
@@ -533,7 +526,7 @@ async def restart_windows_vm_service() -> bool:
         return False
 
 
-async def wait_for_mcp_server_recovery(max_wait_seconds: int = 60) -> bool:
+async def wait_for_mcp_server_recovery(health_endpoint: str, max_wait_seconds: int = 60) -> bool:
     """
     Wait for the MCP server to come back online after a restart.
     Returns True if server is back online, False if timeout.
@@ -549,7 +542,7 @@ async def wait_for_mcp_server_recovery(max_wait_seconds: int = 60) -> bool:
         retry_count += 1
         logger.info("🔍 Health check attempt %d...", retry_count)
         
-        if await check_mcp_server_health():
+        if await check_mcp_server_health(health_endpoint):
             recovery_time = int(time.time() - start_time)
             logger.info("✅ MCP server is back online after %d seconds", recovery_time)
             return True
@@ -573,12 +566,12 @@ def log_merge_details(original, merged, path=""):
             logger.info(f"  🔄 Changed '{new_path}': '{original.get(key)}' -> '{merged.get(key)}'")
 
 async def execute_mcp_workflow(
-    workflow_data: Dict[str, Any], execution_params: Dict[str, Any]
+    workflow_data: Dict[str, Any], execution_params: Dict[str, Any], mcp_endpoint: str
 ) -> Dict[str, Any]:
     """Execute workflow using the working MCP HTTP approach"""
     import httpx
 
-    logger.info("🔌 Attempting to connect to MCP endpoint: %s", MCP_ENDPOINT)
+    logger.info("🔌 Attempting to connect to MCP endpoint: %s", mcp_endpoint)
 
     try:
         # Use the automation sequence from the database
@@ -654,7 +647,7 @@ async def execute_mcp_workflow(
             }
 
             response = await client.post(
-                MCP_ENDPOINT,
+                mcp_endpoint,
                 json=init_request,
                 headers={"Accept": "application/json, text/event-stream"},
             )
@@ -665,7 +658,8 @@ async def execute_mcp_workflow(
                     logger.warning("🚨 MCP server unreachable (status %d). Attempting automatic restart...", response.status_code)
                     
                     # Check if MCP server is actually down
-                    if not await check_mcp_server_health():
+                    health_endpoint = f"{mcp_endpoint.replace('/mcp', '')}/health"
+                    if not await check_mcp_server_health(health_endpoint):
                         logger.info("🔄 Confirmed: MCP server is down. Initiating Windows VM service restart...")
                         
                         # Attempt to restart the Windows VM service
@@ -673,12 +667,12 @@ async def execute_mcp_workflow(
                             logger.info("✅ VM service restart initiated. Waiting for MCP server recovery...")
                             
                             # Wait for MCP server to come back online
-                            if await wait_for_mcp_server_recovery(max_wait_seconds=90):
+                            if await wait_for_mcp_server_recovery(health_endpoint, max_wait_seconds=90):
                                 logger.info("🎉 MCP server recovered! Retrying workflow execution...")
                                 
                                 # Retry the MCP session initialization
                                 retry_response = await client.post(
-                                    MCP_ENDPOINT,
+                                    mcp_endpoint,
                                     json=init_request,
                                     headers={"Accept": "application/json, text/event-stream"},
                                 )
@@ -718,7 +712,7 @@ async def execute_mcp_workflow(
             }
 
             response = await client.post(
-                MCP_ENDPOINT,
+                mcp_endpoint,
                 json=initialized_request,
                 headers={
                     "Accept": "application/json, text/event-stream",
@@ -745,7 +739,7 @@ async def execute_mcp_workflow(
             }
 
             response = await client.post(
-                MCP_ENDPOINT,
+                mcp_endpoint,
                 json=tool_request,
                 headers={
                     "Accept": "application/json, text/event-stream",
@@ -980,7 +974,7 @@ async def execute_mcp_workflow(
         error_context = {
             "error_type": type(e).__name__,
             "error_message": str(e),
-            "mcp_endpoint": MCP_ENDPOINT,
+            "mcp_endpoint": mcp_endpoint,
             "vm_management_endpoint": VM_MANAGEMENT_ENDPOINT,
             "workflow_id": workflow_data.get("id", "unknown"),
             "workflow_name": workflow_data.get("name", "unknown"),
@@ -1030,6 +1024,7 @@ async def execute_mcp_workflow(
 )
 def execute_workflow(
     workflow_id: int,
+    mcp_endpoint: str,
     execution_params: Dict[str, Any] = None,
     client_id: str = None,
     execution_id: int = None,
@@ -1060,6 +1055,12 @@ def execute_workflow(
         # This function's first job is to fetch the workflow, calculate steps,
         # and update the execution record with that info.
         logger.info("🚀 Executing workflow ID %s for execution record %s", workflow_id, execution_id)
+
+        # 🎯 Use provided MCP endpoint (required parameter)
+        endpoint_base = mcp_endpoint
+        endpoint_full = f"{mcp_endpoint}/mcp"
+        endpoint_health = f"{mcp_endpoint}/health"
+        logger.info("🔗 Using MCP endpoint: %s", endpoint_full)
 
         # Get workflow details from database with current active version
         # Using the compatibility view to get automation_sequence from the active version
@@ -1114,7 +1115,7 @@ def execute_workflow(
             try:
                 # Log system information
                 logger.info("📍 Modal Function: execute_workflow")
-                logger.info("🔗 MCP Endpoint: %s", MCP_ENDPOINT)
+                logger.info("🔗 MCP Endpoint: %s", endpoint_full)
                 logger.info("📦 Workflow ID: %s", workflow_id)
                 logger.info("🏷️ Execution ID: %s", execution_id)
                 logger.info("⏰ Start Time: %s", datetime.now(timezone.utc).isoformat())
@@ -1129,7 +1130,7 @@ def execute_workflow(
                         del params_for_mcp["applicant"]
 
                 results = loop.run_until_complete(
-                    execute_mcp_workflow(workflow, params_for_mcp)
+                    execute_mcp_workflow(workflow, params_for_mcp, endpoint_full)
                 )
                 logger.info(
                     "Received %d quotes from MCP workflow.",
@@ -1701,9 +1702,8 @@ def health_check() -> Dict[str, Any]:
             # Just check if endpoint is reachable
             health_data["checks"]["mcp_endpoint"] = {
                 "status": "pass",
-                "message": f"MCP endpoint configured: {MCP_ENDPOINT}",
-                "endpoint": MCP_ENDPOINT,
-                "health_endpoint": MCP_HEALTH_ENDPOINT,
+                "message": "MCP endpoints configured dynamically per execution",
+                "note": "Endpoints are passed via execution parameters",
             }
         except Exception as e:
             health_data["checks"]["mcp_endpoint"] = {"status": "error", "error": str(e)}
@@ -1769,8 +1769,7 @@ if __name__ == "__main__":
     print("🚀 Workflow Executor Modal App - Real Browser Automation")
     print("🌐 Powered by MCP browser control via ngrok")
     print("🗄️  Direct PostgreSQL connection using psycopg2")
-    print("🔗 MCP Endpoint:", MCP_ENDPOINT)
-    print("🏥 MCP Health Endpoint:", MCP_HEALTH_ENDPOINT)
+    print("🔗 MCP Endpoints: Configured dynamically per execution")
     print("🔄 VM Management:", VM_MANAGEMENT_ENDPOINT)
     print("\n📋 Available Functions:")
     print("  • execute_workflow() - Real browser automation execution")
@@ -1795,8 +1794,7 @@ if __name__ == "__main__":
 
     # Also log to logger so it's captured
     logger.info("Modal app initialized with enhanced logging and auto-restart capability")
-    logger.info("Using MCP endpoint: %s", MCP_ENDPOINT)
-    logger.info("Using MCP health endpoint: %s", MCP_HEALTH_ENDPOINT)
+    logger.info("MCP endpoints configured dynamically per execution")
     logger.info("Using VM management endpoint: %s", VM_MANAGEMENT_ENDPOINT)
 
 
@@ -1935,6 +1933,7 @@ def check_and_process_queued_jobs():
         # updates its status to 'running', and returns its details.
         # `FOR UPDATE SKIP LOCKED` ensures that concurrent workers
         # don't try to grab the same job.
+        # 🎯 NEW: Grab ALL queued jobs and route them based on machine assignment
         cur.execute(
             """
             WITH claimed_job AS (
@@ -1956,7 +1955,9 @@ def check_and_process_queued_jobs():
                 workflow_executions.id,
                 workflow_executions.workflow_id,
                 workflow_executions.execution_params,
-                workflow_executions.client_id;
+                workflow_executions.client_id,
+                workflow_executions.assigned_machine_id,
+                workflow_executions.mcp_endpoint;
             """,
             (modal_call_id,)
         )
@@ -1976,11 +1977,26 @@ def check_and_process_queued_jobs():
         workflow_id = job_to_process["workflow_id"]
         execution_params = job_to_process["execution_params"] or {}
         client_id = job_to_process["client_id"]
+        assigned_machine_id = job_to_process["assigned_machine_id"]
+        mcp_endpoint = job_to_process["mcp_endpoint"]
 
+        # 🎯 Validate that we have machine assignment and endpoint
+        if not assigned_machine_id or not mcp_endpoint:
+            logger.error("❌ Execution %s missing machine assignment or endpoint", execution_id)
+            return {
+                "status": "missing_machine_data",
+                "execution_id": execution_id,
+                "machine_id": assigned_machine_id,
+                "endpoint": mcp_endpoint,
+                "coordinator_id": coordinator_id
+            }
+        
         logger.info(
-            "✅ Claimed execution ID %s for workflow %s. Dispatching to executor...",
+            "✅ Claimed execution ID %s for workflow %s. Machine %s endpoint: %s",
             execution_id,
             workflow_id,
+            assigned_machine_id,
+            mcp_endpoint
         )
 
         # Now, call the main execution function asynchronously.
@@ -1991,6 +2007,7 @@ def check_and_process_queued_jobs():
             # Attempt to dispatch to Modal
             modal_future = execute_workflow.remote(
                 workflow_id=workflow_id,
+                mcp_endpoint=mcp_endpoint,
                 execution_params=execution_params,
                 client_id=client_id,
                 execution_id=execution_id,
