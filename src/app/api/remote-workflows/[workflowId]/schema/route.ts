@@ -292,7 +292,11 @@ export async function GET(
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
     
-    console.log(`📋 Generating dynamic schema for workflow ${workflowIdNum}...`);
+    // Check for version parameter in query string
+    const { searchParams } = new URL(request.url);
+    const versionNumber = searchParams.get('version');
+    
+    console.log(`📋 Generating dynamic schema for workflow ${workflowIdNum}${versionNumber ? ` version ${versionNumber}` : ' (active version)'}...`);
     
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -304,22 +308,89 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Fetch workflow data with active version
-    const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows_with_sequence')
-      .select('id, name, description, version, status, automation_sequence, estimated_duration_seconds')
-      .eq('id', workflowIdNum)
-      .single();
+    let workflow;
+    
+    if (versionNumber && versionNumber !== 'active') {
+      // Fetch specific version from deployed_workflow_versions
+      const { data: versionData, error: versionError } = await supabase
+        .from('deployed_workflow_versions')
+        .select('automation_sequence, automation_sequence_yaml, preferred_format, version_number, workflow_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('version_number', versionNumber)
+        .single();
 
-    if (workflowError || !workflow) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Workflow ${workflowIdNum} not found`,
-          timestamp: new Date().toISOString()
-        },
-        { status: 404 }
-      );
+      if (versionError || !versionData) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Version ${versionNumber} not found for workflow ${workflowIdNum}`,
+            timestamp: new Date().toISOString()
+          },
+          { status: 404 }
+        );
+      }
+
+      // Get basic workflow info
+      const { data: workflowInfo, error: workflowInfoError } = await supabase
+        .from('deployed_workflows')
+        .select('id, name, description, status, estimated_duration_seconds')
+        .eq('id', workflowIdNum)
+        .single();
+
+      if (workflowInfoError || !workflowInfo) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Workflow ${workflowIdNum} not found`,
+            timestamp: new Date().toISOString()
+          },
+          { status: 404 }
+        );
+      }
+
+      // Parse automation sequence based on preferred format
+      let automationSequence;
+      try {
+        if (versionData.preferred_format === 'yaml' && versionData.automation_sequence_yaml) {
+          const yaml = await import('js-yaml');
+          automationSequence = yaml.load(versionData.automation_sequence_yaml);
+        } else {
+          automationSequence = versionData.automation_sequence;
+        }
+      } catch (parseError) {
+        console.error('❌ Error parsing automation sequence:', parseError);
+        return NextResponse.json(
+          { success: false, error: 'Failed to parse automation sequence' },
+          { status: 500 }
+        );
+      }
+
+      // Combine data to match expected format
+      workflow = {
+        ...workflowInfo,
+        version: versionData.version_number,
+        automation_sequence: Array.isArray(automationSequence) ? automationSequence : [automationSequence]
+      };
+    } else {
+      // Fetch workflow data with active version (existing behavior)
+      const { data: activeWorkflow, error: workflowError } = await supabase
+        .from('deployed_workflows_with_sequence')
+        .select('id, name, description, version, status, automation_sequence, estimated_duration_seconds')
+        .eq('id', workflowIdNum)
+        .single();
+
+      if (workflowError || !activeWorkflow) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Workflow ${workflowIdNum} not found`,
+            timestamp: new Date().toISOString()
+          },
+          { status: 404 }
+        );
+      }
+      
+      workflow = activeWorkflow;
     }
 
     let inputParameters = {};

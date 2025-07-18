@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as yaml from 'js-yaml';
 
 interface WorkflowVersion {
   version_id: number;
@@ -135,11 +136,28 @@ export async function POST(
       if (detectedFormat === 'yaml') {
         yamlContent = automation_sequence;
         sequence_format = 'yaml';
-        // No JSONB storage for YAML uploads
+        // 🔧 FIX: Convert YAML to JSON for automation_sequence column (NOT NULL constraint)
+        try {
+          jsonbContent = yaml.load(automation_sequence);
+        } catch (error) {
+          const yamlError = error instanceof Error ? error : new Error('Unknown YAML parsing error');
+          return NextResponse.json(
+            { success: false, error: `Invalid YAML format: ${yamlError.message}` },
+            { status: 400 }
+          );
+        }
       } else if (detectedFormat === 'json') {
         // Store JSON in JSONB column, no YAML conversion
-        jsonbContent = JSON.parse(automation_sequence);
-        sequence_format = 'jsonb';
+        try {
+          jsonbContent = JSON.parse(automation_sequence);
+          sequence_format = 'jsonb';
+        } catch (error) {
+          const jsonError = error instanceof Error ? error : new Error('Unknown JSON parsing error');
+          return NextResponse.json(
+            { success: false, error: `Invalid JSON format: ${jsonError.message}` },
+            { status: 400 }
+          );
+        }
         // No YAML storage for JSON uploads
       } else {
         return NextResponse.json(
