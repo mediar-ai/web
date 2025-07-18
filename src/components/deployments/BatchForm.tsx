@@ -57,6 +57,21 @@ const CheckboxListField = ({
   const filteredOptions = options.filter(opt => 
     opt.label.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleSelectAll = () => {
+    options.forEach(option => {
+      const isSelected = selectedValues.some(v => String(v) === option.value);
+      if (!isSelected) {
+        onToggle(option.value, true);
+      }
+    });
+  };
+
+  const handleDeselectAll = () => {
+    selectedValues.forEach(value => {
+      onToggle(String(value), false);
+    });
+  };
   
   return (
     <div className="w-56">
@@ -68,8 +83,30 @@ const CheckboxListField = ({
         disabled={disabled}
       />
       <div className="max-h-48 overflow-y-auto border border-black rounded p-2 bg-gray-50">
-        <div className="mb-2 text-xs text-gray-600 font-medium">
-          {selectedValues.length} of {options.length} selected
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs text-gray-600 font-medium">
+            {selectedValues.length} of {options.length} selected
+          </span>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSelectAll}
+              disabled={disabled || selectedValues.length === options.length}
+              className="h-5 px-2 text-xs border-black hover:bg-gray-100"
+            >
+              All
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDeselectAll}
+              disabled={disabled || selectedValues.length === 0}
+              className="h-5 px-2 text-xs border-black hover:bg-gray-100"
+            >
+              None
+            </Button>
+          </div>
         </div>
         {filteredOptions.length > 0 ? (
           filteredOptions.map(option => {
@@ -173,28 +210,51 @@ const ParameterField = ({
     }
 
     if (schema.type === 'select' && schema.options) {
+      const unselectedOptions = schema.options.filter((option: { value: string; label: string }) => 
+        !values.some(v => String(v) === option.value)
+      );
+
+      const handleSelectAllAvailable = () => {
+        unselectedOptions.forEach((option: { value: string; label: string }) => {
+          const err = onAddValue(path, option.value);
+          if (err) setInputError(err);
+        });
+      };
+
       return (
-        <div className="w-56 flex gap-1">
-          <Select onValueChange={handleSelectAndAdd} value="" disabled={disabled}>
-            <SelectTrigger className="w-full h-6 text-xs font-mono border-black" size="sm">
-              <SelectValue placeholder="Select a value..." />
-            </SelectTrigger>
-            <SelectContent>
-              {schema.options.map((option: { value: string; label: string }) => {
-                const isSelected = values.some(v => String(v) === option.value);
-                return (
-                  <SelectItem
-                    key={option.value}
-                    value={option.value}
-                    disabled={isSelected}
-                    className={isSelected ? 'text-muted-foreground line-through' : ''}
-                  >
-                    {option.label}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+        <div className="w-56">
+          <div className="flex gap-1 mb-1">
+            <Select onValueChange={handleSelectAndAdd} value="" disabled={disabled}>
+              <SelectTrigger className="flex-1 h-6 text-xs font-mono border-black" size="sm">
+                <SelectValue placeholder="Select a value..." />
+              </SelectTrigger>
+              <SelectContent>
+                {schema.options.map((option: { value: string; label: string }) => {
+                  const isSelected = values.some(v => String(v) === option.value);
+                  return (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={isSelected}
+                      className={isSelected ? 'text-muted-foreground line-through' : ''}
+                    >
+                      {option.label}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSelectAllAvailable}
+              disabled={disabled || unselectedOptions.length === 0}
+              className="h-6 px-2 text-xs border-black hover:bg-gray-100 flex-shrink-0"
+              title={`Select all ${unselectedOptions.length} remaining options`}
+            >
+              All
+            </Button>
+          </div>
         </div>
       );
     }
