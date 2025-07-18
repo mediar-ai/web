@@ -1,35 +1,65 @@
 # MCP SDK Testing
 
-This directory contains comprehensive test scripts for validating our MCP (Model Context Protocol) server using the official MCP JavaScript SDK.
+This directory contains comprehensive test scripts for validating our MCP (Model Context Protocol) server using both the official MCP JavaScript SDK and Python SDK.
 
 ## Overview
 
-The MCP test script (`test_mcp_sdk.js`) provides automated testing for:
+### JavaScript SDK (`test_mcp_sdk.js`)
+The JavaScript test script provides automated testing for:
 - ✅ Connection and initialization
 - 🔍 Tool discovery from workflow database
 - 🚀 Tool execution with various scenarios
 - ⚠️ Error handling and validation
 - ⚡ Performance and concurrency testing
 
+### Python SDK (`test_mcp_python_sdk.py`)
+The Python test script provides equivalent functionality using the official MCP Python SDK:
+- 🔗 HTTP transport connection testing
+- 🔍 Tool discovery and validation
+- 🛠️ Insurance product configuration testing
+- 💰 Quote generation with multiple profiles
+- ⚠️ Error handling scenarios
+- ⚡ Performance benchmarking with concurrent requests
+
 ## Setup
 
-### 1. Install Dependencies
+### JavaScript SDK
+
+#### 1. Install Dependencies
 
 ```bash
 cd scripts
 npm install
 ```
 
-### 2. Environment Variables (Optional)
+#### 2. Environment Variables (Optional)
 
 ```bash
 # Override default MCP server URL
 export MCP_SERVER_URL="https://your-custom-domain.com/api/mcp"
 ```
 
+### Python SDK
+
+#### 1. Install Dependencies
+
+```bash
+# Install MCP Python SDK and dependencies
+pip install mcp httpx
+```
+
+#### 2. Verify Installation
+
+```bash
+# Test that dependencies are properly installed
+python -c "import mcp; print('MCP Python SDK installed successfully')"
+```
+
 ## Usage
 
-### Run All Tests Against Production
+### JavaScript SDK
+
+#### Run All Tests Against Production
 
 ```bash
 # Test production MCP server at https://app.mediar.ai/api/mcp
@@ -39,7 +69,7 @@ npm run test:mcp
 node test_mcp_sdk.js
 ```
 
-### Run All Tests Against Local Development
+#### Run All Tests Against Local Development
 
 ```bash
 # Test local MCP server at http://localhost:3000/api/mcp
@@ -47,6 +77,38 @@ npm run test:mcp:local
 
 # Or directly
 node test_mcp_sdk.js --local
+```
+
+### Python SDK
+
+#### Run All Tests Against Production
+
+```bash
+# Test production MCP server at https://app.mediar.ai/api/mcp
+npm run test:mcp:python
+
+# Or directly
+python test_mcp_python_sdk.py --production
+```
+
+#### Run All Tests Against Local Development
+
+```bash
+# Test local MCP server at http://localhost:3000/api/mcp
+npm run test:mcp:python:local
+
+# Or directly
+python test_mcp_python_sdk.py
+```
+
+#### Additional Python Options
+
+```bash
+# Custom server URL
+python test_mcp_python_sdk.py --server https://custom-server.com/api/mcp
+
+# JSON output for CI/CD integration
+python test_mcp_python_sdk.py --production --json
 ```
 
 ### Run Specific Test Categories
@@ -219,10 +281,17 @@ npm list @modelcontextprotocol/sdk
 
 ## Files
 
+### JavaScript SDK
 - `test_mcp_sdk.js` - Main test script with comprehensive MCP testing
 - `test_mcp_quick.js` - Quick health check for fast validation
 - `test_specific_quote.js` - Test quote tool with specific parameters
 - `mcp_integration_example.js` - Complete integration example with WorkflowAutomationClient
+
+### Python SDK
+- `test_mcp_python_sdk.py` - Main Python test script with comprehensive MCP testing
+- `test_mcp_python_quick.py` - Quick health check for fast validation (Python)
+
+### Common
 - `package.json` - Dependencies and npm scripts
 - `README_MCP_Testing.md` - This documentation file
 

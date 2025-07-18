@@ -454,13 +454,20 @@ graph TB
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold mb-3">2. Install JavaScript SDK (Optional)</h2>
+              <h2 className="text-xl font-semibold mb-3">2. Install SDK (Optional)</h2>
               <p className="text-gray-700 mb-3">
-                For programmatic access, install the official MCP JavaScript SDK:
+                For programmatic access, install the official MCP SDK for your preferred language:
               </p>
-              <CodeBlock language="bash" title="Install MCP SDK">
+              
+              <div className="space-y-4">
+                <CodeBlock language="bash" title="JavaScript/TypeScript SDK">
 {`npm install @modelcontextprotocol/sdk`}
-              </CodeBlock>
+                </CodeBlock>
+
+                <CodeBlock language="bash" title="Python SDK">
+{`pip install mcp httpx`}
+                </CodeBlock>
+              </div>
             </div>
 
             <div>
@@ -487,6 +494,24 @@ const client = new Client(
 
 await client.connect(transport);
 console.log('✅ Connected to MCP server');`}
+                </CodeBlock>
+
+                <CodeBlock language="python" title="Health Check (Python SDK)">
+{`import asyncio
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+async def test_connection():
+    # Connect to MCP server
+    async with streamablehttp_client('${urls.mcpEndpoint}') as (read_stream, write_stream, _):
+        async with ClientSession(read_stream, write_stream) as session:
+            # Test connection by listing tools
+            tools = await session.list_tools()
+            print(f'✅ Connected to MCP server')
+            print(f'📊 Tools available: {len(tools.tools)}')
+
+# Run the test
+asyncio.run(test_connection())`}
                 </CodeBlock>
               </div>
             </div>
@@ -517,6 +542,17 @@ result.tools.forEach((tool, index) => {
   console.log(\`   Description: \${tool.description}\`);
   console.log(\`   Parameters: \${Object.keys(tool.inputSchema?.properties || {}).length}\`);
 });`}
+                </CodeBlock>
+
+                <CodeBlock language="python" title="Get Tools (Python SDK)">
+{`# List available tools
+tools = await session.list_tools()
+
+for index, tool in enumerate(tools.tools, 1):
+    print(f"{index}. {tool.name}")
+    print(f"   Description: {tool.description}")
+    properties = tool.inputSchema.get("properties", {}) if tool.inputSchema else {}
+    print(f"   Parameters: {len(properties)}")`}
                 </CodeBlock>
               </div>
             </div>
@@ -572,6 +608,35 @@ const quoteResult = await client.callTool({
 });
 
 console.log('🎯 Execution queued:', quoteResult);`}
+                </CodeBlock>
+
+                <CodeBlock language="python" title="Execute Tool (Python SDK)">
+{`# Execute insurance product setup
+setup_result = await session.call_tool(
+    "insurance_set_available_products",
+    {
+        "execution_mode": "async",
+        "include_cache": True
+    }
+)
+
+# Execute insurance quote
+quote_result = await session.call_tool(
+    "insurance_best_plan_pro_insurance_quote",
+    {
+        "execution_mode": "async",
+        "applicant_dob": "01/15/1985",
+        "applicant_height": "5 10",
+        "applicant_weight": "180",
+        "applicant_gender": "Male",
+        "applicant_state": "California",
+        "applicant_zip_code": "90210",
+        "quote_type": "Face Value",
+        "quote_value": "50000"
+    }
+)
+
+print("🎯 Execution queued:", quote_result.content[0].text)`}
                 </CodeBlock>
               </div>
             </div>
