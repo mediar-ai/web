@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { CodeBlock } from '@/components/ui/code-block';
 import { Menu, X } from 'lucide-react';
@@ -45,6 +45,14 @@ interface MCPEndpoint {
   responseExample: string;
 }
 
+// Utility function to get the proper domain
+const getAppDomain = () => {
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://app.mediar.ai';
+};
+
 export default function MCPAPIDocsPage() {
   const mermaidRef = useRef<HTMLDivElement>(null);
   const [mcpTools, setMcpTools] = useState<MCPTool[]>([]);
@@ -53,12 +61,29 @@ export default function MCPAPIDocsPage() {
   const [loadingTools, setLoadingTools] = useState(true);
   const [toolsError, setToolsError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string>('overview');
+  const [appDomain, setAppDomain] = useState<string>('');
   
   // Copy-to-clipboard state
   const [copiedStates, setCopiedStates] = useState<Record<string, string>>({});
   
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // Set app domain on client side
+  useEffect(() => {
+    const domain = getAppDomain();
+    console.log('🔧 [MCP Docs] Setting domain:', domain);
+    setAppDomain(domain);
+  }, []);
+
+  // Memoized URLs that update when domain changes
+  const urls = useMemo(() => {
+    const domain = appDomain || 'https://app.mediar.ai';
+    return {
+      mcpEndpoint: `${domain}/api/mcp`,
+      healthCheck: `${domain}/api/mcp/health`,
+    };
+  }, [appDomain]);
   
   // Copy to clipboard utility function
   const copyToClipboard = async (text: string, key: string) => {
@@ -361,7 +386,7 @@ graph TB
                 </p>
               </div>
               <div className="p-4 border border-black rounded-lg">
-                <h3 className="font-semibold mb-2">🔗 Protocol</h3>
+                <h3 className="font-semibold mb-2">Protocol</h3>
                 <p className="text-sm text-gray-700">
                   HTTP JSON-RPC transport on <code>/api/mcp</code>
                 </p>
@@ -421,7 +446,7 @@ graph TB
       "command": "node",
       "args": [],
       "transport": "http",
-      "url": "http://localhost:3000/api/mcp"
+      "url": "${urls.mcpEndpoint}"
     }
   }
 }`}
@@ -434,14 +459,14 @@ graph TB
                 Verify the server is running and accessible:
               </p>
               <CodeBlock language="bash" title="Health Check">
-{`curl http://localhost:3000/api/mcp/health`}
+{`curl ${urls.healthCheck}`}
               </CodeBlock>
             </div>
 
             <div>
               <h2 className="text-xl font-semibold mb-3">3. List Available Tools</h2>
               <CodeBlock language="bash" title="Get Tools via MCP">
-{`curl -X POST http://localhost:3000/api/mcp \\
+{`curl -X POST ${urls.mcpEndpoint} \\
   -H "Content-Type: application/json" \\
   -d '{
     "jsonrpc": "2.0",
@@ -454,7 +479,7 @@ graph TB
             <div>
               <h2 className="text-xl font-semibold mb-3">4. Execute a Tool</h2>
               <CodeBlock language="bash" title="Execute Insurance Product Setup">
-{`curl -X POST http://localhost:3000/api/mcp \\
+{`curl -X POST ${urls.mcpEndpoint} \\
   -H "Content-Type: application/json" \\
   -d '{
     "jsonrpc": "2.0",
@@ -778,7 +803,7 @@ graph TB
               </p>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST http://localhost:3000/api/mcp \\
+                  `curl -X POST ${urls.mcpEndpoint} \\
   -H "Content-Type: application/json" \\
   -d '{
     "jsonrpc": "2.0",
@@ -798,7 +823,7 @@ graph TB
                 )}
                 className="px-4 py-2 bg-black text-white border border-black rounded hover:bg-gray-800 transition-colors text-sm font-medium"
               >
-                                  {copiedStates[`curl-${tool.name}`] || 'Copy Test Command'}
+                {copiedStates[`curl-${tool.name}`] || 'Copy Test Command'}
               </button>
             </div>
           </div>
