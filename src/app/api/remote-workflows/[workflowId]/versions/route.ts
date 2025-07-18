@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 interface WorkflowVersion {
   version_id: number;
