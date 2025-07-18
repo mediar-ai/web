@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { CodeBlock } from '@/components/ui/code-block';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Menu, X } from 'lucide-react';
 import mermaid from 'mermaid';
 
@@ -476,12 +477,21 @@ graph TB
                 Verify the server is running and accessible:
               </p>
               
-              <div className="space-y-4">
-                <CodeBlock language="bash" title="Health Check (curl)">
+              <Tabs defaultValue="curl" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="curl">curl</TabsTrigger>
+                  <TabsTrigger value="javascript">JavaScript</TabsTrigger>
+                  <TabsTrigger value="python">Python</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="curl">
+                  <CodeBlock language="bash" title="Health Check">
 {`curl ${urls.healthCheck}`}
-                </CodeBlock>
-
-                <CodeBlock language="javascript" title="Health Check (JavaScript SDK)">
+                  </CodeBlock>
+                </TabsContent>
+                
+                <TabsContent value="javascript">
+                  <CodeBlock language="javascript" title="Health Check">
 {`import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -494,9 +504,11 @@ const client = new Client(
 
 await client.connect(transport);
 console.log('✅ Connected to MCP server');`}
-                </CodeBlock>
-
-                <CodeBlock language="python" title="Health Check (Python SDK)">
+                  </CodeBlock>
+                </TabsContent>
+                
+                <TabsContent value="python">
+                  <CodeBlock language="python" title="Health Check">
 {`import asyncio
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -512,8 +524,9 @@ async def test_connection():
 
 # Run the test
 asyncio.run(test_connection())`}
-                </CodeBlock>
-              </div>
+                  </CodeBlock>
+                </TabsContent>
+              </Tabs>
             </div>
 
             <div>
@@ -522,8 +535,15 @@ asyncio.run(test_connection())`}
                 Discover automation workflows available as MCP tools:
               </p>
               
-              <div className="space-y-4">
-                <CodeBlock language="bash" title="Get Tools (curl)">
+              <Tabs defaultValue="curl" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="curl">curl</TabsTrigger>
+                  <TabsTrigger value="javascript">JavaScript</TabsTrigger>
+                  <TabsTrigger value="python">Python</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="curl">
+                  <CodeBlock language="bash" title="Get Tools">
 {`curl -X POST ${urls.mcpEndpoint} \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -531,9 +551,11 @@ asyncio.run(test_connection())`}
     "id": 1,
     "method": "tools/list"
   }'`}
-                </CodeBlock>
-
-                <CodeBlock language="javascript" title="Get Tools (JavaScript SDK)">
+                  </CodeBlock>
+                </TabsContent>
+                
+                <TabsContent value="javascript">
+                  <CodeBlock language="javascript" title="Get Tools">
 {`// List available tools
 const result = await client.listTools();
 
@@ -542,9 +564,11 @@ result.tools.forEach((tool, index) => {
   console.log(\`   Description: \${tool.description}\`);
   console.log(\`   Parameters: \${Object.keys(tool.inputSchema?.properties || {}).length}\`);
 });`}
-                </CodeBlock>
-
-                <CodeBlock language="python" title="Get Tools (Python SDK)">
+                  </CodeBlock>
+                </TabsContent>
+                
+                <TabsContent value="python">
+                  <CodeBlock language="python" title="Get Tools">
 {`# List available tools
 tools = await session.list_tools()
 
@@ -553,8 +577,9 @@ for index, tool in enumerate(tools.tools, 1):
     print(f"   Description: {tool.description}")
     properties = tool.inputSchema.get("properties", {}) if tool.inputSchema else {}
     print(f"   Parameters: {len(properties)}")`}
-                </CodeBlock>
-              </div>
+                  </CodeBlock>
+                </TabsContent>
+              </Tabs>
             </div>
 
             <div>
@@ -563,8 +588,15 @@ for index, tool in enumerate(tools.tools, 1):
                 Execute automation workflows through the MCP interface:
               </p>
               
-              <div className="space-y-4">
-                <CodeBlock language="bash" title="Execute Tool (curl)">
+              <Tabs defaultValue="curl" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="curl">curl</TabsTrigger>
+                  <TabsTrigger value="javascript">JavaScript</TabsTrigger>
+                  <TabsTrigger value="python">Python</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="curl">
+                  <CodeBlock language="bash" title="Execute Tool">
 {`curl -X POST ${urls.mcpEndpoint} \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -579,9 +611,11 @@ for index, tool in enumerate(tools.tools, 1):
       }
     }
   }'`}
-                </CodeBlock>
-
-                <CodeBlock language="javascript" title="Execute Tool (JavaScript SDK)">
+                  </CodeBlock>
+                </TabsContent>
+                
+                <TabsContent value="javascript">
+                  <CodeBlock language="javascript" title="Execute Tool">
 {`// Execute insurance product setup
 const setupResult = await client.callTool({
   name: 'insurance_set_available_products',
@@ -608,9 +642,11 @@ const quoteResult = await client.callTool({
 });
 
 console.log('🎯 Execution queued:', quoteResult);`}
-                </CodeBlock>
-
-                <CodeBlock language="python" title="Execute Tool (Python SDK)">
+                  </CodeBlock>
+                </TabsContent>
+                
+                <TabsContent value="python">
+                  <CodeBlock language="python" title="Execute Tool">
 {`# Execute insurance product setup
 setup_result = await session.call_tool(
     "insurance_set_available_products",
@@ -637,8 +673,9 @@ quote_result = await session.call_tool(
 )
 
 print("🎯 Execution queued:", quote_result.content[0].text)`}
-                </CodeBlock>
-              </div>
+                  </CodeBlock>
+                </TabsContent>
+              </Tabs>
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
