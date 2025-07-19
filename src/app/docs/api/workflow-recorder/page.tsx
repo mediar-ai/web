@@ -21,8 +21,10 @@ export default function WorkflowRecorderAPIDocsPage() {
   const [cachedResponses, setCachedResponses] = useState<CachedResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedStates, setCopiedStates] = useState<{[key: string]: boolean}>({});
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     fetchCachedResponses();
   }, []);
 
@@ -55,6 +57,9 @@ export default function WorkflowRecorderAPIDocsPage() {
   };
 
   const downloadPostmanCollection = () => {
+    // Check if we're in the browser and component is mounted
+    if (!mounted || typeof window === 'undefined') return;
+    
     const endpoints = [
       {
         name: "List Events",
@@ -141,6 +146,23 @@ export default function WorkflowRecorderAPIDocsPage() {
       </pre>
     );
   };
+
+  // Show loading state during SSR/before mount
+  if (!mounted) {
+    return (
+      <div className="max-w-6xl mx-auto p-6 space-y-8">
+        <div className="text-center space-y-4">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <Database className="w-8 h-8 text-blue-600" />
+            <h1 className="text-3xl font-bold mb-2">Workflow Recorder API Documentation</h1>
+          </div>
+          <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+            Loading documentation...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
@@ -317,7 +339,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyToClipboard(`curl -X GET "${window.location.origin}/api/workflow-recorder?user_id=22f84efc-3049-2fb8-22f8-4efc30492fb8&limit=10&event_type=ui_tree" \\
+                      onClick={() => copyToClipboard(`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder?user_id=22f84efc-3049-2fb8-22f8-4efc30492fb8&limit=10&event_type=ui_tree" \\
   -H "Accept: application/json"`, 'events-curl')}
                       className="text-gray-400 hover:text-white"
                     >
@@ -325,7 +347,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                     </Button>
                   </div>
                   <div>
-                    {`curl -X GET "${window.location.origin}/api/workflow-recorder?user_id=22f84efc-3049-2fb8-22f8-4efc30492fb8&limit=10&event_type=ui_tree" \\
+                    {`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder?user_id=22f84efc-3049-2fb8-22f8-4efc30492fb8&limit=10&event_type=ui_tree" \\
   -H "Accept: application/json"`}
                   </div>
                 </div>
@@ -431,7 +453,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyToClipboard(`curl -X GET "${window.location.origin}/api/workflow-recorder/52490?include_raw=true" \\
+                      onClick={() => copyToClipboard(`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/52490?include_raw=true" \\
   -H "Accept: application/json"`, 'event-details-curl')}
                       className="text-gray-400 hover:text-white"
                     >
@@ -439,7 +461,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                     </Button>
                   </div>
                   <div>
-                    {`curl -X GET "${window.location.origin}/api/workflow-recorder/52490?include_raw=true" \\
+                    {`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/52490?include_raw=true" \\
   -H "Accept: application/json"`}
                   </div>
                 </div>
@@ -673,7 +695,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyToClipboard(`curl -X GET "${window.location.origin}/api/workflow-recorder/analytics?time_range=7d&application=Chrome" \\
+                      onClick={() => copyToClipboard(`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/analytics?time_range=7d&application=Chrome" \\
   -H "Accept: application/json"`, 'analytics-curl')}
                       className="text-gray-400 hover:text-white"
                     >
@@ -681,7 +703,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                     </Button>
                   </div>
                   <div>
-                    {`curl -X GET "${window.location.origin}/api/workflow-recorder/analytics?time_range=7d&application=Chrome" \\
+                    {`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/analytics?time_range=7d&application=Chrome" \\
   -H "Accept: application/json"`}
                   </div>
                 </div>
@@ -719,3 +741,6 @@ export default function WorkflowRecorderAPIDocsPage() {
     </div>
   );
 }
+
+// Force dynamic rendering to avoid SSR issues with window access
+export const dynamic = 'force-dynamic';
