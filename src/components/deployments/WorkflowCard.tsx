@@ -134,6 +134,12 @@ export function WorkflowCard({
     const executionParams = await fetchExecutionDetails(executionId);
     if (!executionParams) {
       console.log(`No execution parameters found for execution ${executionId}`);
+      // Mark as checked even if no params to avoid infinite retries
+      setExecutionCacheResults(prev => new Map(prev).set(executionId, {
+        cached: false,
+        status: 'failed',
+        error_message: 'No execution parameters available'
+      }));
       return;
     }
 
@@ -149,6 +155,12 @@ export function WorkflowCard({
 
       if (!response.ok) {
         console.warn(`Cache lookup API returned ${response.status} for execution ${executionId}`);
+        // Mark as checked to prevent infinite retries on API errors
+        setExecutionCacheResults(prev => new Map(prev).set(executionId, {
+          cached: false,
+          status: 'failed',
+          error_message: `API error: ${response.status}`
+        }));
         return;
       }
 
@@ -164,11 +176,21 @@ export function WorkflowCard({
         console.log(`✅ Cache hit found for execution ${executionId} from execution ${data.cache_info?.source_execution_id}`);
       } else {
         console.log(`ℹ️ No cache available for execution ${executionId} parameters`);
+        // 🔧 FIX: Mark cache miss as checked to prevent infinite retries
+        setExecutionCacheResults(prev => new Map(prev).set(executionId, {
+          cached: false,
+          status: 'completed' // Indicates we checked but no cache available
+        }));
       }
     } catch (error) {
       // Log the error but don't throw - this is a non-critical enhancement feature
       console.warn(`Cache lookup failed for execution ${executionId}:`, error);
-      // Don't set any cache results on error to avoid confusion
+      // 🔧 FIX: Mark failed lookups as checked to prevent infinite retries
+      setExecutionCacheResults(prev => new Map(prev).set(executionId, {
+        cached: false,
+        status: 'failed',
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      }));
     }
   }, [workflow.id, fetchExecutionDetails, setExecutionCacheResults, liveExecutions]);
 
