@@ -68,6 +68,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(errorResponse, { status: 500 });
     }
 
+    interface UserData {
+      events: number;
+      sessions: Set<string>;
+      applications: Set<string>;
+    }
+
     // Process events for analytics
     const analytics = {
       overview: {
@@ -81,9 +87,9 @@ export async function GET(request: NextRequest) {
         }
       },
       
-      event_types: {} as { [key: string]: number },
-      applications: {} as { [key: string]: number },
-      users: {} as { [key: string]: { events: number, sessions: Set<string>, applications: Set<string> } },
+      event_types: {} as Record<string, number>,
+      applications: {} as Record<string, number>,
+      users: {} as Record<string, UserData>,
       
       timeline: [] as { date: string, events: number, sessions: number, users: number }[],
       
@@ -157,7 +163,15 @@ export async function GET(request: NextRequest) {
             ? JSON.parse(event.payload.event.screen.ui_tree)
             : event.payload.event.screen.ui_tree;
           
-          const countElements = (node: any): { total: number, interactive: number } => {
+          interface UINode {
+            attributes?: {
+              is_keyboard_focusable?: boolean;
+              role?: string;
+            };
+            children?: UINode[];
+          }
+
+          const countElements = (node: UINode): { total: number, interactive: number } => {
             if (!node) return { total: 0, interactive: 0 };
             
             let total = 1;
@@ -174,7 +188,7 @@ export async function GET(request: NextRequest) {
             }
             
             if (node.children) {
-              node.children.forEach((child: any) => {
+              node.children.forEach((child: UINode) => {
                 const childCounts = countElements(child);
                 total += childCounts.total;
                 interactive += childCounts.interactive;
@@ -189,7 +203,7 @@ export async function GET(request: NextRequest) {
           totalInteractiveElements += counts.interactive;
           maxUIElements = Math.max(maxUIElements, counts.total);
           uiTreeCount++;
-        } catch (e) {
+        } catch {
           // Skip malformed UI trees
         }
       }
@@ -262,7 +276,7 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // Convert user data to serializable format
-    const processedUsers: { [key: string]: { events: number, sessions: number, applications: number } } = {};
+    const processedUsers: Record<string, { events: number, sessions: number, applications: number }> = {};
     Object.entries(analytics.users).forEach(([userId, userData]) => {
       processedUsers[userId] = {
         events: userData.events,

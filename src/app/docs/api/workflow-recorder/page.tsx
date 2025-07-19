@@ -11,8 +11,8 @@ interface CachedResponse {
   endpointPath: string;
   httpMethod: string;
   statusCode: number;
-  responseBody: any;
-  requestParams: any;
+  responseBody: Record<string, unknown>;
+  requestParams: Record<string, unknown>;
   executionTimeMs: number;
   timestamp: string;
 }
@@ -133,7 +133,7 @@ export default function WorkflowRecorderAPIDocsPage() {
     );
   };
 
-  const formatJsonWithSyntaxHighlighting = (json: any) => {
+  const formatJsonWithSyntaxHighlighting = (json: Record<string, unknown>) => {
     const jsonString = JSON.stringify(json, null, 2);
     return (
       <pre className="text-sm overflow-x-auto bg-gray-50 p-4 rounded-lg border">

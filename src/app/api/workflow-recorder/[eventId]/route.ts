@@ -46,17 +46,39 @@ export async function GET(
     }
 
     // Extract UI tree elements for easier analysis
-    const extractUIElements = (uiTree: any): any[] => {
+    interface UIElement {
+      id: string;
+      path: string;
+      role: string;
+      name: string;
+      bounds?: number[];
+      properties: Record<string, unknown>;
+      is_interactive: boolean;
+    }
+
+    interface UINode {
+      id?: string;
+      attributes?: {
+        role?: string;
+        name?: string;
+        bounds?: number[];
+        properties?: Record<string, unknown>;
+        is_keyboard_focusable?: boolean;
+      };
+      children?: UINode[];
+    }
+
+    const extractUIElements = (uiTree: UINode): UIElement[] => {
       if (!uiTree) return [];
       
-      const elements: any[] = [];
+      const elements: UIElement[] = [];
       
-      const traverse = (node: any, path: string = '') => {
+      const traverse = (node: UINode, path: string = '') => {
         if (node.attributes) {
           elements.push({
-            id: node.id,
+            id: node.id || '',
             path,
-            role: node.attributes.role,
+            role: node.attributes.role || '',
             name: node.attributes.name || '',
             bounds: node.attributes.bounds,
             properties: node.attributes.properties || {},
@@ -70,7 +92,7 @@ export async function GET(
         }
         
         if (node.children) {
-          node.children.forEach((child: any, index: number) => {
+          node.children.forEach((child: UINode, index: number) => {
             traverse(child, `${path}/${index}`);
           });
         }
@@ -81,18 +103,18 @@ export async function GET(
     };
 
     // Parse UI tree if available
-    let uiTreeData = null;
-    let uiElements: any[] = [];
+    let uiTreeData: UINode | null = null;
+    let uiElements: UIElement[] = [];
     
     if (event.payload?.event?.screen?.ui_tree) {
       try {
         uiTreeData = typeof event.payload.event.screen.ui_tree === 'string' 
-          ? JSON.parse(event.payload.event.screen.ui_tree)
-          : event.payload.event.screen.ui_tree;
+          ? JSON.parse(event.payload.event.screen.ui_tree) as UINode
+          : event.payload.event.screen.ui_tree as UINode;
         
         uiElements = extractUIElements(uiTreeData);
-      } catch (e) {
-        console.error('Failed to parse UI tree:', e);
+      } catch (error) {
+        console.error('Failed to parse UI tree:', error);
       }
     }
 
@@ -121,13 +143,11 @@ export async function GET(
       ui_analysis: {
         total_elements: uiElements.length,
         interactive_elements: uiElements.filter(el => el.is_interactive).length,
-        element_types: uiElements.reduce((acc: any, el) => {
-          acc[el.role] = (acc[el.role] || 0) + 1;
+        element_types: uiElements.reduce((acc: Record<string, number>, element) => {
+          acc[element.role] = (acc[element.role] || 0) + 1;
           return acc;
         }, {}),
-        applications: [...new Set(uiElements.map(el => 
-          event.payload?.event?.screen?.application_name
-        ).filter(Boolean))],
+        applications: [...new Set([event.payload?.event?.screen?.application_name].filter(Boolean))],
         ui_tree_size_bytes: JSON.stringify(uiTreeData || {}).length
       },
       
@@ -154,14 +174,14 @@ export async function GET(
       }
     };
 
-    // Include raw data if requested
-    if (includeRawData) {
-      (eventDetails as any).raw_data = {
-        full_event: event,
-        ui_tree: uiTreeData,
-        all_ui_elements: uiElements
-      };
-    }
+          // Include raw data if requested
+      if (includeRawData) {
+        (eventDetails as typeof eventDetails & { raw_data: unknown }).raw_data = {
+          full_event: event,
+          ui_tree: uiTreeData,
+          all_ui_elements: uiElements
+        };
+      }
 
     const responseData = {
       success: true,
