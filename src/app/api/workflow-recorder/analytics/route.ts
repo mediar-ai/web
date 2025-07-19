@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     
     // Build the base query
     let query = supabase
-      .from('events')
+      .from('low_level_events')
       .select('*')
       .gte('created_at', startDate)
       .order('created_at', { ascending: false });

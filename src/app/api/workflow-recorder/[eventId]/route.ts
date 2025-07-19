@@ -21,7 +21,7 @@ export async function GET(
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     const { data: event, error: eventError } = await supabase
-      .from('events')
+      .from('low_level_events')
       .select('*')
       .eq('id', eventId)
       .single();

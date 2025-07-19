@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     
     // Build the base query
     let query = supabase
-      .from('events')
+      .from('low_level_events')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);

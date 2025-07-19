@@ -343,7 +343,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                       {copiedStates['events-curl'] ? '✓' : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
-                  <pre className="text-gray-700">
+                  <pre className="text-gray-700 whitespace-pre-wrap break-all">
                     {`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder?user_id=22f84efc-3049-2fb8-22f8-4efc30492fb8&limit=10&event_type=ui_tree" \\
   -H "Accept: application/json"`}
                   </pre>
@@ -457,7 +457,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                       {copiedStates['event-details-curl'] ? '✓' : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
-                  <pre className="text-gray-700">
+                  <pre className="text-gray-700 whitespace-pre-wrap break-all">
                     {`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/52490?include_raw=true" \\
   -H "Accept: application/json"`}
                   </pre>
@@ -695,7 +695,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                       {copiedStates['analytics-curl'] ? '✓' : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
-                  <pre className="text-gray-700">
+                  <pre className="text-gray-700 whitespace-pre-wrap break-all">
                     {`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/analytics?time_range=7d&application=Chrome" \\
   -H "Accept: application/json"`}
                   </pre>

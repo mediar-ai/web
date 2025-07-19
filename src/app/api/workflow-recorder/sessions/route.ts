@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     
     // Get session aggregations with event counts
     let query = supabase
-      .from('events')
+      .from('low_level_events')
       .select(`
         session_id,
         user_id,
