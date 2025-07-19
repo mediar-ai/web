@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Download, ExternalLink, Play, Code, BarChart3, Database, Search, Users, Calendar, Zap } from 'lucide-react';
+import { Copy, Download, ExternalLink, Play, Code, BarChart3, Database, Search, Users, Calendar } from 'lucide-react';
 
 interface CachedResponse {
   endpointPath: string;
@@ -178,16 +178,13 @@ export default function WorkflowRecorderAPIDocsPage() {
         </p>
         
         <div className="flex items-center justify-center gap-4 mt-6">
-          <Badge variant="secondary" className="text-sm px-3 py-1">
-            <Zap className="w-4 h-4 mr-1" />
+          <Badge variant="outline" className="text-sm px-3 py-1 border-black">
             Low-Level Data Access
           </Badge>
-          <Badge variant="secondary" className="text-sm px-3 py-1">
-            <BarChart3 className="w-4 h-4 mr-1" />
+          <Badge variant="outline" className="text-sm px-3 py-1 border-black">
             Analytics Ready
           </Badge>
-          <Badge variant="secondary" className="text-sm px-3 py-1">
-            <Search className="w-4 h-4 mr-1" />
+          <Badge variant="outline" className="text-sm px-3 py-1 border-black">
             Advanced Filtering
           </Badge>
         </div>
@@ -212,7 +209,7 @@ export default function WorkflowRecorderAPIDocsPage() {
       </div>
 
       {/* API Overview Diagram */}
-      <Card>
+      <Card className="border-black">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database className="w-5 h-5" />
@@ -220,36 +217,36 @@ export default function WorkflowRecorderAPIDocsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="bg-gray-50 p-6 rounded-lg border-2 border-dashed border-gray-300">
+          <div className="bg-gray-50 p-6 rounded-lg border border-black">
             <div className="font-mono text-sm space-y-2">
-              <div className="text-blue-600 font-bold">/api/workflow-recorder</div>
+              <div className="font-bold">/api/workflow-recorder</div>
               <div className="ml-4 space-y-1">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">GET</Badge>
+                  <Badge variant="outline" className="text-xs border-black">GET</Badge>
                   <span>List and filter events with pagination</span>
                 </div>
               </div>
               
-              <div className="text-blue-600 font-bold">/api/workflow-recorder/[eventId]</div>
+              <div className="font-bold">/api/workflow-recorder/[eventId]</div>
               <div className="ml-4 space-y-1">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">GET</Badge>
+                  <Badge variant="outline" className="text-xs border-black">GET</Badge>
                   <span>Get detailed event info with UI analysis</span>
                 </div>
               </div>
               
-              <div className="text-blue-600 font-bold">/api/workflow-recorder/sessions</div>
+              <div className="font-bold">/api/workflow-recorder/sessions</div>
               <div className="ml-4 space-y-1">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">GET</Badge>
+                  <Badge variant="outline" className="text-xs border-black">GET</Badge>
                   <span>Query sessions with aggregated metrics</span>
                 </div>
               </div>
               
-              <div className="text-blue-600 font-bold">/api/workflow-recorder/analytics</div>
+              <div className="font-bold">/api/workflow-recorder/analytics</div>
               <div className="ml-4 space-y-1">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">GET</Badge>
+                  <Badge variant="outline" className="text-xs border-black">GET</Badge>
                   <span>Get analytics and insights across time ranges</span>
                 </div>
               </div>
@@ -281,7 +278,7 @@ export default function WorkflowRecorderAPIDocsPage() {
 
         {/* Events Tab */}
         <TabsContent value="events">
-          <Card>
+          <Card className="border-black">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Database className="w-5 h-5" />
@@ -294,12 +291,12 @@ export default function WorkflowRecorderAPIDocsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Endpoint Info */}
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <div className="bg-gray-50 p-4 rounded-lg border border-black">
                 <div className="flex items-center gap-2 mb-2">
-                  <Badge className="bg-blue-600">GET</Badge>
+                  <Badge variant="outline" className="border-black">GET</Badge>
                   <code className="text-sm font-mono">/api/workflow-recorder</code>
                 </div>
-                <p className="text-sm text-blue-700">
+                <p className="text-sm text-gray-700">
                   Returns paginated list of workflow recorder events with metadata and filtering options.
                 </p>
               </div>
@@ -318,14 +315,14 @@ export default function WorkflowRecorderAPIDocsPage() {
                     { name: 'event_type', type: 'string', description: 'Filter by event type (ui_tree, interaction, etc.)' },
                     { name: 'application', type: 'string', description: 'Filter by application name (partial match)' }
                   ].map((param) => (
-                    <div key={param.name} className="bg-gray-50 p-3 rounded border">
-                      <div className="flex items-center gap-2 mb-1">
-                        <code className="text-sm font-mono text-blue-600">{param.name}</code>
-                        <Badge variant="outline" className="text-xs">{param.type}</Badge>
-                        {param.default && <Badge variant="secondary" className="text-xs">default: {param.default}</Badge>}
-                      </div>
-                      <p className="text-sm text-gray-600">{param.description}</p>
-                    </div>
+                                    <div key={param.name} className="bg-gray-50 p-3 rounded border border-black">
+                  <div className="flex items-center gap-2 mb-1">
+                    <code className="text-sm font-mono">{param.name}</code>
+                    <Badge variant="outline" className="text-xs border-black">{param.type}</Badge>
+                    {param.default && <Badge variant="outline" className="text-xs border-black">default: {param.default}</Badge>}
+                  </div>
+                  <p className="text-sm text-gray-600">{param.description}</p>
+                </div>
                   ))}
                 </div>
               </div>
@@ -333,23 +330,23 @@ export default function WorkflowRecorderAPIDocsPage() {
               {/* Example Request */}
               <div>
                 <h4 className="font-semibold mb-3">Example Request</h4>
-                <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
+                <div className="bg-gray-50 p-4 rounded-lg border border-black font-mono text-sm">
                   <div className="flex items-center justify-between mb-2">
-                    <span>curl</span>
+                    <span className="text-gray-700">curl</span>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => copyToClipboard(`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder?user_id=22f84efc-3049-2fb8-22f8-4efc30492fb8&limit=10&event_type=ui_tree" \\
   -H "Accept: application/json"`, 'events-curl')}
-                      className="text-gray-400 hover:text-white"
+                      className="text-gray-600 hover:text-gray-800"
                     >
                       {copiedStates['events-curl'] ? '✓' : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
-                  <div>
+                  <pre className="text-gray-700">
                     {`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder?user_id=22f84efc-3049-2fb8-22f8-4efc30492fb8&limit=10&event_type=ui_tree" \\
   -H "Accept: application/json"`}
-                  </div>
+                  </pre>
                 </div>
               </div>
 
@@ -395,7 +392,7 @@ export default function WorkflowRecorderAPIDocsPage() {
 
         {/* Event Details Tab */}
         <TabsContent value="event-details">
-          <Card>
+          <Card className="border-black">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Search className="w-5 h-5" />
@@ -408,12 +405,12 @@ export default function WorkflowRecorderAPIDocsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Endpoint Info */}
-              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <div className="bg-gray-50 p-4 rounded-lg border border-black">
                 <div className="flex items-center gap-2 mb-2">
-                  <Badge className="bg-green-600">GET</Badge>
+                  <Badge variant="outline" className="border-black">GET</Badge>
                   <code className="text-sm font-mono">/api/workflow-recorder/[eventId]</code>
                 </div>
-                <p className="text-sm text-green-700">
+                <p className="text-sm text-gray-700">
                   Returns detailed analysis of a specific event with UI element extraction and selector hints.
                 </p>
               </div>
@@ -421,11 +418,11 @@ export default function WorkflowRecorderAPIDocsPage() {
               {/* Path Parameters */}
               <div>
                 <h4 className="font-semibold mb-3">Path Parameters</h4>
-                <div className="bg-gray-50 p-3 rounded border">
+                <div className="bg-gray-50 p-3 rounded border border-black">
                   <div className="flex items-center gap-2 mb-1">
-                    <code className="text-sm font-mono text-blue-600">eventId</code>
-                    <Badge variant="outline" className="text-xs">string</Badge>
-                    <Badge variant="destructive" className="text-xs">required</Badge>
+                    <code className="text-sm font-mono">eventId</code>
+                    <Badge variant="outline" className="text-xs border-black">string</Badge>
+                    <Badge variant="outline" className="text-xs border-black">required</Badge>
                   </div>
                   <p className="text-sm text-gray-600">The unique identifier of the event to retrieve</p>
                 </div>
@@ -434,11 +431,11 @@ export default function WorkflowRecorderAPIDocsPage() {
               {/* Query Parameters */}
               <div>
                 <h4 className="font-semibold mb-3">Query Parameters</h4>
-                <div className="bg-gray-50 p-3 rounded border">
+                <div className="bg-gray-50 p-3 rounded border border-black">
                   <div className="flex items-center gap-2 mb-1">
-                    <code className="text-sm font-mono text-blue-600">include_raw</code>
-                    <Badge variant="outline" className="text-xs">boolean</Badge>
-                    <Badge variant="secondary" className="text-xs">default: false</Badge>
+                    <code className="text-sm font-mono">include_raw</code>
+                    <Badge variant="outline" className="text-xs border-black">boolean</Badge>
+                    <Badge variant="outline" className="text-xs border-black">default: false</Badge>
                   </div>
                   <p className="text-sm text-gray-600">Include raw event data and complete UI tree in response</p>
                 </div>
@@ -447,23 +444,23 @@ export default function WorkflowRecorderAPIDocsPage() {
               {/* Example Request */}
               <div>
                 <h4 className="font-semibold mb-3">Example Request</h4>
-                <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
+                <div className="bg-gray-50 p-4 rounded-lg border border-black font-mono text-sm">
                   <div className="flex items-center justify-between mb-2">
-                    <span>curl</span>
+                    <span className="text-gray-700">curl</span>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => copyToClipboard(`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/52490?include_raw=true" \\
   -H "Accept: application/json"`, 'event-details-curl')}
-                      className="text-gray-400 hover:text-white"
+                      className="text-gray-600 hover:text-gray-800"
                     >
                       {copiedStates['event-details-curl'] ? '✓' : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
-                  <div>
+                  <pre className="text-gray-700">
                     {`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/52490?include_raw=true" \\
   -H "Accept: application/json"`}
-                  </div>
+                  </pre>
                 </div>
               </div>
 
@@ -493,9 +490,8 @@ export default function WorkflowRecorderAPIDocsPage() {
                       icon: <Database className="w-5 h-5 text-orange-600" />
                     }
                   ].map((useCase, index) => (
-                    <div key={index} className="bg-gray-50 p-4 rounded-lg border">
+                    <div key={index} className="bg-gray-50 p-4 rounded-lg border border-black">
                       <div className="flex items-center gap-3 mb-2">
-                        {useCase.icon}
                         <h5 className="font-medium">{useCase.title}</h5>
                       </div>
                       <p className="text-sm text-gray-600">{useCase.description}</p>
@@ -509,7 +505,7 @@ export default function WorkflowRecorderAPIDocsPage() {
 
         {/* Sessions Tab */}
         <TabsContent value="sessions">
-          <Card>
+          <Card className="border-black">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="w-5 h-5" />
@@ -522,12 +518,12 @@ export default function WorkflowRecorderAPIDocsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Endpoint Info */}
-              <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+              <div className="bg-gray-50 p-4 rounded-lg border border-black">
                 <div className="flex items-center gap-2 mb-2">
-                  <Badge className="bg-purple-600">GET</Badge>
+                  <Badge variant="outline" className="border-black">GET</Badge>
                   <code className="text-sm font-mono">/api/workflow-recorder/sessions</code>
                 </div>
-                <p className="text-sm text-purple-700">
+                <p className="text-sm text-gray-700">
                   Returns aggregated session data with metrics for analyzing user workflow patterns.
                 </p>
               </div>
@@ -553,10 +549,7 @@ export default function WorkflowRecorderAPIDocsPage() {
                       icon: <Database className="w-5 h-5 text-purple-600" />
                     }
                   ].map((feature, index) => (
-                    <div key={index} className="bg-gray-50 p-4 rounded-lg border text-center">
-                      <div className="flex justify-center mb-2">
-                        {feature.icon}
-                      </div>
+                    <div key={index} className="bg-gray-50 p-4 rounded-lg border border-black text-center">
                       <h5 className="font-medium mb-1">{feature.title}</h5>
                       <p className="text-sm text-gray-600">{feature.description}</p>
                     </div>
@@ -567,7 +560,7 @@ export default function WorkflowRecorderAPIDocsPage() {
               {/* Example Response Structure */}
               <div>
                 <h4 className="font-semibold mb-3">Response Structure</h4>
-                <div className="bg-gray-50 p-4 rounded-lg border">
+                <div className="bg-gray-50 p-4 rounded-lg border border-black">
                   <pre className="text-sm text-gray-700">
 {`{
   "success": true,
@@ -605,7 +598,7 @@ export default function WorkflowRecorderAPIDocsPage() {
 
         {/* Analytics Tab */}
         <TabsContent value="analytics">
-          <Card>
+          <Card className="border-black">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5" />
@@ -618,12 +611,12 @@ export default function WorkflowRecorderAPIDocsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Endpoint Info */}
-              <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+              <div className="bg-gray-50 p-4 rounded-lg border border-black">
                 <div className="flex items-center gap-2 mb-2">
-                  <Badge className="bg-orange-600">GET</Badge>
+                  <Badge variant="outline" className="border-black">GET</Badge>
                   <code className="text-sm font-mono">/api/workflow-recorder/analytics</code>
                 </div>
-                <p className="text-sm text-orange-700">
+                <p className="text-sm text-gray-700">
                   Returns aggregated analytics and insights across configurable time ranges.
                 </p>
               </div>
@@ -654,12 +647,12 @@ export default function WorkflowRecorderAPIDocsPage() {
                       color: "orange"
                     }
                   ].map((category) => (
-                    <div key={category.title} className="bg-gray-50 p-4 rounded-lg border">
-                      <h5 className={`font-medium mb-3 text-${category.color}-600`}>{category.title}</h5>
+                    <div key={category.title} className="bg-gray-50 p-4 rounded-lg border border-black">
+                      <h5 className="font-medium mb-3">{category.title}</h5>
                       <ul className="space-y-1">
                         {category.metrics.map((metric, index) => (
                           <li key={index} className="text-sm text-gray-600 flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full bg-${category.color}-400`}></div>
+                            <div className="w-2 h-2 rounded-full bg-gray-400"></div>
                             {metric}
                           </li>
                         ))}
@@ -689,23 +682,23 @@ export default function WorkflowRecorderAPIDocsPage() {
               {/* Example Request */}
               <div>
                 <h4 className="font-semibold mb-3">Example Request</h4>
-                <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
+                <div className="bg-gray-50 p-4 rounded-lg border border-black font-mono text-sm">
                   <div className="flex items-center justify-between mb-2">
-                    <span>curl</span>
+                    <span className="text-gray-700">curl</span>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => copyToClipboard(`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/analytics?time_range=7d&application=Chrome" \\
   -H "Accept: application/json"`, 'analytics-curl')}
-                      className="text-gray-400 hover:text-white"
+                      className="text-gray-600 hover:text-gray-800"
                     >
                       {copiedStates['analytics-curl'] ? '✓' : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
-                  <div>
+                  <pre className="text-gray-700">
                     {`curl -X GET "${mounted && typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/workflow-recorder/analytics?time_range=7d&application=Chrome" \\
   -H "Accept: application/json"`}
-                  </div>
+                  </pre>
                 </div>
               </div>
             </CardContent>
@@ -714,7 +707,7 @@ export default function WorkflowRecorderAPIDocsPage() {
       </Tabs>
 
       {/* Footer */}
-      <Card>
+      <Card className="border-black">
         <CardContent className="pt-6">
           <div className="text-center space-y-4">
             <h3 className="text-lg font-semibold">Ready to Start Querying?</h3>
@@ -724,13 +717,13 @@ export default function WorkflowRecorderAPIDocsPage() {
               extract insights from recorded sessions.
             </p>
             <div className="flex justify-center gap-4">
-              <Button asChild>
+              <Button asChild variant="outline" className="border-black">
                 <a href="/api/workflow-recorder" target="_blank">
                   <Play className="w-4 h-4 mr-2" />
                   Try API Now
                 </a>
               </Button>
-              <Button variant="outline" onClick={downloadPostmanCollection}>
+              <Button variant="outline" className="border-black" onClick={downloadPostmanCollection}>
                 <Download className="w-4 h-4 mr-2" />
                 Get Postman Collection
               </Button>
