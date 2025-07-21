@@ -35,6 +35,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [copiedEventId, setCopiedEventId] = useState<number | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [newEventIds, setNewEventIds] = useState<Set<number>>(new Set());
+  const viewClearedRef = useRef(false);
   const { userId } = use(params);
 
   const LOCAL_STORAGE_KEY = `low-level-viewer-expanded-events-${userId}`;
@@ -116,13 +117,32 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         if (newEvents.length > 0) {
           const newIds = new Set<number>(newEvents.map((e: LowLevelEvent) => e.id));
           setNewEventIds(newIds);
+          
+          // If view was cleared, only add new events, don't reload all events
+          if (viewClearedRef.current) {
+            setEvents(prevEvents => {
+              const combined = [...newEvents, ...prevEvents];
+              return combined.sort((a: LowLevelEvent, b: LowLevelEvent) => {
+                const dateA = new Date(a.created_at).getTime();
+                const dateB = new Date(b.created_at).getTime();
+                return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+              });
+            });
+            // Keep flag true - don't reset to false, stay in cleared mode
+            previousEventsRef.current = [...newEvents, ...previousEventsRef.current];
+            return; // Don't execute the normal setEvents below
+          }
+        } else if (viewClearedRef.current) {
+          // No new events detected and view is cleared, don't reload old events
+          return;
         }
       }
       
-      // Update the ref with current events for next comparison
-      previousEventsRef.current = sortedEvents;
-      
-      setEvents(sortedEvents);
+      // Update the ref with current events for next comparison (only if not in cleared view mode)
+      if (!viewClearedRef.current) {
+        previousEventsRef.current = sortedEvents;
+        setEvents(sortedEvents);
+      }
       setSessionCount(data.sessionCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
@@ -247,6 +267,14 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
   };
 
+  const clearView = () => {
+    setEvents([]);
+    setExpandedEvents({});
+    setNewEventIds(new Set());
+    viewClearedRef.current = true;
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
+  };
+
   const eventStats = useMemo(() => {
     const stats = new Map<string, number>();
     for (const event of searchedEvents) {
@@ -310,6 +338,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         </Button>
         <Button variant="black-outline" size="sm" onClick={expandAll}>Expand All</Button>
         <Button variant="black-outline" size="sm" onClick={collapseAll}>Collapse All</Button>
+        <Button variant="black-outline" size="sm" onClick={clearView}>Clear View</Button>
       </div>
       
       {events.length > 0 && (
