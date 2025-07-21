@@ -232,7 +232,7 @@ const StepperItem = memo(({
             
             <div className="flex items-start gap-4">
                 <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold transition-all duration-200 border-2 ${
-                    completed ? 'bg-black text-white border-black' : active ? 'bg-white text-black border-black' : enabled ? 'bg-gray-100 text-gray-900 border-gray-400' : 'bg-gray-50 text-gray-400 border-gray-200'
+                    completed ? 'bg-black text-white border-black' : active ? 'bg-white text-black border-black' : enabled ? 'bg-white text-black border-black' : 'bg-gray-50 text-gray-400 border-black'
                 }`}>
                     {active ? <RefreshCw className="h-6 w-6 animate-spin" strokeWidth={2} /> : number}
                 </div>
@@ -353,19 +353,35 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
         <div className="w-full p-8 text-center mb-6">
           <Card>
             <CardContent>
+              {/* Date Range - moved to top */}
+              {!isFetchingEvents && logic.combinedAnalyses.length > 0 && (
+                <div className="mb-4 text-left">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="bg-white border border-black p-3 rounded-lg">
+                      <p className="text-muted-foreground">From</p>
+                      <p className="font-bold text-xl">{new Date(logic.combinedAnalyses[logic.combinedAnalyses.length - 1].client_timestamp).toLocaleString()}</p>
+                    </div>
+                    <div className="bg-white border border-black p-3 rounded-lg">
+                      <p className="text-muted-foreground">To</p>
+                      <p className="font-bold text-xl">{new Date(logic.combinedAnalyses[0].client_timestamp).toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {logic.userStats && (
                   <div className="mb-4 text-left">
                       <h3 className="text-lg font-semibold mb-2">User Stats</h3>
                       <div className="grid grid-cols-3 gap-4 text-sm">
-                          <div className="bg-muted p-3 rounded-lg">
+                          <div className="bg-white border border-black p-3 rounded-lg">
                               <p className="text-muted-foreground">Total Events</p>
                               <p className="font-bold text-2xl">{logic.userStats.totalEvents}</p>
                           </div>
-                          <div className="bg-muted p-3 rounded-lg">
+                          <div className="bg-white border border-black p-3 rounded-lg">
                               <p className="text-muted-foreground">Timeline Steps Processed</p>
                               <p className="font-bold text-2xl">{logic.userStats.stepsProcessed} / {logic.userStats.totalSteps}</p>
                           </div>
-                          <div className="bg-muted p-3 rounded-lg">
+                          <div className="bg-white border border-black p-3 rounded-lg">
                               <p className="text-muted-foreground">LLM Labeled / Human Labeled</p>
                               <p className="font-bold text-2xl">{logic.userStats.labelingTotal} / {logic.userStats.humanLabeled}</p>
                           </div>
@@ -380,26 +396,14 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="bg-muted p-3 rounded-lg">
+                    <div className="bg-white border border-black p-3 rounded-lg">
                       <p className="text-muted-foreground">Timeline Steps Loaded</p>
                       <p className="font-bold text-2xl">{logic.combinedAnalyses.length}</p>
                     </div>
-                    <div className="bg-muted p-3 rounded-lg">
+                    <div className="bg-white border border-black p-3 rounded-lg">
                       <p className="text-muted-foreground">LLM Labeled</p>
                       <p className="font-bold text-2xl">{logic.combinedAnalyses.filter(item => item.selected_labels.length > 0).length}</p>
                     </div>
-                    {logic.combinedAnalyses.length > 0 && (
-                      <>
-                        <div className="bg-muted p-3 rounded-lg">
-                          <p className="text-muted-foreground">From</p>
-                          <p className="font-bold text-xl">{new Date(logic.combinedAnalyses[logic.combinedAnalyses.length - 1].client_timestamp).toLocaleString()}</p>
-                        </div>
-                        <div className="bg-muted p-3 rounded-lg">
-                          <p className="text-muted-foreground">To</p>
-                          <p className="font-bold text-xl">{new Date(logic.combinedAnalyses[0].client_timestamp).toLocaleString()}</p>
-                        </div>
-                      </>
-                    )}
                   </div>
                 )}
               </div>
