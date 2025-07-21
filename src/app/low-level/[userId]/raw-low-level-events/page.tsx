@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useState, use, useMemo, useCallback } from 'react';
+import { useEffect, useState, use, useMemo, useCallback, useRef } from 'react';
 import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { JsonBlock } from '@/components/ui/code-block';
 import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
@@ -23,8 +22,6 @@ const Clock = () => {
     return <div className="text-sm text-gray-500 font-mono w-48 text-right">{time ? `UTC: ${time.toUTCString()}` : ''}</div>;
 };
 
-
-
 export default function RawLowLevelEventsPage({ params }: { params: Promise<{ userId: string }> }) {
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
   const [sessionCount, setSessionCount] = useState<number>(0);
@@ -37,6 +34,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [expandedEvents, setExpandedEvents] = useState<Record<number, boolean>>({});
   const [copiedEventId, setCopiedEventId] = useState<number | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [newEventIds, setNewEventIds] = useState<Set<number>>(new Set());
   const { userId } = use(params);
 
   const LOCAL_STORAGE_KEY = `low-level-viewer-expanded-events-${userId}`;
@@ -89,9 +87,14 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     }
   }, [SORT_ORDER_STORAGE_KEY]);
 
-  const fetchRawEvents = useCallback(async () => {
+  // Use ref to store previous events for comparison during polling
+  const previousEventsRef = useRef<LowLevelEvent[]>([]);
+  
+  const fetchRawEvents = useCallback(async (isPollingUpdate = false) => {
     if (!userId) return;
-    setLoading(true);
+    if (!isPollingUpdate) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const response = await fetch(`/api/low-level/${userId}`);
@@ -104,18 +107,58 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         const dateB = new Date(b.created_at).getTime();
         return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
       });
+      
+      // If this is a polling update, detect new events
+      if (isPollingUpdate && previousEventsRef.current.length > 0) {
+        const existingEventIds = new Set(previousEventsRef.current.map((e: LowLevelEvent) => e.id));
+        const newEvents = sortedEvents.filter((e: LowLevelEvent) => !existingEventIds.has(e.id));
+        
+        if (newEvents.length > 0) {
+          const newIds = new Set<number>(newEvents.map((e: LowLevelEvent) => e.id));
+          setNewEventIds(newIds);
+        }
+      }
+      
+      // Update the ref with current events for next comparison
+      previousEventsRef.current = sortedEvents;
+      
       setEvents(sortedEvents);
       setSessionCount(data.sessionCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
-      setLoading(false);
+      if (!isPollingUpdate) {
+        setLoading(false);
+      }
     }
   }, [userId, sortOrder]);
 
+  // Initial fetch
   useEffect(() => {
     fetchRawEvents();
   }, [fetchRawEvents]);
+
+  // Live polling every 2 seconds
+  useEffect(() => {
+    if (loading) return; // Don't start polling until initial load is complete
+    
+    const interval = setInterval(() => {
+      fetchRawEvents(true); // Pass true to indicate this is a polling update
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [fetchRawEvents, loading]);
+
+  // Clear new event indicators after 30 seconds
+  useEffect(() => {
+    if (newEventIds.size > 0) {
+      const timer = setTimeout(() => {
+        setNewEventIds(new Set());
+      }, 30000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [newEventIds]);
 
   const toggleSortOrder = () => {
     setSortOrder(prev => {
@@ -246,14 +289,15 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     <div>
       <div className="flex items-center gap-2 py-2 border-b mb-2">
         <Clock />
-        <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-md">
-          <span className="text-sm font-medium text-blue-800">
+        <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 border border-gray-300 rounded-md">
+          <span className="text-sm font-medium text-black">
             {events.length} events loaded
           </span>
           {events.length >= 300 && (
-            <span className="text-xs text-blue-600">(capped at 300)</span>
+            <span className="text-xs text-gray-600">(capped at 300)</span>
           )}
         </div>
+
         <Input
             type="text"
             placeholder="Search events..."
@@ -305,78 +349,47 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                             </div>
                         </div>
                     )}
+                    {seenWindows.length > 0 && (
+                        <div className="mt-2">
+                            <h4 className="text-xs font-semibold mb-1">Windows:</h4>
+                            <div className="flex flex-wrap gap-1">
+                                {seenWindows.map((window) => (
+                                    <Badge 
+                                        key={window} 
+                                        variant={selectedWindow === window ? "default" : "secondary"}
+                                        onClick={() => handleWindowClick(window)}
+                                        className="cursor-pointer"
+                                    >
+                                        {window}
+                                    </Badge>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {clientIdentity && (
+                        <div className="mt-2">
+                            <h4 className="text-xs font-semibold mb-1">Client Identity:</h4>
+                            <JsonBlock
+                                data={clientIdentity}
+                                theme="light"
+                                size="sm"
+                                showCopy={false}
+                                maxHeight="150px"
+                            />
+                        </div>
+                    )}
                 </div>
-                {seenWindows.length > 0 && (
-                    <div>
-                        <h4 className="text-xs font-semibold mb-1 mt-2">Windows Used:</h4>
-                        <div className="flex flex-col space-y-1 mt-1 items-start">
-                            {seenWindows.map((windowName) => (
-                                <Badge
-                                    key={windowName}
-                                    variant={selectedWindow === windowName ? 'default' : 'outline'}
-                                    onClick={() => handleWindowClick(windowName)}
-                                    className="cursor-pointer text-xs"
-                                >
-                                    {windowName}
-                                </Badge>
-                            ))}
-                        </div>
-                    </div>
-                )}
-                {clientIdentity && (
-                    <div>
-                        <h4 className="text-xs font-semibold mb-1 mt-2">Client Info:</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs p-2 border rounded-md">
-                            {Object.entries(clientIdentity).map(([key, value]) => {
-                                if (key === 'ip_location' && typeof value === 'object' && value !== null) {
-                                    return (
-                                        <div key={key} className="col-span-full">
-                                            <h5 className="font-semibold">{key}:</h5>
-                                            <div className="pl-2 grid grid-cols-2 md:grid-cols-3 gap-x-4">
-                                                {Object.entries(value).map(([ipKey, ipValue]) => (
-                                                    <div key={ipKey}>
-                                                        <span className="font-semibold">{ipKey}:</span> {String(ipValue)}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                }
-                                return (
-                                    <div key={key}>
-                                        <span className="font-semibold">{key}:</span> {String(value)}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
             </CardContent>
-            </motion.div>
+                    </motion.div>
                 )}
             </AnimatePresence>
         </Card>
       )}
 
-      {loading && (
-        <div className="space-y-4 p-1">
-          <div className="flex items-center gap-2 py-2 border-b mb-2">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-10 w-64" />
-            <Skeleton className="h-9 w-24" />
-            <Skeleton className="h-9 w-24" />
-          </div>
-          <div className="border rounded-md p-4 mb-2">
-            <Skeleton className="h-6 w-1/4 mb-4" />
-            <div className="space-y-2">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-5/6" />
-            </div>
-          </div>
-          <div className="flex flex-col items-center justify-center pt-16">
-            <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-muted-foreground mt-4">Loading Events...</p>
-          </div>
+      {loading && events.length === 0 && (
+        <div className="flex flex-col items-center justify-center pt-16">
+          <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground mt-4">Loading Events...</p>
         </div>
       )}
 
@@ -393,9 +406,15 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           const isExpanded = expandedEvents[event.id] || false;
           const eventType = getEventType(event);
           const timestamp = getEventTimestamp(event);
+          const isNew = newEventIds.has(event.id);
           
           return (
-          <Card key={event.id}>
+          <Card 
+            key={event.id} 
+            className={`transition-all duration-300 ${
+              isNew ? 'border-l-4 border-l-black' : ''
+            }`}
+          >
             <CardHeader 
               className="p-2 bg-gray-50 border-b flex flex-row justify-between items-center cursor-pointer"
               onClick={() => toggleEventExpansion(event.id)}
@@ -404,9 +423,19 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                 <Badge variant="outline" className="shrink-0">
                   {eventType}
                 </Badge>
-                <span className="text-xs text-gray-500">
-                  {timestamp}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">{timestamp}</span>
+                  {isNew && (
+                    <>
+                      <Badge variant="outline" className="text-xs bg-black text-white border-black">
+                        NEW
+                      </Badge>
+                      <span className="text-xs text-black font-medium">
+                        ({Math.floor((Date.now() - new Date(event.created_at).getTime()) / 1000)}s ago)
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
