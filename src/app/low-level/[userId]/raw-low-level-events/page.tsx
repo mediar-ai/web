@@ -289,7 +289,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     <div>
       <div className="flex items-center gap-2 py-2 border-b mb-2">
         <Clock />
-        <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 border border-gray-300 rounded-md">
+        <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 border border-black rounded-md">
           <span className="text-sm font-medium text-black">
             {events.length} events loaded
           </span>
@@ -303,13 +303,13 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
             placeholder="Search events..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-64"
+            className="w-64 border-black"
         />
-        <Button variant="outline" size="sm" onClick={toggleSortOrder}>
+        <Button variant="black-outline" size="sm" onClick={toggleSortOrder}>
           {sortOrder === 'desc' ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
         </Button>
-        <Button variant="outline" size="sm" onClick={expandAll}>Expand All</Button>
-        <Button variant="outline" size="sm" onClick={collapseAll}>Collapse All</Button>
+        <Button variant="black-outline" size="sm" onClick={expandAll}>Expand All</Button>
+        <Button variant="black-outline" size="sm" onClick={collapseAll}>Collapse All</Button>
       </div>
       
       {events.length > 0 && (
