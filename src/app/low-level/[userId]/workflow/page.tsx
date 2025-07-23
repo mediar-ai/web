@@ -52,6 +52,8 @@ import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
+import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
+import { FilteredStatsDisplay } from '@/components/FilteredStatsDisplay';
 
 import { cn } from '@/lib/utils';
 
@@ -489,7 +491,7 @@ const StepperItem = memo(({
 });
 StepperItem.displayName = 'StepperItem';
 
-const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
+const Stepper = ({ logic, userId }: { logic: WorkflowPageLogicType; userId: string }) => {
   const { synthesisStep, isFetchingEvents } = logic;
 
   // Show stats above the stepper when not fetching events
@@ -502,11 +504,28 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
         <div className="w-full p-8 text-center mb-6">
           <Card>
             <CardContent>
-              {/* Date Range - will be added back when available from backend stats */}
+              {/* Time Boundary Selection */}
+              <div className="mb-6">
+                <TimeBoundarySelector
+                  selectedBoundary={logic.timeBoundary}
+                  onBoundaryChange={logic.setTimeBoundary}
+                  disabled={logic.isLoading}
+                />
+              </div>
               
+              {/* Filtered Data Stats */}
+              <div className="mb-6">
+                <FilteredStatsDisplay 
+                  userId={userId}
+                  timeBoundary={logic.timeBoundary}
+                  isLoading={logic.isLoading}
+                />
+              </div>
+              
+              {/* All-Time User Stats */}
               {logic.userStats && (
                   <div className="mb-4 text-left">
-                      <h3 className="text-lg font-semibold mb-2">User Stats</h3>
+                      <h3 className="text-lg font-semibold mb-2">All-Time User Stats</h3>
                       <div className="grid grid-cols-3 gap-4 text-sm">
                           <div className="bg-white border border-black p-3 rounded-lg">
                               <p className="text-muted-foreground">Total Events</p>
@@ -523,18 +542,6 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
                       </div>
                   </div>
               )}
-              <div className="mb-4 text-left">
-                <h3 className="text-lg font-semibold mb-2">Loaded Data Stats</h3>
-                {isFetchingEvents ? (
-                  <div className="flex items-center justify-center h-24">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : (
-                  <div className="text-center text-muted-foreground">
-                    <p>Data will be loaded when workflow analysis is triggered</p>
-                  </div>
-                )}
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -714,7 +721,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 
                                 <CollapsibleContent>
                                     <div className="mt-4">
-                                        <Stepper logic={logic} />
+                                        <Stepper logic={logic} userId={userId} />
                                     </div>
                                 </CollapsibleContent>
                             </div>

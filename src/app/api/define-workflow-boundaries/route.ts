@@ -5,7 +5,7 @@ import { WORKFLOW_BOUNDARIES_PROMPT, WORKFLOW_BOUNDARIES_SCHEMA } from '@/lib/pr
 
 export async function POST(req: NextRequest) {
   try {
-    const { model: modelName, context } = await req.json();
+    const { model: modelName, context, startDate, endDate } = await req.json();
 
     if (!modelName || !context) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
@@ -22,7 +22,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No workflow names provided' }, { status: 400 });
     }
 
-    console.log('Defining workflow boundaries for userId:', context.userId, 'with', workflowNames.length, 'workflows');
+    // Log time boundary information
+    if (startDate && endDate) {
+      console.log('Defining workflow boundaries for userId:', context.userId, 'with', workflowNames.length, 'workflows', 'from:', startDate, 'to:', endDate);
+    } else {
+      console.log('Defining workflow boundaries for userId:', context.userId, 'with', workflowNames.length, 'workflows', '(no time boundaries)');
+    }
 
     // Fetch analyses from database (reusing logic from fetch-combined-analyses-v2)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -34,11 +39,20 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Fetch analyses first
-    const { data: analysesData, error: analysesError } = await supabaseAdmin
+    // Fetch analyses first with optional time filtering
+    let query = supabaseAdmin
       .from('low_level_workflow_analyses')
       .select('id, client_timestamp, window_title, llm_structured_output')
-      .eq('user_id', context.userId)
+      .eq('user_id', context.userId);
+
+    // Apply time filtering if boundaries are provided
+    if (startDate && endDate) {
+      query = query
+        .gte('client_timestamp', startDate)
+        .lte('client_timestamp', endDate);
+    }
+
+    const { data: analysesData, error: analysesError } = await query
       .order('client_timestamp', { ascending: false })
       .limit(1000);
 
