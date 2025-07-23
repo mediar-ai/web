@@ -31,6 +31,9 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
   const eventType = searchParams.get('eventType'); // New filter parameter
+  const afterTimestamp = searchParams.get('after_timestamp'); // New parameter for efficient polling
+  const startDate = searchParams.get('startDate'); // Start date for period loading
+  const endDate = searchParams.get('endDate'); // End date for period loading
   const requestedLimit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 300;
   let offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0;
   const SUPABASE_MAX_LIMIT = 1000;
@@ -54,6 +57,16 @@ export async function GET(
     // Add event type filter if provided
     if (eventType) {
       query = query.eq('event_type', eventType);
+    }
+
+    // Add timestamp filter for efficient polling (only get events after specified time)
+    if (afterTimestamp) {
+      query = query.gt('created_at', afterTimestamp);
+    }
+
+    // Add date range filter for period loading
+    if (startDate && endDate) {
+      query = query.gte('created_at', startDate).lte('created_at', endDate);
     }
 
     // --- New Looping Logic ---
