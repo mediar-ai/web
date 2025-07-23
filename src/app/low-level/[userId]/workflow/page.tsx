@@ -5,7 +5,7 @@ import { useState, useEffect, use, createRef, useCallback, useRef, useMemo, memo
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from '@/components/ui/textarea';
-import { Paperclip, Send, PlusCircle, Trash2, RefreshCw, X, ChevronRight, ChevronDown, ChevronUp, Edit3, RotateCcw, Edit2 } from "lucide-react"
+import { Paperclip, Send, PlusCircle, Trash2, RefreshCw, X, ChevronRight, ChevronDown, ChevronUp, Edit3, RotateCcw, Edit2, CheckCircle, AlertCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
@@ -50,7 +50,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Badge } from '@/components/ui/badge';
 
 // Saved Syntheses Section Component
-function SavedSynthesesSection({ userId }: { userId: string }) {
+function SavedSynthesesSection({ userId, triggerRefresh }: { userId: string; triggerRefresh: number }) {
   const [savedSyntheses, setSavedSyntheses] = useState<Array<{
     synthesis_session_id: number;
     display_name: string;
@@ -81,6 +81,13 @@ function SavedSynthesesSection({ userId }: { userId: string }) {
       fetchSavedSyntheses();
     }
   }, [showSyntheses, userId]);
+
+  // Refresh when triggerRefresh changes
+  useEffect(() => {
+    if (triggerRefresh > 0) {
+      fetchSavedSyntheses();
+    }
+  }, [triggerRefresh]);
 
   if (savedSyntheses.length === 0 && !showSyntheses) {
     return null; // Don't show the section if no saved syntheses and not expanded
@@ -673,6 +680,8 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
 export default function WorkflowPage({ params }: { params: Promise<{ userId:string }> }) {
     const { userId } = use(params);
     const logic: WorkflowPageLogicType = useWorkflowPageLogic(userId);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
 
     return (
         <div className="h-full bg-background flex flex-col relative">
@@ -726,17 +735,48 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                         <Button 
                                             variant="default" 
                                             size="sm"
+                                            disabled={saveStatus === 'saving'}
                                             onClick={async () => {
+                                                setSaveStatus('saving');
                                                 const result = await logic.saveSynthesis();
                                                 if (result.success) {
-                                                    // Could add toast notification here
-                                                    console.log('Synthesis saved successfully');
+                                                    setSaveStatus('success');
+                                                    setRefreshTrigger(prev => prev + 1);
+                                                    setTimeout(() => setSaveStatus('idle'), 2000); // Reset after 2 seconds
+                                                } else {
+                                                    setSaveStatus('error');
+                                                    setTimeout(() => setSaveStatus('idle'), 3000); // Reset after 3 seconds
                                                 }
                                             }}
-                                            className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
+                                            className={`flex items-center gap-2 ${
+                                                saveStatus === 'success' 
+                                                    ? 'bg-green-600 text-white hover:bg-green-700' 
+                                                    : saveStatus === 'error'
+                                                    ? 'bg-red-600 text-white hover:bg-red-700'
+                                                    : 'bg-black text-white hover:bg-gray-800'
+                                            }`}
                                         >
-                                            <PlusCircle className="h-4 w-4" />
-                                            Save Synthesis
+                                            {saveStatus === 'saving' ? (
+                                                <>
+                                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                                    Saving...
+                                                </>
+                                            ) : saveStatus === 'success' ? (
+                                                <>
+                                                    <CheckCircle className="h-4 w-4" />
+                                                    Saved!
+                                                </>
+                                            ) : saveStatus === 'error' ? (
+                                                <>
+                                                    <AlertCircle className="h-4 w-4" />
+                                                    Error
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <PlusCircle className="h-4 w-4" />
+                                                    Save Synthesis
+                                                </>
+                                            )}
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>
@@ -782,7 +822,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             </div>
             
             {/* Saved Syntheses Section */}
-            <SavedSynthesesSection userId={userId} />
+            <SavedSynthesesSection userId={userId} triggerRefresh={refreshTrigger} />
         </div>
     );
 } 
