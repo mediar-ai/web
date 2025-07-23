@@ -159,9 +159,9 @@ const UserLayoutContent = ({
                     <span>({userId})</span>
                     <Button variant="ghost" size="icon" onClick={handleCopy} className="h-8 w-8 ml-1">
                       {isCopied ? (
-                        <Check className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <Clipboard className="h-4 w-4 text-gray-500" />
+                                      <Check className="h-4 w-4" />
+            ) : (
+              <Clipboard className="h-4 w-4" />
                       )}
                     </Button>
                   </div>

@@ -604,24 +604,24 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     <div>
       <div className="flex items-center gap-2 py-2 border-b mb-2">
         <Clock />
-        <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 border border-black rounded-md">
-          <span className="text-sm font-medium text-black">
+        <div className="flex items-center gap-2 px-3 py-1 border border-black rounded-md">
+          <span className="text-sm font-medium">
             {displayEvents.length} events loaded
           </span>
           {totalAvailable && (
-            <span className="text-xs text-gray-600">
+            <span className="text-xs text-muted-foreground">
               (of {totalAvailable.toLocaleString()} total)
             </span>
           )}
         </div>
 
         {storageInfo && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-md">
-            <Database className="h-4 w-4 text-blue-600" />
-            <span className="text-sm font-medium text-blue-800">
+          <div className="flex items-center gap-2 px-3 py-1 border border-black rounded-md">
+            <Database className="h-4 w-4" />
+            <span className="text-sm font-medium">
               {storageInfo.eventCount} cached
             </span>
-            <span className="text-xs text-blue-600">
+            <span className="text-xs text-muted-foreground">
               ({(storageInfo.totalSize / 1024 / 1024).toFixed(1)}MB)
             </span>
           </div>
@@ -707,14 +707,14 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       
       {/* Load All Progress */}
       {loadAllProgress && (
-        <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-          <div className="flex justify-between text-sm text-blue-800 mb-2">
+        <div className="mb-2 p-3 border border-black rounded-md">
+          <div className="flex justify-between text-sm mb-2">
             <span>Loading all events...</span>
             <span>{loadAllProgress.loaded.toLocaleString()} / {loadAllProgress.total.toLocaleString()}</span>
           </div>
-          <div className="w-full bg-blue-200 rounded-full h-2">
+          <div className="w-full bg-gray-200 rounded-full h-2">
             <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              className="bg-black h-2 rounded-full transition-all duration-300"
               style={{ width: `${(loadAllProgress.loaded / loadAllProgress.total) * 100}%` }}
             />
           </div>

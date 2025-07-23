@@ -158,17 +158,17 @@ export default function TimelineMappingsPage() {
 
   const getEventStatusBadge = (annotation: RawEventAnnotation) => {
     if (annotation.is_workflow_related) {
-      return <Badge variant="default" className="bg-green-100 text-green-800">
+      return <Badge variant="default">
         <CheckCircle className="w-3 h-3 mr-1" />
         Mapped to Workflow
       </Badge>;
     } else if (annotation.unrelated_reason) {
-      return <Badge variant="secondary" className="bg-gray-100 text-gray-800">
+      return <Badge variant="secondary">
         <XCircle className="w-3 h-3 mr-1" />
         Unrelated
       </Badge>;
     } else {
-      return <Badge variant="outline" className="bg-yellow-50 text-yellow-800">
+      return <Badge variant="outline">
         <AlertCircle className="w-3 h-3 mr-1" />
         Unmapped
       </Badge>;
@@ -202,9 +202,9 @@ export default function TimelineMappingsPage() {
       </div>
 
       {error && (
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border">
           <CardContent className="pt-6">
-            <div className="flex items-center space-x-2 text-red-800">
+            <div className="flex items-center space-x-2">
               <XCircle className="w-4 h-4" />
               <span>{error}</span>
             </div>
@@ -213,9 +213,9 @@ export default function TimelineMappingsPage() {
       )}
 
       {progress && (
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border">
           <CardContent className="pt-6">
-            <div className="flex items-center space-x-2 text-blue-800">
+            <div className="flex items-center space-x-2">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span>{progress}</span>
             </div>
@@ -233,19 +233,19 @@ export default function TimelineMappingsPage() {
           {analysisStatus ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{analysisStatus.total_events}</div>
+                <div className="text-2xl font-bold">{analysisStatus.total_events}</div>
                 <div className="text-sm text-muted-foreground">Total Events</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{analysisStatus.mapped_events}</div>
+                <div className="text-2xl font-bold">{analysisStatus.mapped_events}</div>
                 <div className="text-sm text-muted-foreground">Mapped</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-yellow-600">{analysisStatus.unmapped_events}</div>
+                <div className="text-2xl font-bold">{analysisStatus.unmapped_events}</div>
                 <div className="text-sm text-muted-foreground">Unmapped</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">{analysisStatus.total_workflows}</div>
+                <div className="text-2xl font-bold">{analysisStatus.total_workflows}</div>
                 <div className="text-sm text-muted-foreground">Workflows</div>
               </div>
             </div>
@@ -332,11 +332,11 @@ export default function TimelineMappingsPage() {
                   {/* Workflow Component Mapping */}
                   {annotation.is_workflow_related && (
                     <div className="ml-4 space-y-2">
-                      <div className="bg-green-50 p-3 rounded border-l-4 border-green-400">
-                        <div className="font-medium text-green-900">
+                      <div className="p-3 rounded border-l-4 border-black">
+                        <div className="font-medium">
                           Workflow Component Mapping
                         </div>
-                        <div className="text-sm text-green-700 space-y-1">
+                        <div className="text-sm space-y-1">
                           {annotation.workflow_template_id && (
                             <div>Template ID: {annotation.workflow_template_id}</div>
                           )}
@@ -354,17 +354,17 @@ export default function TimelineMappingsPage() {
                           )}
                         </div>
                         {annotation.inputs && (
-                          <div className="text-sm text-green-600 mt-2">
+                          <div className="text-sm mt-2">
                             <strong>Inputs:</strong> {annotation.inputs}
                           </div>
                         )}
                         {annotation.outputs && (
-                          <div className="text-sm text-green-600">
+                          <div className="text-sm">
                             <strong>Outputs:</strong> {annotation.outputs}
                           </div>
                         )}
                         {annotation.business_logics && (
-                          <div className="text-sm text-green-600">
+                          <div className="text-sm">
                             <strong>Business Logic:</strong> {annotation.business_logics}
                           </div>
                         )}
@@ -375,8 +375,8 @@ export default function TimelineMappingsPage() {
                   {/* Unrelated Reason */}
                   {annotation.unrelated_reason && (
                     <div className="ml-4">
-                      <div className="bg-gray-50 p-3 rounded border-l-4 border-gray-400">
-                        <div className="text-sm text-gray-700">
+                      <div className="p-3 rounded border-l-4 border-gray-400">
+                        <div className="text-sm">
                           <strong>Unrelated:</strong> {annotation.unrelated_reason}
                         </div>
                       </div>

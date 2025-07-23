@@ -1059,7 +1059,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   }, [selectedEvent, userId, llmContext, selectedModel, fetchAllWorkflowAnalyses]);
 
   if (error) {
-    return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
+    return <div className="p-4 font-bold border rounded-md">Error: {error}</div>;
   }
 
   if (!loading && allEvents.length === 0) {
@@ -1088,12 +1088,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             <span className="text-muted-foreground">Total Events:</span>
             <span className="font-semibold">{totalEventCount} (loaded {allEvents.length})</span>
             {usingCachedData && (
-              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+              <Badge variant="outline" className="text-xs">
                 IndexedDB
               </Badge>
             )}
             {liveUpdateIndicator && (
-              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 animate-pulse">
+              <Badge variant="outline" className="text-xs animate-pulse">
                 Live Update
               </Badge>
             )}
@@ -1106,7 +1106,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             <span className="text-muted-foreground">Processed:</span>
             <span className="font-semibold">{processedStepsCount}</span>
             {usingCachedAnalyses && (
-              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+              <Badge variant="outline" className="text-xs">
                 Cached
               </Badge>
             )}

@@ -1101,7 +1101,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   }, []); // Empty dependency array: run once on mount, cleanup on unmount.
 
   if (error) {
-    return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
+    return <div className="p-4 font-bold border rounded-md">Error: {error}</div>;
   }
 
   return (
@@ -1191,12 +1191,12 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             <span className="text-muted-foreground">Total Events:</span>
             <span className="font-semibold">{totalEventCount} (loaded {allEvents.length})</span>
             {usingCachedData && (
-              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+              <Badge variant="outline" className="text-xs">
                 IndexedDB
               </Badge>
             )}
             {liveUpdateIndicator && (
-              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 animate-pulse">
+              <Badge variant="outline" className="text-xs animate-pulse">
                 Live Update
               </Badge>
             )}
@@ -1205,7 +1205,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             <span className="text-muted-foreground">Analyses:</span>
             <span className="font-semibold">{allWorkflowAnalyses.length}</span>
             {usingCachedAnalyses && (
-              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+              <Badge variant="outline" className="text-xs">
                 Cached
               </Badge>
             )}
@@ -1214,7 +1214,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             <span className="text-muted-foreground">Dataset:</span>
             <span className="font-semibold">{Object.keys(workflowEvents).length}</span>
             {usingCachedDataset && (
-              <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+              <Badge variant="outline" className="text-xs">
                 Cached
               </Badge>
             )}
@@ -1267,7 +1267,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
               <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                className="bg-black h-2 rounded-full transition-all duration-300"
                 style={{ width: `${(loadAllProgress.loaded / loadAllProgress.total) * 100}%` }}
               ></div>
             </div>

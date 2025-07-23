@@ -640,13 +640,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                                     setTimeout(() => setSaveStatus('idle'), 3000); // Reset after 3 seconds
                                                 }
                                             }}
-                                            className={`flex items-center gap-2 ${
-                                                saveStatus === 'success' 
-                                                    ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                    : saveStatus === 'error'
-                                                    ? 'bg-red-600 text-white hover:bg-red-700'
-                                                    : 'bg-black text-white hover:bg-gray-800'
-                                            }`}
+                                            className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
                                         >
                                             {saveStatus === 'saving' ? (
                                                 <>
