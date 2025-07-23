@@ -113,7 +113,6 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
         setHasMore(cachedData.hasMore);
         
         // Update storage info
-        const storageInfo = await sharedStorage.getStorageInfo();
         const uiTreeCount = cachedData.events.length;
         setStorageInfo({
           eventCount: uiTreeCount,
