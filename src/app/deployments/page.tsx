@@ -179,7 +179,7 @@ function AuthenticatedWorkflowsPage({
       setSelectedExecution(null);
       setExecutionDetailsOpen(true);
       
-      const response = await fetch(`/api/remote-workflows/executions/${executionId}`);
+      const response = await fetch(`/api/remote-workflows/executions/${executionId}?full_detailed_response=true`);
       const data = await response.json();
       if (data.success) {
         setSelectedExecution(data.execution);
