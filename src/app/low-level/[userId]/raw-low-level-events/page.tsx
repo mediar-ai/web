@@ -5,7 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { JsonBlock } from '@/components/ui/code-block';
-import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -19,6 +19,20 @@ import {
   DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 
+// Helper function to estimate memory usage of events data
+const estimateMemoryUsage = (events: LowLevelEvent[]): number => {
+  const jsonString = JSON.stringify(events);
+  return new Blob([jsonString]).size;
+};
+
+// Helper function to format bytes
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
 const Clock = () => {
     const [time, setTime] = useState<Date | null>(null);
@@ -36,6 +50,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
   const [sessionCount, setSessionCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
@@ -46,8 +61,24 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [copiedEventId, setCopiedEventId] = useState<number | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [newEventIds, setNewEventIds] = useState<Set<number>>(new Set());
+  
+  // Progressive loading state
+  const [currentOffset, setCurrentOffset] = useState(0);
+  const [hasMoreData, setHasMoreData] = useState(true);
+  const [totalAvailable, setTotalAvailable] = useState<number | null>(null);
+  const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
+  const [memoryUsage, setMemoryUsage] = useState(0);
+  const [loadAllProgress, setLoadAllProgress] = useState<{ loaded: number; total: number } | null>(null);
+  
   const viewClearedRef = useRef(false);
   const { userId } = use(params);
+
+  // Configuration constants
+  const INITIAL_CHUNK_SIZE = 100;
+  const AUTO_LOAD_CHUNK_SIZE = 100;
+  const AUTO_LOAD_LIMIT = 1000; // Auto-load up to 1000 records
+  const MANUAL_LOAD_CHUNK_SIZE = 1000;
+  const MAX_MEMORY_MB = 50; // Cap at 50MB
 
   const LOCAL_STORAGE_KEY = `low-level-viewer-expanded-events-${userId}`;
   const SUMMARY_OPEN_STORAGE_KEY = `raw-events-summary-open-${userId}`;
@@ -110,21 +141,33 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   // Use ref to store previous events for comparison during polling
   const previousEventsRef = useRef<LowLevelEvent[]>([]);
   
-  const fetchRawEvents = useCallback(async (isPollingUpdate = false) => {
-    if (!userId) return;
-    if (!isPollingUpdate) {
-    setLoading(true);
+  const fetchRawEvents = useCallback(async (
+    limit: number, 
+    offset: number = 0, 
+    isPollingUpdate = false, 
+    isLoadMore = false
+  ) => {
+    if (!userId) return { events: [], hasMore: false };
+    
+    if (!isPollingUpdate && !isLoadMore) {
+      setLoading(true);
+    } else if (isLoadMore) {
+      setLoadingMore(true);
     }
+    
     setError(null);
+    
     try {
-      let url = `/api/low-level/${userId}?limit=1000`;
+      let url = `/api/low-level/${userId}?limit=${limit}&offset=${offset}`;
       if (selectedEventType && selectedEventType !== 'all') {
         url += `&eventType=${selectedEventType}`;
       }
+      
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch raw events');
       }
+      
       const data = await response.json();
       const sortedEvents = data.events.sort((a: LowLevelEvent, b: LowLevelEvent) => {
         const dateA = new Date(a.created_at).getTime();
@@ -132,7 +175,15 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
       });
       
-      // If this is a polling update, detect new events
+      // Update session count and total available count
+      if (data.sessionCount !== undefined) {
+        setSessionCount(data.sessionCount);
+      }
+      if (data.totalEventCount !== undefined) {
+        setTotalAvailable(data.totalEventCount);
+      }
+      
+      // Handle polling updates for new events
       if (isPollingUpdate && previousEventsRef.current.length > 0) {
         const existingEventIds = new Set(previousEventsRef.current.map((e: LowLevelEvent) => e.id));
         const newEvents = sortedEvents.filter((e: LowLevelEvent) => !existingEventIds.has(e.id));
@@ -141,7 +192,6 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           const newIds = new Set<number>(newEvents.map((e: LowLevelEvent) => e.id));
           setNewEventIds(newIds);
           
-          // If view was cleared, only add new events, don't reload all events
           if (viewClearedRef.current) {
             setEvents(prevEvents => {
               const combined = [...newEvents, ...prevEvents];
@@ -151,46 +201,114 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                 return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
               });
             });
-            // Keep flag true - don't reset to false, stay in cleared mode
             previousEventsRef.current = [...newEvents, ...previousEventsRef.current];
-            return; // Don't execute the normal setEvents below
+            return { events: [], hasMore: false };
           }
         } else if (viewClearedRef.current) {
-          // No new events detected and view is cleared, don't reload old events
-          return;
+          return { events: [], hasMore: false };
         }
       }
       
-      // Update the ref with current events for next comparison (only if not in cleared view mode)
-      if (!viewClearedRef.current) {
+      if (isLoadMore) {
+        // Append new events to existing ones
+        setEvents(prevEvents => {
+          const combined = [...prevEvents, ...sortedEvents];
+          // Remove duplicates and sort
+          const uniqueEvents = combined.filter((event, index, self) => 
+            index === self.findIndex(e => e.id === event.id)
+          );
+          return uniqueEvents.sort((a: LowLevelEvent, b: LowLevelEvent) => {
+            const dateA = new Date(a.created_at).getTime();
+            const dateB = new Date(b.created_at).getTime();
+            return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+          });
+        });
+      } else if (!isPollingUpdate) {
+        // Initial load or filter change
+        setEvents(sortedEvents);
+        setCurrentOffset(sortedEvents.length);
         previousEventsRef.current = sortedEvents;
-      setEvents(sortedEvents);
       }
-      setSessionCount(data.sessionCount);
+      
+      return { 
+        events: sortedEvents, 
+        hasMore: data.hasMore !== false && sortedEvents.length === limit,
+        totalEventCount: data.totalEventCount
+      };
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      return { events: [], hasMore: false };
     } finally {
-      if (!isPollingUpdate) {
-      setLoading(false);
+      if (!isPollingUpdate && !isLoadMore) {
+        setLoading(false);
+      } else if (isLoadMore) {
+        setLoadingMore(false);
       }
     }
   }, [userId, sortOrder, selectedEventType]);
 
-  // Initial fetch
+  // Initial fetch and auto-loading logic
   useEffect(() => {
-    fetchRawEvents();
-  }, [fetchRawEvents]);
+    const initializeData = async () => {
+      if (!userId) return;
+      
+      // Reset state for new load
+      setEvents([]);
+      setCurrentOffset(0);
+      setHasMoreData(true);
+      setAutoLoadingComplete(false);
+      viewClearedRef.current = false;
+      
+      // Initial load
+      const result = await fetchRawEvents(INITIAL_CHUNK_SIZE, 0, false, false);
+      if (result.events.length > 0) {
+        setCurrentOffset(result.events.length);
+        setHasMoreData(result.hasMore);
+        
+        // Start auto-loading additional chunks
+        let currentLoadedCount = result.events.length;
+        let currentOffsetValue = result.events.length;
+        let hasMore = result.hasMore;
+        
+        while (hasMore && currentLoadedCount < AUTO_LOAD_LIMIT) {
+          const nextChunkSize = Math.min(AUTO_LOAD_CHUNK_SIZE, AUTO_LOAD_LIMIT - currentLoadedCount);
+          const nextResult = await fetchRawEvents(nextChunkSize, currentOffsetValue, false, true);
+          
+          if (nextResult.events.length === 0) {
+            hasMore = false;
+            break;
+          }
+          
+          currentLoadedCount += nextResult.events.length;
+          currentOffsetValue += nextResult.events.length;
+          hasMore = nextResult.hasMore;
+          
+          setCurrentOffset(currentOffsetValue);
+          setHasMoreData(hasMore);
+          
+          // Small delay to prevent overwhelming the UI
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        setAutoLoadingComplete(true);
+        setHasMoreData(hasMore);
+      }
+    };
+    
+         initializeData();
+   }, [userId, selectedEventType, sortOrder, fetchRawEvents]);
 
   // Live polling every 2 seconds
   useEffect(() => {
-    if (loading) return; // Don't start polling until initial load is complete
+    if (loading || !autoLoadingComplete) return; // Don't start polling until initial load is complete
     
     const interval = setInterval(() => {
-      fetchRawEvents(true); // Pass true to indicate this is a polling update
+      fetchRawEvents(INITIAL_CHUNK_SIZE, 0, true, false); // Poll for new events
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [fetchRawEvents, loading]);
+  }, [fetchRawEvents, loading, autoLoadingComplete]);
 
   // Clear new event indicators after 30 seconds
   useEffect(() => {
@@ -307,8 +425,95 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     setEvents([]);
     setExpandedEvents({});
     setNewEventIds(new Set());
+    setCurrentOffset(0);
+    setHasMoreData(true);
+    setAutoLoadingComplete(false);
+    setMemoryUsage(0);
+    setLoadAllProgress(null);
     viewClearedRef.current = true;
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
+  };
+
+  const loadMoreEvents = async () => {
+    if (!hasMoreData || loadingMore) return;
+    
+    const currentMemoryMB = memoryUsage / (1024 * 1024);
+    if (currentMemoryMB >= MAX_MEMORY_MB) {
+      setError(`Memory limit reached (${MAX_MEMORY_MB}MB). Cannot load more events.`);
+      return;
+    }
+    
+    const result = await fetchRawEvents(MANUAL_LOAD_CHUNK_SIZE, currentOffset, false, true);
+    if (result.events.length > 0) {
+      setCurrentOffset(prev => prev + result.events.length);
+      setHasMoreData(result.hasMore);
+    } else {
+      setHasMoreData(false);
+    }
+  };
+
+  const loadAllEvents = async () => {
+    if (!hasMoreData || loadingMore) return;
+    
+    // Calculate how many events remain
+    const remainingEvents = totalAvailable ? totalAvailable - events.length : 0;
+    
+    // Warn user about large datasets
+    if (remainingEvents > 10000) {
+      const confirmed = window.confirm(
+        `This will load ${remainingEvents.toLocaleString()} more events, which may take some time and use significant memory. Continue?`
+      );
+      if (!confirmed) return;
+    }
+    
+    setLoadingMore(true);
+    setError(null);
+    setLoadAllProgress({ loaded: 0, total: remainingEvents });
+    
+    try {
+      let currentOffsetValue = currentOffset;
+      let hasMore: boolean = hasMoreData;
+      let totalLoaded = 0;
+      
+      while (hasMore) {
+        // Check memory limit before each chunk
+        const currentMemoryMB = memoryUsage / (1024 * 1024);
+        if (currentMemoryMB >= MAX_MEMORY_MB) {
+          setError(`Memory limit reached (${MAX_MEMORY_MB}MB). Loaded ${totalLoaded.toLocaleString()} additional events.`);
+          break;
+        }
+        
+        // Load in chunks of 1000 for better performance
+        const chunkSize = Math.min(1000, remainingEvents - totalLoaded);
+        const result = await fetchRawEvents(chunkSize, currentOffsetValue, false, true);
+        
+        if (result.events.length === 0) {
+          hasMore = false;
+          break;
+        }
+        
+        totalLoaded += result.events.length;
+        currentOffsetValue += result.events.length;
+        hasMore = result.hasMore;
+        
+        setCurrentOffset(currentOffsetValue);
+        setHasMoreData(hasMore);
+        setLoadAllProgress({ loaded: totalLoaded, total: remainingEvents });
+        
+        // Small delay to prevent UI blocking and allow progress updates
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      if (!hasMore) {
+        setHasMoreData(false);
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load all events');
+    } finally {
+      setLoadingMore(false);
+      setLoadAllProgress(null);
+    }
   };
 
   const eventStats = useMemo(() => {
@@ -349,16 +554,45 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     return null;
   }, [filteredEvents]);
 
+  // Update memory usage when events change
+  useEffect(() => {
+    const usage = estimateMemoryUsage(events);
+    setMemoryUsage(usage);
+  }, [events]);
+
   return (
     <div>
       <div className="flex items-center gap-2 py-2 border-b mb-2">
         <Clock />
         <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 border border-black rounded-md">
           <span className="text-sm font-medium text-black">
-            {events.length} events loaded
+            {events.length.toLocaleString()} events loaded
           </span>
-          {events.length >= 300 && (
-            <span className="text-xs text-gray-600">(capped at 300)</span>
+          {totalAvailable && (
+            <span className="text-xs text-gray-600">
+              of {totalAvailable.toLocaleString()} total
+            </span>
+          )}
+          {!autoLoadingComplete && (
+            <span className="text-xs text-blue-600 animate-pulse">
+              Auto-loading...
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 border border-gray-300 rounded-md">
+          <span className="text-xs text-gray-600">
+            Memory: {formatBytes(memoryUsage)}
+          </span>
+          {memoryUsage > 0 && (
+            <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-500 transition-all duration-300"
+                style={{ 
+                  width: `${Math.min((memoryUsage / (MAX_MEMORY_MB * 1024 * 1024)) * 100, 100)}%` 
+                }}
+              />
+            </div>
           )}
         </div>
 
@@ -398,6 +632,56 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         <Button variant="black-outline" size="sm" onClick={handleCopyAllEvents} disabled={events.length === 0}>
           Copy All as JSON
         </Button>
+        {autoLoadingComplete && hasMoreData && (
+          <>
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={loadMoreEvents} 
+              disabled={loadingMore || memoryUsage >= MAX_MEMORY_MB * 1024 * 1024}
+            >
+              {loadingMore ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Load {MANUAL_LOAD_CHUNK_SIZE.toLocaleString()} More
+                </>
+              )}
+            </Button>
+                         <Button 
+               variant="outline" 
+               size="sm" 
+               onClick={loadAllEvents} 
+               disabled={loadingMore || memoryUsage >= MAX_MEMORY_MB * 1024 * 1024}
+             >
+               {loadingMore && loadAllProgress ? (
+                 <>
+                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                   Loading All... ({loadAllProgress.loaded.toLocaleString()}/{loadAllProgress.total.toLocaleString()})
+                 </>
+               ) : loadingMore ? (
+                 <>
+                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                   Loading All...
+                 </>
+               ) : (
+                 <>
+                   <Download className="h-4 w-4 mr-2" />
+                   Load All
+                   {totalAvailable && events.length < totalAvailable && (
+                     <span className="ml-1 text-xs">
+                       ({(totalAvailable - events.length).toLocaleString()} more)
+                     </span>
+                   )}
+                 </>
+               )}
+             </Button>
+          </>
+        )}
       </div>
       
       {events.length > 0 && (
@@ -419,6 +703,17 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                 <div>
                     <div className="flex flex-wrap gap-1">
                         <Badge variant="outline">Sessions: {sessionCount}</Badge>
+                        {totalAvailable && (
+                          <Badge variant="outline">
+                            Total Available: {totalAvailable.toLocaleString()}
+                          </Badge>
+                        )}
+                        <Badge variant="outline">
+                          Loaded: {events.length.toLocaleString()}
+                        </Badge>
+                        <Badge variant="outline">
+                          Memory: {formatBytes(memoryUsage)}
+                        </Badge>
                     </div>
                     {eventStats.length > 0 && (
                         <div className="mt-2">
@@ -487,6 +782,35 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         <p>
             {events.length > 0 ? "No events match your search." : "No low-level events found for this user."}
         </p>
+      )}
+
+      {loadAllProgress && (
+        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-blue-800">
+              Loading all events...
+            </span>
+            <span className="text-sm text-blue-600">
+              {loadAllProgress.loaded.toLocaleString()} / {loadAllProgress.total.toLocaleString()}
+            </span>
+          </div>
+          <div className="w-full bg-blue-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ 
+                width: `${Math.min((loadAllProgress.loaded / loadAllProgress.total) * 100, 100)}%` 
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {autoLoadingComplete && !hasMoreData && events.length > 0 && (
+        <div className="text-center py-4">
+          <p className="text-sm text-gray-600">
+            All available events have been loaded ({events.length.toLocaleString()} total)
+          </p>
+        </div>
       )}
 
       <div className="space-y-1">
