@@ -123,8 +123,8 @@ const getEventTitle = (event: LowLevelEvent) => {
 export default function LlmIterationPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = use(params);
   const { setUserId } = useUser();
-  const [displayEvents, setDisplayEvents] = useState<LowLevelEvent[]>([]);
-  const [displayAnalyses, setDisplayAnalyses] = useState<WorkflowStepAnalysis[]>([]);
+  const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
+  const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
   const [usingCachedData, setUsingCachedData] = useState(false);
   const [usingCachedAnalyses, setUsingCachedAnalyses] = useState(false);
   const sharedStorage = getSharedEventsStorage(userId);
@@ -139,7 +139,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro'); // 🔥 Updated to stable Vertex AI model name
-  const [currentDisplayLimit, setCurrentDisplayLimit] = useState(1000);
   const [pendingJobCount, setPendingJobCount] = useState(0);
   const [rawLlmInputForDisplay, setRawLlmInputForDisplay] = useState<string | null>(null);
   const [totalEventCount, setTotalEventCount] = useState<number>(0);
@@ -349,27 +348,26 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const loadEventsForDisplay = useCallback(async (limit: number = 1000) => {
     try {
       const cachedData = await sharedStorage.getCachedEvents(limit, 0, false);
-      setDisplayEvents(cachedData.events);
+      // Display events are just used for display, we don't need a separate state for this
       setUsingCachedData(cachedData.events.length > 0);
       console.log(`[Steps] Loaded ${cachedData.events.length} events for display from IndexedDB`);
     } catch (error) {
       console.error('[Steps] Failed to load events for display:', error);
-      setDisplayEvents([]);
     }
   }, [sharedStorage]);
 
   // Load analyses for display from IndexedDB (single source of truth)  
-  const loadAnalysesForDisplay = useCallback(async (limit: number = 1000) => {
-    try {
-      const cachedData = await analysisStorage.getCachedAnalyses(limit, 0);
-      setDisplayAnalyses(cachedData.analyses);
-      setUsingCachedAnalyses(cachedData.analyses.length > 0);
-      console.log(`[Steps] Loaded ${cachedData.analyses.length} analyses for display from IndexedDB`);
-    } catch (error) {
-      console.error('[Steps] Failed to load analyses for display:', error);
-      setDisplayAnalyses([]);
-    }
-  }, [analysisStorage]);
+  // const loadAnalysesForDisplay = useCallback(async (limit: number = 1000) => {
+  //   try {
+  //     const cachedData = await analysisStorage.getCachedAnalyses(limit, 0);
+  //     // setDisplayAnalyses(cachedData.analyses); // This line was removed
+  //     setUsingCachedAnalyses(cachedData.analyses.length > 0);
+  //     console.log(`[Steps] Loaded ${cachedData.analyses.length} analyses for display from IndexedDB`);
+  //   } catch (error) {
+  //     console.error('[Steps] Failed to load analyses for display:', error);
+  //     // setDisplayAnalyses([]); // This line was removed
+  //   }
+  // }, [analysisStorage]);
 
   const forceRefreshAnalyses = useCallback(async () => {
     if (!userId) return;
@@ -417,12 +415,12 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           
           // Count UI tree events for steps count
           const uiTreeCount = cachedData.events.filter(event => 
-            (event.payload as any)?.payload?.type === 'ui_tree'
+            (event.payload as StepsPageEventPayload)?.payload?.type === 'ui_tree'
           ).length;
           setTotalStepsCount(uiTreeCount);
           
           // Load events for display
-          await loadEventsForDisplay(currentDisplayLimit);
+          await loadEventsForDisplay(1000);
           setLoading(false);
           
           // Continue to check for new events in background
@@ -443,8 +441,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         
         // If we had cached data, check for new events and merge
         if (cachedData.events.length > 0) {
-          const cachedIds = new Set(cachedData.events.map(e => e.id));
-          const reallyNewEvents = newEvents.filter(e => !cachedIds.has(e.id));
+          const cachedIds = new Set(cachedData.events.map((e: LowLevelEvent) => e.id));
+          const reallyNewEvents = newEvents.filter((e: LowLevelEvent) => !cachedIds.has(e.id));
           
           if (reallyNewEvents.length > 0) {
             console.log(`[Steps] Found ${reallyNewEvents.length} new events, updating cache and UI`);
@@ -498,6 +496,52 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       fetchAllWorkflowAnalyses();
     }
   }, [userId, setUserId, fetchAllWorkflowAnalyses, sharedStorage]);
+
+  const loadMoreEvents = useCallback(async (amount: number): Promise<{ hasMore: boolean } | null> => {
+    if (!hasMore || isLoadingMore || !userId) return null;
+    setIsLoadingMore(true);
+    try {
+      // First try to load more from IndexedDB cache
+      if (usingCachedData) {
+        const cachedData = await sharedStorage.getCachedEvents(amount, offset, false);
+        if (cachedData.events.length > 0) {
+          console.log(`[Steps] Loaded ${cachedData.events.length} more events from IndexedDB cache`);
+          setAllEvents(prevEvents => [...prevEvents, ...cachedData.events]);
+          setHasMore(cachedData.hasMore);
+          setOffset(prevOffset => prevOffset + cachedData.events.length);
+          setIsLoadingMore(false);
+          return { hasMore: cachedData.hasMore };
+        }
+      }
+      
+      // Fallback to API if cache doesn't have more data
+      const response = await fetch(`/api/low-level/${userId}?offset=${offset}&limit=${amount}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok when fetching more events');
+      }
+      const data = await response.json();
+      const newEvents = data.events || [];
+      
+      setAllEvents(prevEvents => [...prevEvents, ...newEvents]);
+      const hasMoreData = data.hasMore || false;
+      setHasMore(hasMoreData);
+      setOffset(prevOffset => prevOffset + newEvents.length);
+
+      // Save new events to cache
+      if (newEvents.length > 0) {
+        await sharedStorage.saveEvents(newEvents);
+        console.log(`[Steps] Saved ${newEvents.length} additional events to IndexedDB`);
+      }
+
+      return { hasMore: hasMoreData };
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return null;
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [hasMore, isLoadingMore, userId, usingCachedData, sharedStorage, offset]);
 
   // Auto-load more data progressively
   const autoLoadMore = useCallback(async (currentCount: number) => {
@@ -564,8 +608,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         
         if (latestEvents.length > 0 && allEvents.length > 0) {
           // Check if we have any new events by comparing IDs
-          const existingIds = new Set(allEvents.slice(0, 10).map(e => e.id));
-          const newEvents = latestEvents.filter(e => !existingIds.has(e.id));
+          const existingIds = new Set(allEvents.slice(0, 10).map((e: LowLevelEvent) => e.id));
+          const newEvents = latestEvents.filter((e: LowLevelEvent) => !existingIds.has(e.id));
           
           if (newEvents.length > 0) {
             console.log(`[Steps] Found ${newEvents.length} new events via polling`);
@@ -594,51 +638,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     return () => clearInterval(interval);
   }, [userId, loading, allEvents, sharedStorage]);
 
-  const loadMoreEvents = async (amount: number): Promise<{ hasMore: boolean } | null> => {
-    if (!hasMore || isLoadingMore || !userId) return null;
-    setIsLoadingMore(true);
-    try {
-      // First try to load more from IndexedDB cache
-      if (usingCachedData) {
-        const cachedData = await sharedStorage.getCachedEvents(amount, offset, false);
-        if (cachedData.events.length > 0) {
-          console.log(`[Steps] Loaded ${cachedData.events.length} more events from IndexedDB cache`);
-          setAllEvents(prevEvents => [...prevEvents, ...cachedData.events]);
-          setHasMore(cachedData.hasMore);
-          setOffset(prevOffset => prevOffset + cachedData.events.length);
-          setIsLoadingMore(false);
-          return { hasMore: cachedData.hasMore };
-        }
-      }
-      
-      // Fallback to API if cache doesn't have more data
-      const response = await fetch(`/api/low-level/${userId}?offset=${offset}&limit=${amount}`);
-      if (!response.ok) {
-        throw new Error('Network response was not ok when fetching more events');
-      }
-      const data = await response.json();
-      const newEvents = data.events || [];
-      
-      setAllEvents(prevEvents => [...prevEvents, ...newEvents]);
-      const hasMoreData = data.hasMore || false;
-      setHasMore(hasMoreData);
-      setOffset(prevOffset => prevOffset + newEvents.length);
 
-      // Save new events to cache
-      if (newEvents.length > 0) {
-        await sharedStorage.saveEvents(newEvents);
-        console.log(`[Steps] Saved ${newEvents.length} additional events to IndexedDB`);
-      }
-
-      return { hasMore: hasMoreData };
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      return null;
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
 
   // Filter for UI tree events and sort them
   const uiTreeEvents = useMemo(() => {
