@@ -15,7 +15,7 @@ function toSSE(data: object): Uint8Array {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId, model } = await req.json();
+  const { userId, model, startDate, endDate } = await req.json();
 
   if (!userId || !model) {
     return new Response(JSON.stringify({ error: 'Missing required "userId" and "model" parameters' }), {
@@ -24,7 +24,12 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  console.log('Initiating workflow analysis for userId:', userId, 'using model:', model);
+  // Log time boundary information
+  if (startDate && endDate) {
+    console.log('Initiating time-bounded workflow analysis for userId:', userId, 'using model:', model, 'from:', startDate, 'to:', endDate);
+  } else {
+    console.log('Initiating workflow analysis for userId:', userId, 'using model:', model, '(no time boundaries)');
+  }
 
   // Use a ReadableStream to send events as they happen
   const stream = new ReadableStream({
@@ -43,10 +48,21 @@ export async function POST(req: NextRequest) {
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
         
         // Fetch analyses first (reusing logic from fetch-combined-analyses-v2)
-        const { data: analysesData, error: analysesError } = await supabaseAdmin
+        // Apply time boundaries if provided
+        let query = supabaseAdmin
           .from('low_level_workflow_analyses')
           .select('id, client_timestamp, window_title, llm_structured_output')
-          .eq('user_id', userId)
+          .eq('user_id', userId);
+
+        // Apply time filtering if boundaries are provided
+        if (startDate && endDate) {
+          query = query
+            .gte('client_timestamp', startDate)
+            .lte('client_timestamp', endDate);
+          controller.enqueue(toSSE({ status: `Filtering data from ${new Date(startDate).toLocaleString()} to ${new Date(endDate).toLocaleString()}...`, progress: 15 }));
+        }
+
+        const { data: analysesData, error: analysesError } = await query
           .order('client_timestamp', { ascending: false })
           .limit(1000);
 

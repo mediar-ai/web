@@ -158,6 +158,12 @@ export function useWorkflowPageLogic(userId: string) {
   const [timelineMappingElapsedTime, setTimelineMappingElapsedTime] = useState(0);
   const timelineMappingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Time boundary state for filtering workflow synthesis data
+  const [timeBoundary, setTimeBoundary] = useState<{startDate: Date | null; endDate: Date | null}>({
+    startDate: null,
+    endDate: null
+  });
+  
   // Data is now fetched directly by backend APIs - frontend only handles stats and UI state
 
   const isLoading = useMemo(() => 
@@ -381,7 +387,11 @@ export function useWorkflowPageLogic(userId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           userId: userId,
-          model: selectedModel 
+          model: selectedModel,
+          ...(timeBoundary.startDate && timeBoundary.endDate && {
+            startDate: timeBoundary.startDate.toISOString(),
+            endDate: timeBoundary.endDate.toISOString()
+          })
         }),
       });
 
@@ -475,6 +485,10 @@ export function useWorkflowPageLogic(userId: string) {
           userId: userId,
           workflow_context: editableContext,
           draft_workflow_names: draftWorkflowNames,
+          ...(timeBoundary.startDate && timeBoundary.endDate && {
+            startDate: timeBoundary.startDate.toISOString(),
+            endDate: timeBoundary.endDate.toISOString()
+          })
         }),
       });
 
@@ -518,7 +532,11 @@ export function useWorkflowPageLogic(userId: string) {
             workflows: approvedWorkflows.map(name => ({ workflow_name: name })),
             userId: userId,
             userContext: workflowContext,
-          }
+          },
+          ...(timeBoundary.startDate && timeBoundary.endDate && {
+            startDate: timeBoundary.startDate.toISOString(),
+            endDate: timeBoundary.endDate.toISOString()
+          })
         })
       });
 
@@ -585,7 +603,11 @@ export function useWorkflowPageLogic(userId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           userId: userId,
-          model: selectedModel 
+          model: selectedModel,
+          ...(timeBoundary.startDate && timeBoundary.endDate && {
+            startDate: timeBoundary.startDate.toISOString(),
+            endDate: timeBoundary.endDate.toISOString()
+          })
         }),
       });
 
@@ -994,5 +1016,9 @@ export function useWorkflowPageLogic(userId: string) {
     timelineMappingElapsedTime,
     timelineMappingMode,
     setTimelineMappingMode,
+    
+    // Time boundary state
+    timeBoundary,
+    setTimeBoundary,
   };
 } 

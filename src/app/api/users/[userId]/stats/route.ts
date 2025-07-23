@@ -15,12 +15,77 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   const { userId } = await params;
+  const { searchParams } = new URL(req.url);
+  const startDate = searchParams.get('startDate');
+  const endDate = searchParams.get('endDate');
 
   if (!userId) {
     return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
   }
 
   try {
+    // If time range is provided, fetch filtered stats directly from tables
+    if (startDate && endDate) {
+      const startDateTime = new Date(startDate);
+      const endDateTime = new Date(endDate);
+
+      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+        return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
+      }
+
+      // Fetch filtered raw events count
+      const { count: eventsCount, error: eventsError } = await supabaseAdmin
+        .from('low_level_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('created_at', startDateTime.toISOString())
+        .lte('created_at', endDateTime.toISOString());
+
+      if (eventsError) {
+        console.error(`Error counting events for user ${userId}:`, eventsError);
+        throw eventsError;
+      }
+
+      // Fetch filtered analyses count
+      const { count: analysesCount, error: analysesError } = await supabaseAdmin
+        .from('low_level_workflow_analyses')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('client_timestamp', startDateTime.toISOString())
+        .lte('client_timestamp', endDateTime.toISOString());
+
+      if (analysesError) {
+        console.error(`Error counting analyses for user ${userId}:`, analysesError);
+        throw analysesError;
+      }
+
+      // Fetch filtered annotations count
+      const { count: annotationsCount, error: annotationsError } = await supabaseAdmin
+        .from('raw_timeline_event_annotations')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('created_at', startDateTime.toISOString())
+        .lte('created_at', endDateTime.toISOString());
+
+      if (annotationsError) {
+        console.error(`Error counting annotations for user ${userId}:`, annotationsError);
+        // Don't throw here, annotations might not exist for this user
+      }
+
+      const filteredStats = {
+        totalEvents: eventsCount || 0,
+        totalAnalyses: analysesCount || 0,
+        totalAnnotations: annotationsCount || 0,
+        stepsProcessed: analysesCount || 0, // For backward compatibility
+        totalSteps: eventsCount || 0, // For backward compatibility  
+        labelingTotal: annotationsCount || 0, // For backward compatibility
+        humanLabeled: 0, // For backward compatibility
+      };
+
+      return NextResponse.json(filteredStats);
+    }
+
+    // Default behavior - fetch all-time stats from session metadata
     const { data: sessions, error: sessionsError } = await supabaseAdmin
       .from('session_metadata')
       .select('event_count, total_ui_steps, processed_event_count, total_labeled_steps, human_labeled_steps')

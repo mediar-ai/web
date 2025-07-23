@@ -68,7 +68,13 @@ interface TimelineAnnotation {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId, model, targetUiEventIds }: { userId: string; model: string; targetUiEventIds?: string[] } = await req.json();
+  const { userId, model, targetUiEventIds, startDate, endDate }: { 
+    userId: string; 
+    model: string; 
+    targetUiEventIds?: string[];
+    startDate?: string;
+    endDate?: string;
+  } = await req.json();
 
   if (!userId || !model) {
     return new Response(JSON.stringify({ error: 'Missing required parameters' }), {
@@ -77,7 +83,12 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  console.log(`🔄 Starting timeline mapping for user: ${userId}`);
+  // Log time boundary information
+  if (startDate && endDate) {
+    console.log(`🔄 Starting time-bounded timeline mapping for user: ${userId} from ${startDate} to ${endDate}`);
+  } else {
+    console.log(`🔄 Starting timeline mapping for user: ${userId}`);
+  }
 
   // Use a ReadableStream to send progress updates as they happen
   const stream = new ReadableStream({
@@ -140,15 +151,29 @@ export async function POST(req: NextRequest) {
           uiTreeEvents = data;
           recentEventsError = error;
         } else {
-          // Default behavior: fetch recent UI tree events (last 7 days)
-          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-          const { data, error } = await supabaseAdmin
+          // Use time boundaries if provided, otherwise fetch recent UI tree events (last 7 days)
+          let query = supabaseAdmin
             .from('low_level_events_enriched')
             .select('id, created_at, payload')
             .eq('user_id', userId)
-            .eq('event_type', 'ui_tree') // Use optimized column instead of JSONB filter
-            .gte('created_at', sevenDaysAgo)
-            .order('created_at', { ascending: false });
+            .eq('event_type', 'ui_tree'); // Use optimized column instead of JSONB filter
+
+          if (startDate && endDate) {
+            // Apply user-specified time boundaries
+            query = query
+              .gte('created_at', startDate)
+              .lte('created_at', endDate);
+            controller.enqueue(toSSE({ 
+              status: `Filtering events from ${new Date(startDate).toLocaleString()} to ${new Date(endDate).toLocaleString()}...`,
+              progress: 35 
+            }));
+          } else {
+            // Default behavior: fetch recent UI tree events (last 7 days)
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+            query = query.gte('created_at', sevenDaysAgo);
+          }
+
+          const { data, error } = await query.order('created_at', { ascending: false });
           uiTreeEvents = data;
           recentEventsError = error;
         }

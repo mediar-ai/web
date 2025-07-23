@@ -5,13 +5,18 @@ import { PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, WORKFLOW_REFINEMENT_SCHEMA } from 
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, workflow_context, draft_workflow_names, model } = await req.json();
+    const { userId, workflow_context, draft_workflow_names, model, startDate, endDate } = await req.json();
 
     if (!model || !userId || !workflow_context || !draft_workflow_names) {
     return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
   }
 
-    console.log('Refining workflow list for userId:', userId, 'with', draft_workflow_names.length, 'draft workflows');
+    // Log time boundary information
+    if (startDate && endDate) {
+      console.log('Refining workflow list for userId:', userId, 'with', draft_workflow_names.length, 'draft workflows', 'from:', startDate, 'to:', endDate);
+    } else {
+      console.log('Refining workflow list for userId:', userId, 'with', draft_workflow_names.length, 'draft workflows', '(no time boundaries)');
+    }
 
     // Fetch analyses from database (reusing logic from fetch-combined-analyses-v2)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -23,11 +28,20 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Fetch analyses first
-    const { data: analysesData, error: analysesError } = await supabaseAdmin
+    // Fetch analyses first with optional time filtering
+    let query = supabaseAdmin
       .from('low_level_workflow_analyses')
       .select('id, client_timestamp, window_title, llm_structured_output')
-      .eq('user_id', userId)
+      .eq('user_id', userId);
+
+    // Apply time filtering if boundaries are provided
+    if (startDate && endDate) {
+      query = query
+        .gte('client_timestamp', startDate)
+        .lte('client_timestamp', endDate);
+    }
+
+    const { data: analysesData, error: analysesError } = await query
       .order('client_timestamp', { ascending: false })
       .limit(1000);
 

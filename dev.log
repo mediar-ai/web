@@ -8,5 +8,42 @@
    - Environments: .env.local
 
  ✓ Starting...
- ✓ Compiled middleware in 120ms
- ✓ Ready in 735ms
+ ✓ Compiled middleware in 128ms
+ ✓ Ready in 757ms
+ ○ Compiling /low-level/[userId]/workflow ...
+ ✓ Compiled /low-level/[userId]/workflow in 1278ms
+ GET /low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow 200 in 1709ms
+ ✓ Compiled /api/users/[userId] in 210ms
+ ✓ Compiled /api/workflows/saved-syntheses in 371ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 424ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 658ms
+📋 Retrieved 3 comprehensive saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 479ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 486ms
+📋 Retrieved 21 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 511ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 76ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 88ms
+📋 Retrieved 3 comprehensive saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 125ms
+📋 Retrieved 21 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 114ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 73ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 691ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 91ms
+ ✓ Compiled /api/remote-workflows/executions/live in 322ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 545ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 786ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats?startDate=2025-07-22T02%3A58%3A07.764Z&endDate=2025-07-23T02%3A58%3A07.764Z 200 in 641ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1679ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1911ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 179ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 578ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1242ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1570ms
