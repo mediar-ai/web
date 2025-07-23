@@ -19,6 +19,8 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   const { userId } = await params;
+  const { searchParams } = new URL(request.url);
+  const limit = parseInt(searchParams.get('limit') || '50', 10);
 
   if (!userId) {
     return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
@@ -27,13 +29,13 @@ export async function GET(
   try {
     // Fetch UI tree events directly from the database using the optimized view and indexed column.
     // This is much more efficient than fetching all events and filtering in memory.
-    const { data: events, error: eventsError } = await supabaseAdmin
+    const { data: events, error: eventsError, count } = await supabaseAdmin
       .from('low_level_events_enriched') // Use the enriched view
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('user_id', userId)
       .eq('event_type', 'ui_tree') // Filter in the database
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(limit);
 
     if (eventsError) {
       console.error('Supabase error:', eventsError);
@@ -59,8 +61,12 @@ export async function GET(
     });
     */
 
+    const hasMore = (count || 0) > limit;
+
     return NextResponse.json({
       events: events || [],
+      hasMore,
+      totalCount: count || 0,
     });
 
   } catch (err) {
