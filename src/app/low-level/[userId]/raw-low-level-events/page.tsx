@@ -242,6 +242,19 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     });
   };
 
+  const handleCopyAllEvents = () => {
+    const eventsJson = JSON.stringify(events, null, 2);
+    const blob = new Blob([eventsJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `raw-events-${userId}-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const searchedEvents = useMemo(() => {
     if (!searchTerm) return events;
     const lowercasedFilter = searchTerm.toLowerCase();
@@ -382,6 +395,9 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         <Button variant="black-outline" size="sm" onClick={expandAll}>Expand All</Button>
         <Button variant="black-outline" size="sm" onClick={collapseAll}>Collapse All</Button>
         <Button variant="black-outline" size="sm" onClick={clearView}>Clear View</Button>
+        <Button variant="black-outline" size="sm" onClick={handleCopyAllEvents} disabled={events.length === 0}>
+          Copy All as JSON
+        </Button>
       </div>
       
       {events.length > 0 && (
