@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TimeBoundary {
@@ -134,7 +133,7 @@ export function TimeBoundarySelector({
               size="sm"
               onClick={resetToBoundary}
               disabled={disabled || (!selectedBoundary.startDate && !selectedBoundary.endDate)}
-              className="h-8 px-2 text-xs"
+              className="h-8 px-2 text-xs border-black hover:bg-gray-100"
             >
               Clear
             </Button>
@@ -152,11 +151,12 @@ export function TimeBoundarySelector({
                   onClick={() => handleQuickOptionSelect(index)}
                   disabled={disabled}
                   className={cn(
-                    "h-8 text-xs",
-                    selectedQuickOption === index && "bg-black text-white border-black"
+                    "h-8 text-xs border-black",
+                    selectedQuickOption === index 
+                      ? "bg-black text-white border-black" 
+                      : "hover:bg-gray-100"
                   )}
                 >
-                  <Clock className="w-3 h-3 mr-1" />
                   {option.label}
                 </Button>
               ))}
@@ -171,11 +171,12 @@ export function TimeBoundarySelector({
               onClick={handleCustomRangeToggle}
               disabled={disabled}
               className={cn(
-                "h-8 text-xs",
-                useCustomRange && "bg-black text-white border-black"
+                "h-8 text-xs border-black",
+                useCustomRange 
+                  ? "bg-black text-white border-black" 
+                  : "hover:bg-gray-100"
               )}
             >
-              <CalendarIcon className="w-3 h-3 mr-1" />
               Custom Range
             </Button>
             {selectedBoundary.startDate && selectedBoundary.endDate && (
@@ -196,7 +197,7 @@ export function TimeBoundarySelector({
                   value={customStartDate}
                   onChange={(e) => handleCustomDateChange('start', e.target.value)}
                   disabled={disabled}
-                  className="h-8 text-xs border-black"
+                  className="h-8 text-xs border-black focus:border-black focus:ring-black"
                 />
               </div>
               <div className="space-y-1">
@@ -207,7 +208,7 @@ export function TimeBoundarySelector({
                   value={customEndDate}
                   onChange={(e) => handleCustomDateChange('end', e.target.value)}
                   disabled={disabled}
-                  className="h-8 text-xs border-black"
+                  className="h-8 text-xs border-black focus:border-black focus:ring-black"
                 />
               </div>
             </div>

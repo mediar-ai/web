@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -131,7 +130,7 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
             <div className="mb-4 text-left">
               <CollapsibleTrigger className="w-full flex items-center justify-between hover:bg-gray-50 p-2 rounded">
                 <h3 className="text-lg font-semibold">Saved Workflow Syntheses ({savedSyntheses.length})</h3>
-                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <span className="text-sm font-mono">{isOpen ? '▼' : '▶'}</span>
               </CollapsibleTrigger>
               
               <CollapsibleContent>
@@ -194,8 +193,8 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
                         {/* Step 1: Analyze Context & Draft Workflows */}
                         <div className="border rounded-lg overflow-hidden">
                           <div className="bg-muted/40 p-4 border-b flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-sm">
-                              <Check className="h-4 w-4" />
+                            <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-medium text-sm">
+                              <span className="text-xs font-mono">✓</span>
                             </div>
                             <div className="flex-grow">
                               <h3 className="text-lg font-semibold">1. Analyze Context & Draft Workflows</h3>
@@ -238,8 +237,8 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
                         {/* Step 2: Select & Refine Workflows */}
                         <div className="border rounded-lg overflow-hidden">
                           <div className="bg-muted/40 p-4 border-b flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-sm">
-                              <Check className="h-4 w-4" />
+                            <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-medium text-sm">
+                              <span className="text-xs font-mono">✓</span>
                             </div>
                             <div className="flex-grow">
                               <h3 className="text-lg font-semibold">2. Select & Refine Workflows</h3>
@@ -267,8 +266,8 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
                         {/* Step 3: Define Workflow Boundaries */}
                         <div className="border rounded-lg overflow-hidden">
                           <div className="bg-muted/40 p-4 border-b flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-sm">
-                              <Check className="h-4 w-4" />
+                            <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-medium text-sm">
+                              <span className="text-xs font-mono">✓</span>
                             </div>
                             <div className="flex-grow">
                               <h3 className="text-lg font-semibold">3. Define Workflow Boundaries</h3>
@@ -307,8 +306,8 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
                         {/* Step 4: Review & Edit Synthesized Workflows */}
                         <div className="border rounded-lg overflow-hidden">
                           <div className="bg-muted/40 p-4 border-b flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-sm">
-                              <Check className="h-4 w-4" />
+                            <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-medium text-sm">
+                              <span className="text-xs font-mono">✓</span>
                             </div>
                             <div className="flex-grow">
                               <h3 className="text-lg font-semibold">4. Review & Edit Synthesized Workflows</h3>
@@ -456,8 +455,8 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
                         {/* Step 5: Create Timeline Mapping */}
                         <div className="border rounded-lg overflow-hidden">
                           <div className="bg-muted/40 p-4 border-b flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-sm">
-                              <Check className="h-4 w-4" />
+                            <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-medium text-sm">
+                              <span className="text-xs font-mono">✓</span>
                             </div>
                             <div className="flex-grow">
                               <h3 className="text-lg font-semibold">5. Create Timeline Mapping</h3>
