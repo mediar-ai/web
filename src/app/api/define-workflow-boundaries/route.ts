@@ -1,41 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { WORKFLOW_BOUNDARIES_PROMPT, WORKFLOW_BOUNDARIES_SCHEMA } from '@/lib/prompts';
+import { createClient } from '@supabase/supabase-js';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
-
-
-
-// Define a proper schema with array structure instead of dynamic keys
-// Note: Vertex AI doesn't use the same schema format as Google AI Studio
-// We'll handle JSON parsing manually instead
-// const boundarySchema: Schema = {
-//     type: SchemaType.OBJECT,
-//     description: "Boundaries for multiple workflows",
-//     properties: {
-//         workflows: {
-//             type: SchemaType.ARRAY,
-//             description: "Array of workflow boundary definitions",
-//             items: {
-//                 type: SchemaType.OBJECT,
-//                 properties: {
-//                     workflow_name: {
-//                         type: SchemaType.STRING,
-//                         description: "The name of the workflow"
-//                     },
-//                     trigger: {
-//                         type: SchemaType.STRING,
-//                         description: "The trigger condition that starts this workflow"
-//                     },
-//                     terminator: {
-//                         type: SchemaType.STRING,
-//                         description: "The condition that ends this workflow"
-//                     }
-//                 },
-//                 required: ["workflow_name", "trigger", "terminator"]
-//             }
-//         }
-//     },
-//     required: ["workflows"]
-// };
+import { WORKFLOW_BOUNDARIES_PROMPT, WORKFLOW_BOUNDARIES_SCHEMA } from '@/lib/prompts';
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,6 +11,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
+    if (!context.userId) {
+      return NextResponse.json({ error: 'Missing userId in context' }, { status: 400 });
+    }
+
     // Handle both single workflow (legacy) and multiple workflows
     const workflowNames = context.workflows.map((w: { workflow_name: string }) => w.workflow_name);
     
@@ -52,7 +22,79 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No workflow names provided' }, { status: 400 });
     }
 
-    console.log('Defining workflow boundaries with', context.analyses?.length || 0, 'analyses and', workflowNames.length, 'workflows');
+    console.log('Defining workflow boundaries for userId:', context.userId, 'with', workflowNames.length, 'workflows');
+
+    // Fetch analyses from database (reusing logic from fetch-combined-analyses-v2)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Fetch analyses first
+    const { data: analysesData, error: analysesError } = await supabaseAdmin
+      .from('low_level_workflow_analyses')
+      .select('id, client_timestamp, window_title, llm_structured_output')
+      .eq('user_id', context.userId)
+      .order('client_timestamp', { ascending: false })
+      .limit(1000);
+
+    if (analysesError) {
+      throw new Error(`Failed to fetch analyses: ${analysesError.message}`);
+    }
+
+    if (!analysesData || analysesData.length === 0) {
+      throw new Error('No analysis data found for this user');
+    }
+
+    // Get all analysis IDs to fetch labels
+    const analysisIds = analysesData.map(item => item.id);
+    
+    // Fetch labels for these analyses
+    const { data: labelsData, error: labelsError } = await supabaseAdmin
+      .from('low_level_workflow_labeling')
+      .select('low_level_workflow_analysis_id, selected_labels')
+      .in('low_level_workflow_analysis_id', analysisIds);
+
+    if (labelsError) {
+      console.warn('Error fetching labels:', labelsError);
+      // Continue without labels rather than failing completely
+    }
+
+    // Create a map of analysis_id -> labels for quick lookup
+    const labelsMap = new Map();
+    labelsData?.forEach(label => {
+      labelsMap.set(label.low_level_workflow_analysis_id, label.selected_labels);
+    });
+
+    // Transform data to the same format as fetch-combined-analyses-v2
+    const analyses = analysesData.map((item: Record<string, unknown>) => {
+      // Extract the JSONB analysis data
+      const analysisData = item.llm_structured_output || {};
+      
+      // Remove unwanted fields from analysis data and keep only the ones we want
+      const cleanAnalysisData = Object.fromEntries(
+        Object.entries(analysisData).filter(([key]) => 
+          !['generation_timestamp', 'context_metadata', 'label_status', 'schema_version'].includes(key)
+        )
+      );
+
+      // Get selected labels from the labels map
+      const selectedLabels = labelsMap.get(item.id) || [];
+
+      return {
+        id: item.id,
+        timestamp: item.client_timestamp,
+        window_title: item.window_title,
+        analysis: cleanAnalysisData,
+        labels: selectedLabels
+      };
+    });
+
+    console.log(`Loaded ${analyses.length} analyses for boundary definition`);
 
     const workflowList = workflowNames.map((name: string) => `- "${name}"`).join('\n');
     
@@ -73,7 +115,7 @@ The combinedAnalyses array contains events with the following structure:
 - labels: Array of human-provided labels
 
 Combined Analyses:
-${JSON.stringify(context.analyses, null, 2)}`;
+${JSON.stringify(analyses, null, 2)}`;
 
     // Use structured output for workflow boundaries
     const result = await callVertexWithStructuredOutput(
@@ -87,10 +129,8 @@ ${JSON.stringify(context.analyses, null, 2)}`;
     return NextResponse.json(result);
 
   } catch (error) {
-    console.error('Error in POST /api/define-workflow-boundaries:', error);
-    return NextResponse.json({ 
-        error: 'Boundary definition failed', 
-        details: error instanceof Error ? error.message : 'Unknown error' 
-    }, { status: 500 });
+    console.error('Error in define-workflow-boundaries:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
   }
 } 

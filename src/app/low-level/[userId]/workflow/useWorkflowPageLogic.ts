@@ -37,6 +37,67 @@ type CombinedAnalysisData = {
   selected_labels: string[];
 };
 
+// Type definitions for batch timeline mapping
+interface BatchMappingResult {
+  batch_timestamp: string;
+  analysis_id: number;
+  event_mappings: EventMapping[];
+  unrelated_events: UnrelatedEvent[];
+}
+
+interface EventMapping {
+  raw_event_id: number;
+  synthesized_workflow_step: string;
+  confidence_score: number;
+  user_action: string;
+  ui_element_interacted?: string;
+  content_change?: string;
+}
+
+interface UnrelatedEvent {
+  raw_event_id: number;
+  unrelated_reason: string;
+}
+
+// New interface for API response mappings
+interface ApiResponseMapping {
+  raw_event_id: number;
+  analysis_id: number;
+  confidence_score: number;
+  workflow_type?: string;
+  workflow_instance?: string;
+  workflow_step?: string;
+  workflow_substep?: string;
+  inputs?: string;
+  outputs?: string;
+  business_logic?: string;
+  unrelated_reason?: string;
+}
+
+interface ExtendedEventMapping extends EventMapping {
+  batch_timestamp: string;
+  analysis_id: number;
+}
+
+interface ExtendedUnrelatedEvent extends UnrelatedEvent {
+  batch_timestamp: string;
+}
+
+interface TimelineAnnotation {
+  id: number;
+  raw_event_id: number;
+  analysis_id: number | null;
+  is_workflow_related: boolean;
+  user_action: string;
+  ui_element_interacted: string | null;
+  content_change: string | null;
+  synthesized_workflow_step: string | null;
+  confidence_score: number;
+  batch_timestamp: string;
+  unrelated_reason?: string;
+  created_at: string;
+}
+
 export function useWorkflowPageLogic(userId: string) {
   const { setUserId } = useUser();
   const [view, setView] = useState<'initial' | 'chat_fullscreen' | 'canvas'>('initial');
@@ -87,19 +148,17 @@ export function useWorkflowPageLogic(userId: string) {
   const [timelineEvents, setTimelineEvents] = useState<EnhancedTimelineEvent[]>([]);
   const [timelineMappingMode, setTimelineMappingMode] = useState(false);
   const [lowLevelEvents, setLowLevelEvents] = useState<LowLevelEvent[]>([]);
-  const [combinedAnalyses, setCombinedAnalyses] = useState<CombinedAnalysisData[]>([]);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [isMappingTimeline, setIsMappingTimeline] = useState(false);
-  const [timelineAnnotations, setTimelineAnnotations] = useState<EnhancedTimelineEvent[] | null>(null);
+  const [timelineAnnotations, setTimelineAnnotations] = useState<TimelineAnnotation[] | null>(null);
   
-  // New Memoized State: Combine raw analyses and labels into a single, rich array
-  // const combinedAnalyses = useMemo(() => {
-  //   const labelsMap = new Map(llmLabels.map(label => [label.low_level_workflow_analysis_id, label.selected_labels]));
-  //   return rawAnalyses.map(analysis => ({
-  //     ...analysis,
-  //     human_label: labelsMap.get(analysis.id)?.[0] || null, // Take the first label if multiple exist
-  //   }));
-  // }, [rawAnalyses, llmLabels]);
+  // Timeline mapping progress tracking (similar to analyze context)
+  const [timelineMappingStatus, setTimelineMappingStatus] = useState("");
+  const [timelineMappingProgress, setTimelineMappingProgress] = useState(0);
+  const [timelineMappingElapsedTime, setTimelineMappingElapsedTime] = useState(0);
+  const timelineMappingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Data is now fetched directly by backend APIs - frontend only handles stats and UI state
 
   const isLoading = useMemo(() => 
     isFetchingEvents || isAnalyzingEvents || isMappingTimeline
@@ -235,24 +294,8 @@ export function useWorkflowPageLogic(userId: string) {
       }
     };
 
-    const fetchEvents = async () => {
-      setIsFetchingEvents(true);
-      try {
-        const response = await fetch(`/api/fetch-combined-analyses-v2?userId=${userId}&limit=1000`);
-        
-        if (!response.ok) throw new Error("Failed to fetch combined analyses");
-        
-        const result = await response.json();
-        setCombinedAnalyses(result.data || []);
-
-      } catch (error) {
-        console.error("Error fetching events:", error);
-      } finally {
-        setIsFetchingEvents(false);
-      }
-    };
-
-    fetchEvents();
+    // Data fetching moved to backend APIs - frontend only loads stats
+    setIsFetchingEvents(false);
     fetchUserStats();
   }, [userId, setUserId, loadSynthesisSession]);
 
@@ -337,13 +380,7 @@ export function useWorkflowPageLogic(userId: string) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          analyses: combinedAnalyses.map(item => ({
-            id: item.id,
-            timestamp: item.client_timestamp,
-            window_title: item.window_title,
-            analysis: item.analysis_data,
-            labels: item.selected_labels
-          })), 
+          userId: userId,
           model: selectedModel 
         }),
       });
@@ -435,13 +472,7 @@ export function useWorkflowPageLogic(userId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModel,
-          analyses: combinedAnalyses.map(item => ({
-            id: item.id,
-            timestamp: item.client_timestamp,
-            window_title: item.window_title,
-            analysis: item.analysis_data,
-            labels: item.selected_labels
-          })),
+          userId: userId,
           workflow_context: editableContext,
           draft_workflow_names: draftWorkflowNames,
         }),
@@ -485,13 +516,7 @@ export function useWorkflowPageLogic(userId: string) {
           model: selectedModel,
           context: {
             workflows: approvedWorkflows.map(name => ({ workflow_name: name })),
-            analyses: combinedAnalyses.map(item => ({
-              id: item.id,
-              timestamp: item.client_timestamp,
-              window_title: item.window_title,
-              analysis: item.analysis_data,
-              labels: item.selected_labels
-            })),
+            userId: userId,
             userContext: workflowContext,
           }
         })
@@ -536,81 +561,107 @@ export function useWorkflowPageLogic(userId: string) {
     }
   };
 
-  const generateAndSaveTimelineMapping = async (workflowsToMap: CanvasContent[]) => {
-    if (!workflowsToMap || workflowsToMap.length === 0) {
-      console.error("No workflows available to map.");
+  const generateAndSaveTimelineMapping = async () => {
+    if (!workflows.length) {
+      alert("No workflows available for timeline mapping");
       return;
     }
+
     setIsMappingTimeline(true);
-    setTimelineAnnotations(null);
+    setTimelineMappingStatus("Initializing timeline mapping...");
+    setTimelineMappingProgress(0);
+    setTimelineMappingElapsedTime(0);
+    
+    // Start timer for elapsed time tracking
+    timelineMappingTimerRef.current = setInterval(() => 
+      setTimelineMappingElapsedTime(prevTime => prevTime + 0.1), 100
+    );
+
+    console.log('🚀 Starting sequential batch timeline mapping for', workflows.length, 'workflows');
+
     try {
-      // Step 1: Prepare the workflow ID map
-      const workflowIdMap = workflowsToMap.reduce((acc, wf) => {
-        acc[wf.title!] = wf.id;
-        return acc;
-      }, {} as { [key: string]: number });
-
-      // Step 2: Call the analysis endpoint with the full context
-      const analysisResponse = await fetch('/api/analyze-timeline-events', {
+      const response = await fetch('/api/analyze-raw-timeline-events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: selectedModel,
-          user_id: userId,
-          analyses: combinedAnalyses.map(item => ({
-            id: item.id,
-            timestamp: item.client_timestamp,
-            window_title: item.window_title,
-            analysis: item.analysis_data,
-            labels: item.selected_labels
-          })),
-          userContext: workflowContext,
-          existing_workflows: workflowsToMap.map(wf => ({
-            id: wf.id,
-            title: wf.title,
-            description: wf.description,
-            workflow_types: wf.workflow_types,
-            workflow_instances: wf.workflow_instances,
-            steps: wf.steps, // Full steps with substeps, inputs, outputs, business_logic
-            trigger: workflowBoundaries[wf.title!]?.trigger || '',
-            terminator: workflowBoundaries[wf.title!]?.terminator || ''
-          })),
+        body: JSON.stringify({ 
+          userId: userId,
+          model: selectedModel 
         }),
       });
 
-      if (!analysisResponse.ok) {
-        throw new Error('Failed to analyze timeline events for mapping');
-      }
-      const analysisResult = await analysisResponse.json();
-
-      // Step 3: Save the analysis result to the database
-      const saveResponse = await fetch('/api/timeline-event-mappings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          analysis_result: analysisResult,
-          model_used: selectedModel, // Pass the selected model name
-        }),
-      });
-
-      if (!saveResponse.ok) {
-        throw new Error('Failed to save timeline annotations');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || `API Error: ${response.status} ${response.statusText}`);
       }
 
-      // Step 4: Re-fetch and update UI
-      const fetchedMappingsResponse = await fetch(`/api/timeline-event-mappings?user_id=${userId}`);
-      if (!fetchedMappingsResponse.ok) {
-        throw new Error('Failed to fetch newly created timeline annotations');
-      }
-      const newAnnotations = await fetchedMappingsResponse.json();
-      setTimelineAnnotations(newAnnotations.events);
+      if (!response.body) throw new Error("Response body is null");
 
-      console.log("Timeline mapping generated, saved, and fetched successfully!");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const allAnnotations: TimelineAnnotation[] = [];
+
+      const processChunk = (chunk: string) => {
+        const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line.substring(5));
+            if (parsed.error) {
+              throw new Error(parsed.details || parsed.error);
+            }
+            if (parsed.status) setTimelineMappingStatus(parsed.status);
+            if (typeof parsed.progress === 'number') setTimelineMappingProgress(parsed.progress);
+            if (parsed.data?.annotations) {
+              allAnnotations.push(...parsed.data.annotations);
+              // Update UI with incremental results
+              setTimelineAnnotations([...allAnnotations]);
+            }
+          } catch (parseError) {
+            if (parseError instanceof Error && parseError.message !== '') {
+              throw parseError;
+            }
+            // Ignore JSON parsing errors for malformed chunks
+          }
+        }
+      };
+      
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        parts.forEach(processChunk);
+      }
+      processChunk(buffer);
+
+      // Final update with all annotations
+      setTimelineAnnotations(allAnnotations);
+      console.log(`🎉 Timeline mapping completed! Total mappings: ${allAnnotations.length}`);
 
     } catch (error) {
-      console.error("Error generating timeline mapping:", error);
+      console.error("Error during timeline mapping:", error);
+      let errorMessage = "Timeline mapping failed. Please try again.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes('quota') || error.message.includes('429') || error.message.includes('Too Many Requests')) {
+          errorMessage = "API quota exceeded. Please try again later or check your API key limits.";
+        } else if (error.message.includes('Failed to parse generative model response')) {
+          errorMessage = "The AI service is currently experiencing issues. Please try again in a few minutes.";
+        } else if (error.message.includes('API Error:')) {
+          errorMessage = `API Error: ${error.message}`;
+        } else {
+          errorMessage = `Error: ${error.message}`;
+        }
+      }
+      
+      setTimelineMappingStatus(errorMessage);
     } finally {
+      // Clean up timer
+      if (timelineMappingTimerRef.current) {
+        clearInterval(timelineMappingTimerRef.current);
+        timelineMappingTimerRef.current = null;
+      }
       setIsMappingTimeline(false);
     }
   };
@@ -634,15 +685,8 @@ export function useWorkflowPageLogic(userId: string) {
               name: name,
               trigger: approvedBoundaries[name]?.trigger || '',
               terminator: approvedBoundaries[name]?.terminator || '',
-              // ✅ Removed events from here - they're now global
             })),
-            analyses: combinedAnalyses.map(item => ({
-              id: item.id,
-              timestamp: item.client_timestamp,
-              window_title: item.window_title,
-              analysis: item.analysis_data,
-              labels: item.selected_labels
-            })),
+            userId: userId,
             workflowContext: workflowContext,
           }
         }),
@@ -828,6 +872,38 @@ export function useWorkflowPageLogic(userId: string) {
     proceedToSynthesis(workflowBoundaries);
   };
 
+  // Load existing timeline annotations on page load
+  useEffect(() => {
+    const loadExistingTimelineAnnotations = async () => {
+      try {
+        console.log('🔍 Loading existing timeline annotations...');
+        const response = await fetch(`/api/timeline-event-mappings?user_id=${userId}&raw_events=true&include_unrelated=true`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.annotations && data.annotations.length > 0) {
+            setTimelineAnnotations(data.annotations);
+            console.log('📋 Loaded existing timeline annotations:', data.annotations.length);
+          } else {
+            console.log('ℹ️ No existing timeline annotations found');
+            setTimelineAnnotations([]);
+          }
+        } else {
+          console.log('ℹ️ Failed to fetch timeline annotations');
+          setTimelineAnnotations([]);
+        }
+      } catch (error) {
+        console.log('ℹ️ Error loading timeline annotations:', error);
+        setTimelineAnnotations([]);
+      }
+    };
+    
+    if (userId) {
+      loadExistingTimelineAnnotations();
+    }
+  }, [userId]);
+
+  // Load existing synthesis session on page load
+
   return {
     // Core State
     workflows,
@@ -839,7 +915,6 @@ export function useWorkflowPageLogic(userId: string) {
     isAnalyzingEvents,
     
     // Data & Context
-    combinedAnalyses,
     workflowContext,
     editableContext,
     identifiedWorkflowNames,
@@ -877,6 +952,9 @@ export function useWorkflowPageLogic(userId: string) {
     elapsedTime,
     analysisStatus,
     analysisProgress,
+    timelineMappingStatus,
+    timelineMappingProgress,
+    timelineMappingElapsedTime,
     timelineMappingMode,
     setTimelineMappingMode,
   };

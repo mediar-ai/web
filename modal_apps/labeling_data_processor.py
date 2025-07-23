@@ -371,7 +371,7 @@ def trigger_labeling_for_all_users():
         try:
             cur.execute("""
                 INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
-                VALUES ('label-coordinator', 0, %s, 'in_progress', NOW() + INTERVAL '30 minutes')
+                VALUES ('label-coordinator', 0, %s, 'in_progress', NOW() + INTERVAL '2 minutes')
                 ON CONFLICT (user_id, event_id) DO NOTHING
                 RETURNING id
             """, (coordinator_id,))
@@ -494,8 +494,8 @@ def trigger_labeling_for_all_users():
         
 @app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
-    schedule=modal.Period(minutes=90),  # Increased from 30 to 90 minutes to prevent overlaps
-    timeout=600
+    schedule=modal.Period(minutes=1),  # Changed from 90 to 1 minute for faster processing
+    timeout=45  # Reduced from 600 to 45 seconds to prevent overlaps
 )
 def scheduled_labeling_processing():
     """Periodically triggers the labeling process for all users every 90 minutes."""

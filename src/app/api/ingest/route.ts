@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -10,7 +10,68 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-export async function POST(request: Request) {
+function extractEventType(payload: Record<string, unknown>): string {
+  try {
+    // Try payload.payload.type first (most common)
+    const nested = payload.payload as Record<string, unknown> | undefined;
+    if (nested?.type) {
+      return String(nested.type);
+    }
+    // Fallback to payload.type
+    if (payload.type) {
+      return String(payload.type);
+    }
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function extractAppName(payload: Record<string, unknown>): string | null {
+  try {
+    // Try payload.payload.event.app_name first
+    const nested = payload.payload as Record<string, unknown> | undefined;
+    const event = nested?.event as Record<string, unknown> | undefined;
+    const appName = event?.app_name;
+    if (appName && typeof appName === 'string') {
+      return appName;
+    }
+    // Try application as fallback
+    const application = event?.application;
+    if (application && typeof application === 'string') {
+      return application;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function extractHasUiTree(payload: Record<string, unknown>): boolean {
+  try {
+    const nested = payload.payload as Record<string, unknown> | undefined;
+    const event = nested?.event as Record<string, unknown> | undefined;
+    const screen = event?.screen as Record<string, unknown> | undefined;
+    const uiTree = screen?.ui_tree;
+    return !!(uiTree && String(uiTree).trim());
+  } catch {
+    return false;
+  }
+}
+
+function extractScreenshotTimestamp(payload: Record<string, unknown>): string | null {
+  try {
+    const nested = payload.payload as Record<string, unknown> | undefined;
+    const event = nested?.event as Record<string, unknown> | undefined;
+    const screenshotDiff = event?.screenshot_diff as Record<string, unknown> | undefined;
+    const timestamp = screenshotDiff?.after_timestamp;
+    return timestamp ? String(timestamp) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { session_id, user_id, payload } = body;
@@ -19,37 +80,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'session_id and payload with a type are required' }, { status: 400 });
     }
 
-    // Extract the actual event timestamp for proper ordering
+    // Extract timestamp for created_at
     const eventTimestamp = payload.timestamp ? new Date(payload.timestamp).toISOString() : new Date().toISOString();
     
-    const { error: rawInsertError } = await supabaseAdmin
+    // Extract fields for new optimized columns
+    const eventType = extractEventType(payload);
+    const appName = extractAppName(payload);
+    const hasUiTree = extractHasUiTree(payload);
+    const screenshotTimestamp = extractScreenshotTimestamp(payload);
+
+    console.log(`[INGEST] Processing ${eventType} event${appName ? ` from ${appName}` : ''} ${hasUiTree ? '(with UI tree)' : ''}`);
+
+    const { error } = await supabaseAdmin
       .from('low_level_events')
       .insert({
         session_id,
         user_id,
-        payload: body, // Save the entire request body in the payload column
-        source: 'windows_app', // Add a source to distinguish from other potential low-level sources
-        created_at: eventTimestamp // Use actual event timestamp for proper chronological ordering
+        payload: body,
+        source: 'windows_app',
+        created_at: eventTimestamp, // Use actual event timestamp for proper chronological ordering
+        // New optimized columns
+        event_type: eventType,
+        app_name: appName,
+        has_ui_tree: hasUiTree,
+        screenshot_timestamp: screenshotTimestamp ? new Date(screenshotTimestamp).toISOString() : null
       });
 
-    if (rawInsertError) {
-      console.error('[INGEST] Error saving raw event:', rawInsertError);
-      return NextResponse.json({ error: 'Failed to save raw event.', details: rawInsertError.message }, { status: 500 });
+    if (error) {
+      console.error('[INGEST] Error saving raw event:', error);
+      return NextResponse.json({ error: 'Failed to save event' }, { status: 500 });
     }
 
     // The screenshot_diff events will now be processed by the scheduled Modal job,
-    // so the real-time trigger call has been removed to prevent race conditions.
+    // and UI trees will be processed via our existing pipeline
 
-    console.log(`[INGEST] Successfully saved raw event: ${payload.type}`);
-    return NextResponse.json({ success: true, message: 'Data ingested' });
+    console.log(`[INGEST] Successfully saved raw event: ${eventType}${appName ? ` (${appName})` : ''}`);
 
+    return NextResponse.json({ success: true });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    console.error('[INGEST] Error processing request:', error);
-    return NextResponse.json({ 
-      error: 'Failed to process request', 
-      details: errorMessage,
-      type: 'generic_error'
-    }, { status: 500 });
+    console.error('[INGEST] Error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

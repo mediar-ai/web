@@ -1985,6 +1985,9 @@ if __name__ == "__main__":
     secrets=secrets,
     schedule=modal.Period(seconds=1),  # Check every 1 second
     timeout=300,  # 5 minutes max per check
+    max_containers=1,  # ENSURE ONLY ONE INSTANCE
+    min_containers=0,  # Do not keep warm, prevent queueing
+    retries=0         # Do not retry on failure/skip
 )
 def check_and_process_queued_jobs():
     """

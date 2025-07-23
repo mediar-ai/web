@@ -86,7 +86,7 @@ def acquire_processing_lock(cur, conn, user_id, event_id, processor_id):
         # Try to acquire lock with INSERT
         cur.execute("""
             INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
-            VALUES (%s, %s, %s, %s, NOW() + INTERVAL '30 minutes')
+            VALUES (%s, %s, %s, %s, NOW() + INTERVAL '2 minutes')
             ON CONFLICT (user_id, event_id) DO NOTHING
             RETURNING id
         """, (user_id, event_id, processor_id, PROCESSING_STATUS['IN_PROGRESS']))
@@ -268,12 +268,12 @@ def get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id):
         # Get next unprocessed UI tree event
         cur.execute("""
             SELECT id, user_id, session_id, created_at, payload
-            FROM low_level_events 
+            FROM low_level_events_enriched
             WHERE user_id = %s 
-              AND payload->'payload'->>'type' = 'ui_tree'
+              AND event_type = 'ui_tree'
               AND id NOT IN (
                   SELECT DISTINCT lle.id
-                  FROM low_level_events lle
+                  FROM low_level_events_enriched lle
                   INNER JOIN low_level_workflow_analyses llwa 
                   ON lle.created_at = llwa.client_timestamp 
                   AND lle.user_id = llwa.user_id
@@ -330,9 +330,9 @@ def get_previous_ui_tree_by_timestamp(cur, user_id, current_timestamp):
     """Get exactly the previous UI tree event by timestamp"""
     cur.execute("""
         SELECT id, user_id, session_id, created_at, payload 
-        FROM low_level_events 
+        FROM low_level_events_enriched
         WHERE user_id = %s 
-          AND payload->'payload'->>'type' = 'ui_tree'
+          AND event_type = 'ui_tree'
           AND created_at < %s
         ORDER BY created_at DESC 
         LIMIT 1
@@ -371,15 +371,12 @@ def get_previous_same_window_ui_tree(cur, user_id, current_timestamp, window_tit
     """
     cur.execute("""
         SELECT id, user_id, session_id, created_at, payload 
-        FROM low_level_events 
+        FROM low_level_events_enriched
         WHERE user_id = %s 
-          AND payload->'payload'->>'type' = 'ui_tree'
+          AND event_type = 'ui_tree'
           AND created_at < %s
           AND created_at > %s - INTERVAL '10 minutes' -- Limit lookback
-          AND COALESCE(
-            (payload->'payload'->'event'->'screen'->>'ui_tree')::jsonb->'attributes'->>'name',
-            payload->'payload'->'event'->>'app_name'
-          ) = %s
+          AND app_name = %s
         ORDER BY created_at DESC 
         LIMIT 1
     """, (user_id, current_timestamp, current_timestamp, window_title))
@@ -402,13 +399,12 @@ def get_screenshots_near_timestamp(cur, user_id, target_timestamp):
     cur.execute("""
         SELECT id, session_id, created_at, payload,
                ABS(EXTRACT(EPOCH FROM (
-                 (payload->'payload'->'event'->'screenshot_diff'->>'after_timestamp')::timestamp 
-                 - %s::timestamp
+                 screenshot_timestamp - %s::timestamp
                ))) as time_diff
-        FROM low_level_events
+        FROM low_level_events_enriched
         WHERE user_id = %s
-          AND payload->'payload'->>'type' = 'screenshot_diff'
-          AND (payload->'payload'->'event'->'screenshot_diff'->>'after_timestamp')::timestamp 
+          AND event_type = 'screenshot_diff'
+          AND screenshot_timestamp
               BETWEEN %s::timestamp - INTERVAL '2 seconds'
                   AND %s::timestamp + INTERVAL '1 second'
         ORDER BY time_diff ASC
@@ -1404,8 +1400,8 @@ def process_next_event_for_user_deprecated(user_id: str):
         modal.Secret.from_name("supabase-secret"),
         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
     ],
-    schedule=modal.Period(minutes=60),  # Run every 60 minutes to prevent overlaps
-    timeout=1800
+    schedule=modal.Period(minutes=1),   # Changed from 60 to 1 minute for faster processing  
+    timeout=45   # Reduced from 1800 to 45 seconds to prevent overlaps
 )
 def scheduled_processing():
     """
@@ -1481,7 +1477,7 @@ def trigger_full_parallel_processing():
         try:
             cur.execute("""
                 INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
-                VALUES ('coordinator', 0, %s, %s, NOW() + INTERVAL '30 minutes')
+                VALUES ('coordinator', 0, %s, %s, NOW() + INTERVAL '2 minutes')
                 ON CONFLICT (user_id, event_id) DO NOTHING
                 RETURNING id
             """, (coordinator_id, PROCESSING_STATUS['IN_PROGRESS']))

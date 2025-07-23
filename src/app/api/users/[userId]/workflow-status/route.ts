@@ -19,57 +19,38 @@ export async function GET(
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    // Get the count of processed analyses
+    // A single, efficient query to count processed and pending UI tree events.
+    // This is the most reliable method, replacing the previous complex fallbacks.
+
+    // First, get the total count of UI tree events for this user.
+    const { count: totalUiTrees, error: totalError } = await supabaseAdmin
+      .from('low_level_events_enriched')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('event_type', 'ui_tree');
+
+    if (totalError) {
+      console.error('[workflow-status] Error fetching total UI tree count:', totalError);
+      throw totalError;
+    }
+
+    // Next, get the count of analyses, which represents the processed events.
     const { count: processedCount, error: processedError } = await supabaseAdmin
       .from('low_level_workflow_analyses')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
 
-    if (processedError) throw processedError;
-
-    // Get the count of unprocessed UI tree events (new system)
-    // Use the same logic as sequential processor to count unprocessed events
-    const { data: unprocessedEvents, error: pendingError } = await supabaseAdmin
-      .rpc('get_unprocessed_ui_tree_events', { p_user_id: userId });
-
-    let pendingCount = 0;
-    if (pendingError) {
-      // Fallback: count manually if the function doesn't exist yet
-      console.warn('get_unprocessed_ui_tree_events function not found, using fallback query');
-      
-      // Simplified fallback query - count UI tree events that don't have corresponding analyses
-      const { data: allUiTreeEvents, error: uiTreeError } = await supabaseAdmin
-        .from('low_level_events')
-        .select('created_at')
-        .eq('user_id', userId)
-        .eq('payload->payload->type', 'ui_tree')
-        .order('created_at', { ascending: true });
-
-      if (uiTreeError) throw uiTreeError;
-
-      const { data: allAnalyses, error: analysesError } = await supabaseAdmin
-        .from('low_level_workflow_analyses')
-        .select('client_timestamp')
-        .eq('user_id', userId);
-
-      if (analysesError) throw analysesError;
-
-      // Count events without matching analyses
-      const analysisTimestamps = new Set(allAnalyses?.map(a => a.client_timestamp) || []);
-      const unprocessedCount = allUiTreeEvents?.filter(event => 
-        !analysisTimestamps.has(event.created_at)
-      ).length || 0;
-      
-      return NextResponse.json({
-        processedCount: processedCount ?? 0,
-        pendingCount: unprocessedCount,
-      });
-    } else {
-      pendingCount = unprocessedEvents?.length || 0;
+    if (processedError) {
+      console.error('[workflow-status] Error fetching processed count:', processedError);
+      throw processedError;
     }
 
+    const finalTotal = totalUiTrees || 0;
+    const finalProcessed = processedCount || 0;
+    const pendingCount = finalTotal > finalProcessed ? finalTotal - finalProcessed : 0;
+
     return NextResponse.json({
-      processedCount: processedCount ?? 0,
+      processedCount: finalProcessed,
       pendingCount: pendingCount,
     });
 

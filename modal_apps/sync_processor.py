@@ -2,7 +2,10 @@ import modal
 import asyncio
 import aiohttp
 import os
+import psycopg2
+import json
 from datetime import datetime
+from typing import Dict, Any, Optional
 
 # Create Modal app
 app = modal.App("sync-processor")
@@ -10,82 +13,214 @@ app = modal.App("sync-processor")
 # Define the image with required dependencies
 image = modal.Image.debian_slim().pip_install([
     "aiohttp",
+    "psycopg2-binary"
 ])
 
-@app.function(
-    image=image,
-    timeout=86400,  # 24 hours
-    keep_warm=1,    # Keep one instance warm
-    allow_concurrent_inputs=1,
-)
-async def continuous_sync_processor():
-    """
-    Run continuous sync every 2 seconds - this is the main function that should be kept running
-    """
-    print("🚀 Starting continuous sync processor (every 2 seconds)...")
-    
-    base_url = "https://browser-workflow-capture-app.vercel.app"
-    endpoint = f"{base_url}/api/sync-processed-counts"
-    
-    iteration = 0
-    
-    async with aiohttp.ClientSession() as session:
-        while True:  # Run indefinitely
-            try:
-                iteration += 1
-                print(f"🔄 [{datetime.now().isoformat()}] Sync iteration {iteration}")
-                
-                async with session.post(endpoint, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        print(f"✅ Sync successful: {result.get('message', 'OK')}")
-                    else:
-                        error_text = await response.text()
-                        print(f"❌ Sync failed with status {response.status}: {error_text}")
-                        
-                # Wait 2 seconds before next iteration
-                await asyncio.sleep(2)
-                
-            except asyncio.TimeoutError:
-                print(f"⏰ Sync timed out")
-                await asyncio.sleep(2)  # Still wait before retry
-            except Exception as e:
-                print(f"💥 Sync error: {str(e)}")
-                await asyncio.sleep(5)  # Wait longer on errors
-                
-            # Log progress every 100 iterations (200 seconds)
-            if iteration % 100 == 0:
-                print(f"📊 Completed {iteration} sync iterations ({iteration * 2} seconds of runtime)")
+# Database connection configuration
+DB_CONFIG = {
+    'host': 'aws-0-us-west-1.pooler.supabase.com',
+    'port': 5432,
+    'database': 'postgres',
+    'user': 'postgres.eshwntsgsputksqamckh',
+    'password': 'dS64xX6mU3E4Sbyc'
+}
+
+def get_database_connection():
+    """Gets a new database connection for metadata processing."""
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        conn.autocommit = False
+        return conn
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        raise
+
+# --- Metadata Extraction Logic ---
+def extract_event_type(payload: Dict[str, Any]) -> str:
+    try:
+        if isinstance(payload, dict) and 'payload' in payload:
+            nested = payload['payload']
+            if isinstance(nested, dict) and 'type' in nested:
+                return str(nested['type'])
+        if isinstance(payload, dict) and 'type' in payload:
+            return str(payload['type'])
+        return 'unknown'
+    except Exception:
+        return 'unknown'
+
+def extract_app_name(payload: Dict[str, Any]) -> Optional[str]:
+    try:
+        if isinstance(payload, dict) and 'payload' in payload:
+            nested = payload['payload']
+            if isinstance(nested, dict) and 'window' in nested:
+                window = nested['window']
+                if isinstance(window, dict) and 'app' in window:
+                    return str(window['app'])
+        return None
+    except Exception:
+        return None
+
+def extract_has_ui_tree(payload: Dict[str, Any]) -> bool:
+    try:
+        return extract_event_type(payload) == 'ui_tree'
+    except Exception:
+        return False
+
+def extract_screenshot_timestamp(payload: Dict[str, Any]) -> Optional[datetime]:
+    try:
+        if extract_event_type(payload) == 'screenshot_diff':
+            if isinstance(payload, dict) and 'timestamp' in payload:
+                return datetime.fromtimestamp(payload['timestamp'])
+        return None
+    except Exception:
+        return None
 
 @app.function(
     image=image,
-    schedule=modal.Cron("*/5 * * * *"),  # Every 5 minutes as backup
-    timeout=30,
-    retries=3
+    min_containers=1,  # Updated from keep_warm
+    max_containers=1,  # Updated from allow_concurrent_inputs
+    timeout=30
 )
-async def backup_sync():
+@modal.concurrent(max_inputs=1)  # Fixed: need max_inputs parameter
+def continuous_sync_processor():
     """
-    Backup sync that runs every 5 minutes in case the continuous processor goes down
+    🔄 CONTINUOUS SYNC: Runs forever, calling sync API every 2 seconds
+    
+    This maintains session metadata consistency by ensuring processed_event_count
+    matches the actual count of low_level_workflow_analyses.
+    
+    Runs independently of the backup sync to provide real-time updates.
     """
+    import time
+    import requests
+    
+    base_url = "https://browser-workflow-capture-app.vercel.app"
+    iteration = 0
+    
+    print("🚀 Starting continuous sync processor...")
+    
+    while True:
+        try:
+            iteration += 1
+            
+            response = requests.post(f"{base_url}/api/sync-processed-counts", timeout=25)
+            
+            if response.status_code == 200:
+                if iteration % 10 == 0:  # Log every 20 seconds (10 * 2s)
+                    print(f"✅ Continuous sync iteration {iteration}: Processed event counts synced successfully")
+            else:
+                print(f"❌ Continuous sync iteration {iteration} failed: HTTP {response.status_code}")
+                
+        except Exception as e:
+            print(f"💥 Continuous sync iteration {iteration} error: {str(e)}")
+        
+        # Wait 2 seconds before next sync
+        time.sleep(2)
+        
+        # Log progress periodically
+        if iteration % 100 == 0:
+            print(f"📊 Completed {iteration} sync iterations ({iteration * 2} seconds of runtime)")
+
+@app.function(
+    image=image,
+    schedule=modal.Period(seconds=2),  # Every 2 seconds - attempt if container available
+    timeout=90,  # 90 seconds max per run (increased for database load)
+    retries=0,  # No retries to prevent queueing
+    max_containers=5,  # INCREASED PARALLELISM
+    min_containers=0,  # No warm containers to prevent queueing
+)
+async def backup_sync_and_metadata_processor():
+    """
+    Combined processor that attempts to run every 2 seconds:
+    1. Backup sync (in case continuous processor goes down)
+    2. Process metadata for new events (100 batch limit)
+    
+    Limited to 1 container with no retries to prevent queueing.
+    If no container available, the run is skipped.
+    """
+    timestamp = datetime.now().isoformat()
+    print(f"🔄 [{timestamp}] Starting combined backup sync and metadata processing...")
+    
+    # Task 1: Backup Sync (always run this)
     try:
         base_url = "https://browser-workflow-capture-app.vercel.app"
-        endpoint = f"{base_url}/api/sync-processed-counts"
-        
-        print(f"🔄 [{datetime.now().isoformat()}] Backup sync running...")
         
         async with aiohttp.ClientSession() as session:
-            async with session.post(endpoint, timeout=aiohttp.ClientTimeout(total=25)) as response:
+            async with session.post(f"{base_url}/api/sync-processed-counts") as response:
                 if response.status == 200:
-                    result = await response.json()
-                    print(f"✅ [{datetime.now().isoformat()}] Backup sync successful: {result.get('message', 'OK')}")
+                    print(f"✅ [{timestamp}] Backup sync successful: Processed event counts synced successfully")
                 else:
-                    error_text = await response.text()
-                    print(f"❌ [{datetime.now().isoformat()}] Backup sync failed with status {response.status}: {error_text}")
-                    
-    except asyncio.TimeoutError:
-        print(f"⏰ [{datetime.now().isoformat()}] Backup sync timed out after 25 seconds")
+                    print(f"❌ [{timestamp}] Backup sync failed: HTTP {response.status}")
     except Exception as e:
-        print(f"💥 [{datetime.now().isoformat()}] Backup sync error: {str(e)}")
+        print(f"❌ [{timestamp}] Backup sync error: {str(e)}")
+    
+    # Task 2: Metadata Processing (limited to 25 events)
+    try:
+        print(f"🔄 [{timestamp}] Processing metadata batch (limit: 25)...")
+        
+        # Use the simple, direct approach without coordination locks
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        
+        # Get unprocessed events (back to 25)
+        cursor.execute("""
+            SELECT id, payload 
+            FROM low_level_events 
+            WHERE id NOT IN (SELECT event_id FROM low_level_events_metadata)
+            LIMIT 25
+        """)
+        
+        events = cursor.fetchall()
+        
+        if not events:
+            print(f"✅ [{timestamp}] No new events to process for metadata.")
+            cursor.close()
+            conn.close()
+            return
+        
+        print(f"🔄 [{timestamp}] Found {len(events)} new events to process for metadata.")
+        
+        # Process events
+        metadata_rows = []
+        for event_id, payload in events:
+            try:
+                event_type = extract_event_type(payload)
+                app_name = extract_app_name(payload)
+                has_ui_tree = extract_has_ui_tree(payload)
+                screenshot_timestamp = extract_screenshot_timestamp(payload)
+                
+                metadata_rows.append((
+                    event_id,
+                    event_type,
+                    app_name,
+                    has_ui_tree,
+                    screenshot_timestamp
+                ))
+            except Exception as e:
+                print(f"⚠️ [{timestamp}] Error processing event {event_id}: {str(e)}")
+                continue
+        
+        # Bulk insert
+        cursor.executemany("""
+            INSERT INTO low_level_events_metadata
+            (event_id, event_type, app_name, has_ui_tree, screenshot_timestamp)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (event_id) DO NOTHING
+        """, metadata_rows)
+        
+        conn.commit()
+        print(f"✅ [{timestamp}] Successfully processed {len(metadata_rows)} metadata records.")
+        
+        cursor.close()
+        conn.close()
+        
+    except Exception as e:
+        print(f"💥 [{timestamp}] Metadata processing error: {str(e)}")
+        if 'conn' in locals():
+            try:
+                conn.close()
+            except:
+                pass
 
 @app.function(
     image=image,
