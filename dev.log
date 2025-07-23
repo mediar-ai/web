@@ -8,42 +8,458 @@
    - Environments: .env.local
 
  ✓ Starting...
- ✓ Compiled middleware in 128ms
- ✓ Ready in 757ms
- ○ Compiling /low-level/[userId]/workflow ...
- ✓ Compiled /low-level/[userId]/workflow in 1278ms
- GET /low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow 200 in 1709ms
- ✓ Compiled /api/users/[userId] in 210ms
- ✓ Compiled /api/workflows/saved-syntheses in 371ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 424ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 658ms
-📋 Retrieved 3 comprehensive saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 479ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 486ms
-📋 Retrieved 21 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 511ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 76ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 88ms
-📋 Retrieved 3 comprehensive saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 125ms
-📋 Retrieved 21 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 114ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 73ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 691ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 91ms
- ✓ Compiled /api/remote-workflows/executions/live in 322ms
+ ✓ Compiled middleware in 118ms
+ ✓ Ready in 732ms
+ ✓ Compiled /api/remote-workflows/executions/live in 435ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 545ms
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 648ms
 [ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 786ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats?startDate=2025-07-22T02%3A58%3A07.764Z&endDate=2025-07-23T02%3A58%3A07.764Z 200 in 641ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1679ms
+ GET /api/remote-workflows/list 200 in 783ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1831ms
 [ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1911ms
+ GET /api/remote-workflows/executions 200 in 1783ms
+ ○ Compiling /low-level/[userId]/workflow ...
+ ✓ Compiled /low-level/[userId]/workflow in 1107ms
+ GET /low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow 200 in 1481ms
+ ✓ Compiled /api/users/[userId] in 172ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 496ms
+ ✓ Compiled /api/workflows/saved-syntheses in 329ms
+📋 Retrieved 3 comprehensive saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 365ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 413ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 445ms
+📋 Retrieved 23 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 454ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 67ms
+📋 Retrieved 3 comprehensive saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 143ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 83ms
+📋 Retrieved 23 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 109ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 65ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 633ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 70ms
+ ✓ Compiled /api/analyze-raw-timeline-events in 191ms
+🔄 Starting timeline mapping for user: cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+📊 Found 3 draft workflows for mapping
+📊 Found 36 UI tree events, processing all batches
+📦 Processing batch 1: 2025-07-22T02:40:45.427Z → 2025-07-22T02:42:29.052Z
+⚠️ Batch 1: No corresponding analysis found
+📦 Processing batch 2: 2025-07-22T02:40:38.432Z → 2025-07-22T02:40:45.427Z
+⚠️ Batch 2: No corresponding analysis found
+📦 Processing batch 3: 2025-07-22T02:40:29.356Z → 2025-07-22T02:40:38.432Z
+⚠️ Batch 3: No corresponding analysis found
+📦 Processing batch 4: 2025-07-22T02:38:36.514Z → 2025-07-22T02:40:29.356Z
+⚠️ Batch 4: No corresponding analysis found
+📦 Processing batch 5: 2025-07-22T02:36:20.507Z → 2025-07-22T02:38:36.514Z
+⚠️ Batch 5: No corresponding analysis found
+📦 Processing batch 6: 2025-07-22T02:27:12.491Z → 2025-07-22T02:36:20.507Z
+⚠️ Batch 6: No corresponding analysis found
+📦 Processing batch 7: 2025-07-22T00:50:18.898Z → 2025-07-22T02:27:12.491Z
+⚠️ Batch 7: No corresponding analysis found
+📦 Processing batch 8: 2025-07-22T00:50:10.841Z → 2025-07-22T00:50:18.898Z
+✅ Batch 8: 1 events, analysis: found
+Sending batch 8 to LLM for timeline mapping...
+🚀 Using Vertex AI with structured output for model: gemini-2.5-pro
+✅ Vertex AI structured output successful
+🧹 Cleaned JSON text: {
+  "event_mappings": [
+    {
+      "confidence_score": 1.0,
+      "raw_event_id": 565717,
+      "business_logics": "When a system error occurs during development, the error log needs to be captured f...
+✅ Successfully mapped batch 8: 1 events mapped
+💾 Preparing to save 1 mappings for batch 8
+💾 Analysis ID to use: 25957
+💾 Sample mapping result: {
+  "confidence_score": 1,
+  "raw_event_id": 565717,
+  "business_logics": "When a system error occurs during development, the error log needs to be captured for debugging and analysis.",
+  "inputs": "An HTTP 400 (Bad Request) error appeared in the developer console.",
+  "outputs": "The developer console log containing the error details was copied to the clipboard.",
+  "workflow_instance_id": 1753238087529,
+  "workflow_step_id": 1753238087538,
+  "workflow_substep_id": 1753238087536,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087527
+}
+❌ Error saving batch 8 annotations: {
+  code: '23505',
+  details: 'Key (raw_event_id, analysis_id)=(565717, 25957) already exists.',
+  hint: null,
+  message: 'duplicate key value violates unique constraint "idx_raw_timeline_annotations_unique_event"'
+}
+❌ Error details: {
+  "code": "23505",
+  "details": "Key (raw_event_id, analysis_id)=(565717, 25957) already exists.",
+  "hint": null,
+  "message": "duplicate key value violates unique constraint \"idx_raw_timeline_annotations_unique_event\""
+}
+❌ Attempted to insert 1 annotations:
+❌ Sample annotation: {
+  "user_id": "cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9",
+  "raw_event_id": 565717,
+  "analysis_id": 25957,
+  "confidence_score": 1,
+  "is_workflow_related": true,
+  "model_used": "gemini-2.5-pro",
+  "unrelated_reason": null,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087527,
+  "workflow_instance_id": 1753238087529,
+  "workflow_step_id": 1753238087538,
+  "workflow_substep_id": 1753238087536,
+  "inputs": "An HTTP 400 (Bad Request) error appeared in the developer console.",
+  "outputs": "The developer console log containing the error details was copied to the clipboard.",
+  "business_logics": "When a system error occurs during development, the error log needs to be captured for debugging and analysis."
+}
+📦 Processing batch 9: 2025-07-22T00:49:06.989Z → 2025-07-22T00:50:10.841Z
+✅ Batch 9: 1 events, analysis: found
+Sending batch 9 to LLM for timeline mapping...
+🚀 Using Vertex AI with structured output for model: gemini-2.5-pro
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 261ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 432ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1137ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1528ms
+✅ Vertex AI structured output successful
+🧹 Cleaned JSON text: {
+  "event_mappings": [
+    {
+      "confidence_score": 0.95,
+      "raw_event_id": 565667,
+      "business_logics": "When a data processing API returns an error (like a 400 Bad Request), the logs nee...
+✅ Successfully mapped batch 9: 1 events mapped
+💾 Preparing to save 1 mappings for batch 9
+💾 Analysis ID to use: 25957
+💾 Sample mapping result: {
+  "confidence_score": 0.95,
+  "raw_event_id": 565667,
+  "business_logics": "When a data processing API returns an error (like a 400 Bad Request), the logs need to be captured for debugging purposes.",
+  "inputs": "User observed system logs containing an HTTP 400 error.",
+  "outputs": "System log text including the HTTP 400 error is copied to the clipboard.",
+  "workflow_instance_id": 1753238087529,
+  "workflow_step_id": 1753238087538,
+  "workflow_substep_id": 1753238087536,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087527
+}
+❌ Error saving batch 9 annotations: {
+  code: '23505',
+  details: 'Key (raw_event_id, analysis_id)=(565667, 25957) already exists.',
+  hint: null,
+  message: 'duplicate key value violates unique constraint "idx_raw_timeline_annotations_unique_event"'
+}
+❌ Error details: {
+  "code": "23505",
+  "details": "Key (raw_event_id, analysis_id)=(565667, 25957) already exists.",
+  "hint": null,
+  "message": "duplicate key value violates unique constraint \"idx_raw_timeline_annotations_unique_event\""
+}
+❌ Attempted to insert 1 annotations:
+❌ Sample annotation: {
+  "user_id": "cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9",
+  "raw_event_id": 565667,
+  "analysis_id": 25957,
+  "confidence_score": 0.95,
+  "is_workflow_related": true,
+  "model_used": "gemini-2.5-pro",
+  "unrelated_reason": null,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087527,
+  "workflow_instance_id": 1753238087529,
+  "workflow_step_id": 1753238087538,
+  "workflow_substep_id": 1753238087536,
+  "inputs": "User observed system logs containing an HTTP 400 error.",
+  "outputs": "System log text including the HTTP 400 error is copied to the clipboard.",
+  "business_logics": "When a data processing API returns an error (like a 400 Bad Request), the logs need to be captured for debugging purposes."
+}
+📦 Processing batch 10: 2025-07-22T00:41:34.813Z → 2025-07-22T00:49:06.989Z
+✅ Batch 10: 1 events, analysis: found
+Sending batch 10 to LLM for timeline mapping...
+🚀 Using Vertex AI with structured output for model: gemini-2.5-pro
+✅ Vertex AI structured output successful
+🧹 Cleaned JSON text: {
+  "event_mappings": [
+    {
+      "confidence_score": 0.95,
+      "raw_event_id": 565341,
+      "business_logics": "",
+      "inputs": "User formulated a technical question about application feature...
+✅ Successfully mapped batch 10: 1 events mapped
+💾 Preparing to save 1 mappings for batch 10
+💾 Analysis ID to use: 25957
+💾 Sample mapping result: {
+  "confidence_score": 0.95,
+  "raw_event_id": 565341,
+  "business_logics": "",
+  "inputs": "User formulated a technical question about application features and UI.",
+  "outputs": "The technical question 'progress timeline? show batch results as they get processed in ui?' was copied to the clipboard.",
+  "workflow_instance_id": 1753238087530,
+  "workflow_step_id": 1753238087534,
+  "workflow_substep_id": 1753238087532,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087528
+}
+❌ Error saving batch 10 annotations: {
+  code: '23505',
+  details: 'Key (raw_event_id, analysis_id)=(565341, 25957) already exists.',
+  hint: null,
+  message: 'duplicate key value violates unique constraint "idx_raw_timeline_annotations_unique_event"'
+}
+❌ Error details: {
+  "code": "23505",
+  "details": "Key (raw_event_id, analysis_id)=(565341, 25957) already exists.",
+  "hint": null,
+  "message": "duplicate key value violates unique constraint \"idx_raw_timeline_annotations_unique_event\""
+}
+❌ Attempted to insert 1 annotations:
+❌ Sample annotation: {
+  "user_id": "cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9",
+  "raw_event_id": 565341,
+  "analysis_id": 25957,
+  "confidence_score": 0.95,
+  "is_workflow_related": true,
+  "model_used": "gemini-2.5-pro",
+  "unrelated_reason": null,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087528,
+  "workflow_instance_id": 1753238087530,
+  "workflow_step_id": 1753238087534,
+  "workflow_substep_id": 1753238087532,
+  "inputs": "User formulated a technical question about application features and UI.",
+  "outputs": "The technical question 'progress timeline? show batch results as they get processed in ui?' was copied to the clipboard.",
+  "business_logics": null
+}
+📦 Processing batch 11: 2025-07-22T00:32:39.751Z → 2025-07-22T00:41:34.813Z
+✅ Batch 11: 6 events, analysis: found
+Sending batch 11 to LLM for timeline mapping...
+🚀 Using Vertex AI with structured output for model: gemini-2.5-pro
+✅ Vertex AI structured output successful
+🧹 Cleaned JSON text: {"event_mappings":[{"confidence_score":1.0,"raw_event_id":563649,"unrelated_reason":"This mouse click is part of a property research workflow on ARCountyData.com, which is separate from the analyzed s...
+✅ Successfully mapped batch 11: 6 events mapped
+💾 Preparing to save 6 mappings for batch 11
+💾 Analysis ID to use: 25957
+💾 Sample mapping result: {
+  "confidence_score": 1,
+  "raw_event_id": 563649,
+  "unrelated_reason": "This mouse click is part of a property research workflow on ARCountyData.com, which is separate from the analyzed step of copying a local development URL."
+}
+❌ Error saving batch 11 annotations: {
+  code: '23505',
+  details: 'Key (raw_event_id, analysis_id)=(563649, 25957) already exists.',
+  hint: null,
+  message: 'duplicate key value violates unique constraint "idx_raw_timeline_annotations_unique_event"'
+}
+❌ Error details: {
+  "code": "23505",
+  "details": "Key (raw_event_id, analysis_id)=(563649, 25957) already exists.",
+  "hint": null,
+  "message": "duplicate key value violates unique constraint \"idx_raw_timeline_annotations_unique_event\""
+}
+❌ Attempted to insert 6 annotations:
+❌ Sample annotation: {
+  "user_id": "cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9",
+  "raw_event_id": 563649,
+  "analysis_id": 25957,
+  "confidence_score": 1,
+  "is_workflow_related": true,
+  "model_used": "gemini-2.5-pro",
+  "unrelated_reason": "This mouse click is part of a property research workflow on ARCountyData.com, which is separate from the analyzed step of copying a local development URL.",
+  "workflow_template_id": null,
+  "workflow_type_id": null,
+  "workflow_instance_id": null,
+  "workflow_step_id": null,
+  "workflow_substep_id": null,
+  "inputs": null,
+  "outputs": null,
+  "business_logics": null
+}
+📦 Processing batch 12: 2025-07-22T00:29:27.549Z → 2025-07-22T00:32:39.751Z
+✅ Batch 12: 1 events, analysis: found
+Sending batch 12 to LLM for timeline mapping...
+🚀 Using Vertex AI with structured output for model: gemini-2.5-pro
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 214ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 553ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1170ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1687ms
+✅ Vertex AI structured output successful
+🧹 Cleaned JSON text: {
+  "event_mappings": [
+    {
+      "confidence_score": 0.9,
+      "raw_event_id": 563323,
+      "business_logics": "User is copying a raw event log in JSON format, which is a common action during app...
+✅ Successfully mapped batch 12: 1 events mapped
+💾 Preparing to save 1 mappings for batch 12
+💾 Analysis ID to use: 25957
+💾 Sample mapping result: {
+  "confidence_score": 0.9,
+  "raw_event_id": 563323,
+  "business_logics": "User is copying a raw event log in JSON format, which is a common action during application development for debugging, analysis, or documenting application behavior.",
+  "inputs": "Text representing a raw event log was selected.",
+  "outputs": "A JSON string of a raw event log was copied to the clipboard.",
+  "workflow_instance_id": 1753238087530,
+  "workflow_step_id": 1753238087534,
+  "workflow_substep_id": 1753238087533,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087528
+}
+❌ Error saving batch 12 annotations: {
+  code: '23505',
+  details: 'Key (raw_event_id, analysis_id)=(563323, 25957) already exists.',
+  hint: null,
+  message: 'duplicate key value violates unique constraint "idx_raw_timeline_annotations_unique_event"'
+}
+❌ Error details: {
+  "code": "23505",
+  "details": "Key (raw_event_id, analysis_id)=(563323, 25957) already exists.",
+  "hint": null,
+  "message": "duplicate key value violates unique constraint \"idx_raw_timeline_annotations_unique_event\""
+}
+❌ Attempted to insert 1 annotations:
+❌ Sample annotation: {
+  "user_id": "cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9",
+  "raw_event_id": 563323,
+  "analysis_id": 25957,
+  "confidence_score": 0.9,
+  "is_workflow_related": true,
+  "model_used": "gemini-2.5-pro",
+  "unrelated_reason": null,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087528,
+  "workflow_instance_id": 1753238087530,
+  "workflow_step_id": 1753238087534,
+  "workflow_substep_id": 1753238087533,
+  "inputs": "Text representing a raw event log was selected.",
+  "outputs": "A JSON string of a raw event log was copied to the clipboard.",
+  "business_logics": "User is copying a raw event log in JSON format, which is a common action during application development for debugging, analysis, or documenting application behavior."
+}
+📦 Processing batch 13: 2025-07-22T00:27:49.040Z → 2025-07-22T00:29:27.549Z
+✅ Batch 13: 1 events, analysis: found
+Sending batch 13 to LLM for timeline mapping...
+🚀 Using Vertex AI with structured output for model: gemini-2.5-pro
+✅ Vertex AI structured output successful
+🧹 Cleaned JSON text: {
+  "event_mappings": [
+    {
+      "confidence_score": 0.95,
+      "raw_event_id": 563054,
+      "business_logics": "The copied content is a local development URL, which is a key artifact in debuggin...
+✅ Successfully mapped batch 13: 1 events mapped
+💾 Preparing to save 1 mappings for batch 13
+💾 Analysis ID to use: 25957
+💾 Sample mapping result: {
+  "confidence_score": 0.95,
+  "raw_event_id": 563054,
+  "business_logics": "The copied content is a local development URL, which is a key artifact in debugging and refining application logic.",
+  "inputs": "Clipboard content: http://localhost:3000/low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow",
+  "outputs": "The URL was copied to the clipboard.",
+  "unrelated_reason": "",
+  "workflow_instance_id": 1753238087530,
+  "workflow_step_id": 1753238087534,
+  "workflow_substep_id": 1753238087532,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087528
+}
+❌ Error saving batch 13 annotations: {
+  code: '23505',
+  details: 'Key (raw_event_id, analysis_id)=(563054, 25957) already exists.',
+  hint: null,
+  message: 'duplicate key value violates unique constraint "idx_raw_timeline_annotations_unique_event"'
+}
+❌ Error details: {
+  "code": "23505",
+  "details": "Key (raw_event_id, analysis_id)=(563054, 25957) already exists.",
+  "hint": null,
+  "message": "duplicate key value violates unique constraint \"idx_raw_timeline_annotations_unique_event\""
+}
+❌ Attempted to insert 1 annotations:
+❌ Sample annotation: {
+  "user_id": "cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9",
+  "raw_event_id": 563054,
+  "analysis_id": 25957,
+  "confidence_score": 0.95,
+  "is_workflow_related": true,
+  "model_used": "gemini-2.5-pro",
+  "unrelated_reason": null,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087528,
+  "workflow_instance_id": 1753238087530,
+  "workflow_step_id": 1753238087534,
+  "workflow_substep_id": 1753238087532,
+  "inputs": "Clipboard content: http://localhost:3000/low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow",
+  "outputs": "The URL was copied to the clipboard.",
+  "business_logics": "The copied content is a local development URL, which is a key artifact in debugging and refining application logic."
+}
+📦 Processing batch 14: 2025-07-22T00:27:21.459Z → 2025-07-22T00:27:49.040Z
+✅ Batch 14: 1 events, analysis: found
+Sending batch 14 to LLM for timeline mapping...
+🚀 Using Vertex AI with structured output for model: gemini-2.5-pro
+✅ Vertex AI structured output successful
+🧹 Cleaned JSON text: {
+  "event_mappings": [
+    {
+      "confidence_score": 1,
+      "raw_event_id": 563026,
+      "business_logics": "",
+      "inputs": "User selected the text: \"when do we save it to raw_timeline_even...
+✅ Successfully mapped batch 14: 1 events mapped
+💾 Preparing to save 1 mappings for batch 14
+💾 Analysis ID to use: 25957
+💾 Sample mapping result: {
+  "confidence_score": 1,
+  "raw_event_id": 563026,
+  "business_logics": "",
+  "inputs": "User selected the text: \"when do we save it to raw_timeline_event_annotations, once we generated? if i refresh the page, will it be loaded from there in ui, just explain\"",
+  "outputs": "The technical question was copied to the clipboard.",
+  "unrelated_reason": "",
+  "workflow_instance_id": 1753238087530,
+  "workflow_step_id": 1753238087534,
+  "workflow_substep_id": 1753238087532,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087528
+}
+❌ Error saving batch 14 annotations: {
+  code: '23505',
+  details: 'Key (raw_event_id, analysis_id)=(563026, 25957) already exists.',
+  hint: null,
+  message: 'duplicate key value violates unique constraint "idx_raw_timeline_annotations_unique_event"'
+}
+❌ Error details: {
+  "code": "23505",
+  "details": "Key (raw_event_id, analysis_id)=(563026, 25957) already exists.",
+  "hint": null,
+  "message": "duplicate key value violates unique constraint \"idx_raw_timeline_annotations_unique_event\""
+}
+❌ Attempted to insert 1 annotations:
+❌ Sample annotation: {
+  "user_id": "cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9",
+  "raw_event_id": 563026,
+  "analysis_id": 25957,
+  "confidence_score": 1,
+  "is_workflow_related": true,
+  "model_used": "gemini-2.5-pro",
+  "unrelated_reason": null,
+  "workflow_template_id": 139,
+  "workflow_type_id": 1753238087528,
+  "workflow_instance_id": 1753238087530,
+  "workflow_step_id": 1753238087534,
+  "workflow_substep_id": 1753238087532,
+  "inputs": "User selected the text: \"when do we save it to raw_timeline_event_annotations, once we generated? if i refresh the page, will it be loaded from there in ui, just explain\"",
+  "outputs": "The technical question was copied to the clipboard.",
+  "business_logics": null
+}
+📦 Processing batch 15: 2025-07-21T23:57:02.019Z → 2025-07-22T00:27:21.459Z
+✅ Batch 15: 1 events, analysis: found
+Sending batch 15 to LLM for timeline mapping...
+🚀 Using Vertex AI with structured output for model: gemini-2.5-pro
 [ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
  GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 179ms
 [ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 578ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1242ms
-[ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1570ms
+ GET /api/remote-workflows/list 200 in 360ms

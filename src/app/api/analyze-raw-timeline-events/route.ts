@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
             .eq('user_id', userId)
             .gte('created_at', startTime.toISOString())
             .lt('created_at', endTime.toISOString())
-            .neq('event_type', 'screenshot_diff') // Use optimized column filter
+            .not('event_type', 'in', '(screenshot_diff,ui_tree)') // Exclude both screenshot_diff and ui_tree events
             .order('created_at', { ascending: true });
 
           if (batchError) {
