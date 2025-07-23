@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useState, useEffect, use, useCallback, useMemo } from "react";
 import type { LowLevelEvent } from "@/types";
+import { getSharedEventsStorage } from '@/lib/sharedEventsStorage';
 import { generateSimplifiedUiTreeString } from '@/lib/uiTreeUtils';
 import UITreeTimeline from "@/components/low-level/UITreeTimeline";
 import FormattedUITree from "@/components/low-level/FormattedUITree";
@@ -122,6 +123,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const { userId } = use(params);
   const { setUserId } = useUser();
   const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
+  const [usingCachedData, setUsingCachedData] = useState(false);
+  const sharedStorage = getSharedEventsStorage(userId);
   const [selectedEvent, setSelectedEvent] = useState<LowLevelEvent | null>(null);
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const [openContextGroupItems, setOpenContextGroupItems] = useState<string[]>([]);
@@ -290,16 +293,42 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
   useEffect(() => {
     setUserId(userId);
-    const fetchEvents = async () => {
+    const loadEvents = async () => {
       if (!userId) return;
       setLoading(true);
       try {
+        // First, try to load from IndexedDB cache
+        const cachedData = await sharedStorage.getCachedEvents(1000, 0, false); // Get all events, not just UI
+        
+        if (cachedData.events.length > 0) {
+          console.log(`[Steps] Loaded ${cachedData.events.length} events from IndexedDB cache`);
+          setAllEvents(cachedData.events);
+          setUsingCachedData(true);
+          setHasMore(cachedData.hasMore);
+          setOffset(cachedData.events.length);
+          
+          // Get storage info for additional metadata
+          const storageInfo = await sharedStorage.getStorageInfo();
+          setTotalEventCount(storageInfo.eventCount);
+          
+          // Count UI tree events for steps count
+          const uiTreeCount = cachedData.events.filter(event => 
+            (event.payload as any)?.payload?.type === 'ui_tree'
+          ).length;
+          setTotalStepsCount(uiTreeCount);
+          
+          setLoading(false);
+          return; // Skip API call if we have cached data
+        }
+        
+        // Fallback to API if no cached data
+        console.log('[Steps] No cached data found, fetching from API');
+        setUsingCachedData(false);
         const response = await fetch(`/api/low-level/${userId}?offset=0`);
         if (!response.ok) {
           throw new Error('Network response was not ok when fetching events');
         }
         const data = await response.json();
-        // The API now provides pre-sorted, stable data. No need to sort on the client.
         const newEvents = data.events || [];
         setAllEvents(newEvents);
         setHasMore(data.hasMore || false);
@@ -310,6 +339,13 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         if (data.totalStepsCount) {
           setTotalStepsCount(data.totalStepsCount);
         }
+        
+        // Save to cache for future use
+        if (newEvents.length > 0) {
+          await sharedStorage.saveEvents(newEvents);
+          console.log(`[Steps] Saved ${newEvents.length} events to IndexedDB for future use`);
+        }
+        
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -318,10 +354,10 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     };
 
     if (userId) {
-      fetchEvents();
+      loadEvents();
       fetchAllWorkflowAnalyses();
     }
-  }, [userId, setUserId, fetchAllWorkflowAnalyses]);
+  }, [userId, setUserId, fetchAllWorkflowAnalyses, sharedStorage]);
 
   useEffect(() => {
     if (!userId) return;
@@ -356,17 +392,36 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     if (!hasMore || isLoadingMore || !userId) return;
     setIsLoadingMore(true);
     try {
+      // First try to load more from IndexedDB cache
+      if (usingCachedData) {
+        const cachedData = await sharedStorage.getCachedEvents(amount, offset, false);
+        if (cachedData.events.length > 0) {
+          console.log(`[Steps] Loaded ${cachedData.events.length} more events from IndexedDB cache`);
+          setAllEvents(prevEvents => [...prevEvents, ...cachedData.events]);
+          setHasMore(cachedData.hasMore);
+          setOffset(prevOffset => prevOffset + cachedData.events.length);
+          setIsLoadingMore(false);
+          return;
+        }
+      }
+      
+      // Fallback to API if cache doesn't have more data
       const response = await fetch(`/api/low-level/${userId}?offset=${offset}&limit=${amount}`);
       if (!response.ok) {
         throw new Error('Network response was not ok when fetching more events');
       }
       const data = await response.json();
-      // The API now provides pre-sorted, stable data. No need to sort on the client.
       const newEvents = data.events || [];
       
       setAllEvents(prevEvents => [...prevEvents, ...newEvents]);
       setHasMore(data.hasMore || false);
       setOffset(prevOffset => prevOffset + newEvents.length);
+
+      // Save new events to cache
+      if (newEvents.length > 0) {
+        await sharedStorage.saveEvents(newEvents);
+        console.log(`[Steps] Saved ${newEvents.length} additional events to IndexedDB`);
+      }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -783,6 +838,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">Total Events:</span>
             <span className="font-semibold">{totalEventCount} (loaded {allEvents.length})</span>
+            {usingCachedData && (
+              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                IndexedDB
+              </Badge>
+            )}
           </div>
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">UI Steps:</span>
