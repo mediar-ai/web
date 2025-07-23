@@ -89,39 +89,57 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
   const unrelatedCount = filteredAnnotations.filter(a => !a.is_workflow_related).length;
 
   // Group annotations by workflow hierarchy for workflow view
-  const workflowGroups = useMemo(() => {
-    const groups: Record<string, {
+  const workflowHierarchy = useMemo(() => {
+    const workflows: Record<string, {
       template_name: string;
       type_name: string;
       instance_name: string;
-      step_name: string;
-      substep_name: string;
-      step_title: string;
-      user_intent: string;
-      step_summary: string;
-      window_title: string;
-      events: Array<{
-        timestamp: string;
-        event_type: string;
-        inputs: string | string[] | null;
-        outputs: string | string[] | null;
-        business_logics: string | null;
-        raw_event_id: number;
+      steps: Record<string, {
+        step_name: string;
+        substeps: Record<string, {
+          substep_name: string;
+          step_title: string;
+          user_intent: string;
+          step_summary: string;
+          window_title: string;
+          events: Array<{
+            timestamp: string;
+            event_type: string;
+            inputs: string | string[] | null;
+            outputs: string | string[] | null;
+            business_logics: string | null;
+            raw_event_id: number;
+          }>;
+        }>;
       }>;
     }> = {};
 
     filteredAnnotations
       .filter(a => a.is_workflow_related)
       .forEach(annotation => {
-        const key = `${annotation.template_name || 'Unknown'}_${annotation.type_name || 'Unknown'}_${annotation.instance_name || 'Unknown'}_${annotation.step_name || 'Unknown'}_${annotation.substep_name || 'Unknown'}`;
+        const workflowKey = `${annotation.template_name || 'Unknown'}-${annotation.type_name || 'Unknown'}-${annotation.instance_name || 'Unknown'}`;
+        const stepKey = annotation.step_name || 'Unknown Step';
+        const substepKey = annotation.substep_name || 'Unknown Substep';
         
-        if (!groups[key]) {
-          groups[key] = {
+        if (!workflows[workflowKey]) {
+          workflows[workflowKey] = {
             template_name: annotation.template_name || 'Unknown Workflow',
             type_name: annotation.type_name || 'Unknown Type',
             instance_name: annotation.instance_name || 'Unknown Instance',
-            step_name: annotation.step_name || 'Unknown Step',
-            substep_name: annotation.substep_name || 'Unknown Substep',
+            steps: {}
+          };
+        }
+
+        if (!workflows[workflowKey].steps[stepKey]) {
+          workflows[workflowKey].steps[stepKey] = {
+            step_name: stepKey,
+            substeps: {}
+          };
+        }
+
+        if (!workflows[workflowKey].steps[stepKey].substeps[substepKey]) {
+          workflows[workflowKey].steps[stepKey].substeps[substepKey] = {
+            substep_name: substepKey,
             step_title: annotation.step_title || 'Unknown Step Title',
             user_intent: annotation.user_intent || '',
             step_summary: annotation.step_summary || '',
@@ -130,7 +148,7 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
           };
         }
 
-        groups[key].events.push({
+        workflows[workflowKey].steps[stepKey].substeps[substepKey].events.push({
           timestamp: annotation.event_created_at || annotation.created_at,
           event_type: annotation.event_type || 'unknown',
           inputs: annotation.inputs || null,
@@ -140,7 +158,7 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
         });
       });
 
-    return Object.values(groups);
+    return Object.values(workflows);
   }, [filteredAnnotations]);
 
   return (
@@ -323,92 +341,125 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
           </div>
         ) : (
           /* Workflow View */
-          <div className="max-h-[600px] overflow-y-auto w-full space-y-4 pr-2">
-            {workflowGroups.length === 0 ? (
+          <div className="max-h-[600px] overflow-y-auto w-full space-y-6 pr-2">
+            {workflowHierarchy.length === 0 ? (
               <div className="text-center py-12 text-gray-600 border border-gray-300 rounded-lg bg-gray-50">
                 No related workflow mappings found.
               </div>
             ) : (
-              workflowGroups.map((group, groupIndex) => (
-                <div key={groupIndex} className="border border-gray-300 rounded-lg bg-white">
+              workflowHierarchy.map((workflow, workflowIndex) => (
+                <div key={workflowIndex} className="border border-gray-300 rounded-lg bg-white">
                   {/* Workflow Header */}
                   <div className="border-b border-gray-200 p-4 bg-gray-50">
-                    <div className="space-y-1 text-sm">
-                      <div className="text-gray-600">{group.template_name}</div>
-                      <div className="text-gray-600">{group.type_name}</div>
-                      <div className="text-gray-600">{group.instance_name}</div>
-                      <div className="text-gray-600">{group.step_name}</div>
-                      <div className="text-gray-600">{group.substep_name}</div>
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-gray-300">
-                      <div className="font-medium text-gray-900 mb-1">{group.step_title}</div>
-                      {group.user_intent && (
-                        <div className="text-sm text-gray-700 mb-1">Intent: {group.user_intent}</div>
-                      )}
-                      {group.step_summary && (
-                        <div className="text-sm text-gray-700 mb-1">Summary: {group.step_summary}</div>
-                      )}
-                      {group.window_title && (
-                        <div className="text-sm text-gray-700">Window: {group.window_title}</div>
-                      )}
+                    <div className="space-y-2 text-sm">
+                      <div className="font-bold text-lg text-gray-900">{workflow.template_name}</div>
+                      <div className="text-gray-700"><span className="font-medium">Type:</span> {workflow.type_name}</div>
+                      <div className="text-gray-700"><span className="font-medium">Instance:</span> {workflow.instance_name}</div>
                     </div>
                   </div>
 
-                  {/* Mapped Events */}
-                  <div className="p-4">
-                    <div className="text-sm font-medium text-gray-700 mb-3">
-                      Mapped Events ({group.events.length})
-                    </div>
-                    <div className="space-y-3">
-                      {group.events.map((event, eventIndex) => (
-                        <div key={eventIndex} className="border border-gray-200 rounded p-3 bg-gray-50">
-                          <div className="flex items-center gap-3 mb-2">
-                            <div className="text-xs font-mono text-gray-600">
-                              {new Date(event.timestamp).toLocaleString()}
-                            </div>
-                            <div className="text-xs bg-gray-200 text-gray-800 px-2 py-1 rounded border">
-                              {event.event_type}
-                            </div>
-                          </div>
-                          
-                          {/* Input/Output/Business Logic */}
-                          <div className="space-y-2 text-xs">
-                            {event.inputs && (
-                              <div>
-                                <div className="text-gray-700 font-medium mb-1">INPUT:</div>
-                                <div className="bg-gray-100 rounded border text-gray-800 p-2">
-                                  {typeof event.inputs === 'string' 
-                                    ? event.inputs 
-                                    : Array.isArray(event.inputs) ? event.inputs.join(', ') : 'No input data'
-                                  }
-                                </div>
-                              </div>
-                            )}
-                            
-                            {event.outputs && (
-                              <div>
-                                <div className="text-gray-700 font-medium mb-1">OUTPUT:</div>
-                                <div className="bg-gray-100 rounded border text-gray-800 p-2">
-                                  {typeof event.outputs === 'string' 
-                                    ? event.outputs 
-                                    : Array.isArray(event.outputs) ? event.outputs.join(', ') : 'No output data'
-                                  }
-                                </div>
-                              </div>
-                            )}
-                            
-                            {event.business_logics && (
-                              <div>
-                                <div className="text-gray-700 font-medium mb-1">BUSINESS LOGIC:</div>
-                                <div className="bg-gray-100 rounded border text-gray-800 p-2">
-                                  {event.business_logics}
-                                </div>
-                              </div>
-                            )}
+                  {/* Steps */}
+                  <div className="p-4 space-y-4">
+                    {Object.values(workflow.steps).map((step, stepIndex) => (
+                      <div key={stepIndex} className="border border-gray-200 rounded-lg bg-gray-50">
+                        <div className="p-3 bg-gray-100 border-b border-gray-200">
+                          <div className="font-medium text-gray-900">
+                            <span className="font-medium">Step:</span> {step.step_name}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                        
+                        {/* Substeps */}
+                        <div className="p-3 space-y-3">
+                          {Object.values(step.substeps).map((substep, substepIndex) => (
+                            <div key={substepIndex} className="border border-gray-300 rounded-lg bg-white">
+                              {/* Substep Header */}
+                              <div className="border-b border-gray-200 p-3 bg-gray-50">
+                                <div className="space-y-2 text-sm">
+                                  <div className="font-medium text-gray-900">
+                                    <span className="font-medium">Substep:</span> {substep.substep_name}
+                                  </div>
+                                  <div className="font-medium text-gray-900">
+                                    <span className="font-medium">Analysis:</span> {substep.step_title}
+                                  </div>
+                                  {substep.user_intent && (
+                                    <div className="text-gray-700">
+                                      <span className="font-medium">Intent:</span> {substep.user_intent}
+                                    </div>
+                                  )}
+                                  {substep.step_summary && (
+                                    <div className="text-gray-700">
+                                      <span className="font-medium">Summary:</span> {substep.step_summary}
+                                    </div>
+                                  )}
+                                  {substep.window_title && (
+                                    <div className="text-gray-700">
+                                      <span className="font-medium">Window:</span> {substep.window_title}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Mapped Events */}
+                              <div className="p-3">
+                                <div className="text-sm font-medium text-gray-700 mb-3">
+                                  Mapped Events ({substep.events.length})
+                                </div>
+                                <div className="space-y-3">
+                                  {substep.events.map((event, eventIndex) => (
+                                    <div key={eventIndex} className="border border-gray-200 rounded p-3 bg-gray-50">
+                                      <div className="flex items-center gap-3 mb-2">
+                                        <div className="text-xs font-mono text-gray-600">
+                                          {new Date(event.timestamp).toLocaleString()}
+                                        </div>
+                                        <div className="text-xs bg-gray-200 text-gray-800 px-2 py-1 rounded border">
+                                          {event.event_type}
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Input/Output/Business Logic */}
+                                      <div className="space-y-2 text-xs">
+                                        {event.inputs && (
+                                          <div>
+                                            <div className="text-gray-700 font-medium mb-1">INPUT:</div>
+                                            <div className="bg-gray-100 rounded border text-gray-800 p-2">
+                                              {typeof event.inputs === 'string' 
+                                                ? event.inputs 
+                                                : Array.isArray(event.inputs) ? event.inputs.join(', ') : 'No input data'
+                                              }
+                                            </div>
+                                          </div>
+                                        )}
+                                        
+                                        {event.outputs && (
+                                          <div>
+                                            <div className="text-gray-700 font-medium mb-1">OUTPUT:</div>
+                                            <div className="bg-gray-100 rounded border text-gray-800 p-2">
+                                              {typeof event.outputs === 'string' 
+                                                ? event.outputs 
+                                                : Array.isArray(event.outputs) ? event.outputs.join(', ') : 'No output data'
+                                              }
+                                            </div>
+                                          </div>
+                                        )}
+                                        
+                                        {event.business_logics && (
+                                          <div>
+                                            <div className="text-gray-700 font-medium mb-1">BUSINESS LOGIC:</div>
+                                            <div className="bg-gray-100 rounded border text-gray-800 p-2">
+                                              {event.business_logics}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))
