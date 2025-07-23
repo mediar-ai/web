@@ -9,13 +9,7 @@ const MAX_STORAGE_SIZE = 500 * 1024 * 1024; // 500MB
 const CLEANUP_THRESHOLD = 0.9; // Start cleanup at 90% capacity
 const CLEANUP_TARGET = 0.7; // Clean down to 70% capacity
 
-interface EventMetadata {
-  id: string;
-  userId: string;
-  estimatedSize: number;
-  createdAt: string;
-  lastAccessed: number;
-}
+// EventMetadata interface removed as it was unused
 
 interface StorageMetadata {
   id: string;
@@ -134,7 +128,7 @@ export class RawEventsStorage {
     }
   }
 
-  private async getEventsSortedByAge(): Promise<LowLevelEvent[]> {
+  async getEventsSortedByAge(): Promise<LowLevelEvent[]> {
     if (!this.db) return [];
 
     const transaction = this.db.transaction([EVENTS_STORE], 'readonly');
@@ -195,7 +189,6 @@ export class RawEventsStorage {
     return new Promise((resolve, reject) => {
       const request = index.openCursor(null, 'prev'); // Newest first
       const results: LowLevelEvent[] = [];
-      let count = 0;
       let skipped = 0;
 
       request.onerror = () => reject(request.error);
