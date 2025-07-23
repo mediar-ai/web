@@ -94,12 +94,13 @@ export async function POST(req: NextRequest) {
 
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-        // Get synthesized workflows for the user
-        controller.enqueue(toSSE({ status: 'Loading synthesized workflows...', progress: 10 }));
+        // Get synthesized workflows for the user (only draft, not saved syntheses)
+        controller.enqueue(toSSE({ status: 'Loading draft workflows for mapping...', progress: 10 }));
         const { data: workflows, error: workflowError } = await supabaseAdmin
           .from('low_level_workflows')
-          .select('id, title, detailed_workflow_data, synthesis_session_id')
+          .select('id, title, detailed_workflow_data, synthesis_session_id, synthesis_status')
           .eq('user_id', userId)
+          .eq('synthesis_status', 'draft') // Only map to draft workflows, not saved ones
           .not('detailed_workflow_data', 'is', null);
 
         if (workflowError) {
@@ -110,13 +111,13 @@ export async function POST(req: NextRequest) {
         }
 
         if (!workflows || workflows.length === 0) {
-          controller.enqueue(toSSE({ error: 'No synthesized workflows found for user' }));
+          controller.enqueue(toSSE({ error: 'No draft workflows found for mapping. Saved syntheses are excluded from timeline mapping.' }));
           controller.close();
           return;
         }
 
-        console.log(`📊 Found ${workflows.length} synthesized workflows`);
-        controller.enqueue(toSSE({ status: `Found ${workflows.length} synthesized workflows`, progress: 20 }));
+        console.log(`📊 Found ${workflows.length} draft workflows for mapping`);
+        controller.enqueue(toSSE({ status: `Found ${workflows.length} draft workflows for mapping`, progress: 20 }));
 
         // Fetch UI tree events - either specific ones if targetUiEventIds provided, or last 2 for testing
         const statusMessage = targetUiEventIds 
