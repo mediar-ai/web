@@ -161,31 +161,21 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
                  {annotation.is_workflow_related && (annotation.template_name || annotation.type_name) && (
                    <div className="mb-3 text-sm">
                      <div className="text-gray-600 mb-1 font-medium">Workflow Context:</div>
-                     <div className="flex flex-wrap gap-1 text-xs">
+                     <div className="text-xs text-gray-800 space-y-1">
                        {annotation.template_name && annotation.template_name !== 'Unknown Template' && (
-                         <span className="bg-gray-900 text-white px-2 py-1 rounded border" title={`Workflow: ${annotation.template_name}`}>
-                           WORKFLOW: {annotation.template_name}
-                         </span>
+                         <div>{annotation.template_name}</div>
                        )}
                        {annotation.type_name && annotation.type_name !== 'Unknown Type' && (
-                         <span className="bg-gray-700 text-white px-2 py-1 rounded border" title={annotation.type_name}>
-                           TYPE: {annotation.type_name}
-                         </span>
+                         <div>{annotation.type_name}</div>
                        )}
                        {annotation.instance_name && annotation.instance_name !== 'Unknown Instance' && (
-                         <span className="bg-gray-500 text-white px-2 py-1 rounded border" title={annotation.instance_name}>
-                           INSTANCE: {annotation.instance_name}
-                         </span>
+                         <div>{annotation.instance_name}</div>
                        )}
                        {annotation.step_name && annotation.step_name !== 'Unknown Step' && (
-                         <span className="bg-gray-400 text-black px-2 py-1 rounded border" title={annotation.step_name}>
-                           STEP: {annotation.step_name}
-                         </span>
+                         <div>{annotation.step_name}</div>
                        )}
                        {annotation.substep_name && annotation.substep_name !== 'Unknown Substep' && (
-                         <span className="bg-gray-300 text-black px-2 py-1 rounded border" title={annotation.substep_name}>
-                           SUBSTEP: {annotation.substep_name}
-                         </span>
+                         <div>{annotation.substep_name}</div>
                        )}
                      </div>
                    </div>
