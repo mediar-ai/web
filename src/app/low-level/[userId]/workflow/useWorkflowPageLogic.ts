@@ -595,7 +595,7 @@ export function useWorkflowPageLogic(userId: string) {
       setTimelineMappingElapsedTime(prevTime => prevTime + 0.1), 100
     );
 
-    console.log('🚀 Starting sequential batch timeline mapping for', workflows.length, 'workflows');
+    console.log('Starting sequential batch timeline mapping for', workflows.length, 'workflows');
 
     try {
       const response = await fetch('/api/analyze-raw-timeline-events', {
@@ -696,7 +696,7 @@ export function useWorkflowPageLogic(userId: string) {
     await saveSynthesisSession(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
 
     try {
-      // 🎯 STEP 1: Call the original /api/synthesize-workflow endpoint
+      // STEP 1: Call the original /api/synthesize-workflow endpoint
       const synthesisResponse = await fetch('/api/synthesize-workflow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -720,16 +720,16 @@ export function useWorkflowPageLogic(userId: string) {
       }
 
       const result = await synthesisResponse.json();
-      console.log('🔍 DEBUG: Frontend received synthesis result:', JSON.stringify(result, null, 2));
-      console.log('🔍 DEBUG: result.workflows:', result.workflows);
+      console.log('DEBUG: Frontend received synthesis result:', JSON.stringify(result, null, 2));
+      console.log('DEBUG: result.workflows:', result.workflows);
       const synthesizedWorkflows = result.workflows || [];
-      console.log('🔍 DEBUG: synthesizedWorkflows length:', synthesizedWorkflows.length);
+      console.log('DEBUG: synthesizedWorkflows length:', synthesizedWorkflows.length);
       
-      // 🎯 STEP 2: Save the newly synthesized workflows to the database
+      // STEP 2: Save the newly synthesized workflows to the database
       // This will assign them IDs, which we'll need for the next step.
       const savedWorkflows = await saveSynthesizedWorkflows(synthesizedWorkflows);
 
-      // 🎯 STEP 3: Update the UI to show the generated workflows on the canvas
+      // STEP 3: Update the UI to show the generated workflows on the canvas
       setWorkflows(savedWorkflows);
       
       setSynthesisStep('done');
@@ -910,7 +910,7 @@ export function useWorkflowPageLogic(userId: string) {
       }
 
       const result = await response.json();
-      console.log(`✅ Saved synthesis: ${result.message}`);
+      console.log(`Saved synthesis: ${result.message}`);
       
       // Refresh workflows to show updated status
       await fetchWorkflows(true);
@@ -934,13 +934,13 @@ export function useWorkflowPageLogic(userId: string) {
   useEffect(() => {
     const loadExistingTimelineAnnotations = async () => {
       try {
-        console.log('🔍 Loading existing timeline annotations...');
+        console.log('Loading existing timeline annotations...');
         const response = await fetch(`/api/timeline-event-mappings?user_id=${userId}&raw_events=true&include_unrelated=true`);
         if (response.ok) {
           const data = await response.json();
           if (data.annotations && data.annotations.length > 0) {
             setTimelineAnnotations(data.annotations);
-            console.log('📋 Loaded existing timeline annotations:', data.annotations.length);
+            console.log('Loaded existing timeline annotations:', data.annotations.length);
           } else {
             console.log('ℹ️ No existing timeline annotations found');
             setTimelineAnnotations([]);

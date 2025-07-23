@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 
 interface TimeBoundary {
   startDate: Date | null;
@@ -88,7 +87,7 @@ export function FilteredStatsDisplay({
   if (isLoading || isLoadingStats) {
     return (
       <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin" />
         <span className="ml-2 text-sm text-muted-foreground">Loading filtered stats...</span>
       </div>
     );
@@ -96,7 +95,7 @@ export function FilteredStatsDisplay({
 
   if (error) {
     return (
-      <div className="text-center text-red-600 p-4">
+      <div className="text-center text-black p-4 border border-black rounded-lg bg-gray-100">
         <p className="text-sm">Error loading stats: {error}</p>
       </div>
     );
@@ -138,7 +137,7 @@ export function FilteredStatsDisplay({
       </div>
 
       {filteredStats.totalEvents === 0 && (
-        <div className="text-center text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+        <div className="text-center text-black bg-gray-100 border border-black rounded-lg p-3">
           <p className="text-sm">No events found in the selected time range. Try expanding the time window.</p>
         </div>
       )}
