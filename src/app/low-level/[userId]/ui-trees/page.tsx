@@ -71,6 +71,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   const [currentLimit, setCurrentLimit] = useState(50);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [liveUpdateIndicator, setLiveUpdateIndicator] = useState(false);
 
   const SORT_ORDER_STORAGE_KEY = `ui-trees-sort-order-${userId}`;
 
@@ -206,6 +207,47 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   useEffect(() => {
     fetchUITrees();
   }, [fetchUITrees]);
+
+  // Live polling for new UI trees every 4 seconds
+  useEffect(() => {
+    if (!userId || loading) return; // Don't start polling until initial load is complete
+
+    const pollForNewUITrees = async () => {
+      try {
+        // Check for new UI tree events by fetching latest 5 and comparing
+        const response = await fetch(`/api/low-level/${userId}/ui-trees?limit=5`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const latestUITrees = data.events || [];
+        
+        if (latestUITrees.length > 0 && events.length > 0) {
+          // Check if we have any new UI trees by comparing IDs
+          const existingIds = new Set(events.slice(0, 5).map(e => e.id));
+          const newUITrees = latestUITrees.filter((e: UITreeEvent) => !existingIds.has(e.id));
+          
+          if (newUITrees.length > 0) {
+            console.log(`[UI Trees] Found ${newUITrees.length} new UI trees via polling`);
+            setLiveUpdateIndicator(true);
+            setEvents(prevEvents => [...newUITrees, ...prevEvents] as UITreeEvent[]);
+            
+            // Save new UI trees to cache
+            await sharedStorage.saveEvents(newUITrees);
+            
+            // Hide indicator after 2 seconds
+            setTimeout(() => setLiveUpdateIndicator(false), 2000);
+          }
+        }
+      } catch (error) {
+        console.error('[UI Trees] Error polling for new UI trees:', error);
+      }
+    };
+
+    // Poll immediately and then every 4 seconds
+    const interval = setInterval(pollForNewUITrees, 4000);
+
+    return () => clearInterval(interval);
+  }, [userId, loading, events, sharedStorage]);
 
   const toggleSortOrder = () => {
     setSortOrder(prev => {
@@ -355,6 +397,11 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
           {usingCachedData && (
             <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
               IndexedDB
+            </Badge>
+          )}
+          {liveUpdateIndicator && (
+            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 animate-pulse">
+              Live Update
             </Badge>
           )}
         </div>

@@ -150,6 +150,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [loadAmount, setLoadAmount] = useState('1000');
   const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
   const [loadAllProgress, setLoadAllProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [liveUpdateIndicator, setLiveUpdateIndicator] = useState(false);
   
   // Loading constants
   const AUTO_LOAD_CHUNK_SIZE = 200;
@@ -519,6 +520,51 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
     return () => clearInterval(interval);
   }, [userId, allWorkflowAnalyses.length, fetchAllWorkflowAnalyses, usingCachedAnalyses]);
+
+  // Live polling for new events every 3 seconds
+  useEffect(() => {
+    if (!userId || loading) return; // Don't start polling until initial load is complete
+
+    const pollForNewEvents = async () => {
+      try {
+        // Check for new events by fetching first chunk and comparing with cache
+        const response = await fetch(`/api/low-level/${userId}?offset=0&limit=10`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const latestEvents = data.events || [];
+        
+        if (latestEvents.length > 0 && allEvents.length > 0) {
+          // Check if we have any new events by comparing IDs
+          const existingIds = new Set(allEvents.slice(0, 10).map(e => e.id));
+          const newEvents = latestEvents.filter(e => !existingIds.has(e.id));
+          
+          if (newEvents.length > 0) {
+            console.log(`[Steps] Found ${newEvents.length} new events via polling`);
+            setLiveUpdateIndicator(true);
+            setAllEvents(prevEvents => [...newEvents, ...prevEvents]);
+            
+            // Save new events to cache
+            await sharedStorage.saveEvents(newEvents);
+            
+            // Update counts
+            if (data.totalEventCount) setTotalEventCount(data.totalEventCount);
+            if (data.totalStepsCount) setTotalStepsCount(data.totalStepsCount);
+            
+            // Hide indicator after 2 seconds
+            setTimeout(() => setLiveUpdateIndicator(false), 2000);
+          }
+        }
+      } catch (error) {
+        console.error('[Steps] Error polling for new events:', error);
+      }
+    };
+
+    // Poll immediately and then every 3 seconds
+    const interval = setInterval(pollForNewEvents, 3000);
+
+    return () => clearInterval(interval);
+  }, [userId, loading, allEvents, sharedStorage]);
 
   const loadMoreEvents = async (amount: number): Promise<{ hasMore: boolean } | null> => {
     if (!hasMore || isLoadingMore || !userId) return null;
@@ -1016,6 +1062,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
             {usingCachedData && (
               <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
                 IndexedDB
+              </Badge>
+            )}
+            {liveUpdateIndicator && (
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 animate-pulse">
+                Live Update
               </Badge>
             )}
           </div>
