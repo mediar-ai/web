@@ -48,7 +48,8 @@ const Clock = () => {
 };
 
 export default function RawLowLevelEventsPage({ params }: { params: Promise<{ userId: string }> }) {
-  const [events, setEvents] = useState<LowLevelEvent[]>([]);
+  // UI state only - no events array in React state
+  const [displayEvents, setDisplayEvents] = useState<LowLevelEvent[]>([]); // Only for current UI view
   const [sessionCount, setSessionCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -73,7 +74,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [isStorageOpen, setIsStorageOpen] = useState(false);
   
   // Progressive loading state
-  const [currentOffset, setCurrentOffset] = useState(0);
+  const [currentDisplayLimit, setCurrentDisplayLimit] = useState(0);
   const [hasMoreData, setHasMoreData] = useState(true);
   const [totalAvailable, setTotalAvailable] = useState<number | null>(null);
   const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
@@ -104,11 +105,30 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     return new Date(event.created_at).toLocaleString();
   }, []);
 
-  // Update memory usage when events change
+  // Function to load events from IndexedDB for display
+  const loadEventsForDisplay = useCallback(async (limit: number = 1000) => {
+    try {
+      const storedEvents = await storageRef.current.loadEvents(limit);
+      if (storedEvents.length > 0) {
+        const sortedEvents = storedEvents.sort((a, b) => {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+        });
+        setDisplayEvents(sortedEvents);
+        setCurrentDisplayLimit(storedEvents.length);
+        console.log(`[RawEvents] Loaded ${storedEvents.length} events from IndexedDB for display`);
+      }
+    } catch (error) {
+      console.error('[RawEvents] Failed to load events from IndexedDB:', error);
+    }
+  }, [sortOrder]);
+
+  // Update memory usage when display events change
   useEffect(() => {
-    const usage = estimateMemoryUsage(events);
+    const usage = estimateMemoryUsage(displayEvents);
     setMemoryUsage(usage);
-  }, [events]);
+  }, [displayEvents]);
 
   useEffect(() => {
     try {
@@ -149,14 +169,13 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
 
   useEffect(() => {
     // When events load, extract the unique event types for the filter dropdown
-    if (events.length > 0) {
-      const types = new Set(events.map(getEventType));
+    if (displayEvents.length > 0) {
+      const types = new Set(displayEvents.map(getEventType));
       setAvailableEventTypes(['all', ...Array.from(types)]);
     }
-  }, [events, getEventType]);
+  }, [displayEvents, getEventType]);
 
-  // Use ref to store previous events for comparison during polling
-  const previousEventsRef = useRef<LowLevelEvent[]>([]);
+  // Note: No longer using previousEventsRef since IndexedDB is single source of truth
   
   // Initialize IndexedDB storage
   useEffect(() => {
@@ -166,21 +185,11 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         console.log('[RawEvents] IndexedDB initialized');
         
         // Load events from IndexedDB on initial load (only if no events loaded yet)
-        if (events.length === 0 && loading) {
-          const storedEvents = await storageRef.current.loadEvents(1000);
-          if (storedEvents.length > 0) {
-            const sortedEvents = storedEvents.sort((a, b) => {
-              const dateA = new Date(a.created_at).getTime();
-              const dateB = new Date(b.created_at).getTime();
-              return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
-            });
-            setEvents(sortedEvents);
-            previousEventsRef.current = sortedEvents;
-            console.log(`[RawEvents] Loaded ${storedEvents.length} events from IndexedDB`);
-            
-            // Set loading to false since we have cached data
-            setLoading(false);
-          }
+        if (displayEvents.length === 0 && loading) {
+          await loadEventsForDisplay(1000);
+          
+          // Set loading to false since we have cached data
+          setLoading(false);
         }
         
         // Update storage info
@@ -192,7 +201,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     };
 
     initStorage();
-  }, [sortOrder, events.length, loading]);
+  }, [sortOrder, displayEvents.length, loading, loadEventsForDisplay]);
 
   // Update storage info periodically
   useEffect(() => {
@@ -251,106 +260,48 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         setTotalAvailable(data.totalEventCount);
       }
       
+      // Save new events to IndexedDB - single source of truth
+      try {
+        if (sortedEvents.length > 0) {
+          await storageRef.current.saveEvents(sortedEvents);
+          console.log(`[RawEvents] Saved ${sortedEvents.length} events to IndexedDB`);
+          
+          // Update storage info
+          const info = await storageRef.current.getStorageInfo();
+          setStorageInfo(info);
+        }
+      } catch (error) {
+        console.error('[RawEvents] Failed to save events to IndexedDB:', error);
+      }
+      
       // Handle polling updates for new events
-      if (isPollingUpdate && previousEventsRef.current.length > 0) {
-        const existingEventIds = new Set(previousEventsRef.current.map((e: LowLevelEvent) => e.id));
+      if (isPollingUpdate) {
+        const existingEventIds = new Set(displayEvents.map((e: LowLevelEvent) => e.id));
         const newEvents = sortedEvents.filter((e: LowLevelEvent) => !existingEventIds.has(e.id));
         
         if (newEvents.length > 0) {
           const newIds = new Set<number>(newEvents.map((e: LowLevelEvent) => e.id));
           setNewEventIds(newIds);
           
-          if (viewClearedRef.current) {
-            setEvents(prevEvents => {
-              const combined = [...newEvents, ...prevEvents];
-              return combined.sort((a: LowLevelEvent, b: LowLevelEvent) => {
-                const dateA = new Date(a.created_at).getTime();
-                const dateB = new Date(b.created_at).getTime();
-                return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
-              });
-            });
-            previousEventsRef.current = [...newEvents, ...previousEventsRef.current];
-            
-            // Save new events to IndexedDB even in cleared view mode
-            try {
-              if (newEvents.length > 0) {
-                await storageRef.current.saveEvents(newEvents);
-                console.log(`[RawEvents] Saved ${newEvents.length} new events to IndexedDB (cleared view mode)`);
-                
-                // Update storage info
-                const info = await storageRef.current.getStorageInfo();
-                setStorageInfo(info);
-              }
-            } catch (error) {
-              console.error('[RawEvents] Failed to save events to IndexedDB:', error);
-            }
-            
-            return { events: newEvents, hasMore: data.hasMore };
-          }
-        } else if (viewClearedRef.current) {
-          return { events: [], hasMore: data.hasMore };
+          // Refresh display from IndexedDB to show new events
+          await loadEventsForDisplay(currentDisplayLimit + newEvents.length);
         }
+        
+        return { events: newEvents, hasMore: data.hasMore };
       }
       
-      // Handle regular loading (initial or load more)
+      // For initial load or load more, refresh the display
       if (isLoadMore) {
-        setEvents(prevEvents => {
-          const existingIds = new Set(prevEvents.map(e => e.id));
-          const newUniqueEvents = sortedEvents.filter(e => !existingIds.has(e.id));
-          const combined = [...prevEvents, ...newUniqueEvents];
-          return combined.sort((a: LowLevelEvent, b: LowLevelEvent) => {
-            const dateA = new Date(a.created_at).getTime();
-            const dateB = new Date(b.created_at).getTime();
-            return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
-          });
-        });
-        
-        // Save new events to IndexedDB
-        try {
-          const existingEventIds = new Set(previousEventsRef.current.map(e => e.id));
-          const newEventsToStore = sortedEvents.filter(e => !existingEventIds.has(e.id));
-          
-          if (newEventsToStore.length > 0) {
-            await storageRef.current.saveEvents(newEventsToStore);
-            console.log(`[RawEvents] Saved ${newEventsToStore.length} new events to IndexedDB (load more)`);
-            
-            // Update storage info
-            const info = await storageRef.current.getStorageInfo();
-            setStorageInfo(info);
-          }
-        } catch (error) {
-          console.error('[RawEvents] Failed to save events to IndexedDB:', error);
-        }
-      } else if (!isPollingUpdate && !viewClearedRef.current) {
-        // Initial load or refresh
-        
-        // Save new events to IndexedDB before updating refs
-        try {
-          const existingEventIds = new Set(previousEventsRef.current.map(e => e.id));
-          const newEventsToStore = sortedEvents.filter(e => !existingEventIds.has(e.id));
-          
-          if (newEventsToStore.length > 0) {
-            await storageRef.current.saveEvents(newEventsToStore);
-            console.log(`[RawEvents] Saved ${newEventsToStore.length} new events to IndexedDB`);
-            
-            // Update storage info
-            const info = await storageRef.current.getStorageInfo();
-            setStorageInfo(info);
-          }
-        } catch (error) {
-          console.error('[RawEvents] Failed to save events to IndexedDB:', error);
-        }
-        
-        previousEventsRef.current = sortedEvents;
-        setEvents(sortedEvents);
+        // Increase display limit and reload from IndexedDB
+        const newDisplayLimit = currentDisplayLimit + sortedEvents.length;
+        setCurrentDisplayLimit(newDisplayLimit);
+        await loadEventsForDisplay(newDisplayLimit);
+      } else {
+        // Initial load - set initial display limit
+        setCurrentDisplayLimit(sortedEvents.length);
+        await loadEventsForDisplay(sortedEvents.length);
       }
       
-      // Update refs and state
-      if (!viewClearedRef.current) {
-        previousEventsRef.current = events.length > 0 ? [...previousEventsRef.current, ...sortedEvents] : sortedEvents;
-      }
-      
-      setCurrentOffset(offset + sortedEvents.length);
       setHasMoreData(data.hasMore || false);
       
       return { events: sortedEvents, hasMore: data.hasMore || false };
@@ -366,7 +317,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         setLoadingMore(false);
       }
     }
-  }, [userId, sortOrder, selectedEventType, events.length]);
+  }, [userId, sortOrder, selectedEventType, displayEvents, currentDisplayLimit, loadEventsForDisplay]);
 
   // Initial fetch
   useEffect(() => {
@@ -424,18 +375,18 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       return;
     }
     
-    await fetchRawEvents(MANUAL_LOAD_CHUNK_SIZE, currentOffset, false, true);
-  }, [fetchRawEvents, currentOffset, loadingMore, hasMoreData, memoryUsage]);
+    await fetchRawEvents(MANUAL_LOAD_CHUNK_SIZE, currentDisplayLimit, false, true);
+  }, [fetchRawEvents, currentDisplayLimit, loadingMore, hasMoreData, memoryUsage]);
 
   // Load all remaining data
   const loadAll = useCallback(async () => {
     if (!totalAvailable || loadAllProgress) return;
     
-    const remaining = totalAvailable - events.length;
+    const remaining = totalAvailable - displayEvents.length;
     if (remaining <= 0) return;
     
     // Warn user about memory usage
-    const estimatedMemoryMB = (memoryUsage * (totalAvailable / events.length)) / (1024 * 1024);
+    const estimatedMemoryMB = (memoryUsage * (totalAvailable / displayEvents.length)) / (1024 * 1024);
     if (estimatedMemoryMB > MAX_MEMORY_MB) {
       const confirmed = confirm(
         `Loading all ${totalAvailable.toLocaleString()} events may use ~${estimatedMemoryMB.toFixed(1)}MB of memory. ` +
@@ -444,9 +395,9 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       if (!confirmed) return;
     }
     
-    setLoadAllProgress({ loaded: events.length, total: totalAvailable });
+    setLoadAllProgress({ loaded: displayEvents.length, total: totalAvailable });
     
-    let currentLoadedCount = events.length;
+    let currentLoadedCount = displayEvents.length;
     const chunkSize = 1000;
     
     while (currentLoadedCount < totalAvailable) {
@@ -462,7 +413,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     }
     
     setLoadAllProgress(null);
-  }, [fetchRawEvents, currentOffset, totalAvailable, events.length, memoryUsage]);
+  }, [fetchRawEvents, totalAvailable, displayEvents.length, memoryUsage, loadAllProgress]);
 
   // Clear new event indicators after 30 seconds
   useEffect(() => {
@@ -507,6 +458,13 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     setSelectedWindow(prev => (prev === windowName ? null : windowName));
   };
 
+  // Refresh display when sort order changes
+  useEffect(() => {
+    if (displayEvents.length > 0) {
+      loadEventsForDisplay(currentDisplayLimit);
+    }
+  }, [sortOrder, loadEventsForDisplay, currentDisplayLimit, displayEvents.length]);
+
   const handleCopyPayload = (event: LowLevelEvent) => {
     navigator.clipboard.writeText(JSON.stringify(event.payload, null, 2)).then(() => {
       setCopiedEventId(event.id);
@@ -515,7 +473,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   };
 
   const handleCopyAllEvents = () => {
-    const eventsJson = JSON.stringify(events, null, 2);
+    const eventsJson = JSON.stringify(displayEvents, null, 2);
     const blob = new Blob([eventsJson], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -528,12 +486,12 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   };
 
   const searchedEvents = useMemo(() => {
-    if (!searchTerm) return events;
+    if (!searchTerm) return displayEvents;
     const lowercasedFilter = searchTerm.toLowerCase();
-    return events.filter(event => 
+    return displayEvents.filter(event => 
       JSON.stringify(event.payload).toLowerCase().includes(lowercasedFilter)
     );
-  }, [events, searchTerm]);
+  }, [displayEvents, searchTerm]);
 
   const eventTypeFilteredEvents = useMemo(() => {
     if (!selectedEventType) return searchedEvents;
@@ -576,9 +534,10 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   };
 
   const clearView = () => {
-    setEvents([]);
+    setDisplayEvents([]);
     setExpandedEvents({});
     setNewEventIds(new Set());
+    setCurrentDisplayLimit(0);
     viewClearedRef.current = true;
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
   };
@@ -588,10 +547,10 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       await storageRef.current.clearAllEvents();
       const info = await storageRef.current.getStorageInfo();
       setStorageInfo(info);
-      setEvents([]);
+      setDisplayEvents([]);
       setExpandedEvents({});
       setNewEventIds(new Set());
-      previousEventsRef.current = [];
+      setCurrentDisplayLimit(0);
       viewClearedRef.current = false; // Reset cleared view flag
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
       console.log('[RawEvents] Cleared IndexedDB storage');
@@ -647,7 +606,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         <Clock />
         <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 border border-black rounded-md">
           <span className="text-sm font-medium text-black">
-            {events.length} events loaded
+            {displayEvents.length} events loaded
           </span>
           {totalAvailable && (
             <span className="text-xs text-gray-600">
@@ -716,7 +675,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         <Button variant="black-outline" size="sm" onClick={() => setIsStorageOpen(!isStorageOpen)} title="Storage info">
           <HardDrive className="h-4 w-4" />
         </Button>
-        <Button variant="black-outline" size="sm" onClick={handleCopyAllEvents} disabled={events.length === 0}>
+        <Button variant="black-outline" size="sm" onClick={handleCopyAllEvents} disabled={displayEvents.length === 0}>
           Copy All as JSON
         </Button>
         
@@ -732,16 +691,16 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           </Button>
         )}
         
-        {totalAvailable && events.length < totalAvailable && autoLoadingComplete && (
+        {totalAvailable && displayEvents.length < totalAvailable && autoLoadingComplete && (
           <Button 
             variant="black-outline" 
             size="sm" 
             onClick={loadAll}
             disabled={!!loadAllProgress}
-            title={`Load all ${(totalAvailable - events.length).toLocaleString()} remaining events`}
+            title={`Load all ${(totalAvailable - displayEvents.length).toLocaleString()} remaining events`}
           >
             <Download className="h-4 w-4 mr-1" />
-            Load All ({(totalAvailable - events.length).toLocaleString()})
+            Load All ({(totalAvailable - displayEvents.length).toLocaleString()})
           </Button>
         )}
       </div>
@@ -762,7 +721,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         </div>
       )}
       
-      {events.length > 0 && (
+      {displayEvents.length > 0 && (
         <Card className="mb-2">
             <CardHeader className="p-2 bg-gray-50 border-b flex flex-row justify-between items-center cursor-pointer" onClick={toggleSummary}>
                 <CardTitle className="text-sm">Event Summary</CardTitle>
@@ -918,7 +877,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
 
       {!loading && !error && filteredEvents.length === 0 && (
         <p>
-            {events.length > 0 ? "No events match your search." : "No low-level events found for this user."}
+            {displayEvents.length > 0 ? "No events match your search." : "No low-level events found for this user."}
         </p>
       )}
 

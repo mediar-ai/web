@@ -70,10 +70,11 @@ Successfully integrated IndexedDB storage with the progressive loading features 
   3. Merge new events with cached data
   4. Update cache with new events
 
-### 3. **Memory vs Storage Balance**
-- **Memory**: Displays current working set (up to 1000 events)
-- **Storage**: Maintains larger historical dataset (up to 500MB)
-- **Sync**: Background synchronization between memory and storage
+### 3. **Single Source of Truth Architecture**
+- **IndexedDB**: Primary data storage (up to 500MB)
+- **React State**: Only holds current display projection (`displayEvents`)
+- **No Duplication**: Events stored only in IndexedDB, React state is just a view
+- **Efficient**: Lower memory usage, consistent state management
 
 ## User Experience Improvements
 
@@ -100,23 +101,23 @@ After:  [Cached Events] → [Updated with fresh data]
 
 ## Technical Implementation Details
 
-### Event Lifecycle
+### Event Lifecycle (Single Source)
 ```
 1. Page Load:
    - Initialize IndexedDB
-   - Load cached events (if any)
+   - Load events from IndexedDB to displayEvents
    - Start API polling
    
 2. API Response:
-   - Compare with cached events
-   - Identify new events
-   - Save new events to IndexedDB
-   - Update UI with fresh data
+   - Save ALL events to IndexedDB (single source)
+   - Refresh displayEvents from IndexedDB
+   - Update UI automatically
    
 3. Storage Management:
-   - Monitor storage usage
+   - Monitor IndexedDB storage usage
    - Trigger cleanup at 90% capacity
    - Remove oldest events to reach 70% capacity
+   - Refresh display from IndexedDB after cleanup
 ```
 
 ### Error Handling
