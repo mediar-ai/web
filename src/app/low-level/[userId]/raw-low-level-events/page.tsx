@@ -856,22 +856,47 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   };
 
   const clearIndexedDB = async () => {
+    const confirmed = confirm(
+      '⚠️ Clear IndexedDB Storage\n\n' +
+      'This will completely delete all cached events and metadata from this browser.\n' +
+      'This is useful for fixing corrupted data or transaction errors.\n\n' +
+      'Continue?'
+    );
+    
+    if (!confirmed) return;
+
     try {
-      await storageRef.current.clearAllEvents();
-      const info = await storageRef.current.getStorageInfo();
-      setStorageInfo(info);
+      console.log('[RawEvents] Starting IndexedDB clear...');
+      
+      // Use the more robust clearAll method that handles cross-tab scenarios
+      await storageRef.current.clearAll();
+      
+      // Reset all UI state
       setDisplayEvents([]);
       setExpandedEvents({});
       setNewEventIds(new Set());
       setCurrentDisplayLimit(0);
-      viewClearedRef.current = false; // Reset cleared view flag
+      setMemoryUsage(0);
+      viewClearedRef.current = false;
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
-      console.log('[RawEvents] Cleared IndexedDB storage');
+      
+      // Update storage info (should show 0 now)
+      const info = await storageRef.current.getStorageInfo();
+      setStorageInfo(info);
+      
+      console.log('[RawEvents] ✅ Successfully cleared IndexedDB storage');
+      alert('✅ IndexedDB storage cleared successfully!\n\nFresh data will be loaded automatically.');
       
       // Trigger a fresh fetch after clearing
-      fetchRawEvents(INITIAL_CHUNK_SIZE, 0);
+      await fetchRawEvents(INITIAL_CHUNK_SIZE, 0);
+      
     } catch (error) {
-      console.error('[RawEvents] Failed to clear IndexedDB:', error);
+      console.error('[RawEvents] ❌ Failed to clear IndexedDB:', error);
+      alert(
+        '❌ Failed to clear IndexedDB storage.\n\n' +
+        'Error: ' + (error instanceof Error ? error.message : String(error)) + '\n\n' +
+        'Try refreshing the page or closing other tabs with this app open.'
+      );
     }
   };
 
