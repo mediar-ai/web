@@ -298,7 +298,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       setLoading(true);
       try {
         // First, try to load from IndexedDB cache
-        const cachedData = await sharedStorage.getCachedEvents(1000, 0, false); // Get all events, not just UI
+        const cachedData = await sharedStorage.getCachedEvents(1000, 0, false); // Get all events (ui_tree, screenshot_diff, etc.)
         
         if (cachedData.events.length > 0) {
           console.log(`[Steps] Loaded ${cachedData.events.length} events from IndexedDB cache`);
