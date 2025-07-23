@@ -25,12 +25,13 @@ export async function GET(
   }
 
   try {
-    // Fetch recent events first, then filter for UI trees in memory (simpler and more reliable)
-    // Use smaller limit for UI trees since they have very large payloads
-    const { data: allEvents, error: eventsError } = await supabaseAdmin
-      .from('low_level_events')
+    // Fetch UI tree events directly from the database using the optimized view and indexed column.
+    // This is much more efficient than fetching all events and filtering in memory.
+    const { data: events, error: eventsError } = await supabaseAdmin
+      .from('low_level_events_enriched') // Use the enriched view
       .select('*')
       .eq('user_id', userId)
+      .eq('event_type', 'ui_tree') // Filter in the database
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -42,7 +43,9 @@ export async function GET(
       });
     }
 
-    // Filter for UI tree events in memory
+    // The in-memory filtering logic below is no longer needed because the database
+    // query is now precise. I will comment it out for clarity.
+    /*
     const events = (allEvents || []).filter(event => {
       try {
         const payload = event.payload;
@@ -53,7 +56,8 @@ export async function GET(
       } catch {
         return false;
       }
-         });
+    });
+    */
 
     return NextResponse.json({
       events: events || [],

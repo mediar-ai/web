@@ -546,58 +546,59 @@ export const WORKFLOW_REFINEMENT_SCHEMA = {
   required: ["user_job_role", "project_name", "user_goal_from_recordings", "overall_project_goal", "overall_project_description", "refined_workflow_names"]
 };
 
-export const TIMELINE_MAPPING_ANALYSIS_PROMPT = `You are analyzing user analysis events to map them to confirmed workflows with detailed hierarchy.
+export const TIMELINE_MAPPING_ANALYSIS_PROMPT = `You are analyzing raw user interaction events to map them to specific workflow components with predefined IDs.
 
 **ANALYSIS INSTRUCTIONS:**
 
-For each analysis event, determine:
+For each raw event, determine:
 
-1. **IF RELATED TO WORKFLOWS** - Map to confirmed workflows using IDs:
-   - analysis_id: Must match one of the analysis IDs provided
-   - workflow_template_id: Must match one of the confirmed workflow IDs provided
-   - workflow_type_id: Must match one of the workflow type IDs provided
-   - workflow_instance_id: Must match one of the workflow instance IDs provided
-   - workflow_step_id: Must match one of the workflow step IDs provided
-   - workflow_substep_id: Optional, must match one of the substep IDs if provided
-   - event_inputs: Array of what led to this event (only include if clearly identifiable from context)
-   - event_outputs: Array of what this event produced (only include if clearly identifiable from context)
-   - business_logics: Array of business rules governing this event (only include if clearly identifiable from context)
-   - confidence_score: 0.0 to 1.0 based on how certain you are about this mapping
+1. **IF RELATED TO THE WORKFLOW STEP** - Map to specific workflow components using the provided IDs:
+   - raw_event_id: The ID of the raw event being analyzed
+   - confidence_score: 0.0 to 1.0 based on how certain you are this event belongs to the workflow step
+   - workflow_template_id: Must match one of the workflow template IDs provided (if confidence > 0.5)
+   - workflow_type_id: Must match one of the workflow type IDs provided (if confidence > 0.5)
+   - workflow_instance_id: Must match one of the workflow instance IDs provided (if confidence > 0.5)
+   - workflow_step_id: Must match one of the workflow step IDs provided (if confidence > 0.5)
+   - workflow_substep_id: Must match one of the workflow substep IDs provided (optional, if confidence > 0.5)
+   - inputs: What led to this event (only if clearly identifiable from context)
+   - outputs: What this event produced (only if clearly identifiable from context)
+   - business_logics: Business rules governing this event (only if clearly identifiable from context)
 
 2. **IF UNRELATED** - Mark as unrelated:
-   - analysis_id: Must match one of the analysis IDs provided
-   - unrelated_reason: Clear explanation why this doesn't belong to any business workflow
+   - raw_event_id: The ID of the raw event being analyzed
    - confidence_score: 0.0 to 1.0 based on how certain you are it's unrelated
+   - unrelated_reason: Clear explanation why this event doesn't belong to the workflow step
 
 **IMPORTANT GUIDELINES:**
-- ONLY use the exact IDs provided in the workflow definitions
+- **ONLY use the exact IDs provided in the WORKFLOW COMPONENTS sections**
+- Focus on individual user interactions: mouse clicks, keystrokes, UI changes, clipboard actions
+- Screenshot diff events are automatically filtered out and will not appear
+- Only include workflow IDs if confidence > 0.5
 - Only include inputs/outputs/business_logics if they are clearly identifiable from the event context
-- Use empty arrays [] if no clear inputs/outputs/business_logics can be determined
+- Use empty strings if no clear inputs/outputs/business_logics can be determined
 - Be truthful about what you can determine vs. what you're guessing
-- Focus on business-relevant events - ignore pure navigation, system operations, or personal activities
-- If an event seems to span multiple workflows, create separate mappings for each
+- Focus on events that directly contribute to the workflow step - ignore unrelated navigation or system operations
+
+**EVENT TYPES YOU'LL ANALYZE:**
+- Mouse events: clicks, drags, hovers with UI element details
+- Keyboard events: keystrokes, text input with character/key information
+- UI tree events: accessibility tree captures showing interface changes
+- Clipboard events: copy/paste actions with content details
 
 **OUTPUT FORMAT (Valid JSON only):**
 {
-  "workflow_mappings": [
+  "event_mappings": [
     {
-      "timeline_event_id": 12345,
-      "workflow_template_id": 101,
-      "workflow_type_id": 201,
-      "workflow_instance_id": 301,
-      "workflow_step_id": 401,
-      "workflow_substep_id": 501,
-      "event_inputs": ["Government ID document uploaded"],
-      "event_outputs": ["ID verification completed"],
-      "business_logics": ["Must verify against government database"],
-      "confidence_score": 0.95
-    }
-  ],
-  "unrelated_events": [
-    {
-      "timeline_event_id": 12346,
-      "unrelated_reason": "Personal web browsing unrelated to business workflows",
-      "confidence_score": 0.88
+      "raw_event_id": 12345,
+      "confidence_score": 0.95,
+      "workflow_template_id": 138,
+      "workflow_type_id": 1753176406031,
+      "workflow_instance_id": 1753176406032,
+      "workflow_step_id": 1753176406034,
+      "workflow_substep_id": 1753176406033,
+      "inputs": "Email input field focused",
+      "outputs": "Email address entered",
+      "business_logics": "Email validation required before form submission"
     }
   ]
 }`;
@@ -644,3 +645,4 @@ export const TIMELINE_MAPPING_ANALYSIS_SCHEMA: FunctionDeclarationSchema = {
   },
   required: ['workflow_mappings', 'unrelated_events'],
 };
+

@@ -46,9 +46,135 @@ import {
   EditableWorkflowBoundaries,
 } from './components';
 
-import React from 'react';
-import { cn } from '@/lib/utils';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
+
+import { cn } from '@/lib/utils';
+
+// Human-friendly workflow formatter component
+const WorkflowFormattedView = ({ workflows }: { workflows: CanvasContent[] }) => {
+  if (!workflows || workflows.length === 0) {
+    return (
+      <div className="text-center text-muted-foreground p-8">
+        <p>No synthesized workflows available yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {workflows.map((workflow, index) => (
+        <Card key={index} className="w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Badge variant="outline">Workflow {index + 1}</Badge>
+              {workflow.title || 'Untitled Workflow'}
+            </CardTitle>
+            {workflow.description && (
+              <p className="text-sm text-muted-foreground">{workflow.description}</p>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Workflow Types */}
+            {workflow.workflow_types && workflow.workflow_types.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-sm mb-2">Workflow Types</h4>
+                <div className="space-y-2">
+                  {workflow.workflow_types.map((type, typeIndex) => (
+                    <div key={typeIndex} className="border rounded p-3">
+                      <div className="font-medium">{type.type_name}</div>
+                      {type.type_description && (
+                        <div className="text-sm text-muted-foreground mt-1">{type.type_description}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Workflow Instances */}
+            {workflow.workflow_instances && workflow.workflow_instances.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-sm mb-2">Workflow Instances</h4>
+                <div className="flex flex-wrap gap-2">
+                  {workflow.workflow_instances.map((instance, instanceIndex) => (
+                    <Badge key={instanceIndex} variant="secondary">
+                      {instance.instance_name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+
+
+            {/* Steps */}
+            {workflow.steps && workflow.steps.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-sm mb-2">Workflow Steps</h4>
+                <div className="space-y-3">
+                  {workflow.steps.map((step, stepIndex) => (
+                    <div key={stepIndex} className="border rounded p-3">
+                      <div className="font-medium flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Step {stepIndex + 1}</Badge>
+                        {step.step_name}
+                      </div>
+                      
+                      {/* Substeps */}
+                      {step.substeps && step.substeps.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          <div className="text-sm font-medium text-muted-foreground">Substeps:</div>
+                          {step.substeps.map((substep, substepIndex) => (
+                            <div key={substepIndex} className="ml-4 p-2 bg-muted/50 rounded text-sm">
+                              <div className="font-medium">{substep.substep_name}</div>
+                              
+                              {/* Substep Inputs */}
+                              {substep.inputs && substep.inputs.length > 0 && (
+                                <div className="mt-1">
+                                  <span className="text-xs font-medium text-muted-foreground">Inputs: </span>
+                                  <span className="text-xs">{substep.inputs.join(', ')}</span>
+                                </div>
+                              )}
+                              
+                              {/* Substep Outputs */}
+                              {substep.outputs && substep.outputs.length > 0 && (
+                                <div className="mt-1">
+                                  <span className="text-xs font-medium text-muted-foreground">Outputs: </span>
+                                  <span className="text-xs">{substep.outputs.join(', ')}</span>
+                                </div>
+                              )}
+                              
+                              {/* Business Logic */}
+                              {substep.business_logic && substep.business_logic.length > 0 && (
+                                <div className="mt-1">
+                                  <span className="text-xs font-medium text-muted-foreground">Logic: </span>
+                                  <span className="text-xs">{substep.business_logic.join('; ')}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Separator />
+            
+            {/* Metadata */}
+            <div className="text-xs text-muted-foreground space-y-1">
+              {workflow.id && <div>ID: {workflow.id}</div>}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+};
 
 // Refactored components and shared types now live in dedicated files. They are
 // imported where needed in other modules. To avoid duplicate identifier
@@ -130,7 +256,7 @@ const StepperItem = memo(({
         'define-context': runInitialAnalysis,
         'select-workflows': refineAndIdentifyWorkflows,
         'define-boundaries': () => processAllWorkflows(identifiedWorkflowNames),
-        'timeline-mapping': () => generateAndSaveTimelineMapping(workflows),
+        'timeline-mapping': () => generateAndSaveTimelineMapping(),
     };
 
     const stepState = useMemo(() => {
@@ -265,6 +391,8 @@ const StepperItem = memo(({
                       <div className="mt-4">
                         {id === 'define-context' && isAnalyzingEvents ? (
                             <AnalysisProgressBubble status={logic.analysisStatus} progress={logic.analysisProgress} elapsedTime={logic.elapsedTime} />
+                        ) : id === 'timeline-mapping' && isMappingTimeline ? (
+                            <AnalysisProgressBubble status={logic.timelineMappingStatus} progress={logic.timelineMappingProgress} elapsedTime={logic.timelineMappingElapsedTime} />
                         ) : showComponent ? (
                             <div className="p-4 border rounded-lg bg-muted/50">
                                 {id === 'define-context' && (
@@ -310,11 +438,30 @@ const StepperItem = memo(({
                                 
                                 {id === 'synthesize-workflows' && showComponent && (
                                     <div className="pt-4 flex-grow w-full">
-                                      <div className="overflow-y-auto relative">
-                                        <h2 className="text-2xl font-bold mb-4">Synthesized Workflows (Raw JSON)</h2>
-                                        <pre className="text-xs whitespace-pre-wrap max-h-[600px] overflow-auto bg-background p-4 rounded border">
-                                          {JSON.stringify(logic.workflows, null, 2)}
-                                        </pre>
+                                      <div className="space-y-4">
+                                        <Accordion type="multiple" defaultValue={["human-friendly"]} className="w-full">
+                                          <AccordionItem value="human-friendly">
+                                            <AccordionTrigger className="text-lg font-semibold">
+                                              Synthesized Workflows (Human-Friendly View)
+                                            </AccordionTrigger>
+                                            <AccordionContent>
+                                              <div className="max-h-[600px] overflow-auto">
+                                                <WorkflowFormattedView workflows={logic.workflows} />
+                                              </div>
+                                            </AccordionContent>
+                                          </AccordionItem>
+                                          
+                                          <AccordionItem value="raw-json">
+                                            <AccordionTrigger className="text-lg font-semibold">
+                                              Raw JSON Data
+                                            </AccordionTrigger>
+                                            <AccordionContent>
+                                              <pre className="text-xs whitespace-pre-wrap max-h-[600px] overflow-auto bg-background p-4 rounded border">
+                                                {JSON.stringify(logic.workflows, null, 2)}
+                                              </pre>
+                                            </AccordionContent>
+                                          </AccordionItem>
+                                        </Accordion>
                                       </div>
                                     </div>
                                 )}
@@ -353,21 +500,7 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
         <div className="w-full p-8 text-center mb-6">
           <Card>
             <CardContent>
-              {/* Date Range - moved to top */}
-              {!isFetchingEvents && logic.combinedAnalyses.length > 0 && (
-                <div className="mb-4 text-left">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="bg-white border border-black p-3 rounded-lg">
-                      <p className="text-muted-foreground">From</p>
-                      <p className="font-bold text-xl">{new Date(logic.combinedAnalyses[logic.combinedAnalyses.length - 1].client_timestamp).toLocaleString()}</p>
-                    </div>
-                    <div className="bg-white border border-black p-3 rounded-lg">
-                      <p className="text-muted-foreground">To</p>
-                      <p className="font-bold text-xl">{new Date(logic.combinedAnalyses[0].client_timestamp).toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Date Range - will be added back when available from backend stats */}
               
               {logic.userStats && (
                   <div className="mb-4 text-left">
@@ -395,15 +528,8 @@ const Stepper = ({ logic }: { logic: WorkflowPageLogicType }) => {
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="bg-white border border-black p-3 rounded-lg">
-                      <p className="text-muted-foreground">Timeline Steps Loaded</p>
-                      <p className="font-bold text-2xl">{logic.combinedAnalyses.length}</p>
-                    </div>
-                    <div className="bg-white border border-black p-3 rounded-lg">
-                      <p className="text-muted-foreground">LLM Labeled</p>
-                      <p className="font-bold text-2xl">{logic.combinedAnalyses.filter(item => item.selected_labels.length > 0).length}</p>
-                    </div>
+                  <div className="text-center text-muted-foreground">
+                    <p>Data will be loaded when workflow analysis is triggered</p>
                   </div>
                 )}
               </div>

@@ -51,6 +51,56 @@ interface TimelineAnnotation {
   } | null;
 }
 
+interface WorkflowComponent {
+  id: number;
+  name?: string;
+  step_name?: string;
+  substep_name?: string;
+  type_name?: string;
+  instance_name?: string;
+  substeps?: WorkflowComponent[];
+}
+
+interface WorkflowData {
+  title?: string;
+  detailed_workflow_data?: {
+    workflow_components_with_ids?: {
+      workflow_types?: WorkflowComponent[];
+      workflow_instances?: WorkflowComponent[];
+      steps?: WorkflowComponent[];
+    };
+  };
+}
+
+interface RawAnnotationWithWorkflow {
+  user_id: string;
+  raw_event_id: number;
+  analysis_id: number;
+  confidence_score: number;
+  is_workflow_related: boolean;
+  model_used: string;
+  unrelated_reason: string | null;
+  workflow_template_id: number | null;
+  workflow_type_id: number | null;
+  workflow_instance_id: number | null;
+  workflow_step_id: number | null;
+  workflow_substep_id: number | null;
+  inputs: string | null;
+  outputs: string | null;
+  business_logics: string | null;
+  created_at: string;
+  event_data?: {
+    payload: Record<string, unknown>;
+    created_at: string;
+  };
+  workflow_data?: WorkflowData;
+  analysis_data?: {
+    id: number;
+    window_title?: string;
+    llm_structured_output?: Record<string, unknown>;
+  };
+}
+
 export async function POST(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -183,6 +233,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const user_id = searchParams.get('user_id');
     const include_unrelated = searchParams.get('include_unrelated') === 'true';
+    const raw_events = searchParams.get('raw_events') === 'true';
 
     if (!user_id) {
       return NextResponse.json({ 
@@ -191,7 +242,183 @@ export async function GET(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Build query based on parameters
+    // Handle raw event annotations (new system)
+    if (raw_events) {
+      let query = supabase
+        .from('raw_timeline_event_annotations')
+        .select(`
+          *,
+          event_data:low_level_events!raw_timeline_event_annotations_raw_event_id_fkey(
+            payload,
+            created_at
+          ),
+          workflow_data:low_level_workflows!raw_timeline_event_annotations_workflow_template_id_fkey(
+            id,
+            title,
+            detailed_workflow_data
+          ),
+          analysis_data:low_level_workflow_analyses!raw_timeline_event_annotations_analysis_id_fkey(
+            id,
+            window_title,
+            llm_structured_output
+          )
+        `)
+        .eq('user_id', user_id)
+        .order('created_at', { ascending: false });
+
+      // Filter by workflow relation if requested
+      if (!include_unrelated) {
+        query = query.eq('is_workflow_related', true);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Database error fetching raw annotations:', error);
+        return NextResponse.json({ 
+          error: 'Failed to fetch raw timeline annotations', 
+          details: error.message 
+        }, { status: 500 });
+      }
+
+      // Helper function to find names from workflow data
+      const findWorkflowNames = (workflowData: WorkflowData | null | undefined, annotation: RawAnnotationWithWorkflow) => {
+        if (!workflowData?.detailed_workflow_data?.workflow_components_with_ids) {
+          return {
+            template_name: workflowData?.title || 'Unknown Template',
+            type_name: 'Unknown Type',
+            instance_name: 'Unknown Instance', 
+            step_name: 'Unknown Step',
+            substep_name: 'Unknown Substep'
+          };
+        }
+
+        const components = workflowData.detailed_workflow_data.workflow_components_with_ids;
+        const result = {
+          template_name: workflowData.title || 'Unknown Template',
+          type_name: 'Unknown Type',
+          instance_name: 'Unknown Instance',
+          step_name: 'Unknown Step', 
+          substep_name: 'Unknown Substep'
+        };
+
+        // Find type name
+        if (components.workflow_types && annotation.workflow_type_id) {
+          const type = components.workflow_types.find((t: WorkflowComponent) => t.id === annotation.workflow_type_id);
+          if (type) result.type_name = type.type_name || type.name || 'Unknown Type';
+        }
+
+        // Find instance name  
+        if (components.workflow_instances && annotation.workflow_instance_id) {
+          const instance = components.workflow_instances.find((i: WorkflowComponent) => i.id === annotation.workflow_instance_id);
+          if (instance) result.instance_name = instance.instance_name || instance.name || 'Unknown Instance';
+        }
+
+        // Find step name
+        if (components.steps && annotation.workflow_step_id) {
+          const step = components.steps.find((s: WorkflowComponent) => s.id === annotation.workflow_step_id);
+          if (step) result.step_name = step.name || step.step_name || 'Unknown Step';
+        }
+
+        // Find substep name (nested in steps)
+        if (components.steps && annotation.workflow_substep_id) {
+          for (const step of components.steps) {
+            if (step.substeps) {
+              const substep = step.substeps.find((ss: WorkflowComponent) => ss.id === annotation.workflow_substep_id);
+              if (substep) {
+                result.substep_name = substep.name || substep.substep_name || 'Unknown Substep';
+                break;
+              }
+            }
+          }
+        }
+
+        return result;
+      };
+
+             // Transform raw event data for frontend consumption with workflow names
+       const annotations = data.map((annotation: RawAnnotationWithWorkflow) => {
+        const names = findWorkflowNames(annotation.workflow_data, annotation);
+        
+        // Extract event type from payload
+        const eventType = (() => {
+          try {
+            const payload = annotation.event_data?.payload as Record<string, unknown>;
+            const innerPayload = payload?.payload as Record<string, unknown>;
+            return (innerPayload?.type as string) || 'unknown';
+          } catch {
+            return 'unknown';
+          }
+        })();
+
+        // Extract analysis information
+        const analysisInfo = (() => {
+          try {
+            const analysisData = annotation.analysis_data as { llm_structured_output?: Record<string, unknown>, window_title?: string };
+            const structuredOutput = analysisData?.llm_structured_output;
+            return {
+              step_title: (structuredOutput?.step_title as string) || 'Unknown Step',
+              user_intent: (structuredOutput?.user_intent as string) || '',
+              step_summary: (structuredOutput?.step_summary as string) || '',
+              window_title: analysisData?.window_title || ''
+            };
+          } catch {
+            return {
+              step_title: 'Unknown Step',
+              user_intent: '',
+              step_summary: '',
+              window_title: ''
+            };
+          }
+        })();
+
+        return {
+          user_id: annotation.user_id,
+          raw_event_id: annotation.raw_event_id,
+          analysis_id: annotation.analysis_id,
+          confidence_score: annotation.confidence_score,
+          is_workflow_related: annotation.is_workflow_related,
+          model_used: annotation.model_used,
+          unrelated_reason: annotation.unrelated_reason,
+          workflow_template_id: annotation.workflow_template_id,
+          workflow_type_id: annotation.workflow_type_id,
+          workflow_instance_id: annotation.workflow_instance_id,
+          workflow_step_id: annotation.workflow_step_id,
+          workflow_substep_id: annotation.workflow_substep_id,
+          // Add human-readable names
+          template_name: names.template_name,
+          type_name: names.type_name,
+          instance_name: names.instance_name,
+          step_name: names.step_name,
+          substep_name: names.substep_name,
+          // Add event type from payload
+          event_type: eventType,
+          // Add analysis information
+          step_title: analysisInfo.step_title,
+          user_intent: analysisInfo.user_intent,
+          step_summary: analysisInfo.step_summary,
+          window_title: analysisInfo.window_title,
+          inputs: annotation.inputs,
+          outputs: annotation.outputs,
+          business_logics: annotation.business_logics,
+          created_at: annotation.created_at,
+          // Include event payload and timestamp
+          event_payload: annotation.event_data?.payload,
+          event_created_at: annotation.event_data?.created_at,
+        };
+      });
+
+      console.log(`📋 Retrieved ${annotations.length} raw event annotations for user ${user_id}`);
+      
+      return NextResponse.json({ 
+        annotations,
+        total_count: annotations.length,
+        workflow_related_count: annotations.filter(a => a.is_workflow_related).length,
+        unrelated_count: annotations.filter(a => !a.is_workflow_related).length
+      });
+    }
+
+    // Original timeline event annotations (old system)
     let query = supabase
       .from('timeline_event_annotations')
       .select(`

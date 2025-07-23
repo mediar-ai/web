@@ -7,11 +7,28 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, PlayCircle, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
-import {
-  EnhancedTimelineEvent,
-  TimelineEventAnalysisResponse,
-  FetchTimelineEventMappingsResponse
-} from '@/lib/timelineMappingTypes';
+
+interface RawEventAnnotation {
+  user_id: string;
+  raw_event_id: number;
+  analysis_id: number;
+  confidence_score: number;
+  is_workflow_related: boolean;
+  model_used: string;
+  unrelated_reason: string | null;
+  workflow_template_id: number | null;
+  workflow_type_id: number | null;
+  workflow_instance_id: number | null;
+  workflow_step_id: number | null;
+  workflow_substep_id: number | null;
+  inputs: string | null;
+  outputs: string | null;
+  business_logics: string | null;
+  created_at: string;
+  // Joined event data
+  event_payload?: any;
+  event_created_at?: string;
+}
 
 interface AnalysisStatus {
   ready_for_analysis: boolean;
@@ -26,98 +43,126 @@ export default function TimelineMappingsPage() {
   const userId = params.userId as string;
 
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
-  const [mappedEvents, setMappedEvents] = useState<EnhancedTimelineEvent[]>([]);
+  const [rawEventAnnotations, setRawEventAnnotations] = useState<RawEventAnnotation[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string>('');
 
-  const fetchAnalysisStatus = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/analyze-timeline-events?user_id=${userId}`);
-      if (!response.ok) throw new Error('Failed to fetch analysis status');
-      const data = await response.json();
-      setAnalysisStatus(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch status');
-    }
-  }, [userId]);
-
-  const fetchMappedEvents = useCallback(async () => {
+  // Fetch raw event annotations from the new table
+  const fetchRawEventAnnotations = useCallback(async () => {
     setIsFetching(true);
     try {
-      const response = await fetch(`/api/timeline-event-mappings?user_id=${userId}&include_unrelated=true`);
-      if (!response.ok) throw new Error('Failed to fetch mapped events');
-      const data: FetchTimelineEventMappingsResponse = await response.json();
-      setMappedEvents(data.events);
+      const response = await fetch(`/api/timeline-event-mappings?user_id=${userId}&raw_events=true&include_unrelated=true`);
+      if (!response.ok) throw new Error('Failed to fetch raw event annotations');
+      const data = await response.json();
+      setRawEventAnnotations(data.annotations || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch events');
+      setError(err instanceof Error ? err.message : 'Failed to fetch annotations');
     } finally {
       setIsFetching(false);
     }
   }, [userId]);
 
-  const runAnalysis = useCallback(async () => {
-    if (!analysisStatus || !analysisStatus.ready_for_analysis) return;
+  // Calculate analysis status from existing annotations
+  const calculateAnalysisStatus = useCallback(async () => {
+    try {
+      // Get total events count
+      const eventsResponse = await fetch(`/api/users/${userId}/data?limit=1`);
+      if (!eventsResponse.ok) throw new Error('Failed to fetch events count');
+      const eventsData = await eventsResponse.json();
+      
+             // Get workflows count
+       const workflowsResponse = await fetch(`/api/workflows?userId=${userId}`);
+             const workflowsData = workflowsResponse.ok ? await workflowsResponse.json() : { data: [] };
+       
+       const mappedEvents = rawEventAnnotations.filter(a => a.is_workflow_related).length;
+       const totalEvents = eventsData.pagination?.total || 0;
+       
+       setAnalysisStatus({
+         ready_for_analysis: true,
+         total_events: totalEvents,
+         total_workflows: workflowsData.data?.length || 0,
+        mapped_events: mappedEvents,
+        unmapped_events: Math.max(0, totalEvents - rawEventAnnotations.length)
+      });
+    } catch (err) {
+      console.error('Error calculating analysis status:', err);
+    }
+  }, [userId, rawEventAnnotations]);
 
+  // Run raw timeline analysis using the restored endpoint
+  const runAnalysis = useCallback(async () => {
     setIsAnalyzing(true);
     setError(null);
+    setProgress('Starting analysis...');
 
     try {
-      // First, get unmapped events and workflows
-      const statusResponse = await fetch(`/api/analyze-timeline-events?user_id=${userId}`);
-      if (!statusResponse.ok) throw new Error('Failed to fetch analysis data');
-      const statusData = await statusResponse.json();
-
-      // Run the analysis
-      const analysisResponse = await fetch('/api/analyze-timeline-events', {
+      const response = await fetch('/api/analyze-raw-timeline-events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
-          events: statusData.events,
-          existing_workflows: statusData.workflows,
+          userId: userId,
           model: 'gemini-2.5-pro'
         })
       });
 
-      if (!analysisResponse.ok) throw new Error('Analysis failed');
-      const analysisResult: TimelineEventAnalysisResponse = await analysisResponse.json();
+      if (!response.ok) throw new Error('Analysis failed');
 
-      // Save the analysis results
-      const saveResponse = await fetch('/api/timeline-event-mappings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          analysis_result: analysisResult
-        })
-      });
+      // Stream the response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-      if (!saveResponse.ok) throw new Error('Failed to save analysis results');
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-      // Refresh data
-      await fetchAnalysisStatus();
-      await fetchMappedEvents();
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.status) {
+                  setProgress(data.status);
+                }
+                if (data.data?.annotations) {
+                  // Add new annotations to the list as they come in
+                  setRawEventAnnotations(prev => [...prev, ...data.data.annotations]);
+                }
+                if (data.error) {
+                  setError(data.error);
+                  break;
+                }
+                               } catch {
+                   // Ignore parse errors for incomplete chunks
+                 }
+            }
+          }
+        }
+      }
+
+      // Refresh the full data
+      await fetchRawEventAnnotations();
+      setProgress('Analysis completed!');
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
       setIsAnalyzing(false);
+      setTimeout(() => setProgress(''), 3000);
     }
-  }, [analysisStatus, userId, fetchAnalysisStatus, fetchMappedEvents]);
+  }, [userId, fetchRawEventAnnotations]);
 
-  const getEventStatusBadge = (event: EnhancedTimelineEvent) => {
-    const eventWithMappings = event as EnhancedTimelineEvent & { 
-      workflow_mappings?: unknown[]; 
-      unrelated_info?: { unrelated_reason: string } 
-    };
-    
-    if (event.is_workflow_related) {
+  const getEventStatusBadge = (annotation: RawEventAnnotation) => {
+    if (annotation.is_workflow_related) {
       return <Badge variant="default" className="bg-green-100 text-green-800">
         <CheckCircle className="w-3 h-3 mr-1" />
-        Mapped ({eventWithMappings.workflow_mappings?.length || 0})
+        Mapped to Workflow
       </Badge>;
-    } else if (eventWithMappings.unrelated_info) {
+    } else if (annotation.unrelated_reason) {
       return <Badge variant="secondary" className="bg-gray-100 text-gray-800">
         <XCircle className="w-3 h-3 mr-1" />
         Unrelated
@@ -130,18 +175,29 @@ export default function TimelineMappingsPage() {
     }
   };
 
-  // Fetch analysis status on page load
+  const getEventType = (annotation: RawEventAnnotation) => {
+    try {
+      return annotation.event_payload?.payload?.type || 'Unknown';
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  // Fetch data on page load
   useEffect(() => {
-    fetchAnalysisStatus();
-    fetchMappedEvents();
-  }, [fetchAnalysisStatus, fetchMappedEvents, userId]);
+    fetchRawEventAnnotations();
+  }, [fetchRawEventAnnotations]);
+
+  useEffect(() => {
+    calculateAnalysisStatus();
+  }, [calculateAnalysisStatus]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Timeline Event Workflow Mappings</h1>
-          <p className="text-muted-foreground">Analyze and map timeline events to confirmed workflows</p>
+          <h1 className="text-3xl font-bold">Raw Event Timeline Mappings</h1>
+          <p className="text-muted-foreground">Analyze and map individual raw events to workflow components</p>
         </div>
       </div>
 
@@ -156,11 +212,22 @@ export default function TimelineMappingsPage() {
         </Card>
       )}
 
+      {progress && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2 text-blue-800">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>{progress}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Analysis Status Card */}
       <Card>
         <CardHeader>
           <CardTitle>Analysis Status</CardTitle>
-          <CardDescription>Current state of timeline event analysis</CardDescription>
+          <CardDescription>Current state of raw event timeline analysis</CardDescription>
         </CardHeader>
         <CardContent>
           {analysisStatus ? (
@@ -191,99 +258,126 @@ export default function TimelineMappingsPage() {
 
           <Button 
             onClick={runAnalysis}
-            disabled={!analysisStatus?.ready_for_analysis || isAnalyzing || analysisStatus?.unmapped_events === 0}
+            disabled={!analysisStatus?.ready_for_analysis || isAnalyzing}
             className="w-full"
           >
             {isAnalyzing ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Analyzing Timeline Events...
+                Analyzing Raw Events...
               </>
             ) : (
               <>
                 <PlayCircle className="w-4 h-4 mr-2" />
-                Run Analysis ({analysisStatus?.unmapped_events || 0} unmapped events)
+                Run Raw Event Analysis
               </>
             )}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Mapped Events */}
+      {/* Raw Event Annotations */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            Timeline Events
+            Raw Event Mappings ({rawEventAnnotations.length})
             <Button 
               variant="outline" 
               size="sm"
-              onClick={fetchMappedEvents}
+              onClick={fetchRawEventAnnotations}
               disabled={isFetching}
             >
               {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}
             </Button>
           </CardTitle>
-          <CardDescription>Timeline events with workflow mapping status</CardDescription>
+          <CardDescription>Individual raw events with workflow component mappings</CardDescription>
         </CardHeader>
         <CardContent>
           {isFetching ? (
             <div className="text-center py-8">
               <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-              <div className="text-muted-foreground">Loading events...</div>
+              <div className="text-muted-foreground">Loading raw event mappings...</div>
             </div>
-          ) : mappedEvents.length === 0 ? (
+          ) : rawEventAnnotations.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No timeline events found
+              No raw event mappings found. Run analysis to generate mappings.
             </div>
           ) : (
             <div className="space-y-3">
-              {mappedEvents.slice(0, 20).map((event) => (
-                <div key={event.id} className="border rounded-lg p-4 space-y-2">
+              {rawEventAnnotations.slice(0, 50).map((annotation) => (
+                <div key={`${annotation.raw_event_id}-${annotation.analysis_id}`} className="border rounded-lg p-4 space-y-2">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-1">
-                        <Badge variant="outline">{event.event_type}</Badge>
-                        {getEventStatusBadge(event)}
-                        {event.confidence_score && (
-                          <Badge variant="secondary">
-                            {Math.round(event.confidence_score * 100)}% confidence
-                          </Badge>
-                        )}
+                        <Badge variant="outline">
+                          Event #{annotation.raw_event_id}
+                        </Badge>
+                        <Badge variant="outline">
+                          {getEventType(annotation)}
+                        </Badge>
+                        {getEventStatusBadge(annotation)}
+                        <Badge variant="secondary">
+                          {Math.round(annotation.confidence_score * 100)}% confidence
+                        </Badge>
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {new Date(event.timestamp).toLocaleString()}
+                        {annotation.event_created_at 
+                          ? new Date(annotation.event_created_at).toLocaleString()
+                          : new Date(annotation.created_at).toLocaleString()
+                        }
                       </div>
                     </div>
                   </div>
 
-                  {/* Workflow Mappings */}
-                  {(event as any).workflow_mappings?.length > 0 && (
+                  {/* Workflow Component Mapping */}
+                  {annotation.is_workflow_related && (
                     <div className="ml-4 space-y-2">
-                      {(event as any).workflow_mappings.map((mapping: any, idx: number) => (
-                        <div key={idx} className="bg-green-50 p-3 rounded border-l-4 border-green-400">
-                          <div className="font-medium text-green-900">
-                            {mapping.workflow_template?.title} → {mapping.workflow_step}
-                          </div>
-                          <div className="text-sm text-green-700">
-                            Type: {mapping.workflow_type?.type_name} | 
-                            Instance: {mapping.workflow_instance?.instance_name}
-                          </div>
-                          {mapping.workflow_substep && (
-                            <div className="text-sm text-green-600">
-                              Substep: {mapping.workflow_substep}
-                            </div>
+                      <div className="bg-green-50 p-3 rounded border-l-4 border-green-400">
+                        <div className="font-medium text-green-900">
+                          Workflow Component Mapping
+                        </div>
+                        <div className="text-sm text-green-700 space-y-1">
+                          {annotation.workflow_template_id && (
+                            <div>Template ID: {annotation.workflow_template_id}</div>
+                          )}
+                          {annotation.workflow_type_id && (
+                            <div>Type ID: {annotation.workflow_type_id}</div>
+                          )}
+                          {annotation.workflow_instance_id && (
+                            <div>Instance ID: {annotation.workflow_instance_id}</div>
+                          )}
+                          {annotation.workflow_step_id && (
+                            <div>Step ID: {annotation.workflow_step_id}</div>
+                          )}
+                          {annotation.workflow_substep_id && (
+                            <div>Substep ID: {annotation.workflow_substep_id}</div>
                           )}
                         </div>
-                      ))}
+                        {annotation.inputs && (
+                          <div className="text-sm text-green-600 mt-2">
+                            <strong>Inputs:</strong> {annotation.inputs}
+                          </div>
+                        )}
+                        {annotation.outputs && (
+                          <div className="text-sm text-green-600">
+                            <strong>Outputs:</strong> {annotation.outputs}
+                          </div>
+                        )}
+                        {annotation.business_logics && (
+                          <div className="text-sm text-green-600">
+                            <strong>Business Logic:</strong> {annotation.business_logics}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
-                  {/* Unrelated Info */}
-                  {(event as any).unrelated_info && (
+                  {/* Unrelated Reason */}
+                  {annotation.unrelated_reason && (
                     <div className="ml-4">
                       <div className="bg-gray-50 p-3 rounded border-l-4 border-gray-400">
                         <div className="text-sm text-gray-700">
-                          <strong>Unrelated:</strong> {(event as any).unrelated_info.unrelated_reason}
+                          <strong>Unrelated:</strong> {annotation.unrelated_reason}
                         </div>
                       </div>
                     </div>
@@ -291,9 +385,9 @@ export default function TimelineMappingsPage() {
                 </div>
               ))}
               
-              {mappedEvents.length > 20 && (
+              {rawEventAnnotations.length > 50 && (
                 <div className="text-center py-4 text-muted-foreground">
-                  Showing first 20 of {mappedEvents.length} events
+                  Showing first 50 of {rawEventAnnotations.length} raw event mappings
                 </div>
               )}
             </div>

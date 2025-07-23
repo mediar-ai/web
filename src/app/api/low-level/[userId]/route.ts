@@ -30,6 +30,7 @@ export async function GET(
   const { userId } = await params;
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
+  const eventType = searchParams.get('eventType'); // New filter parameter
   const requestedLimit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 300;
   let offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0;
   const SUPABASE_MAX_LIMIT = 1000;
@@ -41,13 +42,18 @@ export async function GET(
   try {
     // Build query with optional session filter and pagination
     let query = supabaseAdmin
-      .from('low_level_events')
+      .from('low_level_events_enriched') // Use the enriched view
       .select('*')
       .eq('user_id', userId);
 
     // Add session filter if provided
     if (sessionId) {
       query = query.eq('session_id', sessionId);
+    }
+
+    // Add event type filter if provided
+    if (eventType) {
+      query = query.eq('event_type', eventType);
     }
 
     // --- New Looping Logic ---
@@ -109,10 +115,10 @@ export async function GET(
 
     // --- New: Get the total number of UI tree events (steps) ---
     const { count: totalStepsCount, error: stepsCountError } = await supabaseAdmin
-      .from('low_level_events')
+      .from('low_level_events_enriched')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .eq('payload->payload->>type', 'ui_tree');
+      .eq('event_type', 'ui_tree');
 
     if (stepsCountError) {
       console.error('[API/low-level] Error fetching total steps count:', stepsCountError);

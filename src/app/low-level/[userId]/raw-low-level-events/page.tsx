@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, use, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, use, useCallback, useRef, useMemo } from 'react';
 import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,16 @@ import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AnimatePresence, motion } from 'framer-motion';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel
+} from "@/components/ui/dropdown-menu";
+
 
 const Clock = () => {
     const [time, setTime] = useState<Date | null>(null);
@@ -29,6 +39,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
+  const [availableEventTypes, setAvailableEventTypes] = useState<string[]>([]);
   const [selectedWindow, setSelectedWindow] = useState<string | null>(null);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState<Record<number, boolean>>({});
@@ -88,17 +99,29 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     }
   }, [SORT_ORDER_STORAGE_KEY]);
 
+  useEffect(() => {
+    // When events load, extract the unique event types for the filter dropdown
+    if (events.length > 0) {
+      const types = new Set(events.map(getEventType));
+      setAvailableEventTypes(['all', ...Array.from(types)]);
+    }
+  }, [events, getEventType]);
+
   // Use ref to store previous events for comparison during polling
   const previousEventsRef = useRef<LowLevelEvent[]>([]);
   
   const fetchRawEvents = useCallback(async (isPollingUpdate = false) => {
     if (!userId) return;
     if (!isPollingUpdate) {
-      setLoading(true);
+    setLoading(true);
     }
     setError(null);
     try {
-      const response = await fetch(`/api/low-level/${userId}`);
+      let url = `/api/low-level/${userId}?limit=1000`;
+      if (selectedEventType && selectedEventType !== 'all') {
+        url += `&eventType=${selectedEventType}`;
+      }
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch raw events');
       }
@@ -141,17 +164,17 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       // Update the ref with current events for next comparison (only if not in cleared view mode)
       if (!viewClearedRef.current) {
         previousEventsRef.current = sortedEvents;
-        setEvents(sortedEvents);
+      setEvents(sortedEvents);
       }
       setSessionCount(data.sessionCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
       if (!isPollingUpdate) {
-        setLoading(false);
+      setLoading(false);
       }
     }
-  }, [userId, sortOrder]);
+  }, [userId, sortOrder, selectedEventType]);
 
   // Initial fetch
   useEffect(() => {
@@ -272,7 +295,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     setExpandedEvents({});
     setNewEventIds(new Set());
     viewClearedRef.current = true;
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
   };
 
   const eventStats = useMemo(() => {
@@ -326,13 +349,33 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           )}
         </div>
 
-        <Input
+        <div className="flex items-center gap-2">
+          <Input
             type="text"
             placeholder="Search events..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-64 border-black"
-        />
+            className="w-64"
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                Filter by Event Type: {selectedEventType || 'all'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuLabel>Event Type</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup value={selectedEventType || 'all'} onValueChange={setSelectedEventType}>
+                {availableEventTypes.map(type => (
+                  <DropdownMenuRadioItem key={type} value={type}>
+                    {type}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <Button variant="black-outline" size="sm" onClick={toggleSortOrder}>
           {sortOrder === 'desc' ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
         </Button>
@@ -378,24 +421,24 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                             </div>
                         </div>
                     )}
-                    {seenWindows.length > 0 && (
+                {seenWindows.length > 0 && (
                         <div className="mt-2">
                             <h4 className="text-xs font-semibold mb-1">Windows:</h4>
                             <div className="flex flex-wrap gap-1">
                                 {seenWindows.map((window) => (
-                                    <Badge 
+                                <Badge
                                         key={window} 
                                         variant={selectedWindow === window ? "default" : "secondary"}
                                         onClick={() => handleWindowClick(window)}
                                         className="cursor-pointer"
-                                    >
+                                >
                                         {window}
-                                    </Badge>
-                                ))}
-                            </div>
+                                </Badge>
+                            ))}
                         </div>
-                    )}
-                    {clientIdentity && (
+                    </div>
+                )}
+                {clientIdentity && (
                         <div className="mt-2">
                             <h4 className="text-xs font-semibold mb-1">Client Identity:</h4>
                             <JsonBlock
@@ -407,18 +450,18 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                             />
                         </div>
                     )}
-                </div>
+                    </div>
             </CardContent>
-                    </motion.div>
+            </motion.div>
                 )}
             </AnimatePresence>
         </Card>
       )}
 
       {loading && events.length === 0 && (
-        <div className="flex flex-col items-center justify-center pt-16">
-          <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-muted-foreground mt-4">Loading Events...</p>
+          <div className="flex flex-col items-center justify-center pt-16">
+            <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground mt-4">Loading Events...</p>
         </div>
       )}
 
@@ -461,7 +504,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                       </Badge>
                       <span className="text-xs text-black font-medium">
                         ({Math.floor((Date.now() - new Date(event.created_at).getTime()) / 1000)}s ago)
-                      </span>
+                </span>
                     </>
                   )}
                 </div>

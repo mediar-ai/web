@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import { WORKFLOW_SYNTHESIS_PROMPT } from '@/lib/prompts';
 import { WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/prompts';
@@ -7,45 +8,17 @@ interface WorkflowSynthesisInput {
   name: string;
   trigger?: string;
   terminator?: string;
-  // No events property - events are now global in context.analyses
 }
 
-// Helper function to process events by extracting useful fields
-function processEvents(events: unknown[]): unknown[] {
-  return events.map((event: unknown) => {
-    if (event && typeof event === 'object') {
-      const eventObj = event as Record<string, unknown>;
-      
-      // Handle new combined structure with analysis object and labels array
-      if (eventObj.analysis && typeof eventObj.analysis === 'object') {
-        const analysis = eventObj.analysis as Record<string, unknown>;
-        return {
-          id: eventObj.id,
-          timestamp: eventObj.timestamp,
-          window_title: eventObj.window_title,
-          step_title: analysis.step_title,
-          step_summary: analysis.step_summary,
-          user_intent: analysis.user_intent,
-          events_that_happened: analysis.events_that_happened,
-          how_content_changed: analysis.how_content_changed,
-          results_if_any: analysis.results_if_any,
-          what_was_clicked: analysis.what_was_clicked,
-          what_was_typed: analysis.what_was_typed,
-          labels: eventObj.labels || []
-        };
-      }
-      
-      // Fallback for legacy structure
-      return {
-        id: eventObj.id,
-        timestamp: eventObj.client_timestamp || eventObj.timestamp,
-        workflow: eventObj.workflow || 'Unknown',
-        step: eventObj.step || 'Unknown',
-        description: eventObj.description || 'No description'
-      };
-    }
-    return event;
-  });
+// Helper function to process events (same as original)
+function processEvents(events: Array<{ id: string; timestamp: string; window_title: string; analysis: Record<string, unknown>; labels: string[] }>) {
+  return events.map(event => ({
+    analysis_id: event.id,
+    timestamp: event.timestamp,
+    window_title: event.window_title,
+    ...event.analysis,
+    embedded_labels: event.labels // Include labels directly in the event data
+  }));
 }
 
 export async function POST(req: NextRequest) {
@@ -56,18 +29,94 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
+    if (!context.userId) {
+      return NextResponse.json({ error: 'Missing userId in context' }, { status: 400 });
+    }
+
+    // Fetch analyses from database (reusing logic from fetch-combined-analyses-v2)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Fetch analyses first
+    const { data: analysesData, error: analysesError } = await supabaseAdmin
+      .from('low_level_workflow_analyses')
+      .select('id, client_timestamp, window_title, llm_structured_output')
+      .eq('user_id', context.userId)
+      .order('client_timestamp', { ascending: false })
+      .limit(1000);
+
+    if (analysesError) {
+      throw new Error(`Failed to fetch analyses: ${analysesError.message}`);
+    }
+
+    if (!analysesData || analysesData.length === 0) {
+      throw new Error('No analysis data found for this user');
+    }
+
+    // Get all analysis IDs to fetch labels
+    const analysisIds = analysesData.map(item => item.id);
+    
+    // Fetch labels for these analyses
+    const { data: labelsData, error: labelsError } = await supabaseAdmin
+      .from('low_level_workflow_labeling')
+      .select('low_level_workflow_analysis_id, selected_labels')
+      .in('low_level_workflow_analysis_id', analysisIds);
+
+    if (labelsError) {
+      console.warn('Error fetching labels:', labelsError);
+      // Continue without labels rather than failing completely
+    }
+
+    // Create a map of analysis_id -> labels for quick lookup
+    const labelsMap = new Map();
+    labelsData?.forEach(label => {
+      labelsMap.set(label.low_level_workflow_analysis_id, label.selected_labels);
+    });
+
+    // Transform data to the same format as fetch-combined-analyses-v2
+    const analyses = analysesData.map((item: Record<string, unknown>) => {
+      // Extract the JSONB analysis data
+      const analysisData = item.llm_structured_output || {};
+      
+      // Remove unwanted fields from analysis data and keep only the ones we want
+      const cleanAnalysisData = Object.fromEntries(
+        Object.entries(analysisData).filter(([key]) => 
+          !['generation_timestamp', 'context_metadata', 'label_status', 'schema_version'].includes(key)
+        )
+      );
+
+      // Get selected labels from the labels map
+      const selectedLabels = labelsMap.get(item.id) || [];
+
+      return {
+        id: item.id as string,
+        timestamp: item.client_timestamp as string,
+        window_title: item.window_title as string,
+        analysis: cleanAnalysisData,
+        labels: selectedLabels as string[]
+      };
+    });
+
+    console.log(`Loaded ${analyses.length} analyses for workflow synthesis`);
+
     // Check if this is multiple workflows synthesis  
     const isMultipleWorkflows = context.workflows && Array.isArray(context.workflows);
     
     console.log('Synthesizing workflows:', isMultipleWorkflows ? 
-      `${context.workflows.length} workflows with ${context.analyses?.length || 0} global events` :
+      `${context.workflows.length} workflows with ${analyses.length} analyses` :
       `single workflow with ${context.events?.length || 0} events`);
     
     let prompt: string;
     
     if (isMultipleWorkflows && context.workflows) {
       // Multiple workflows synthesis - events are now global
-      const processedGlobalEvents = context.analyses ? processEvents(context.analyses) : [];
+      const processedGlobalEvents = analyses ? processEvents(analyses) : [];
       
       const workflowDetails = context.workflows.map((workflow: WorkflowSynthesisInput) => {
         return `WORKFLOW: ${workflow.name}
