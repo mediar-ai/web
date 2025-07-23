@@ -95,23 +95,46 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
         setEvents(cachedData.events as UITreeEvent[]);
         setUsingCachedData(true);
         setLoading(false);
-        return; // Skip API call if we have cached data
+        
+        // Continue to check for new UI tree events in background
+        console.log('[UI Trees] Checking for new UI tree events in background...');
       }
       
-      // Fallback to API if no cached data
-      console.log('[UI Trees] No cached data found, fetching from API');
-      setUsingCachedData(false);
+      // Always check API for fresh data (either as fallback or background refresh)
+      if (cachedData.events.length === 0) {
+        console.log('[UI Trees] No cached data found, fetching from API');
+        setUsingCachedData(false);
+      }
       const response = await fetch(`/api/low-level/${userId}/ui-trees`);
       if (!response.ok) {
         throw new Error('Failed to fetch UI tree events');
       }
       const data = await response.json();
-      setEvents(data.events);
       
-      // Save to cache for future use (if shared storage has events, these might be duplicates but that's ok)
-      if (data.events && data.events.length > 0) {
-        await sharedStorage.saveEvents(data.events);
-        console.log(`[UI Trees] Saved ${data.events.length} UI tree events to IndexedDB for future use`);
+      // If we had cached data, check for new UI tree events and merge
+      if (cachedData.events.length > 0) {
+        const cachedIds = new Set(cachedData.events.map(e => e.id));
+        const reallyNewEvents = data.events.filter((e: UITreeEvent) => !cachedIds.has(e.id));
+        
+        if (reallyNewEvents.length > 0) {
+          console.log(`[UI Trees] Found ${reallyNewEvents.length} new UI tree events, updating cache and UI`);
+          const mergedEvents = [...reallyNewEvents, ...cachedData.events] as UITreeEvent[];
+          setEvents(mergedEvents);
+          
+          // Save new events to cache
+          await sharedStorage.saveEvents(reallyNewEvents);
+        } else {
+          console.log('[UI Trees] No new UI tree events found');
+        }
+      } else {
+        // No cached data, use fresh data as-is
+        setEvents(data.events);
+        
+        // Save to cache for future use
+        if (data.events && data.events.length > 0) {
+          await sharedStorage.saveEvents(data.events);
+          console.log(`[UI Trees] Saved ${data.events.length} UI tree events to IndexedDB for future use`);
+        }
       }
       
     } catch (err) {
