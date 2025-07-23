@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { DatasetEntry } from '@/lib/sharedDatasetStorage';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ArrowUpDown } from 'lucide-react';
@@ -150,7 +151,6 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   const [totalEventCount, setTotalEventCount] = useState<number>(0);
 
   // Loading constants
-  const AUTO_LOAD_CHUNK_SIZE = 200;
   const AUTO_LOAD_LIMIT = 2000;
   const MANUAL_LOAD_CHUNK_SIZE = 1000;
 
@@ -219,8 +219,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
       
       // If we had cached data, check for new events and merge
       if (cachedData.events.length > 0) {
-        const cachedIds = new Set(cachedData.events.map(e => e.id));
-        const reallyNewEvents = newEvents.filter(e => !cachedIds.has(e.id));
+        const cachedIds = new Set(cachedData.events.map((e: LowLevelEvent) => e.id));
+        const reallyNewEvents = newEvents.filter((e: LowLevelEvent) => !cachedIds.has(e.id));
         
         if (reallyNewEvents.length > 0) {
           console.log(`[Labeling] Found ${reallyNewEvents.length} new events, updating cache and UI`);
@@ -295,8 +295,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
       
       // If we had cached data, check for new analyses and merge
       if (cachedData.analyses.length > 0) {
-        const cachedIds = new Set(cachedData.analyses.map(a => a.id));
-        const reallyNewAnalyses = analyses.filter(a => !cachedIds.has(a.id));
+        const cachedIds = new Set(cachedData.analyses.map((a: WorkflowStepAnalysis) => a.id));
+        const reallyNewAnalyses = analyses.filter((a: WorkflowStepAnalysis) => !cachedIds.has(a.id));
         
         if (reallyNewAnalyses.length > 0) {
           console.log(`[Labeling] Found ${reallyNewAnalyses.length} new analyses, updating cache and UI`);
@@ -373,8 +373,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
       
       // If we had cached data, check for new entries and merge
       if (cachedData.entries.length > 0) {
-        const cachedIds = new Set(cachedData.entries.map(e => e.low_level_workflow_analysis_id));
-        const reallyNewEntries = datasetEntries.filter(e => !cachedIds.has(e.low_level_workflow_analysis_id));
+        const cachedIds = new Set(cachedData.entries.map((e: DatasetEntry) => e.low_level_workflow_analysis_id));
+        const reallyNewEntries = datasetEntries.filter((e: DatasetEntry) => !cachedIds.has(e.low_level_workflow_analysis_id));
         
         if (reallyNewEntries.length > 0) {
           console.log(`[Labeling] Found ${reallyNewEntries.length} new dataset entries, updating cache`);
@@ -454,12 +454,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
           setTotalEventCount(eventsResult.totalEventCount);
         }
         
-        // Start auto-loading if we have more data and haven't reached limit
-        if (eventsResult?.hasMore && events.length < AUTO_LOAD_LIMIT) {
-          setTimeout(() => autoLoadMore(events.length), 100);
-        } else {
+        // Mark auto-loading as complete since we removed the auto-loading feature
           setAutoLoadingComplete(true);
-        }
 
         const uiTrees = events.filter((e: LowLevelEvent) => e.payload.payload?.type === 'ui_tree');
         if (uiTrees.length > 0) {
@@ -473,23 +469,6 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     };
     fetchData();
   }, [fetchAllEvents, fetchAllWorkflowAnalyses, fetchEventData, AUTO_LOAD_LIMIT]);
-
-  // Auto-load more data progressively
-  const autoLoadMore = useCallback(async (currentCount: number) => {
-    if (currentCount >= AUTO_LOAD_LIMIT) {
-      setAutoLoadingComplete(true);
-      return;
-    }
-
-    const nextChunkSize = Math.min(AUTO_LOAD_CHUNK_SIZE, AUTO_LOAD_LIMIT - currentCount);
-    const result = await loadMoreEvents(nextChunkSize);
-    
-    if (result && result.hasMore && (currentCount + nextChunkSize) < AUTO_LOAD_LIMIT) {
-      setTimeout(() => autoLoadMore(currentCount + nextChunkSize), 100);
-    } else {
-      setAutoLoadingComplete(true);
-    }
-  }, [AUTO_LOAD_LIMIT, AUTO_LOAD_CHUNK_SIZE, loadMoreEvents]);
 
   // Load more events function
   const loadMoreEvents = useCallback(async (amount: number): Promise<{ hasMore: boolean } | null> => {
@@ -569,8 +548,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
         const latestEvents = data.events || [];
         
         if (latestEvents.length > 0 && allEvents.length > 0) {
-          const existingIds = new Set(allEvents.slice(0, 10).map(e => e.id));
-          const newEvents = latestEvents.filter(e => !existingIds.has(e.id));
+          const existingIds = new Set(allEvents.slice(0, 10).map((e: LowLevelEvent) => e.id));
+          const newEvents = latestEvents.filter((e: LowLevelEvent) => !existingIds.has(e.id));
           
           if (newEvents.length > 0) {
             console.log(`[Labeling] Found ${newEvents.length} new events via polling`);
