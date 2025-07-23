@@ -119,10 +119,10 @@ export async function POST(req: NextRequest) {
         console.log(`📊 Found ${workflows.length} draft workflows for mapping`);
         controller.enqueue(toSSE({ status: `Found ${workflows.length} draft workflows for mapping`, progress: 20 }));
 
-        // Fetch UI tree events - either specific ones if targetUiEventIds provided, or last 2 for testing
+        // Fetch UI tree events - either specific ones if targetUiEventIds provided, or recent ones for full processing
         const statusMessage = targetUiEventIds 
           ? `Loading specific UI tree events (${targetUiEventIds.length})...`
-          : 'Loading last 2 UI tree events for testing...';
+          : 'Loading recent UI tree events for full processing...';
         controller.enqueue(toSSE({ status: statusMessage, progress: 30 }));
 
         let uiTreeEvents;
@@ -140,14 +140,15 @@ export async function POST(req: NextRequest) {
           uiTreeEvents = data;
           recentEventsError = error;
         } else {
-          // Default behavior: fetch last 2 UI tree events
+          // Default behavior: fetch recent UI tree events (last 7 days)
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
           const { data, error } = await supabaseAdmin
             .from('low_level_events_enriched')
             .select('id, created_at, payload')
             .eq('user_id', userId)
             .eq('event_type', 'ui_tree') // Use optimized column instead of JSONB filter
-            .order('created_at', { ascending: false })
-            .limit(2); // Get only 2 UI tree events for testing
+            .gte('created_at', sevenDaysAgo)
+            .order('created_at', { ascending: false });
           uiTreeEvents = data;
           recentEventsError = error;
         }
@@ -180,9 +181,8 @@ export async function POST(req: NextRequest) {
         let totalMappings = 0;
         const allAnnotations: TimelineAnnotation[] = [];
 
-        // Process just 1 batch for testing
-        const maxBatches = Math.min(totalBatches, 1); // Test with first 1 batch only
-        for (let batchIndex = 0; batchIndex < maxBatches; batchIndex++) {
+        // Process all batches for full timeline mapping
+        for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
           const currentProgress = 50 + (batchIndex / totalBatches) * 40;
           controller.enqueue(toSSE({ 
             status: `Processing batch ${batchIndex + 1} of ${totalBatches}...`, 
@@ -207,8 +207,7 @@ export async function POST(req: NextRequest) {
             .gte('created_at', startTime.toISOString())
             .lt('created_at', endTime.toISOString())
             .neq('event_type', 'screenshot_diff') // Use optimized column filter
-            .order('created_at', { ascending: true })
-            .limit(50); // Limit for testing
+            .order('created_at', { ascending: true });
 
           if (batchError) {
             console.error(`❌ Error fetching batch events for batch ${batchIndex + 1}:`, batchError);
@@ -315,7 +314,7 @@ ${wf.steps.map((step: Record<string, unknown>) => `- Step ID: ${step.id}, Name: 
 `).join('\n---\n')}
 
 RAW EVENTS TO MAP (${batchEvents.length} events):
-${batchEvents.map(event => `Event ${event.id}: ${JSON.stringify(event.payload)}`).slice(0, 10).join('\n')}
+${batchEvents.map(event => `Event ${event.id}: ${JSON.stringify(event.payload)}`).join('\n')}
 
 ANALYSIS GOAL:
 Map each raw event above to determine if it belongs to the current workflow analysis step. Focus on the specific step: "${batchAnalysis.analysis?.step_title || 'Unknown'}" with the goal: "${batchAnalysis.analysis?.user_goal || 'Unknown goal'}"
