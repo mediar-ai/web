@@ -8,34 +8,5 @@
    - Environments: .env.local
 
  ✓ Starting...
- ✓ Compiled middleware in 121ms
- ✓ Ready in 752ms
- ✓ Compiled /api/remote-workflows/list in 479ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 596ms
-[ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 992ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1776ms
-[ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1874ms
- ○ Compiling /low-level/[userId]/workflow ...
- ✓ Compiled /low-level/[userId]/workflow in 1180ms
- GET /low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow 200 in 1547ms
- ✓ Compiled /api/users/[userId] in 159ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 514ms
- ✓ Compiled /api/workflows/saved-syntheses in 324ms
-📋 Retrieved 3 comprehensive saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 390ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 406ms
-📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 415ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 436ms
-📋 Retrieved 3 comprehensive saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 78ms
-📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 75ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 99ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 77ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 64ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 622ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 73ms
+ ✓ Compiled middleware in 120ms
+ ✓ Ready in 735ms
