@@ -1,4 +1,4 @@
-import { FlattenedWorkflowAnalysis } from '@/types';
+// FlattenedWorkflowAnalysis import removed as it was unused
 
 interface DatasetEntry {
   id: string; // analysis ID
