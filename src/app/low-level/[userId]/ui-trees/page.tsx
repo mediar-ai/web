@@ -192,7 +192,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
     // Memory protection - warn if approaching large dataset
     if (events.length > 5000) {
       const shouldContinue = window.confirm(
-        `⚠️ Memory Protection\n\nYou're about to auto-load more than 5,000 UI trees. This may slow down your browser.\n\nCurrent: ${events.length} trees\nEstimated memory: ${(events.length * 0.01).toFixed(1)}MB\n\nContinue auto-loading?`
+        `Memory Protection\n\nYou're about to auto-load more than 5,000 UI trees. This may slow down your browser.\n\nCurrent: ${events.length} trees\nEstimated memory: ${(events.length * 0.01).toFixed(1)}MB\n\nContinue auto-loading?`
       );
       if (!shouldContinue) return;
     }
@@ -214,7 +214,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
       }
       
       if (currentCount >= 10000) {
-        alert('⚠️ Auto-loading stopped at 10,000 UI trees for performance reasons.');
+        alert('Auto-loading stopped at 10,000 UI trees for performance reasons.');
       }
       
     } catch (error) {
@@ -229,7 +229,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
     
     // Memory protection - require confirmation for large datasets
     const shouldContinue = window.confirm(
-      `⚠️ Load All UI Trees\n\nThis will load ALL remaining UI trees at once. This may:\n• Use significant memory (${(events.length * 0.02).toFixed(1)}+ MB)\n• Slow down your browser\n• Take several minutes\n\nCurrent: ${events.length} trees\n\nProceed with loading all?`
+      `Load All UI Trees\n\nThis will load ALL remaining UI trees at once. This may:\n• Use significant memory (${(events.length * 0.02).toFixed(1)}+ MB)\n• Slow down your browser\n• Take several minutes\n\nCurrent: ${events.length} trees\n\nProceed with loading all?`
     );
     
     if (!shouldContinue) return;
@@ -487,22 +487,22 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
         <div className="text-sm text-muted-foreground flex items-center gap-2">
           <span>Total Trees: {events.length}</span>
           {storageInfo && (
-            <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
+            <Badge variant="outline" className="text-xs">
               {storageInfo.sizeMB}MB
             </Badge>
           )}
           {usingCachedData && (
-            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+            <Badge variant="outline" className="text-xs">
               IndexedDB
             </Badge>
           )}
           {liveUpdateIndicator && (
-            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 animate-pulse">
+            <Badge variant="outline" className="text-xs animate-pulse">
               Live Update
             </Badge>
           )}
           {isAutoLoading && (
-            <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200 animate-pulse">
+            <Badge variant="outline" className="text-xs animate-pulse">
               Auto Loading
             </Badge>
           )}
@@ -519,7 +519,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
       
       {/* Auto Loading indicator */}
       {isAutoLoading && (
-        <div className="flex items-center space-x-2 my-2 text-sm text-purple-600">
+        <div className="flex items-center space-x-2 my-2 text-sm text-muted-foreground">
           <RefreshCw className="h-4 w-4 animate-spin" />
           <span>Auto-loading UI trees... ({events.length} loaded)</span>
         </div>
