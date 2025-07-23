@@ -8,112 +8,141 @@
    - Environments: .env.local
 
  ✓ Starting...
- ✓ Compiled middleware in 113ms
- ✓ Ready in 718ms
- ✓ Compiled /api/remote-workflows/executions/live in 461ms
+ ✓ Compiled middleware in 111ms
+ ✓ Ready in 707ms
+ ✓ Compiled /api/remote-workflows/executions in 442ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 629ms
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 623ms
 [ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 833ms
+ GET /api/remote-workflows/list 200 in 773ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1691ms
 [ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1925ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1705ms
+ GET /api/remote-workflows/executions 200 in 1886ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 173ms
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 211ms
 [ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 429ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1130ms
+ GET /api/remote-workflows/list 200 in 408ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1071ms
 [ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1572ms
+ GET /api/remote-workflows/executions 200 in 1505ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 211ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 416ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1195ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1628ms
  ○ Compiling /low-level/[userId]/workflow ...
- ✓ Compiled /low-level/[userId]/workflow in 1387ms
- GET /low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow 200 in 1728ms
- ✓ Compiled /api/users/[userId] in 172ms
- GET /favicon.ico 200 in 372ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 549ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 327ms
- ✓ Compiled /api/synthesis-sessions in 325ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 350ms
+ ✓ Compiled /low-level/[userId]/workflow in 1151ms
+ GET /low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow 200 in 1512ms
+ ✓ Compiled /api/users/[userId] in 178ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 512ms
+ ✓ Compiled /api/synthesis-sessions in 272ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 312ms
 📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 379ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 84ms
- GET /favicon.ico?favicon.0e4ec538.ico 200 in 234ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 70ms
+ GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 364ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 61ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 393ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 63ms
 📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 65ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 75ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 602ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 64ms
- ✓ Compiled /api/workflows/save-synthesis in 153ms
+ GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 103ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 541ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 76ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 78ms
+ ✓ Compiled /api/workflows/save-synthesis in 134ms
 ✅ Saved 4 workflows as synthesis
  POST /api/workflows/save-synthesis 200 in 220ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 63ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 58ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 168ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 549ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1147ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1575ms
+ ✓ Compiled in 139ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 122ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 130ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 183ms
+ ✓ Compiled in 118ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 114ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 118ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 117ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 163ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 423ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1139ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1450ms
+ ✓ Compiled in 123ms
+📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 126ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 133ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 149ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 156ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 93ms
+ ✓ Compiled in 182ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 105ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 117ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 135ms
+[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 244ms
+[ResponseCache] Cached GET /api/remote-workflows/list (200)
+ GET /api/remote-workflows/list 200 in 600ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1211ms
+ ✓ Compiled in 146ms
+[ResponseCache] Cached GET /api/remote-workflows/executions (200)
+ GET /api/remote-workflows/executions 200 in 1593ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 70ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 117ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 77ms
+ ✓ Compiled in 122ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 125ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 137ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 139ms
+ GET /low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow 200 in 203ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 138ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 92ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 127ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 130ms
+ GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 70ms
+ GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 70ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 87ms
+📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 223ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 76ms
+📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 84ms
 ✅ Saved 4 workflows as synthesis
- POST /api/workflows/save-synthesis 200 in 93ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 67ms
+ POST /api/workflows/save-synthesis 200 in 116ms
+ GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 80ms
+ ✓ Compiled /api/workflows/saved-syntheses in 151ms
+📋 Found 1 saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 220ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 222ms
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 155ms
 [ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 604ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1186ms
+ GET /api/remote-workflows/list 200 in 342ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1176ms
 [ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1546ms
+ GET /api/remote-workflows/executions 200 in 1531ms
+📋 Found 1 saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 110ms
+📋 Found 1 saved syntheses for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
+ GET /api/workflows/saved-syntheses?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 64ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 191ms
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 185ms
 [ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 381ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1108ms
+ GET /api/remote-workflows/list 200 in 505ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1119ms
 [ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1522ms
+ GET /api/remote-workflows/executions 200 in 1571ms
 [ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 225ms
+ GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 193ms
 [ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 597ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1208ms
+ GET /api/remote-workflows/list 200 in 533ms
+ GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1121ms
 [ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1588ms
- ✓ Compiled in 141ms
- GET /low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow 200 in 208ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 110ms
- GET /favicon.ico 200 in 218ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 78ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 131ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 145ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 66ms
-📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 151ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 83ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 74ms
- GET /favicon.ico?favicon.0e4ec538.ico 200 in 245ms
-📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 92ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 60ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 191ms
-[ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 484ms
-[ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1433ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1775ms
- ✓ Compiled in 129ms
- GET /low-level/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/workflow 200 in 204ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 125ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 95ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 125ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 126ms
-📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 151ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 104ms
- GET /api/synthesis-sessions?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 147ms
-📋 Retrieved 2 raw event annotations for user cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9
- GET /api/timeline-event-mappings?user_id=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9&raw_events=true&include_unrelated=true 200 in 91ms
- GET /api/users/cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9/stats 200 in 113ms
- GET /api/workflows?userId=cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9 200 in 97ms
-[ResponseCache] Cached GET /api/remote-workflows/executions/live (200)
- GET /api/remote-workflows/executions/live?status=active&limit=200 200 in 206ms
-[ResponseCache] Cached GET /api/remote-workflows/list (200)
- GET /api/remote-workflows/list 200 in 321ms
- GET /api/low-level/4d6b2fe0-5f24-3720-4d6b-2fe05f243720 200 in 1207ms
-[ResponseCache] Cached GET /api/remote-workflows/executions (200)
- GET /api/remote-workflows/executions 200 in 1570ms
+ GET /api/remote-workflows/executions 200 in 1562ms
 [?25h
