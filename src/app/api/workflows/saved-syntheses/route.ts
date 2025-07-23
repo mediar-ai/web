@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-interface SavedSynthesis {
-  synthesis_session_id: number;
-  saved_at: string;
-  created_at: string;
-  workflow_count: number;
-  workflows: Array<Record<string, unknown>>;
-  sample_titles: string[];
-}
-
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -28,75 +19,101 @@ export async function GET(req: NextRequest) {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Fetch saved syntheses grouped by synthesis_session_id
+    // Fetch comprehensive saved syntheses
     const { data: savedSyntheses, error } = await supabaseAdmin
-      .from('low_level_workflows')
-      .select(`
-        id,
-        title,
-        synthesis_status,
-        saved_at,
-        created_at,
-        synthesis_session_id,
-        detailed_workflow_data,
-        saved_by_user_id
-      `)
+      .from('saved_workflow_syntheses')
+      .select('*')
       .eq('user_id', userId)
-      .eq('synthesis_status', 'saved')
-      .not('synthesis_session_id', 'is', null)
-      .order('saved_at', { ascending: false });
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching saved syntheses:', error);
       return NextResponse.json({ error: 'Failed to fetch saved syntheses' }, { status: 500 });
     }
 
-    // Group workflows by synthesis session
-    const groupedSyntheses = savedSyntheses.reduce((acc, workflow) => {
-      const sessionId = workflow.synthesis_session_id;
-      if (!acc[sessionId]) {
-        acc[sessionId] = {
-          synthesis_session_id: sessionId,
-          saved_at: workflow.saved_at,
-          created_at: workflow.created_at,
-          workflow_count: 0,
-          workflows: [],
-          sample_titles: []
-        };
-      }
-      
-      acc[sessionId].workflows.push(workflow);
-      acc[sessionId].workflow_count++;
-      acc[sessionId].sample_titles.push(workflow.title);
-      
-      // Use the latest saved_at timestamp
-      if (!acc[sessionId].saved_at || new Date(workflow.saved_at) > new Date(acc[sessionId].saved_at)) {
-        acc[sessionId].saved_at = workflow.saved_at;
-      }
-      
-      return acc;
-    }, {} as Record<string, SavedSynthesis>);
+    // Transform the data to be more usable in the frontend
+    const transformedSyntheses = savedSyntheses.map(synthesis => {
+      // Parse JSON fields safely
+      const workflowIds = (() => {
+        try {
+          return JSON.parse(synthesis.workflow_ids || '[]');
+        } catch {
+          return [];
+        }
+      })();
 
-    // Convert to array and add summary info
-    const synthesesArray = Object.values(groupedSyntheses).map((synthesis: SavedSynthesis) => ({
-      ...synthesis,
-      display_name: synthesis.sample_titles.length > 0 
-        ? synthesis.sample_titles.slice(0, 2).join(', ') + 
-          (synthesis.sample_titles.length > 2 ? ` +${synthesis.sample_titles.length - 2} more` : '')
-        : 'Unnamed Synthesis',
-      total_workflows: synthesis.workflow_count
-    }));
+      const identifiedWorkflowNames = (() => {
+        try {
+          return JSON.parse(synthesis.identified_workflow_names || '[]');
+        } catch {
+          return [];
+        }
+      })();
 
-    console.log(`📋 Found ${synthesesArray.length} saved syntheses for user ${userId}`);
+      const modelsUsed = (() => {
+        try {
+          return JSON.parse(synthesis.models_used || '[]');
+        } catch {
+          return [];
+        }
+      })();
+
+      return {
+        id: synthesis.id,
+        title: synthesis.title,
+        description: synthesis.description,
+        
+        // Steps 1-5 Process Data
+        processData: {
+          // Step 1: Context
+          context: synthesis.workflow_context || {},
+          
+          // Step 2: Identified workflows
+          identifiedWorkflows: identifiedWorkflowNames,
+          
+          // Step 3: Boundaries (triggers/terminators)
+          boundaries: synthesis.workflow_boundaries || {},
+          
+          // Steps 1-5: Complete conversation
+          conversation: synthesis.conversation_history || [],
+          
+          // Step 5: Final synthesis results
+          results: synthesis.synthesis_results || [],
+          
+          // Full process data
+          fullProcessData: synthesis.synthesis_process_data || {}
+        },
+        
+        // Metadata
+        workflowIds: workflowIds,
+        modelsUsed: modelsUsed,
+        totalTokensUsed: synthesis.total_tokens_used || 0,
+        synthesisDuration: synthesis.synthesis_duration_seconds,
+        version: synthesis.version,
+        
+        // Timestamps
+        synthesisStartedAt: synthesis.synthesis_started_at,
+        synthesisCompletedAt: synthesis.synthesis_completed_at,
+        createdAt: synthesis.created_at,
+        updatedAt: synthesis.updated_at,
+        
+        // References
+        synthesisSessionId: synthesis.synthesis_session_id,
+        savedByUserId: synthesis.saved_by_user_id
+      };
+    });
+
+    console.log(`📋 Retrieved ${transformedSyntheses.length} comprehensive saved syntheses for user ${userId}`);
 
     return NextResponse.json({
       success: true,
-      data: synthesesArray,
-      total: synthesesArray.length
+      data: transformedSyntheses,
+      count: transformedSyntheses.length
     });
 
   } catch (error) {
-    console.error('Error in saved-syntheses:', error);
+    console.error('Error in saved-syntheses route:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
   }

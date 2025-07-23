@@ -48,125 +48,9 @@ import {
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
-
-// Saved Syntheses Section Component
-function SavedSynthesesSection({ userId, triggerRefresh }: { userId: string; triggerRefresh: number }) {
-  const [savedSyntheses, setSavedSyntheses] = useState<Array<{
-    synthesis_session_id: number;
-    display_name: string;
-    saved_at: string;
-    total_workflows: number;
-    workflows: Array<Record<string, unknown>>;
-  }>>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showSyntheses, setShowSyntheses] = useState(false);
-
-  const fetchSavedSyntheses = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(`/api/workflows/saved-syntheses?userId=${userId}`);
-      if (response.ok) {
-        const result = await response.json();
-        setSavedSyntheses(result.data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching saved syntheses:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (showSyntheses) {
-      fetchSavedSyntheses();
-    }
-  }, [showSyntheses, userId]);
-
-  // Refresh when triggerRefresh changes
-  useEffect(() => {
-    if (triggerRefresh > 0) {
-      fetchSavedSyntheses();
-    }
-  }, [triggerRefresh]);
-
-  if (savedSyntheses.length === 0 && !showSyntheses) {
-    return null; // Don't show the section if no saved syntheses and not expanded
-  }
-
-  return (
-    <div className="border-t bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Saved Syntheses</h2>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setShowSyntheses(!showSyntheses);
-              if (!showSyntheses) {
-                fetchSavedSyntheses();
-              }
-            }}
-            className="flex items-center gap-2"
-          >
-            {showSyntheses ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            {showSyntheses ? 'Hide' : 'Show'} Saved Syntheses
-          </Button>
-        </div>
-
-        {showSyntheses && (
-          <div className="space-y-4">
-            {isLoading ? (
-              <div className="text-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-                <p className="text-gray-600 mt-2">Loading saved syntheses...</p>
-              </div>
-            ) : savedSyntheses.length === 0 ? (
-              <div className="text-center py-8 text-gray-600">
-                <p>No saved syntheses found.</p>
-                <p className="text-sm">Complete a workflow synthesis and save it to see it here.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {savedSyntheses.map((synthesis) => (
-                  <Card key={synthesis.synthesis_session_id} className="border-gray-200 hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base font-medium text-gray-900">
-                        {synthesis.display_name}
-                      </CardTitle>
-                      <CardDescription className="text-sm text-gray-600">
-                        Saved {new Date(synthesis.saved_at).toLocaleDateString()}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="flex items-center justify-between">
-                        <Badge variant="outline" className="text-xs">
-                          {synthesis.total_workflows} workflow{synthesis.total_workflows !== 1 ? 's' : ''}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-gray-600 hover:text-gray-900"
-                          onClick={() => {
-                            // TODO: Implement view synthesis details
-                            console.log('View synthesis:', synthesis.synthesis_session_id);
-                          }}
-                        >
-                          View
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
 import { Separator } from '@/components/ui/separator';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
 
 import { cn } from '@/lib/utils';
@@ -682,6 +566,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
     const logic: WorkflowPageLogicType = useWorkflowPageLogic(userId);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const [mainWorkflowOpen, setMainWorkflowOpen] = useState(true);
 
     return (
         <div className="h-full bg-background flex flex-col relative">
@@ -817,12 +702,29 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             </div>
 
             {/* Main Content */}
-            <div className="p-6 flex-grow flex flex-col overflow-hidden items-center">
-                <Stepper logic={logic} />
+            <div className="w-full p-8 text-center mb-6">
+                <Card>
+                    <CardContent>
+                        <Collapsible open={mainWorkflowOpen} onOpenChange={setMainWorkflowOpen}>
+                            <div className="mb-4 text-left">
+                                <CollapsibleTrigger className="w-full flex items-center justify-between hover:bg-gray-50 p-2 rounded">
+                                    <h3 className="text-lg font-semibold">Workflow Synthesis</h3>
+                                    {mainWorkflowOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                </CollapsibleTrigger>
+                                
+                                <CollapsibleContent>
+                                    <div className="mt-4">
+                                        <Stepper logic={logic} />
+                                    </div>
+                                </CollapsibleContent>
+                            </div>
+                        </Collapsible>
+                    </CardContent>
+                </Card>
             </div>
             
             {/* Saved Syntheses Section */}
-            <SavedSynthesesSection userId={userId} triggerRefresh={refreshTrigger} />
+            <SavedSynthesesSection userId={userId} />
         </div>
     );
 } 
