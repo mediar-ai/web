@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useState, useEffect, use, useCallback, useMemo } from "react";
 import type { LowLevelEvent } from "@/types";
 import { getSharedEventsStorage } from '@/lib/sharedEventsStorage';
+import { getSharedAnalysisStorage } from '@/lib/sharedAnalysisStorage';
 import { generateSimplifiedUiTreeString } from '@/lib/uiTreeUtils';
 import UITreeTimeline from "@/components/low-level/UITreeTimeline";
 import FormattedUITree from "@/components/low-level/FormattedUITree";
@@ -124,7 +125,9 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const { setUserId } = useUser();
   const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
   const [usingCachedData, setUsingCachedData] = useState(false);
+  const [usingCachedAnalyses, setUsingCachedAnalyses] = useState(false);
   const sharedStorage = getSharedEventsStorage(userId);
+  const analysisStorage = getSharedAnalysisStorage(userId);
   const [selectedEvent, setSelectedEvent] = useState<LowLevelEvent | null>(null);
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const [openContextGroupItems, setOpenContextGroupItems] = useState<string[]>([]);
@@ -278,18 +281,62 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const fetchAllWorkflowAnalyses = useCallback(async () => {
     if (!userId) return;
     try {
+      // First, try to load from IndexedDB cache
+      const cachedData = await analysisStorage.getCachedAnalyses(300, 0);
+      
+      if (cachedData.analyses.length > 0) {
+        console.log(`[Steps] Loaded ${cachedData.analyses.length} analyses from IndexedDB cache`);
+        setAllWorkflowAnalyses(cachedData.analyses);
+        setUsingCachedAnalyses(true);
+        return; // Skip API call if we have cached data
+      }
+      
+      // Fallback to API if no cached data
+      console.log('[Steps] No cached analyses found, fetching from API');
+      setUsingCachedAnalyses(false);
       const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch workflow analyses');
       }
       const data = await response.json();
-      // The API now returns flattened analyses for backward compatibility
       const analyses: WorkflowStepAnalysis[] = data.analyses || [];
       setAllWorkflowAnalyses(analyses);
+      
+      // Save to cache for future use
+      if (analyses.length > 0) {
+        await analysisStorage.saveAnalyses(analyses);
+        console.log(`[Steps] Saved ${analyses.length} analyses to IndexedDB for future use`);
+      }
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [userId]);
+  }, [userId, analysisStorage]);
+
+  const forceRefreshAnalyses = useCallback(async () => {
+    if (!userId) return;
+    setUsingCachedAnalyses(false);
+    
+    try {
+      console.log('[Steps] Force refreshing analyses from API');
+      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch workflow analyses');
+      }
+      const data = await response.json();
+      const analyses: WorkflowStepAnalysis[] = data.analyses || [];
+      setAllWorkflowAnalyses(analyses);
+      
+      // Update cache with fresh data
+      if (analyses.length > 0) {
+        await analysisStorage.saveAnalyses(analyses);
+        console.log(`[Steps] Updated cache with ${analyses.length} fresh analyses`);
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [userId, analysisStorage]);
 
   useEffect(() => {
     setUserId(userId);
@@ -369,11 +416,14 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         const data = await response.json();
         setPendingJobCount(data.pendingCount || 0);
         
-        // To avoid re-fetching all analyses, we can just update the count
-        // if it's different from the length of our current analyses array.
-        // A more robust solution might merge new analyses, but this is efficient.
+        // Check if we need to refresh analyses
         if (data.processedCount !== allWorkflowAnalyses.length) {
-            fetchAllWorkflowAnalyses();
+          if (usingCachedAnalyses) {
+            // If using cached data, force refresh from API to get latest analyses
+            console.log('[Steps] New analyses detected, forcing refresh from API');
+            setUsingCachedAnalyses(false);
+          }
+          fetchAllWorkflowAnalyses();
         }
 
       } catch (e) {
@@ -386,7 +436,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     const interval = setInterval(fetchStatus, 5000);
 
     return () => clearInterval(interval);
-  }, [userId, allWorkflowAnalyses.length, fetchAllWorkflowAnalyses]);
+  }, [userId, allWorkflowAnalyses.length, fetchAllWorkflowAnalyses, usingCachedAnalyses]);
 
   const loadMoreEvents = async (amount: number) => {
     if (!hasMore || isLoadingMore || !userId) return;
@@ -851,13 +901,26 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">Processed:</span>
             <span className="font-semibold">{processedStepsCount}</span>
+            {usingCachedAnalyses && (
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                Cached
+              </Badge>
+            )}
           </div>
           <div className="flex-grow" />
-          {hasMore && (
-            <Button variant="outline" size="sm" onClick={() => setIsLoadMoreModalOpen(true)} disabled={isLoadingMore}>
-              {isLoadingMore ? 'Loading...' : 'Load More'}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {hasMore && (
+              <Button variant="outline" size="sm" onClick={() => setIsLoadMoreModalOpen(true)} disabled={isLoadingMore}>
+                {isLoadingMore ? 'Loading...' : 'Load More'}
+              </Button>
+            )}
+            {usingCachedAnalyses && (
+              <Button variant="outline" size="sm" onClick={forceRefreshAnalyses}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh Analyses
+              </Button>
+            )}
+          </div>
           {pendingJobCount > 0 ? (
             <Badge variant="outline">
               <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
