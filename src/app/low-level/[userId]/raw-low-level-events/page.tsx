@@ -126,17 +126,22 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         await storageRef.current.init();
         console.log('[RawEvents] IndexedDB initialized');
         
-        // Load events from IndexedDB on initial load
-        const storedEvents = await storageRef.current.loadEvents(1000);
-        if (storedEvents.length > 0) {
-          const sortedEvents = storedEvents.sort((a, b) => {
-            const dateA = new Date(a.created_at).getTime();
-            const dateB = new Date(b.created_at).getTime();
-            return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
-          });
-          setEvents(sortedEvents);
-          previousEventsRef.current = sortedEvents;
-          console.log(`[RawEvents] Loaded ${storedEvents.length} events from IndexedDB`);
+        // Load events from IndexedDB on initial load (only if no events loaded yet)
+        if (events.length === 0 && loading) {
+          const storedEvents = await storageRef.current.loadEvents(1000);
+          if (storedEvents.length > 0) {
+            const sortedEvents = storedEvents.sort((a, b) => {
+              const dateA = new Date(a.created_at).getTime();
+              const dateB = new Date(b.created_at).getTime();
+              return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+            });
+            setEvents(sortedEvents);
+            previousEventsRef.current = sortedEvents;
+            console.log(`[RawEvents] Loaded ${storedEvents.length} events from IndexedDB`);
+            
+            // Set loading to false since we have cached data
+            setLoading(false);
+          }
         }
         
         // Update storage info
@@ -148,7 +153,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     };
 
     initStorage();
-  }, [sortOrder]);
+  }, [sortOrder, events.length, loading]);
 
   // Update storage info periodically
   useEffect(() => {
@@ -208,6 +213,21 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
             });
             // Keep flag true - don't reset to false, stay in cleared mode
             previousEventsRef.current = [...newEvents, ...previousEventsRef.current];
+            
+            // Save new events to IndexedDB even in cleared view mode
+            try {
+              if (newEvents.length > 0) {
+                await storageRef.current.saveEvents(newEvents);
+                console.log(`[RawEvents] Saved ${newEvents.length} new events to IndexedDB (cleared view mode)`);
+                
+                // Update storage info
+                const info = await storageRef.current.getStorageInfo();
+                setStorageInfo(info);
+              }
+            } catch (error) {
+              console.error('[RawEvents] Failed to save events to IndexedDB:', error);
+            }
+            
             return; // Don't execute the normal setEvents below
           }
         } else if (viewClearedRef.current) {
@@ -218,10 +238,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       
       // Update the ref with current events for next comparison (only if not in cleared view mode)
       if (!viewClearedRef.current) {
-        previousEventsRef.current = sortedEvents;
-        setEvents(sortedEvents);
-        
-        // Save new events to IndexedDB
+        // Save new events to IndexedDB before updating refs
         try {
           const existingEventIds = new Set(previousEventsRef.current.map(e => e.id));
           const newEventsToStore = sortedEvents.filter(e => !existingEventIds.has(e.id));
@@ -237,6 +254,9 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         } catch (error) {
           console.error('[RawEvents] Failed to save events to IndexedDB:', error);
         }
+        
+        previousEventsRef.current = sortedEvents;
+        setEvents(sortedEvents);
       }
       setSessionCount(data.sessionCount);
     } catch (err) {
@@ -392,8 +412,12 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       setExpandedEvents({});
       setNewEventIds(new Set());
       previousEventsRef.current = [];
+      viewClearedRef.current = false; // Reset cleared view flag
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
       console.log('[RawEvents] Cleared IndexedDB storage');
+      
+      // Trigger a fresh fetch after clearing
+      fetchRawEvents(false);
     } catch (error) {
       console.error('[RawEvents] Failed to clear IndexedDB:', error);
     }
