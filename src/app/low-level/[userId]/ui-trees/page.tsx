@@ -2,9 +2,11 @@
 
 import { useEffect, useState, use, useCallback, useMemo } from 'react';
 import { type LowLevelEvent } from '@/types';
+import { getSharedEventsStorage } from '@/lib/sharedEventsStorage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -58,12 +60,14 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   const [events, setEvents] = useState<UITreeEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [usingCachedData, setUsingCachedData] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [selectedEvent, setSelectedEvent] = useState<UITreeEvent | null>(null);
   const [diffMode, setDiffMode] = useState<'raw' | 'previous' | 'next'>('raw');
   const [isCopied, setIsCopied] = useState(false);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const { userId } = use(params);
+  const sharedStorage = getSharedEventsStorage(userId);
 
   const SORT_ORDER_STORAGE_KEY = `ui-trees-sort-order-${userId}`;
 
@@ -83,18 +87,67 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
     setLoading(true);
     setError(null);
     try {
+      // First, try to load UI tree events from IndexedDB cache
+      const cachedData = await sharedStorage.getCachedEvents(50, 0, true); // Get UI tree events only
+      
+      if (cachedData.events.length > 0) {
+        console.log(`[UI Trees] Loaded ${cachedData.events.length} UI tree events from IndexedDB cache`);
+        setEvents(cachedData.events as UITreeEvent[]);
+        setUsingCachedData(true);
+        setLoading(false);
+        return; // Skip API call if we have cached data
+      }
+      
+      // Fallback to API if no cached data
+      console.log('[UI Trees] No cached data found, fetching from API');
+      setUsingCachedData(false);
       const response = await fetch(`/api/low-level/${userId}/ui-trees`);
       if (!response.ok) {
         throw new Error('Failed to fetch UI tree events');
       }
       const data = await response.json();
       setEvents(data.events);
+      
+      // Save to cache for future use (if shared storage has events, these might be duplicates but that's ok)
+      if (data.events && data.events.length > 0) {
+        await sharedStorage.saveEvents(data.events);
+        console.log(`[UI Trees] Saved ${data.events.length} UI tree events to IndexedDB for future use`);
+      }
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, sharedStorage]);
+
+  const forceRefreshFromAPI = useCallback(async () => {
+    if (!userId) return;
+    setLoading(true);
+    setError(null);
+    setUsingCachedData(false);
+    
+    try {
+      console.log('[UI Trees] Force refreshing from API');
+      const response = await fetch(`/api/low-level/${userId}/ui-trees`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch UI tree events');
+      }
+      const data = await response.json();
+      setEvents(data.events);
+      
+      // Update cache with fresh data
+      if (data.events && data.events.length > 0) {
+        await sharedStorage.saveEvents(data.events);
+        console.log(`[UI Trees] Updated cache with ${data.events.length} fresh UI tree events`);
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, sharedStorage]);
 
   useEffect(() => {
     fetchUITrees();
@@ -226,12 +279,25 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   return (
     <div>
       <div className="flex items-center justify-between py-2 border-b mb-2">
-        <Button variant="outline" size="sm" onClick={toggleSortOrder}>
-          {sortOrder === 'desc' ? <ArrowDown className="h-4 w-4 mr-2" /> : <ArrowUp className="h-4 w-4 mr-2" />}
-          Sort Events
-        </Button>
-        <div className="text-sm text-muted-foreground">
-          Total Trees: {events.length}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={toggleSortOrder}>
+            {sortOrder === 'desc' ? <ArrowDown className="h-4 w-4 mr-2" /> : <ArrowUp className="h-4 w-4 mr-2" />}
+            Sort Events
+          </Button>
+          {usingCachedData && (
+            <Button variant="outline" size="sm" onClick={forceRefreshFromAPI} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          )}
+        </div>
+        <div className="text-sm text-muted-foreground flex items-center gap-2">
+          <span>Total Trees: {events.length}</span>
+          {usingCachedData && (
+            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+              IndexedDB
+            </Badge>
+          )}
         </div>
       </div>
       
