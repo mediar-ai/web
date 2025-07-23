@@ -68,6 +68,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [totalAvailable, setTotalAvailable] = useState<number | null>(null);
   const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
   const [memoryUsage, setMemoryUsage] = useState(0);
+  const [loadAllProgress, setLoadAllProgress] = useState<{ loaded: number; total: number } | null>(null);
   
   const viewClearedRef = useRef(false);
   const { userId } = use(params);
@@ -428,6 +429,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     setHasMoreData(true);
     setAutoLoadingComplete(false);
     setMemoryUsage(0);
+    setLoadAllProgress(null);
     viewClearedRef.current = true;
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
   };
@@ -447,6 +449,70 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       setHasMoreData(result.hasMore);
     } else {
       setHasMoreData(false);
+    }
+  };
+
+  const loadAllEvents = async () => {
+    if (!hasMoreData || loadingMore) return;
+    
+    // Calculate how many events remain
+    const remainingEvents = totalAvailable ? totalAvailable - events.length : 0;
+    
+    // Warn user about large datasets
+    if (remainingEvents > 10000) {
+      const confirmed = window.confirm(
+        `This will load ${remainingEvents.toLocaleString()} more events, which may take some time and use significant memory. Continue?`
+      );
+      if (!confirmed) return;
+    }
+    
+    setLoadingMore(true);
+    setError(null);
+    setLoadAllProgress({ loaded: 0, total: remainingEvents });
+    
+    try {
+      let currentOffsetValue = currentOffset;
+      let hasMore: boolean = hasMoreData;
+      let totalLoaded = 0;
+      
+      while (hasMore) {
+        // Check memory limit before each chunk
+        const currentMemoryMB = memoryUsage / (1024 * 1024);
+        if (currentMemoryMB >= MAX_MEMORY_MB) {
+          setError(`Memory limit reached (${MAX_MEMORY_MB}MB). Loaded ${totalLoaded.toLocaleString()} additional events.`);
+          break;
+        }
+        
+        // Load in chunks of 1000 for better performance
+        const chunkSize = Math.min(1000, remainingEvents - totalLoaded);
+        const result = await fetchRawEvents(chunkSize, currentOffsetValue, false, true);
+        
+        if (result.events.length === 0) {
+          hasMore = false;
+          break;
+        }
+        
+        totalLoaded += result.events.length;
+        currentOffsetValue += result.events.length;
+        hasMore = result.hasMore;
+        
+        setCurrentOffset(currentOffsetValue);
+        setHasMoreData(hasMore);
+        setLoadAllProgress({ loaded: totalLoaded, total: remainingEvents });
+        
+        // Small delay to prevent UI blocking and allow progress updates
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      if (!hasMore) {
+        setHasMoreData(false);
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load all events');
+    } finally {
+      setLoadingMore(false);
+      setLoadAllProgress(null);
     }
   };
 
@@ -567,24 +633,54 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           Copy All as JSON
         </Button>
         {autoLoadingComplete && hasMoreData && (
-          <Button 
-            variant="default" 
-            size="sm" 
-            onClick={loadMoreEvents} 
-            disabled={loadingMore || memoryUsage >= MAX_MEMORY_MB * 1024 * 1024}
-          >
-            {loadingMore ? (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Loading...
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                Load {MANUAL_LOAD_CHUNK_SIZE.toLocaleString()} More
-              </>
-            )}
-          </Button>
+          <>
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={loadMoreEvents} 
+              disabled={loadingMore || memoryUsage >= MAX_MEMORY_MB * 1024 * 1024}
+            >
+              {loadingMore ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Load {MANUAL_LOAD_CHUNK_SIZE.toLocaleString()} More
+                </>
+              )}
+            </Button>
+                         <Button 
+               variant="outline" 
+               size="sm" 
+               onClick={loadAllEvents} 
+               disabled={loadingMore || memoryUsage >= MAX_MEMORY_MB * 1024 * 1024}
+             >
+               {loadingMore && loadAllProgress ? (
+                 <>
+                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                   Loading All... ({loadAllProgress.loaded.toLocaleString()}/{loadAllProgress.total.toLocaleString()})
+                 </>
+               ) : loadingMore ? (
+                 <>
+                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                   Loading All...
+                 </>
+               ) : (
+                 <>
+                   <Download className="h-4 w-4 mr-2" />
+                   Load All
+                   {totalAvailable && events.length < totalAvailable && (
+                     <span className="ml-1 text-xs">
+                       ({(totalAvailable - events.length).toLocaleString()} more)
+                     </span>
+                   )}
+                 </>
+               )}
+             </Button>
+          </>
         )}
       </div>
       
@@ -686,6 +782,27 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         <p>
             {events.length > 0 ? "No events match your search." : "No low-level events found for this user."}
         </p>
+      )}
+
+      {loadAllProgress && (
+        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-blue-800">
+              Loading all events...
+            </span>
+            <span className="text-sm text-blue-600">
+              {loadAllProgress.loaded.toLocaleString()} / {loadAllProgress.total.toLocaleString()}
+            </span>
+          </div>
+          <div className="w-full bg-blue-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ 
+                width: `${Math.min((loadAllProgress.loaded / loadAllProgress.total) * 100, 100)}%` 
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {autoLoadingComplete && !hasMoreData && events.length > 0 && (
