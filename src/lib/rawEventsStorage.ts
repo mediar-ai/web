@@ -303,17 +303,81 @@ export class RawEventsStorage {
   async clearAllEvents(): Promise<void> {
     if (!this.db) return;
 
-    const transaction = this.db.transaction([EVENTS_STORE, METADATA_STORE], 'readwrite');
-    
-    // Clear events for this user only
-    const eventsStore = transaction.objectStore(EVENTS_STORE);
-    const events = await this.getEventsSortedByAge();
-    const deletePromises = events.map(event => this.deleteFromStore(eventsStore, event.id));
-    await Promise.all(deletePromises);
+    try {
+      console.log('[RawEventsStorage] Starting to clear all events...');
+      
+      // First, get all events for this user (this creates its own transaction)
+      const events = await this.getEventsSortedByAge();
+      console.log(`[RawEventsStorage] Found ${events.length} events to delete`);
 
-    // Reset metadata
-    const metadataStore = transaction.objectStore(METADATA_STORE);
-    await this.deleteFromStore(metadataStore, `storage_${this.userId}`);
+      if (events.length === 0) {
+        // Still need to clear metadata even if no events
+        const metadataTransaction = this.db.transaction([METADATA_STORE], 'readwrite');
+        const metadataStore = metadataTransaction.objectStore(METADATA_STORE);
+        await this.deleteFromStore(metadataStore, `storage_${this.userId}`);
+        console.log('[RawEventsStorage] Cleared metadata (no events to delete)');
+        return;
+      }
+
+      // Now create a new transaction to delete events and metadata
+      const deleteTransaction = this.db.transaction([EVENTS_STORE, METADATA_STORE], 'readwrite');
+      const eventsStore = deleteTransaction.objectStore(EVENTS_STORE);
+      const metadataStore = deleteTransaction.objectStore(METADATA_STORE);
+
+      // Delete all events
+      const deletePromises = events.map(event => this.deleteFromStore(eventsStore, event.id));
+      await Promise.all(deletePromises);
+
+      // Reset metadata
+      await this.deleteFromStore(metadataStore, `storage_${this.userId}`);
+      
+      console.log(`[RawEventsStorage] Successfully cleared ${events.length} events and metadata`);
+    } catch (error) {
+      console.error('[RawEventsStorage] Failed to clear events:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Nuclear option: completely delete the IndexedDB database
+   * This handles cross-tab scenarios and corrupted transactions
+   */
+  async clearAll(): Promise<void> {
+    try {
+      console.log('[RawEventsStorage] Completely deleting IndexedDB database...');
+      
+      // Close current connection
+      if (this.db) {
+        this.db.close();
+        this.db = null;
+      }
+
+      // Delete the entire database
+      const deleteRequest = indexedDB.deleteDatabase(DB_NAME);
+      
+      await new Promise<void>((resolve, reject) => {
+        deleteRequest.onsuccess = () => {
+          console.log('[RawEventsStorage] ✅ IndexedDB database completely deleted!');
+          resolve();
+        };
+        deleteRequest.onerror = () => {
+          console.error('[RawEventsStorage] ❌ Failed to delete IndexedDB:', deleteRequest.error);
+          reject(deleteRequest.error);
+        };
+        deleteRequest.onblocked = () => {
+          console.log('[RawEventsStorage] 🚫 Database deletion blocked - other tabs may be open');
+          // Continue anyway after a short delay
+          setTimeout(() => resolve(), 2000);
+        };
+      });
+
+      // Reinitialize the database
+      await this.init();
+      
+    } catch (error) {
+      console.error('[RawEventsStorage] ❌ Error during complete database deletion:', error);
+      throw error;
+    }
   }
 
   // Helper methods for promise-based IndexedDB operations
