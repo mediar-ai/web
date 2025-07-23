@@ -123,7 +123,8 @@ const getEventTitle = (event: LowLevelEvent) => {
 export default function LlmIterationPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = use(params);
   const { setUserId } = useUser();
-  const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
+  const [displayEvents, setDisplayEvents] = useState<LowLevelEvent[]>([]);
+  const [displayAnalyses, setDisplayAnalyses] = useState<WorkflowStepAnalysis[]>([]);
   const [usingCachedData, setUsingCachedData] = useState(false);
   const [usingCachedAnalyses, setUsingCachedAnalyses] = useState(false);
   const sharedStorage = getSharedEventsStorage(userId);
@@ -138,7 +139,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro'); // 🔥 Updated to stable Vertex AI model name
-  const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
+  const [currentDisplayLimit, setCurrentDisplayLimit] = useState(1000);
   const [pendingJobCount, setPendingJobCount] = useState(0);
   const [rawLlmInputForDisplay, setRawLlmInputForDisplay] = useState<string | null>(null);
   const [totalEventCount, setTotalEventCount] = useState<number>(0);
@@ -344,6 +345,32 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     }
   }, [userId, analysisStorage]);
 
+  // Load events for display from IndexedDB (single source of truth)
+  const loadEventsForDisplay = useCallback(async (limit: number = 1000) => {
+    try {
+      const cachedData = await sharedStorage.getCachedEvents(limit, 0, false);
+      setDisplayEvents(cachedData.events);
+      setUsingCachedData(cachedData.events.length > 0);
+      console.log(`[Steps] Loaded ${cachedData.events.length} events for display from IndexedDB`);
+    } catch (error) {
+      console.error('[Steps] Failed to load events for display:', error);
+      setDisplayEvents([]);
+    }
+  }, [sharedStorage]);
+
+  // Load analyses for display from IndexedDB (single source of truth)  
+  const loadAnalysesForDisplay = useCallback(async (limit: number = 1000) => {
+    try {
+      const cachedData = await analysisStorage.getCachedAnalyses(limit, 0);
+      setDisplayAnalyses(cachedData.analyses);
+      setUsingCachedAnalyses(cachedData.analyses.length > 0);
+      console.log(`[Steps] Loaded ${cachedData.analyses.length} analyses for display from IndexedDB`);
+    } catch (error) {
+      console.error('[Steps] Failed to load analyses for display:', error);
+      setDisplayAnalyses([]);
+    }
+  }, [analysisStorage]);
+
   const forceRefreshAnalyses = useCallback(async () => {
     if (!userId) return;
     setUsingCachedAnalyses(false);
@@ -379,8 +406,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         const cachedData = await sharedStorage.getCachedEvents(1000, 0, false); // Get all events (ui_tree, screenshot_diff, etc.)
         
         if (cachedData.events.length > 0) {
-          console.log(`[Steps] Loaded ${cachedData.events.length} events from IndexedDB cache`);
-          setAllEvents(cachedData.events);
+          console.log(`[Steps] Found ${cachedData.events.length} events in IndexedDB cache`);
           setUsingCachedData(true);
           setHasMore(cachedData.hasMore);
           setOffset(cachedData.events.length);
@@ -395,6 +421,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           ).length;
           setTotalStepsCount(uiTreeCount);
           
+          // Load events for display
+          await loadEventsForDisplay(currentDisplayLimit);
           setLoading(false);
           
           // Continue to check for new events in background
