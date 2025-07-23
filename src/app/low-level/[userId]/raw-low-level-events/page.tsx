@@ -5,7 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { JsonBlock } from '@/components/ui/code-block';
-import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown, Database, HardDrive } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
+import { getRawEventsStorage } from '@/lib/rawEventsStorage';
 
 
 const Clock = () => {
@@ -46,7 +47,15 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [copiedEventId, setCopiedEventId] = useState<number | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [newEventIds, setNewEventIds] = useState<Set<number>>(new Set());
+  const [storageInfo, setStorageInfo] = useState<{
+    totalSize: number;
+    eventCount: number;
+    maxSize: number;
+    usagePercentage: number;
+  } | null>(null);
+  const [isStorageOpen, setIsStorageOpen] = useState(false);
   const viewClearedRef = useRef(false);
+  const storageRef = useRef(getRawEventsStorage(use(params).userId));
   const { userId } = use(params);
 
   const LOCAL_STORAGE_KEY = `low-level-viewer-expanded-events-${userId}`;
@@ -110,6 +119,52 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   // Use ref to store previous events for comparison during polling
   const previousEventsRef = useRef<LowLevelEvent[]>([]);
   
+  // Initialize IndexedDB storage
+  useEffect(() => {
+    const initStorage = async () => {
+      try {
+        await storageRef.current.init();
+        console.log('[RawEvents] IndexedDB initialized');
+        
+        // Load events from IndexedDB on initial load
+        const storedEvents = await storageRef.current.loadEvents(1000);
+        if (storedEvents.length > 0) {
+          const sortedEvents = storedEvents.sort((a, b) => {
+            const dateA = new Date(a.created_at).getTime();
+            const dateB = new Date(b.created_at).getTime();
+            return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+          });
+          setEvents(sortedEvents);
+          previousEventsRef.current = sortedEvents;
+          console.log(`[RawEvents] Loaded ${storedEvents.length} events from IndexedDB`);
+        }
+        
+        // Update storage info
+        const info = await storageRef.current.getStorageInfo();
+        setStorageInfo(info);
+      } catch (error) {
+        console.error('[RawEvents] Failed to initialize IndexedDB:', error);
+      }
+    };
+
+    initStorage();
+  }, [sortOrder]);
+
+  // Update storage info periodically
+  useEffect(() => {
+    const updateStorageInfo = async () => {
+      try {
+        const info = await storageRef.current.getStorageInfo();
+        setStorageInfo(info);
+      } catch (error) {
+        console.error('[RawEvents] Failed to update storage info:', error);
+      }
+    };
+
+    const interval = setInterval(updateStorageInfo, 10000); // Update every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+  
   const fetchRawEvents = useCallback(async (isPollingUpdate = false) => {
     if (!userId) return;
     if (!isPollingUpdate) {
@@ -164,7 +219,24 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       // Update the ref with current events for next comparison (only if not in cleared view mode)
       if (!viewClearedRef.current) {
         previousEventsRef.current = sortedEvents;
-      setEvents(sortedEvents);
+        setEvents(sortedEvents);
+        
+        // Save new events to IndexedDB
+        try {
+          const existingEventIds = new Set(previousEventsRef.current.map(e => e.id));
+          const newEventsToStore = sortedEvents.filter(e => !existingEventIds.has(e.id));
+          
+          if (newEventsToStore.length > 0) {
+            await storageRef.current.saveEvents(newEventsToStore);
+            console.log(`[RawEvents] Saved ${newEventsToStore.length} new events to IndexedDB`);
+            
+            // Update storage info
+            const info = await storageRef.current.getStorageInfo();
+            setStorageInfo(info);
+          }
+        } catch (error) {
+          console.error('[RawEvents] Failed to save events to IndexedDB:', error);
+        }
       }
       setSessionCount(data.sessionCount);
     } catch (err) {
@@ -308,7 +380,23 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     setExpandedEvents({});
     setNewEventIds(new Set());
     viewClearedRef.current = true;
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
+  };
+
+  const clearIndexedDB = async () => {
+    try {
+      await storageRef.current.clearAllEvents();
+      const info = await storageRef.current.getStorageInfo();
+      setStorageInfo(info);
+      setEvents([]);
+      setExpandedEvents({});
+      setNewEventIds(new Set());
+      previousEventsRef.current = [];
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({}));
+      console.log('[RawEvents] Cleared IndexedDB storage');
+    } catch (error) {
+      console.error('[RawEvents] Failed to clear IndexedDB:', error);
+    }
   };
 
   const eventStats = useMemo(() => {
@@ -362,6 +450,18 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           )}
         </div>
 
+        {storageInfo && (
+          <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-md">
+            <Database className="h-4 w-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">
+              {storageInfo.eventCount} cached
+            </span>
+            <span className="text-xs text-blue-600">
+              ({(storageInfo.totalSize / 1024 / 1024).toFixed(1)}MB)
+            </span>
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           <Input
             type="text"
@@ -395,6 +495,12 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         <Button variant="black-outline" size="sm" onClick={expandAll}>Expand All</Button>
         <Button variant="black-outline" size="sm" onClick={collapseAll}>Collapse All</Button>
         <Button variant="black-outline" size="sm" onClick={clearView}>Clear View</Button>
+        <Button variant="black-outline" size="sm" onClick={clearIndexedDB} title="Clear IndexedDB storage">
+          <Database className="h-4 w-4" />
+        </Button>
+        <Button variant="black-outline" size="sm" onClick={() => setIsStorageOpen(!isStorageOpen)} title="Storage info">
+          <HardDrive className="h-4 w-4" />
+        </Button>
         <Button variant="black-outline" size="sm" onClick={handleCopyAllEvents} disabled={events.length === 0}>
           Copy All as JSON
         </Button>
@@ -471,6 +577,73 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
             </motion.div>
                 )}
             </AnimatePresence>
+        </Card>
+      )}
+
+      {storageInfo && (
+        <Card className="mb-2">
+          <CardHeader className="p-2 bg-gray-50 border-b flex flex-row justify-between items-center cursor-pointer" onClick={() => setIsStorageOpen(!isStorageOpen)}>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Database className="h-4 w-4" />
+              IndexedDB Storage
+            </CardTitle>
+            {isStorageOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </CardHeader>
+          <AnimatePresence>
+            {isStorageOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <CardContent className="p-2 space-y-2">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <div className="text-gray-600">Stored Events:</div>
+                      <div className="font-medium">{storageInfo.eventCount.toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-600">Storage Used:</div>
+                      <div className="font-medium">{(storageInfo.totalSize / 1024 / 1024).toFixed(2)} MB</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-600">Storage Limit:</div>
+                      <div className="font-medium">{(storageInfo.maxSize / 1024 / 1024).toFixed(0)} MB</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-600">Usage:</div>
+                      <div className="font-medium">{storageInfo.usagePercentage.toFixed(1)}%</div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3">
+                    <div className="flex justify-between text-xs text-gray-600 mb-1">
+                      <span>Storage Usage</span>
+                      <span>{storageInfo.usagePercentage.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          storageInfo.usagePercentage > 90 ? 'bg-red-500' :
+                          storageInfo.usagePercentage > 70 ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${Math.min(storageInfo.usagePercentage, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2 border-t border-gray-200">
+                    <p className="text-xs text-gray-600">
+                      Events are automatically cached for offline access. 
+                      Oldest events are removed when storage reaches 90% capacity.
+                    </p>
+                  </div>
+                </CardContent>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </Card>
       )}
 
