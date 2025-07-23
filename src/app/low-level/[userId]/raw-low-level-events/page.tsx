@@ -5,7 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { JsonBlock } from '@/components/ui/code-block';
-import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown, Database, HardDrive } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown, Database, HardDrive, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -20,6 +20,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getRawEventsStorage } from '@/lib/rawEventsStorage';
 
+// Helper function to estimate memory usage of events data
+const estimateMemoryUsage = (events: LowLevelEvent[]): number => {
+  const jsonString = JSON.stringify(events);
+  return new Blob([jsonString]).size;
+};
+
+// Helper function to format bytes
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
 const Clock = () => {
     const [time, setTime] = useState<Date | null>(null);
@@ -37,6 +51,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
   const [sessionCount, setSessionCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
@@ -47,6 +62,8 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const [copiedEventId, setCopiedEventId] = useState<number | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [newEventIds, setNewEventIds] = useState<Set<number>>(new Set());
+  
+  // IndexedDB storage state
   const [storageInfo, setStorageInfo] = useState<{
     totalSize: number;
     eventCount: number;
@@ -54,9 +71,25 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     usagePercentage: number;
   } | null>(null);
   const [isStorageOpen, setIsStorageOpen] = useState(false);
+  
+  // Progressive loading state
+  const [currentOffset, setCurrentOffset] = useState(0);
+  const [hasMoreData, setHasMoreData] = useState(true);
+  const [totalAvailable, setTotalAvailable] = useState<number | null>(null);
+  const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
+  const [memoryUsage, setMemoryUsage] = useState(0);
+  const [loadAllProgress, setLoadAllProgress] = useState<{ loaded: number; total: number } | null>(null);
+  
   const viewClearedRef = useRef(false);
   const storageRef = useRef(getRawEventsStorage(use(params).userId));
   const { userId } = use(params);
+
+  // Configuration constants
+  const INITIAL_CHUNK_SIZE = 100;
+  const AUTO_LOAD_CHUNK_SIZE = 100;
+  const AUTO_LOAD_LIMIT = 1000; // Auto-load up to 1000 records
+  const MANUAL_LOAD_CHUNK_SIZE = 1000;
+  const MAX_MEMORY_MB = 50; // Cap at 50MB
 
   const LOCAL_STORAGE_KEY = `low-level-viewer-expanded-events-${userId}`;
   const SUMMARY_OPEN_STORAGE_KEY = `raw-events-summary-open-${userId}`;
@@ -70,6 +103,12 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   const getEventTimestamp = useCallback((event: LowLevelEvent): string => {
     return new Date(event.created_at).toLocaleString();
   }, []);
+
+  // Update memory usage when events change
+  useEffect(() => {
+    const usage = estimateMemoryUsage(events);
+    setMemoryUsage(usage);
+  }, [events]);
 
   useEffect(() => {
     try {
@@ -170,21 +209,33 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     return () => clearInterval(interval);
   }, []);
   
-  const fetchRawEvents = useCallback(async (isPollingUpdate = false) => {
-    if (!userId) return;
-    if (!isPollingUpdate) {
-    setLoading(true);
+  const fetchRawEvents = useCallback(async (
+    limit: number, 
+    offset: number = 0, 
+    isPollingUpdate = false, 
+    isLoadMore = false
+  ) => {
+    if (!userId) return { events: [], hasMore: false };
+    
+    if (!isPollingUpdate && !isLoadMore) {
+      setLoading(true);
+    } else if (isLoadMore) {
+      setLoadingMore(true);
     }
+    
     setError(null);
+    
     try {
-      let url = `/api/low-level/${userId}?limit=1000`;
+      let url = `/api/low-level/${userId}?limit=${limit}&offset=${offset}`;
       if (selectedEventType && selectedEventType !== 'all') {
         url += `&eventType=${selectedEventType}`;
       }
+      
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch raw events');
       }
+      
       const data = await response.json();
       const sortedEvents = data.events.sort((a: LowLevelEvent, b: LowLevelEvent) => {
         const dateA = new Date(a.created_at).getTime();
@@ -192,7 +243,15 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
       });
       
-      // If this is a polling update, detect new events
+      // Update session count and total available count
+      if (data.sessionCount !== undefined) {
+        setSessionCount(data.sessionCount);
+      }
+      if (data.totalEventCount !== undefined) {
+        setTotalAvailable(data.totalEventCount);
+      }
+      
+      // Handle polling updates for new events
       if (isPollingUpdate && previousEventsRef.current.length > 0) {
         const existingEventIds = new Set(previousEventsRef.current.map((e: LowLevelEvent) => e.id));
         const newEvents = sortedEvents.filter((e: LowLevelEvent) => !existingEventIds.has(e.id));
@@ -201,7 +260,6 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           const newIds = new Set<number>(newEvents.map((e: LowLevelEvent) => e.id));
           setNewEventIds(newIds);
           
-          // If view was cleared, only add new events, don't reload all events
           if (viewClearedRef.current) {
             setEvents(prevEvents => {
               const combined = [...newEvents, ...prevEvents];
@@ -211,7 +269,6 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                 return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
               });
             });
-            // Keep flag true - don't reset to false, stay in cleared mode
             previousEventsRef.current = [...newEvents, ...previousEventsRef.current];
             
             // Save new events to IndexedDB even in cleared view mode
@@ -228,16 +285,45 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
               console.error('[RawEvents] Failed to save events to IndexedDB:', error);
             }
             
-            return; // Don't execute the normal setEvents below
+            return { events: newEvents, hasMore: data.hasMore };
           }
         } else if (viewClearedRef.current) {
-          // No new events detected and view is cleared, don't reload old events
-          return;
+          return { events: [], hasMore: data.hasMore };
         }
       }
       
-      // Update the ref with current events for next comparison (only if not in cleared view mode)
-      if (!viewClearedRef.current) {
+      // Handle regular loading (initial or load more)
+      if (isLoadMore) {
+        setEvents(prevEvents => {
+          const existingIds = new Set(prevEvents.map(e => e.id));
+          const newUniqueEvents = sortedEvents.filter(e => !existingIds.has(e.id));
+          const combined = [...prevEvents, ...newUniqueEvents];
+          return combined.sort((a: LowLevelEvent, b: LowLevelEvent) => {
+            const dateA = new Date(a.created_at).getTime();
+            const dateB = new Date(b.created_at).getTime();
+            return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+          });
+        });
+        
+        // Save new events to IndexedDB
+        try {
+          const existingEventIds = new Set(previousEventsRef.current.map(e => e.id));
+          const newEventsToStore = sortedEvents.filter(e => !existingEventIds.has(e.id));
+          
+          if (newEventsToStore.length > 0) {
+            await storageRef.current.saveEvents(newEventsToStore);
+            console.log(`[RawEvents] Saved ${newEventsToStore.length} new events to IndexedDB (load more)`);
+            
+            // Update storage info
+            const info = await storageRef.current.getStorageInfo();
+            setStorageInfo(info);
+          }
+        } catch (error) {
+          console.error('[RawEvents] Failed to save events to IndexedDB:', error);
+        }
+      } else if (!isPollingUpdate && !viewClearedRef.current) {
+        // Initial load or refresh
+        
         // Save new events to IndexedDB before updating refs
         try {
           const existingEventIds = new Set(previousEventsRef.current.map(e => e.id));
@@ -258,31 +344,125 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         previousEventsRef.current = sortedEvents;
         setEvents(sortedEvents);
       }
-      setSessionCount(data.sessionCount);
+      
+      // Update refs and state
+      if (!viewClearedRef.current) {
+        previousEventsRef.current = events.length > 0 ? [...previousEventsRef.current, ...sortedEvents] : sortedEvents;
+      }
+      
+      setCurrentOffset(offset + sortedEvents.length);
+      setHasMoreData(data.hasMore || false);
+      
+      return { events: sortedEvents, hasMore: data.hasMore || false };
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      return { events: [], hasMore: false };
     } finally {
-      if (!isPollingUpdate) {
-      setLoading(false);
+      if (!isPollingUpdate && !isLoadMore) {
+        setLoading(false);
+      }
+      if (isLoadMore) {
+        setLoadingMore(false);
       }
     }
-  }, [userId, sortOrder, selectedEventType]);
+  }, [userId, sortOrder, selectedEventType, events.length]);
 
   // Initial fetch
   useEffect(() => {
-    fetchRawEvents();
+    const initialLoad = async () => {
+      const result = await fetchRawEvents(INITIAL_CHUNK_SIZE, 0);
+      
+      // Start auto-loading additional chunks up to the limit
+      if (result.hasMore && result.events.length < AUTO_LOAD_LIMIT) {
+        autoLoadMore(result.events.length);
+      } else {
+        setAutoLoadingComplete(true);
+      }
+    };
+    
+    initialLoad();
   }, [fetchRawEvents]);
 
-  // Live polling every 2 seconds
+  // Auto-load more data progressively
+  const autoLoadMore = useCallback(async (currentCount: number) => {
+    if (currentCount >= AUTO_LOAD_LIMIT) {
+      setAutoLoadingComplete(true);
+      return;
+    }
+    
+    const nextChunkSize = Math.min(AUTO_LOAD_CHUNK_SIZE, AUTO_LOAD_LIMIT - currentCount);
+    const result = await fetchRawEvents(nextChunkSize, currentCount, false, true);
+    
+    if (result.hasMore && (currentCount + result.events.length) < AUTO_LOAD_LIMIT) {
+      // Continue auto-loading with a small delay
+      setTimeout(() => autoLoadMore(currentCount + result.events.length), 100);
+    } else {
+      setAutoLoadingComplete(true);
+    }
+  }, [fetchRawEvents]);
+
+  // Live polling every 2 seconds (only poll the first chunk for new events)
   useEffect(() => {
     if (loading) return; // Don't start polling until initial load is complete
     
     const interval = setInterval(() => {
-      fetchRawEvents(true); // Pass true to indicate this is a polling update
+      fetchRawEvents(INITIAL_CHUNK_SIZE, 0, true); // Pass true to indicate this is a polling update
     }, 2000);
 
     return () => clearInterval(interval);
   }, [fetchRawEvents, loading]);
+
+  // Manual load more function
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMoreData) return;
+    
+    // Check memory limit before loading more
+    const currentMemoryMB = memoryUsage / (1024 * 1024);
+    if (currentMemoryMB > MAX_MEMORY_MB) {
+      alert(`Memory limit reached (${formatBytes(memoryUsage)}). Please use filters or clear the view to load more data.`);
+      return;
+    }
+    
+    await fetchRawEvents(MANUAL_LOAD_CHUNK_SIZE, currentOffset, false, true);
+  }, [fetchRawEvents, currentOffset, loadingMore, hasMoreData, memoryUsage]);
+
+  // Load all remaining data
+  const loadAll = useCallback(async () => {
+    if (!totalAvailable || loadAllProgress) return;
+    
+    const remaining = totalAvailable - events.length;
+    if (remaining <= 0) return;
+    
+    // Warn user about memory usage
+    const estimatedMemoryMB = (memoryUsage * (totalAvailable / events.length)) / (1024 * 1024);
+    if (estimatedMemoryMB > MAX_MEMORY_MB) {
+      const confirmed = confirm(
+        `Loading all ${totalAvailable.toLocaleString()} events may use ~${estimatedMemoryMB.toFixed(1)}MB of memory. ` +
+        `This could slow down your browser. Continue?`
+      );
+      if (!confirmed) return;
+    }
+    
+    setLoadAllProgress({ loaded: events.length, total: totalAvailable });
+    
+    let currentLoadedCount = events.length;
+    const chunkSize = 1000;
+    
+    while (currentLoadedCount < totalAvailable) {
+      const result = await fetchRawEvents(chunkSize, currentLoadedCount, false, true);
+      currentLoadedCount += result.events.length;
+      
+      setLoadAllProgress({ loaded: currentLoadedCount, total: totalAvailable });
+      
+      if (!result.hasMore) break;
+      
+      // Small delay to prevent UI blocking
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    setLoadAllProgress(null);
+  }, [fetchRawEvents, currentOffset, totalAvailable, events.length, memoryUsage]);
 
   // Clear new event indicators after 30 seconds
   useEffect(() => {
@@ -417,7 +597,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       console.log('[RawEvents] Cleared IndexedDB storage');
       
       // Trigger a fresh fetch after clearing
-      fetchRawEvents(false);
+      fetchRawEvents(INITIAL_CHUNK_SIZE, 0);
     } catch (error) {
       console.error('[RawEvents] Failed to clear IndexedDB:', error);
     }
@@ -469,8 +649,10 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           <span className="text-sm font-medium text-black">
             {events.length} events loaded
           </span>
-          {events.length >= 300 && (
-            <span className="text-xs text-gray-600">(capped at 300)</span>
+          {totalAvailable && (
+            <span className="text-xs text-gray-600">
+              (of {totalAvailable.toLocaleString()} total)
+            </span>
           )}
         </div>
 
@@ -485,6 +667,15 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
             </span>
           </div>
         )}
+
+        <div className="flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-200 rounded-md">
+          <span className="text-sm font-medium text-green-800">
+            Memory: {formatBytes(memoryUsage)}
+          </span>
+          {memoryUsage > MAX_MEMORY_MB * 1024 * 1024 && (
+            <span className="text-xs text-red-600">(High)</span>
+          )}
+        </div>
 
         <div className="flex items-center gap-2">
           <Input
@@ -528,7 +719,48 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         <Button variant="black-outline" size="sm" onClick={handleCopyAllEvents} disabled={events.length === 0}>
           Copy All as JSON
         </Button>
+        
+        {/* Progressive loading controls */}
+        {hasMoreData && autoLoadingComplete && (
+          <Button 
+            variant="black-outline" 
+            size="sm" 
+            onClick={loadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? 'Loading...' : 'Load More'}
+          </Button>
+        )}
+        
+        {totalAvailable && events.length < totalAvailable && autoLoadingComplete && (
+          <Button 
+            variant="black-outline" 
+            size="sm" 
+            onClick={loadAll}
+            disabled={!!loadAllProgress}
+            title={`Load all ${(totalAvailable - events.length).toLocaleString()} remaining events`}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            Load All ({(totalAvailable - events.length).toLocaleString()})
+          </Button>
+        )}
       </div>
+      
+      {/* Load All Progress */}
+      {loadAllProgress && (
+        <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <div className="flex justify-between text-sm text-blue-800 mb-2">
+            <span>Loading all events...</span>
+            <span>{loadAllProgress.loaded.toLocaleString()} / {loadAllProgress.total.toLocaleString()}</span>
+          </div>
+          <div className="w-full bg-blue-200 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${(loadAllProgress.loaded / loadAllProgress.total) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
       
       {events.length > 0 && (
         <Card className="mb-2">
@@ -549,6 +781,10 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                 <div>
                     <div className="flex flex-wrap gap-1">
                         <Badge variant="outline">Sessions: {sessionCount}</Badge>
+                        {totalAvailable && (
+                          <Badge variant="outline">Total Available: {totalAvailable.toLocaleString()}</Badge>
+                        )}
+                        <Badge variant="outline">Memory: {formatBytes(memoryUsage)}</Badge>
                     </div>
                     {eventStats.length > 0 && (
                         <div className="mt-2">
@@ -764,6 +1000,14 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           </Card>
         )})}
       </div>
+
+      {/* Loading more indicator */}
+      {loadingMore && (
+        <div className="flex justify-center pt-4">
+          <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+          <span className="ml-2 text-muted-foreground">Loading more events...</span>
+        </div>
+      )}
     </div>
   );
 } 
