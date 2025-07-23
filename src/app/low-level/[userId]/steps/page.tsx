@@ -288,24 +288,47 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         console.log(`[Steps] Loaded ${cachedData.analyses.length} analyses from IndexedDB cache`);
         setAllWorkflowAnalyses(cachedData.analyses);
         setUsingCachedAnalyses(true);
-        return; // Skip API call if we have cached data
+        
+        // Continue to check for new analyses in background
+        console.log('[Steps] Checking for new analyses in background...');
       }
       
-      // Fallback to API if no cached data
-      console.log('[Steps] No cached analyses found, fetching from API');
-      setUsingCachedAnalyses(false);
+      // Always check API for fresh data (either as fallback or background refresh)
+      if (cachedData.analyses.length === 0) {
+        console.log('[Steps] No cached analyses found, fetching from API');
+        setUsingCachedAnalyses(false);
+      }
       const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch workflow analyses');
       }
       const data = await response.json();
       const analyses: WorkflowStepAnalysis[] = data.analyses || [];
-      setAllWorkflowAnalyses(analyses);
       
-      // Save to cache for future use
-      if (analyses.length > 0) {
-        await analysisStorage.saveAnalyses(analyses);
-        console.log(`[Steps] Saved ${analyses.length} analyses to IndexedDB for future use`);
+      // If we had cached data, check for new analyses and merge
+      if (cachedData.analyses.length > 0) {
+        const cachedIds = new Set(cachedData.analyses.map(a => a.id));
+        const reallyNewAnalyses = analyses.filter(a => !cachedIds.has(a.id));
+        
+        if (reallyNewAnalyses.length > 0) {
+          console.log(`[Steps] Found ${reallyNewAnalyses.length} new analyses, updating cache and UI`);
+          const mergedAnalyses = [...reallyNewAnalyses, ...cachedData.analyses];
+          setAllWorkflowAnalyses(mergedAnalyses);
+          
+          // Save new analyses to cache
+          await analysisStorage.saveAnalyses(reallyNewAnalyses);
+        } else {
+          console.log('[Steps] No new analyses found');
+        }
+      } else {
+        // No cached data, use fresh data as-is
+        setAllWorkflowAnalyses(analyses);
+        
+        // Save to cache for future use
+        if (analyses.length > 0) {
+          await analysisStorage.saveAnalyses(analyses);
+          console.log(`[Steps] Saved ${analyses.length} analyses to IndexedDB for future use`);
+        }
       }
       
     } catch (err) {
@@ -365,32 +388,57 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           setTotalStepsCount(uiTreeCount);
           
           setLoading(false);
-          return; // Skip API call if we have cached data
+          
+          // Continue to check for new events in background
+          console.log('[Steps] Checking for new events in background...');
         }
         
-        // Fallback to API if no cached data
-        console.log('[Steps] No cached data found, fetching from API');
-        setUsingCachedData(false);
+        // Always check API for fresh data (either as fallback or background refresh)
+        if (cachedData.events.length === 0) {
+          console.log('[Steps] No cached data found, fetching from API');
+          setUsingCachedData(false);
+        }
         const response = await fetch(`/api/low-level/${userId}?offset=0`);
         if (!response.ok) {
           throw new Error('Network response was not ok when fetching events');
         }
         const data = await response.json();
         const newEvents = data.events || [];
-        setAllEvents(newEvents);
-        setHasMore(data.hasMore || false);
-        setOffset(newEvents.length);
+        
+        // If we had cached data, check for new events and merge
+        if (cachedData.events.length > 0) {
+          const cachedIds = new Set(cachedData.events.map(e => e.id));
+          const reallyNewEvents = newEvents.filter(e => !cachedIds.has(e.id));
+          
+          if (reallyNewEvents.length > 0) {
+            console.log(`[Steps] Found ${reallyNewEvents.length} new events, updating cache and UI`);
+            const mergedEvents = [...reallyNewEvents, ...cachedData.events];
+            setAllEvents(mergedEvents);
+            setOffset(mergedEvents.length);
+            
+            // Save new events to cache
+            await sharedStorage.saveEvents(reallyNewEvents);
+          } else {
+            console.log('[Steps] No new events found');
+          }
+        } else {
+          // No cached data, use fresh data as-is
+          setAllEvents(newEvents);
+          setHasMore(data.hasMore || false);
+          setOffset(newEvents.length);
+          
+          // Save to cache for future use
+          if (newEvents.length > 0) {
+            await sharedStorage.saveEvents(newEvents);
+            console.log(`[Steps] Saved ${newEvents.length} events to IndexedDB for future use`);
+          }
+        }
+        
         if (data.totalEventCount) {
           setTotalEventCount(data.totalEventCount);
         }
         if (data.totalStepsCount) {
           setTotalStepsCount(data.totalStepsCount);
-        }
-        
-        // Save to cache for future use
-        if (newEvents.length > 0) {
-          await sharedStorage.saveEvents(newEvents);
-          console.log(`[Steps] Saved ${newEvents.length} events to IndexedDB for future use`);
         }
         
       } catch (err) {
