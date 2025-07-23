@@ -5,7 +5,7 @@ import { type LowLevelEvent } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { JsonBlock } from '@/components/ui/code-block';
-import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown, Database, HardDrive, Download } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown, Database, HardDrive, Download, Calendar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -18,12 +18,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getRawEventsStorage } from '@/lib/rawEventsStorage';
+import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
 
 // Helper function to estimate memory usage of events data
 const estimateMemoryUsage = (events: LowLevelEvent[]): number => {
-  const jsonString = JSON.stringify(events);
-  return new Blob([jsonString]).size;
+  // Simple estimation: average ~2KB per event (much faster than JSON.stringify)
+  return events.length * 2048; // 2KB per event estimate
 };
 
 // Helper function to format bytes
@@ -75,11 +83,20 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   
   // Progressive loading state
   const [currentDisplayLimit, setCurrentDisplayLimit] = useState(0);
-  const [hasMoreData, setHasMoreData] = useState(true);
   const [totalAvailable, setTotalAvailable] = useState<number | null>(null);
   const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
   const [memoryUsage, setMemoryUsage] = useState(0);
   const [loadAllProgress, setLoadAllProgress] = useState<{ loaded: number; total: number } | null>(null);
+  
+  // Time boundary state for loading specific periods
+  const [timeBoundary, setTimeBoundary] = useState<{startDate: Date | null; endDate: Date | null}>({
+    startDate: null,
+    endDate: null
+  });
+  const [isLoadingPeriod, setIsLoadingPeriod] = useState(false);
+  
+  // Load More modal state
+  const [isLoadMoreModalOpen, setIsLoadMoreModalOpen] = useState(false);
   
   const viewClearedRef = useRef(false);
   const storageRef = useRef(getRawEventsStorage(use(params).userId));
@@ -105,24 +122,150 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     return new Date(event.created_at).toLocaleString();
   }, []);
 
+  // Helper function for incremental UI updates (much more efficient than full reloads)
+  const addNewEventsToUI = useCallback((newEvents: LowLevelEvent[]) => {
+    if (newEvents.length === 0) return;
+    
+    console.log(`[RawEvents] Adding ${newEvents.length} new events to UI incrementally`);
+    
+    // Sort new events by timestamp (desc) to maintain order
+    const sortedNewEvents = newEvents.sort((a, b) => {
+      const dateA = new Date(a.created_at).getTime();
+      const dateB = new Date(b.created_at).getTime();
+      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+    });
+    
+    // Prepend new events to existing display (newest first for desc sort)
+    // Filter out duplicates to prevent React key conflicts
+    setDisplayEvents(prev => {
+      const existingIds = new Set(prev.map(e => e.id));
+      const uniqueNewEvents = sortedNewEvents.filter(e => !existingIds.has(e.id));
+      
+      if (uniqueNewEvents.length === 0) {
+        console.log(`[RawEvents] All ${sortedNewEvents.length} events already exist in display, skipping update`);
+        return prev;
+      }
+      
+      console.log(`[RawEvents] Adding ${uniqueNewEvents.length} unique events (filtered ${sortedNewEvents.length - uniqueNewEvents.length} duplicates)`);
+      
+      // Update display limit based on actually added unique events
+      setCurrentDisplayLimit(prevLimit => prevLimit + uniqueNewEvents.length);
+      
+      if (sortOrder === 'desc') {
+        return [...uniqueNewEvents, ...prev];
+      } else {
+        return [...prev, ...uniqueNewEvents];
+      }
+    });
+    
+    // Mark new events for visual indication (only unique ones)
+    const newIds = new Set<number>(newEvents.map(e => e.id));
+    setNewEventIds(newIds);
+  }, [sortOrder]);
+
   // Function to load events from IndexedDB for display
   const loadEventsForDisplay = useCallback(async (limit: number = 1000) => {
     try {
-      const storedEvents = await storageRef.current.loadEvents(limit);
-      if (storedEvents.length > 0) {
-        const sortedEvents = storedEvents.sort((a, b) => {
+      console.log(`[RawEvents] Loading ${limit} events from IndexedDB for display`);
+      
+      // Get all events from IndexedDB for this user
+      const allEvents = await storageRef.current.getEventsSortedByAge();
+      
+      if (allEvents.length === 0) {
+        console.log('[RawEvents] No events found in IndexedDB');
+        setDisplayEvents([]);
+        setCurrentDisplayLimit(0);
+        setMemoryUsage(0);
+        return;
+      }
+      
+      // Apply sort order 
+      const sortedEvents = allEvents.sort((a, b) => {
           const dateA = new Date(a.created_at).getTime();
           const dateB = new Date(b.created_at).getTime();
           return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
         });
-        setDisplayEvents(sortedEvents);
-        setCurrentDisplayLimit(storedEvents.length);
-        console.log(`[RawEvents] Loaded ${storedEvents.length} events from IndexedDB for display`);
-      }
+      
+      // Apply limit
+      const limitedEvents = sortedEvents.slice(0, limit);
+      
+      // Update display state
+      setDisplayEvents(limitedEvents);
+      setCurrentDisplayLimit(limitedEvents.length);
+      
+      // Update memory usage estimation
+      const memUsage = estimateMemoryUsage(limitedEvents);
+      setMemoryUsage(memUsage);
+      
+      console.log(`[RawEvents] Loaded ${limitedEvents.length} events from IndexedDB (${formatBytes(memUsage)} memory)`);
+      
     } catch (error) {
       console.error('[RawEvents] Failed to load events from IndexedDB:', error);
+      setError('Failed to load events from storage');
     }
   }, [sortOrder]);
+
+  // Load events for a specific time period
+  const loadEventsForPeriod = useCallback(async () => {
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      console.log('[RawEvents] No time boundary set for period loading');
+      return;
+    }
+    
+    setIsLoadingPeriod(true);
+    setError(null);
+    
+    try {
+      console.log(`[RawEvents] Loading events for period: ${timeBoundary.startDate.toISOString()} to ${timeBoundary.endDate.toISOString()}`);
+      
+      // Build API URL with date range parameters
+      let url = `/api/low-level/${userId}?limit=10000`; // Large limit for period loading
+      url += `&startDate=${encodeURIComponent(timeBoundary.startDate.toISOString())}`;
+      url += `&endDate=${encodeURIComponent(timeBoundary.endDate.toISOString())}`;
+      
+      if (selectedEventType && selectedEventType !== 'all') {
+        url += `&eventType=${selectedEventType}`;
+      }
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Failed to fetch events for time period');
+      }
+      
+      const data = await response.json();
+      const sortedEvents = data.events.sort((a: LowLevelEvent, b: LowLevelEvent) => {
+        const dateA = new Date(a.created_at).getTime();
+        const dateB = new Date(b.created_at).getTime();
+        return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+      });
+      
+      // Update display with period events
+      setDisplayEvents(sortedEvents);
+      setCurrentDisplayLimit(sortedEvents.length);
+      
+      // Calculate memory usage
+      const memoryUsage = estimateMemoryUsage(sortedEvents);
+      setMemoryUsage(memoryUsage);
+      
+      // Update total available (for this period)
+      setTotalAvailable(sortedEvents.length);
+      
+      console.log(`[RawEvents] Loaded ${sortedEvents.length} events for specified period (${formatBytes(memoryUsage)} memory)`);
+      
+      // Save to IndexedDB for caching
+      if (sortedEvents.length > 0) {
+        await storageRef.current.saveEvents(sortedEvents);
+        const info = await storageRef.current.getStorageInfo();
+        setStorageInfo(info);
+      }
+      
+    } catch (error) {
+      console.error('[RawEvents] Failed to load events for period:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load events for period');
+    } finally {
+      setIsLoadingPeriod(false);
+    }
+  }, [userId, timeBoundary, selectedEventType, sortOrder]);
 
   // Update memory usage when display events change
   useEffect(() => {
@@ -184,12 +327,15 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         await storageRef.current.init();
         console.log('[RawEvents] IndexedDB initialized');
         
-        // Load events from IndexedDB on initial load (only if no events loaded yet)
+        // Smart initialization: only load initial data if we have none
         if (displayEvents.length === 0 && loading) {
-          await loadEventsForDisplay(1000);
+          // Load a reasonable initial chunk (100 events) instead of 1000
+          // IndexedDB persists everything, but UI only shows manageable amount
+          await loadEventsForDisplay(100);
           
-          // Set loading to false since we have cached data
+          // Set loading to false since we have initial data loaded
           setLoading(false);
+          console.log('[RawEvents] Loaded initial chunk from IndexedDB');
         }
         
         // Update storage info
@@ -276,15 +422,20 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       
       // Handle polling updates for new events
       if (isPollingUpdate) {
+        // NOTE: Smart polling now handles this directly, so we don't need the old refresh logic
+        // The expensive loadEventsForDisplay() call has been replaced with direct array updates
         const existingEventIds = new Set(displayEvents.map((e: LowLevelEvent) => e.id));
         const newEvents = sortedEvents.filter((e: LowLevelEvent) => !existingEventIds.has(e.id));
         
         if (newEvents.length > 0) {
-          const newIds = new Set<number>(newEvents.map((e: LowLevelEvent) => e.id));
-          setNewEventIds(newIds);
+          console.log(`[RawEvents] Fallback polling found ${newEvents.length} new events`);
           
-          // Refresh display from IndexedDB to show new events
-          await loadEventsForDisplay(currentDisplayLimit + newEvents.length);
+          // For fallback polling (when smart polling isn't used), do incremental update
+          addNewEventsToUI(newEvents);
+          
+          // Update storage info
+          const info = await storageRef.current.getStorageInfo();
+          setStorageInfo(info);
         }
         
         return { events: newEvents, hasMore: data.hasMore };
@@ -302,8 +453,6 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         await loadEventsForDisplay(sortedEvents.length);
       }
       
-      setHasMoreData(data.hasMore || false);
-      
       return { events: sortedEvents, hasMore: data.hasMore || false };
       
     } catch (err) {
@@ -317,11 +466,20 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         setLoadingMore(false);
       }
     }
-  }, [userId, sortOrder, selectedEventType, displayEvents, currentDisplayLimit, loadEventsForDisplay]);
+  }, [userId, sortOrder, selectedEventType, displayEvents, currentDisplayLimit, loadEventsForDisplay, addNewEventsToUI]);
 
-  // Initial fetch
+  // Initial fetch - smart loading that respects IndexedDB
   useEffect(() => {
     const initialLoad = async () => {
+      // Wait for IndexedDB initialization to complete first
+      await storageRef.current.init();
+      
+      // Check if we already have data in IndexedDB
+      const storageInfo = await storageRef.current.getStorageInfo();
+      
+      if (storageInfo.eventCount === 0) {
+        // No cached data, fetch from API
+        console.log('[RawEvents] No cached data, fetching from API');
       const result = await fetchRawEvents(INITIAL_CHUNK_SIZE, 0);
       
       // Start auto-loading additional chunks up to the limit
@@ -329,6 +487,16 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         autoLoadMore(result.events.length);
       } else {
         setAutoLoadingComplete(true);
+        }
+      } else {
+        // We have cached data, IndexedDB initialization already loaded initial chunk
+        console.log(`[RawEvents] Using cached data (${storageInfo.eventCount} events in IndexedDB)`);
+        setAutoLoadingComplete(true);
+        
+        // Optionally check for new events in background
+        setTimeout(() => {
+          fetchRawEvents(10, 0, true); // Small background check for new events
+        }, 1000);
       }
     };
     
@@ -353,21 +521,108 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     }
   }, [fetchRawEvents]);
 
-  // Live polling every 2 seconds (only poll the first chunk for new events)
+  // Track latest timestamp for smart polling (persists across renders)
+  const latestPollingTimestampRef = useRef<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update polling timestamp when display events change
+  useEffect(() => {
+    if (displayEvents.length > 0) {
+      const latestEvent = displayEvents[0]; // Events are sorted desc, so first is newest
+      const newTimestamp = latestEvent.created_at;
+      
+      // Only update if we have a newer timestamp
+      if (!latestPollingTimestampRef.current || newTimestamp > latestPollingTimestampRef.current) {
+        latestPollingTimestampRef.current = newTimestamp;
+        console.log(`[RawEvents] Updated polling timestamp to: ${newTimestamp}`);
+      }
+    }
+  }, [displayEvents]);
+
+  // Live polling every 2 seconds (only poll for events newer than latest)
   useEffect(() => {
     if (loading) return; // Don't start polling until initial load is complete
     
-    const interval = setInterval(() => {
-      fetchRawEvents(INITIAL_CHUNK_SIZE, 0, true); // Pass true to indicate this is a polling update
+    // Clear any existing interval first (prevents duplicates from hot reload)
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    
+    console.log('[RawEvents] Starting smart polling...');
+    
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        // Smart polling: only fetch events newer than our latest timestamp
+        if (latestPollingTimestampRef.current) {
+          const currentTimestamp = latestPollingTimestampRef.current;
+          console.log(`[RawEvents] Polling for events after: ${currentTimestamp}`);
+          
+          // Fetch only events newer than our latest event
+          const response = await fetch(`/api/low-level/${userId}?limit=50&after_timestamp=${encodeURIComponent(currentTimestamp)}`);
+          if (!response.ok) {
+            console.warn('[RawEvents] Polling failed:', response.statusText);
+            return;
+          }
+          
+          const data = await response.json();
+          const newEvents = data.events || [];
+          
+          if (newEvents.length > 0) {
+            console.log(`[RawEvents] Found ${newEvents.length} new events via smart polling`);
+            
+            // Save new events to IndexedDB
+            await storageRef.current.saveEvents(newEvents);
+            
+            // Add new events to display using incremental update
+            addNewEventsToUI(newEvents);
+            
+            // Update storage info
+            const info = await storageRef.current.getStorageInfo();
+            setStorageInfo(info);
+            
+            // Update polling timestamp to newest event (CRITICAL FIX!)
+            const sortedNewEvents = newEvents.sort((a: LowLevelEvent, b: LowLevelEvent) => {
+              return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            });
+            const newestTimestamp = sortedNewEvents[0].created_at;
+            if (newestTimestamp > latestPollingTimestampRef.current) {
+              latestPollingTimestampRef.current = newestTimestamp;
+              console.log(`[RawEvents] Advanced polling timestamp to: ${newestTimestamp}`);
+            }
+          } else {
+            console.log('[RawEvents] No new events found in polling');
+          }
+        } else if (displayEvents.length === 0) {
+          // Fallback: if no events loaded yet, do minimal fetch to establish baseline
+          console.log('[RawEvents] No baseline timestamp, doing fallback fetch');
+          fetchRawEvents(10, 0, true);
+        } else {
+          console.log('[RawEvents] Waiting for initial timestamp to be set');
+        }
+      } catch (error) {
+        console.warn('[RawEvents] Smart polling error:', error);
+      }
     }, 2000);
 
-    return () => clearInterval(interval);
-  }, [fetchRawEvents, loading]);
+    // Cleanup function that properly clears interval
+    return () => {
+      console.log('[RawEvents] Cleaning up polling interval');
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [fetchRawEvents, loading, userId, addNewEventsToUI]); // Removed displayEvents from deps to prevent recreation
 
-  // Manual load more function
+
+  // Manual load more function - loads from IndexedDB cache (much faster!)
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMoreData) return;
+    if (loadingMore) return;
     
+    setLoadingMore(true);
+    
+    try {
     // Check memory limit before loading more
     const currentMemoryMB = memoryUsage / (1024 * 1024);
     if (currentMemoryMB > MAX_MEMORY_MB) {
@@ -375,45 +630,103 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       return;
     }
     
-    await fetchRawEvents(MANUAL_LOAD_CHUNK_SIZE, currentDisplayLimit, false, true);
-  }, [fetchRawEvents, currentDisplayLimit, loadingMore, hasMoreData, memoryUsage]);
+      const newDisplayLimit = currentDisplayLimit + MANUAL_LOAD_CHUNK_SIZE;
+      console.log(`[RawEvents] Loading more events: ${currentDisplayLimit} → ${newDisplayLimit}`);
+      
+      // Load more events from IndexedDB cache instead of API
+      await loadEventsForDisplay(newDisplayLimit);
+      
+    } catch (error) {
+      console.error('[RawEvents] Failed to load more events:', error);
+      setError('Failed to load more events');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadEventsForDisplay, currentDisplayLimit, loadingMore, memoryUsage]);
 
-  // Load all remaining data
+  // Load all remaining data (DANGEROUS - includes safety measures)
   const loadAll = useCallback(async () => {
     if (!totalAvailable || loadAllProgress) return;
     
     const remaining = totalAvailable - displayEvents.length;
     if (remaining <= 0) return;
     
-    // Warn user about memory usage
-    const estimatedMemoryMB = (memoryUsage * (totalAvailable / displayEvents.length)) / (1024 * 1024);
-    if (estimatedMemoryMB > MAX_MEMORY_MB) {
+    // First, try to load from IndexedDB cache (much safer)
+    if (storageInfo && storageInfo.eventCount > displayEvents.length) {
+      const cachedAvailable = storageInfo.eventCount;
       const confirmed = confirm(
-        `Loading all ${totalAvailable.toLocaleString()} events may use ~${estimatedMemoryMB.toFixed(1)}MB of memory. ` +
-        `This could slow down your browser. Continue?`
+        `Load all ${cachedAvailable.toLocaleString()} cached events from IndexedDB? ` +
+        `This is much faster and safer than downloading from database.`
+      );
+      
+      if (confirmed) {
+        try {
+          setLoadAllProgress({ loaded: displayEvents.length, total: cachedAvailable });
+          await loadEventsForDisplay(cachedAvailable);
+          setLoadAllProgress(null);
+          return;
+        } catch (error) {
+          console.error('[RawEvents] Failed to load all cached events:', error);
+          setLoadAllProgress(null);
+        }
+      }
+    }
+    
+    // DANGER ZONE: Loading from API
+    const estimatedMemoryMB = remaining * 2048 / (1024 * 1024); // 2KB per event estimate
+    
+    if (remaining > 50000) {
+      alert(
+        `⚠️ EXTREME DANGER ⚠️\n\n` +
+        `You're trying to load ${remaining.toLocaleString()} events (${estimatedMemoryMB.toFixed(1)}MB).\n` +
+        `This WILL crash your browser and could freeze your computer.\n\n` +
+        `Consider using filters or Load More instead.`
+      );
+      return;
+    }
+    
+    if (estimatedMemoryMB > 100) {
+      const confirmed = confirm(
+        `⚠️ WARNING ⚠️\n\n` +
+        `Loading ${remaining.toLocaleString()} events will use ~${estimatedMemoryMB.toFixed(1)}MB of memory.\n` +
+        `This could slow down or crash your browser.\n\n` +
+        `Are you absolutely sure you want to continue?`
       );
       if (!confirmed) return;
     }
     
+    // Proceed with chunked loading from API
     setLoadAllProgress({ loaded: displayEvents.length, total: totalAvailable });
     
     let currentLoadedCount = displayEvents.length;
-    const chunkSize = 1000;
+    const chunkSize = Math.min(1000, remaining); // Limit chunk size
     
+    try {
     while (currentLoadedCount < totalAvailable) {
       const result = await fetchRawEvents(chunkSize, currentLoadedCount, false, true);
       currentLoadedCount += result.events.length;
       
       setLoadAllProgress({ loaded: currentLoadedCount, total: totalAvailable });
+        
+        // Check memory usage during loading
+        const currentMem = estimateMemoryUsage(displayEvents) / (1024 * 1024);
+        if (currentMem > MAX_MEMORY_MB) {
+          alert(`Memory limit reached (${currentMem.toFixed(1)}MB). Stopping load.`);
+          break;
+        }
       
       if (!result.hasMore) break;
       
-      // Small delay to prevent UI blocking
-      await new Promise(resolve => setTimeout(resolve, 50));
+        // Longer delay to prevent browser lockup
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
+    } catch (error) {
+      console.error('[RawEvents] Load all failed:', error);
+      setError('Failed to load all events');
+    } finally {
     setLoadAllProgress(null);
-  }, [fetchRawEvents, totalAvailable, displayEvents.length, memoryUsage, loadAllProgress]);
+    }
+  }, [fetchRawEvents, loadEventsForDisplay, totalAvailable, displayEvents.length, memoryUsage, loadAllProgress, storageInfo]);
 
   // Clear new event indicators after 30 seconds
   useEffect(() => {
@@ -602,17 +915,25 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
 
   return (
     <div>
-      <div className="flex items-center gap-2 py-2 border-b mb-2">
+      <div className="space-y-3 py-2 border-b mb-2">
+        {/* Line 1: Clock and Core Stats */}
+        <div className="flex items-center gap-3">
         <Clock />
         <div className="flex items-center gap-2 px-3 py-1 border border-black rounded-md">
           <span className="text-sm font-medium">
             {displayEvents.length} events loaded
           </span>
+            <span className="text-xs text-muted-foreground">
+              ({formatBytes(memoryUsage)})
+            </span>
           {totalAvailable && (
             <span className="text-xs text-muted-foreground">
               (of {totalAvailable.toLocaleString()} total)
             </span>
           )}
+            {memoryUsage > MAX_MEMORY_MB * 1024 * 1024 && (
+              <span className="text-xs text-red-600">(High Memory)</span>
+            )}
         </div>
 
         {storageInfo && (
@@ -625,28 +946,21 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
               ({(storageInfo.totalSize / 1024 / 1024).toFixed(1)}MB)
             </span>
           </div>
-        )}
-
-        <div className="flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-200 rounded-md">
-          <span className="text-sm font-medium text-green-800">
-            Memory: {formatBytes(memoryUsage)}
-          </span>
-          {memoryUsage > MAX_MEMORY_MB * 1024 * 1024 && (
-            <span className="text-xs text-red-600">(High)</span>
           )}
         </div>
 
+        {/* Line 2: Search and Filters */}
         <div className="flex items-center gap-2">
           <Input
             type="text"
             placeholder="Search events..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-64"
+            className="w-64 border-black"
           />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
+              <Button variant="black-outline">
                 Filter by Event Type: {selectedEventType || 'all'}
               </Button>
             </DropdownMenuTrigger>
@@ -662,10 +976,22 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
         <Button variant="black-outline" size="sm" onClick={toggleSortOrder}>
           {sortOrder === 'desc' ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
         </Button>
+        </div>
+
+        {/* Line 3: Action Buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button 
+            variant="black-outline" 
+            size="sm" 
+            onClick={() => setIsLoadMoreModalOpen(true)}
+            disabled={loading}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            Load More
+          </Button>
         <Button variant="black-outline" size="sm" onClick={expandAll}>Expand All</Button>
         <Button variant="black-outline" size="sm" onClick={collapseAll}>Collapse All</Button>
         <Button variant="black-outline" size="sm" onClick={clearView}>Clear View</Button>
@@ -679,30 +1005,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           Copy All as JSON
         </Button>
         
-        {/* Progressive loading controls */}
-        {hasMoreData && autoLoadingComplete && (
-          <Button 
-            variant="black-outline" 
-            size="sm" 
-            onClick={loadMore}
-            disabled={loadingMore}
-          >
-            {loadingMore ? 'Loading...' : 'Load More'}
-          </Button>
-        )}
-        
-        {totalAvailable && displayEvents.length < totalAvailable && autoLoadingComplete && (
-          <Button 
-            variant="black-outline" 
-            size="sm" 
-            onClick={loadAll}
-            disabled={!!loadAllProgress}
-            title={`Load all ${(totalAvailable - displayEvents.length).toLocaleString()} remaining events`}
-          >
-            <Download className="h-4 w-4 mr-1" />
-            Load All ({(totalAvailable - displayEvents.length).toLocaleString()})
-          </Button>
-        )}
+        </div>
       </div>
       
       {/* Load All Progress */}
@@ -866,7 +1169,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         </Card>
       )}
 
-      {loading && events.length === 0 && (
+      {loading && displayEvents.length === 0 && (
           <div className="flex flex-col items-center justify-center pt-16">
             <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
             <p className="text-muted-foreground mt-4">Loading Events...</p>
@@ -967,6 +1270,107 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
           <span className="ml-2 text-muted-foreground">Loading more events...</span>
         </div>
       )}
+
+      {/* Load More Modal */}
+      <Dialog open={isLoadMoreModalOpen} onOpenChange={setIsLoadMoreModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Load More Events</DialogTitle>
+            <DialogDescription>
+              Choose how you want to load additional events
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Load More from Cache Option */}
+            {storageInfo && storageInfo.eventCount > displayEvents.length && autoLoadingComplete && (
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Load More from Cache</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Load {Math.min(MANUAL_LOAD_CHUNK_SIZE, storageInfo.eventCount - displayEvents.length)} more events from cached data (fast)
+                    </p>
+                  </div>
+                  <Button 
+                    variant="black-outline"
+                    onClick={() => {
+                      loadMore();
+                      setIsLoadMoreModalOpen(false);
+                    }}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? 'Loading...' : `Load ${Math.min(MANUAL_LOAD_CHUNK_SIZE, storageInfo.eventCount - displayEvents.length)} Events`}
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {/* Load All Option */}
+            {totalAvailable && displayEvents.length < totalAvailable && autoLoadingComplete && (
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Load All Events</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Load all {(totalAvailable - displayEvents.length).toLocaleString()} remaining events (may be slow)
+                    </p>
+                  </div>
+                  <Button 
+                    variant="black-outline"
+                    onClick={() => {
+                      loadAll();
+                      setIsLoadMoreModalOpen(false);
+                    }}
+                    disabled={!!loadAllProgress}
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Load All ({(totalAvailable - displayEvents.length).toLocaleString()})
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {/* Load by Period Option */}
+            <Card className="p-4">
+              <div className="space-y-3">
+                <div>
+                  <h3 className="font-medium">Load by Time Period</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Load events from a specific time range (up to 10,000 events)
+                  </p>
+                </div>
+                <TimeBoundarySelector
+                  selectedBoundary={timeBoundary}
+                  onBoundaryChange={setTimeBoundary}
+                  disabled={loading || isLoadingPeriod}
+                />
+                <div className="flex justify-end">
+                  <Button 
+                    variant="black-outline"
+                    onClick={() => {
+                      loadEventsForPeriod();
+                      setIsLoadMoreModalOpen(false);
+                    }}
+                    disabled={!timeBoundary.startDate || !timeBoundary.endDate || isLoadingPeriod}
+                  >
+                    {isLoadingPeriod ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                        Loading Period...
+                      </>
+                    ) : (
+                      <>
+                        <Calendar className="h-4 w-4 mr-1" />
+                        Load for Period
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
