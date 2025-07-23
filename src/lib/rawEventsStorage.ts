@@ -5,7 +5,7 @@ const DB_NAME = 'RawEventsDB';
 const DB_VERSION = 1;
 const EVENTS_STORE = 'rawEvents';
 const METADATA_STORE = 'metadata';
-const MAX_STORAGE_SIZE = 100 * 1024 * 1024; // 100MB
+const MAX_STORAGE_SIZE = 500 * 1024 * 1024; // 500MB
 const CLEANUP_THRESHOLD = 0.9; // Start cleanup at 90% capacity
 const CLEANUP_TARGET = 0.7; // Clean down to 70% capacity
 
