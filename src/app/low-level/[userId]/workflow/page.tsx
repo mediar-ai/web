@@ -678,8 +678,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
         <div className="h-full bg-background flex flex-col relative">
             {/* Header */}
             <div className="border-b bg-muted/40 p-4">
-                <div className="max-w-4xl mx-auto flex items-center justify-between">
-                    <div className="w-64">
+                <div className="max-w-6xl mx-auto flex items-center gap-4">
+                    <div className="w-64 flex-shrink-0">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" className="w-full">
@@ -697,8 +697,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
-                    <h1 className="text-2xl font-bold">Workflow Synthesis</h1>
-                    <div className="w-64 flex justify-end gap-2">
+                    <h1 className="text-2xl font-bold flex-grow text-center">Workflow Synthesis</h1>
+                    <div className="flex items-center gap-2 flex-shrink-0">
                         <TooltipProvider>
                             <Tooltip>
                                 <TooltipTrigger asChild>
