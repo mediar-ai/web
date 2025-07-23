@@ -63,3 +63,8 @@ venv/
 #ബോ
 server.log
 .gcp/
+
+# Development and client logs
+dev.log
+*.log
+scripts/Mediar Log*
