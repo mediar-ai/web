@@ -48,6 +48,117 @@ import {
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
+
+// Saved Syntheses Section Component
+function SavedSynthesesSection({ userId }: { userId: string }) {
+  const [savedSyntheses, setSavedSyntheses] = useState<Array<{
+    synthesis_session_id: number;
+    display_name: string;
+    saved_at: string;
+    total_workflows: number;
+    workflows: Array<Record<string, unknown>>;
+  }>>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSyntheses, setShowSyntheses] = useState(false);
+
+  const fetchSavedSyntheses = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/workflows/saved-syntheses?userId=${userId}`);
+      if (response.ok) {
+        const result = await response.json();
+        setSavedSyntheses(result.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching saved syntheses:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showSyntheses) {
+      fetchSavedSyntheses();
+    }
+  }, [showSyntheses, userId]);
+
+  if (savedSyntheses.length === 0 && !showSyntheses) {
+    return null; // Don't show the section if no saved syntheses and not expanded
+  }
+
+  return (
+    <div className="border-t bg-gray-50 p-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Saved Syntheses</h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setShowSyntheses(!showSyntheses);
+              if (!showSyntheses) {
+                fetchSavedSyntheses();
+              }
+            }}
+            className="flex items-center gap-2"
+          >
+            {showSyntheses ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {showSyntheses ? 'Hide' : 'Show'} Saved Syntheses
+          </Button>
+        </div>
+
+        {showSyntheses && (
+          <div className="space-y-4">
+            {isLoading ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                <p className="text-gray-600 mt-2">Loading saved syntheses...</p>
+              </div>
+            ) : savedSyntheses.length === 0 ? (
+              <div className="text-center py-8 text-gray-600">
+                <p>No saved syntheses found.</p>
+                <p className="text-sm">Complete a workflow synthesis and save it to see it here.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {savedSyntheses.map((synthesis) => (
+                  <Card key={synthesis.synthesis_session_id} className="border-gray-200 hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-medium text-gray-900">
+                        {synthesis.display_name}
+                      </CardTitle>
+                      <CardDescription className="text-sm text-gray-600">
+                        Saved {new Date(synthesis.saved_at).toLocaleDateString()}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className="text-xs">
+                          {synthesis.total_workflows} workflow{synthesis.total_workflows !== 1 ? 's' : ''}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-gray-600 hover:text-gray-900"
+                          onClick={() => {
+                            // TODO: Implement view synthesis details
+                            console.log('View synthesis:', synthesis.synthesis_session_id);
+                          }}
+                        >
+                          View
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 import { Separator } from '@/components/ui/separator';
 import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
 
@@ -606,6 +717,35 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
+                        
+                        {/* Save Synthesis Button */}
+                        {logic.workflows && logic.workflows.length > 0 && logic.synthesisStep === 'done' && (
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button 
+                                            variant="default" 
+                                            size="sm"
+                                            onClick={async () => {
+                                                const result = await logic.saveSynthesis();
+                                                if (result.success) {
+                                                    // Could add toast notification here
+                                                    console.log('Synthesis saved successfully');
+                                                }
+                                            }}
+                                            className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
+                                        >
+                                            <PlusCircle className="h-4 w-4" />
+                                            Save Synthesis
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Save this completed synthesis for future reference</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        )}
+                        
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button 
@@ -640,6 +780,9 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             <div className="p-6 flex-grow flex flex-col overflow-hidden items-center">
                 <Stepper logic={logic} />
             </div>
+            
+            {/* Saved Syntheses Section */}
+            <SavedSynthesesSection userId={userId} />
         </div>
     );
 } 

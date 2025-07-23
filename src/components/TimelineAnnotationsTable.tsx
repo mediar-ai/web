@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
 import { Search } from 'lucide-react';
 
 interface TimelineAnnotation {
@@ -92,164 +92,163 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
       {/* Filter and Summary */}
       <div className="flex items-center justify-between gap-4">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 h-4 w-4" />
           <Input
             placeholder="Filter all fields..."
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
-            className="pl-10"
+            className="pl-10 border-gray-300 focus:border-black"
           />
         </div>
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span>Total: {filteredAnnotations.length}</span>
-          <Badge variant="secondary">{relatedCount} Related</Badge>
-          <Badge variant="outline">{unrelatedCount} Unrelated</Badge>
+        <div className="flex items-center gap-4 text-sm text-gray-700">
+          <span className="font-medium">Total: {filteredAnnotations.length}</span>
+          <Badge variant="default" className="bg-black text-white">{relatedCount} RELATED</Badge>
+          <Badge variant="outline" className="border-gray-400 text-gray-700">{unrelatedCount} UNRELATED</Badge>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="border rounded-lg w-full overflow-hidden">
-        <div className="max-h-[600px] overflow-y-auto w-full">
-          <Table className="w-full table-fixed">
-            <TableHeader className="sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-              <TableRow>
-                <TableHead className="w-24">Timestamp</TableHead>
-                <TableHead className="w-16">Type</TableHead>
-                <TableHead className="w-36">Analysis</TableHead>
-                <TableHead className="w-16">Status</TableHead>
-                <TableHead className="w-12">Conf</TableHead>
-                <TableHead className="w-28">Template</TableHead>
-                <TableHead className="w-28">Workflow Type</TableHead>
-                <TableHead className="w-28">Instance</TableHead>
-                <TableHead className="w-28">Step</TableHead>
-                <TableHead className="w-20">Substep</TableHead>
-                <TableHead className="w-28">Inputs</TableHead>
-                <TableHead className="w-28">Outputs</TableHead>
-                <TableHead className="w-32">Business Logic</TableHead>
-                <TableHead className="w-32">Unrelated Reason</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredAnnotations.map((annotation) => (
-                <TableRow key={`${annotation.raw_event_id || annotation.analysis_id}-${annotation.analysis_id}`} className="hover:bg-muted/50">
-                  <TableCell className="text-xs p-2 font-mono" title={annotation.event_created_at || undefined}>
-                    {annotation.event_created_at ? 
-                      new Date(annotation.event_created_at).toLocaleTimeString('en-US', {
-                        hour12: false,
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
-                      }) :
-                      '-'
-                    }
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2">
-                    <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                      {(annotation.event_type || 'unknown').replace('ui_', '')}
-                    </span>
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate" title={annotation.step_summary || annotation.user_intent || undefined}>
-                    {annotation.step_title ? 
-                      annotation.step_title.substring(0, 35) + (annotation.step_title.length > 35 ? '...' : '') :
-                      `Analysis ${annotation.analysis_id}`
-                    }
-                  </TableCell>
-                  
-                  <TableCell className="p-2">
-                    <Badge 
-                      variant={annotation.is_workflow_related ? "default" : "secondary"}
-                      className="text-xs px-1 py-0.5"
-                    >
-                      {annotation.is_workflow_related ? "✓" : "✗"}
-                    </Badge>
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2">
-                    {annotation.confidence_score !== null && (
-                      <span className="text-xs">
-                        {(annotation.confidence_score * 100).toFixed(0)}%
-                      </span>
-                    )}
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate" title={annotation.template_name || undefined}>
-                    {annotation.template_name ? annotation.template_name.substring(0, 25) + (annotation.template_name.length > 25 ? '...' : '') : '-'}
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate" title={annotation.type_name || undefined}>
-                    {annotation.type_name ? annotation.type_name.substring(0, 25) + (annotation.type_name.length > 25 ? '...' : '') : '-'}
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate" title={annotation.instance_name || undefined}>
-                    {annotation.instance_name ? annotation.instance_name.substring(0, 25) + (annotation.instance_name.length > 25 ? '...' : '') : '-'}
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate" title={annotation.step_name || undefined}>
-                    {annotation.step_name ? annotation.step_name.substring(0, 25) + (annotation.step_name.length > 25 ? '...' : '') : '-'}
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate" title={annotation.substep_name || undefined}>
-                    {annotation.substep_name ? annotation.substep_name.substring(0, 20) + (annotation.substep_name.length > 20 ? '...' : '') : '-'}
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate">
-                    {annotation.inputs ? (
-                      <div className="text-xs" title={typeof annotation.inputs === 'string' ? annotation.inputs : Array.isArray(annotation.inputs) ? annotation.inputs.join(', ') : ''}>
-                        {typeof annotation.inputs === 'string' ? 
-                          annotation.inputs.substring(0, 30) + (annotation.inputs.length > 30 ? '...' : '') :
-                          Array.isArray(annotation.inputs) && annotation.inputs.length > 0 ? 
-                            `${annotation.inputs[0].substring(0, 25)}${annotation.inputs[0].length > 25 ? '...' : ''}${annotation.inputs.length > 1 ? ` +${annotation.inputs.length - 1}` : ''}` :
-                            '-'
-                        }
-                      </div>
-                    ) : '-'}
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate">
-                    {annotation.outputs ? (
-                      <div className="text-xs" title={typeof annotation.outputs === 'string' ? annotation.outputs : Array.isArray(annotation.outputs) ? annotation.outputs.join(', ') : ''}>
-                        {typeof annotation.outputs === 'string' ? 
-                          annotation.outputs.substring(0, 30) + (annotation.outputs.length > 30 ? '...' : '') :
-                          Array.isArray(annotation.outputs) && annotation.outputs.length > 0 ? 
-                            `${annotation.outputs[0].substring(0, 25)}${annotation.outputs[0].length > 25 ? '...' : ''}${annotation.outputs.length > 1 ? ` +${annotation.outputs.length - 1}` : ''}` :
-                            '-'
-                        }
-                      </div>
-                    ) : '-'}
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate">
-                    {(annotation.business_logics || annotation.business_logic) ? (
-                      <div className="text-xs" title={(annotation.business_logics || annotation.business_logic) as string}>
-                        {typeof (annotation.business_logics || annotation.business_logic) === 'string' ? 
-                          ((annotation.business_logics || annotation.business_logic) as string).substring(0, 35) + 
-                          (((annotation.business_logics || annotation.business_logic) as string).length > 35 ? '...' : '') :
-                          Array.isArray(annotation.business_logic) && annotation.business_logic.length > 0 ? 
-                            `${annotation.business_logic[0].substring(0, 30)}${annotation.business_logic[0].length > 30 ? '...' : ''}${annotation.business_logic.length > 1 ? ` +${annotation.business_logic.length - 1}` : ''}` :
-                            '-'
-                        }
-                      </div>
-                    ) : '-'}
-                  </TableCell>
-                  
-                  <TableCell className="text-xs p-2 truncate">
-                    {annotation.unrelated_reason ? (
-                      <div className="text-xs" title={annotation.unrelated_reason}>
-                        {annotation.unrelated_reason.substring(0, 35) + (annotation.unrelated_reason.length > 35 ? '...' : '')}
-                      </div>
-                    ) : '-'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-        
-        {filteredAnnotations.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
+      {/* Timeline Cards */}
+      <div className="space-y-4 w-full">
+        {filteredAnnotations.length === 0 ? (
+          <div className="text-center py-12 text-gray-600 border border-gray-300 rounded-lg bg-gray-50">
             {filterText ? 'No annotations match your filter.' : 'No timeline annotations available.'}
+          </div>
+        ) : (
+          <div className="max-h-[600px] overflow-y-auto w-full space-y-3 pr-2">
+            {filteredAnnotations.map((annotation) => (
+              <div 
+                key={`${annotation.raw_event_id || annotation.analysis_id}-${annotation.analysis_id}`}
+                className={`border rounded-lg p-4 hover:shadow-md transition-shadow ${
+                  annotation.is_workflow_related 
+                    ? 'border-gray-300 bg-white' 
+                    : 'border-gray-400 bg-gray-50'
+                }`}
+              >
+                                 {/* Header Row */}
+                 <div className="flex items-center justify-between mb-3">
+                   <div className="flex items-center gap-3">
+                     <div className="text-sm font-mono text-gray-600" title={annotation.event_created_at || undefined}>
+                       {annotation.event_created_at ? 
+                         new Date(annotation.event_created_at).toLocaleString('en-US', {
+                           month: '2-digit',
+                           day: '2-digit',
+                           hour: '2-digit',
+                           minute: '2-digit',
+                           second: '2-digit',
+                           hour12: false
+                         }) :
+                         '-'
+                       }
+                     </div>
+                     <span className="inline-flex items-center px-2 py-1 rounded text-sm font-medium bg-gray-200 text-gray-800 border">
+                       {(annotation.event_type || 'unknown').replace('ui_', '')}
+                     </span>
+                     <div className="text-base font-medium text-gray-900" title={annotation.step_summary || annotation.user_intent || undefined}>
+                       {annotation.step_title || `Analysis ${annotation.analysis_id}`}
+                     </div>
+                   </div>
+                   <div className="flex items-center gap-2">
+                     <Badge 
+                       variant={annotation.is_workflow_related ? "default" : "secondary"}
+                       className={`text-sm ${annotation.is_workflow_related ? 'bg-black text-white' : 'bg-gray-300 text-gray-700'}`}
+                     >
+                       {annotation.is_workflow_related ? "RELATED" : "UNRELATED"} {annotation.confidence_score !== null ? `${(annotation.confidence_score * 100).toFixed(0)}%` : ''}
+                     </Badge>
+                   </div>
+                 </div>
+
+                                                  {/* Workflow Hierarchy */}
+                 {annotation.is_workflow_related && (annotation.template_name || annotation.type_name) && (
+                   <div className="mb-3 text-sm">
+                     <div className="text-gray-600 mb-1 font-medium">Workflow Context:</div>
+                     <div className="flex flex-wrap gap-1 text-xs">
+                       {annotation.template_name && annotation.template_name !== 'Unknown Template' && (
+                         <span className="bg-gray-900 text-white px-2 py-1 rounded border" title={`Workflow: ${annotation.template_name}`}>
+                           WORKFLOW: {annotation.template_name}
+                         </span>
+                       )}
+                       {annotation.type_name && annotation.type_name !== 'Unknown Type' && (
+                         <span className="bg-gray-700 text-white px-2 py-1 rounded border" title={annotation.type_name}>
+                           TYPE: {annotation.type_name}
+                         </span>
+                       )}
+                       {annotation.instance_name && annotation.instance_name !== 'Unknown Instance' && (
+                         <span className="bg-gray-500 text-white px-2 py-1 rounded border" title={annotation.instance_name}>
+                           INSTANCE: {annotation.instance_name}
+                         </span>
+                       )}
+                       {annotation.step_name && annotation.step_name !== 'Unknown Step' && (
+                         <span className="bg-gray-400 text-black px-2 py-1 rounded border" title={annotation.step_name}>
+                           STEP: {annotation.step_name}
+                         </span>
+                       )}
+                       {annotation.substep_name && annotation.substep_name !== 'Unknown Substep' && (
+                         <span className="bg-gray-300 text-black px-2 py-1 rounded border" title={annotation.substep_name}>
+                           SUBSTEP: {annotation.substep_name}
+                         </span>
+                       )}
+                     </div>
+                   </div>
+                 )}
+
+                                 {/* Data Flow */}
+                 {(annotation.inputs || annotation.outputs || annotation.business_logics) && (
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                     {annotation.inputs && (
+                       <div>
+                         <div className="text-gray-700 text-xs mb-1 font-medium">INPUT:</div>
+                         <div className="text-xs p-2 bg-gray-100 rounded border text-gray-800" title={typeof annotation.inputs === 'string' ? annotation.inputs : Array.isArray(annotation.inputs) ? annotation.inputs.join(', ') : ''}>
+                           {typeof annotation.inputs === 'string' ?
+                             annotation.inputs :
+                             Array.isArray(annotation.inputs) && annotation.inputs.length > 0 ?
+                               annotation.inputs.join(', ') :
+                               'No input data'
+                           }
+                         </div>
+                       </div>
+                     )}
+                     
+                     {annotation.outputs && (
+                       <div>
+                         <div className="text-gray-700 text-xs mb-1 font-medium">OUTPUT:</div>
+                         <div className="text-xs p-2 bg-gray-100 rounded border text-gray-800" title={typeof annotation.outputs === 'string' ? annotation.outputs : Array.isArray(annotation.outputs) ? annotation.outputs.join(', ') : ''}>
+                           {typeof annotation.outputs === 'string' ?
+                             annotation.outputs :
+                             Array.isArray(annotation.outputs) && annotation.outputs.length > 0 ?
+                               annotation.outputs.join(', ') :
+                               'No output data'
+                           }
+                         </div>
+                       </div>
+                     )}
+                     
+                     {(annotation.business_logics || annotation.business_logic) && (
+                       <div>
+                         <div className="text-gray-700 text-xs mb-1 font-medium">BUSINESS LOGIC:</div>
+                         <div className="text-xs p-2 bg-gray-100 rounded border text-gray-800" title={(annotation.business_logics || annotation.business_logic) as string}>
+                           {typeof (annotation.business_logics || annotation.business_logic) === 'string' ? 
+                             (annotation.business_logics || annotation.business_logic) :
+                             Array.isArray(annotation.business_logic) && annotation.business_logic.length > 0 ? 
+                               annotation.business_logic.join(', ') :
+                               'No business logic data'
+                           }
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                 )}
+
+                                 {/* Unrelated Reason */}
+                 {!annotation.is_workflow_related && annotation.unrelated_reason && (
+                   <div className="mt-3 text-sm">
+                     <div className="text-gray-700 text-xs mb-1 font-medium">UNRELATED REASON:</div>
+                     <div className="text-xs p-2 bg-gray-200 rounded border text-gray-900" title={annotation.unrelated_reason}>
+                       {annotation.unrelated_reason}
+                     </div>
+                   </div>
+                 )}
+              </div>
+            ))}
           </div>
         )}
       </div>

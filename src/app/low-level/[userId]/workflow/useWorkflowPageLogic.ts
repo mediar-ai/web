@@ -864,6 +864,42 @@ export function useWorkflowPageLogic(userId: string) {
     }
   };
 
+  const saveSynthesis = async (name?: string) => {
+    if (!workflows || workflows.length === 0) {
+      console.error('No workflows to save');
+      return { success: false, message: 'No workflows to save' };
+    }
+
+    try {
+      const workflowIds = workflows.map(w => w.id);
+      
+      const response = await fetch('/api/workflows/save-synthesis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          workflowIds, 
+          userId,
+          name // Optional custom name for the synthesis
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save synthesis');
+      }
+
+      const result = await response.json();
+      console.log(`✅ Saved synthesis: ${result.message}`);
+      
+      // Refresh workflows to show updated status
+      await fetchWorkflows(true);
+      
+      return { success: true, message: result.message };
+    } catch (error) {
+      console.error('Error saving synthesis:', error);
+      return { success: false, message: 'Failed to save synthesis' };
+    }
+  };
+
   const goBackToWorkflowEditing = () => {
     setSynthesisStep('workflow_editing');
   };
@@ -931,6 +967,7 @@ export function useWorkflowPageLogic(userId: string) {
     generateAndSaveTimelineMapping,
     resetConversation,
     deleteAllWorkflows,
+    saveSynthesis,
     goBackToWorkflowEditing,
     confirmBoundaries,
 
