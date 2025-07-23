@@ -148,6 +148,13 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isLoadMoreModalOpen, setIsLoadMoreModalOpen] = useState(false);
   const [loadAmount, setLoadAmount] = useState('1000');
+  const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
+  const [loadAllProgress, setLoadAllProgress] = useState<{ loaded: number; total: number } | null>(null);
+  
+  // Loading constants
+  const AUTO_LOAD_CHUNK_SIZE = 200;
+  const AUTO_LOAD_LIMIT = 2000; // Auto-load up to 2000 events for steps tab
+  const MANUAL_LOAD_CHUNK_SIZE = 1000;
   
   // State to control which context elements are included
   const [contextConfig, ] = useState({
@@ -441,6 +448,15 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           setTotalStepsCount(data.totalStepsCount);
         }
         
+        // Start auto-loading additional chunks if we have more data and haven't reached limit
+        const currentEventCount = cachedData.events.length > 0 ? 
+          Math.max(cachedData.events.length, newEvents.length) : newEvents.length;
+        if (data.hasMore && currentEventCount < AUTO_LOAD_LIMIT) {
+          setTimeout(() => autoLoadMore(currentEventCount), 100);
+        } else {
+          setAutoLoadingComplete(true);
+        }
+        
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -453,6 +469,24 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       fetchAllWorkflowAnalyses();
     }
   }, [userId, setUserId, fetchAllWorkflowAnalyses, sharedStorage]);
+
+  // Auto-load more data progressively
+  const autoLoadMore = useCallback(async (currentCount: number) => {
+    if (currentCount >= AUTO_LOAD_LIMIT) {
+      setAutoLoadingComplete(true);
+      return;
+    }
+
+    const nextChunkSize = Math.min(AUTO_LOAD_CHUNK_SIZE, AUTO_LOAD_LIMIT - currentCount);
+    const result = await loadMoreEvents(nextChunkSize);
+    
+    if (result && result.hasMore && (currentCount + nextChunkSize) < AUTO_LOAD_LIMIT) {
+      // Continue auto-loading with a small delay
+      setTimeout(() => autoLoadMore(currentCount + nextChunkSize), 100);
+    } else {
+      setAutoLoadingComplete(true);
+    }
+  }, [AUTO_LOAD_LIMIT, AUTO_LOAD_CHUNK_SIZE, loadMoreEvents]);
 
   useEffect(() => {
     if (!userId) return;
@@ -486,8 +520,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     return () => clearInterval(interval);
   }, [userId, allWorkflowAnalyses.length, fetchAllWorkflowAnalyses, usingCachedAnalyses]);
 
-  const loadMoreEvents = async (amount: number) => {
-    if (!hasMore || isLoadingMore || !userId) return;
+  const loadMoreEvents = async (amount: number): Promise<{ hasMore: boolean } | null> => {
+    if (!hasMore || isLoadingMore || !userId) return null;
     setIsLoadingMore(true);
     try {
       // First try to load more from IndexedDB cache
@@ -499,7 +533,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           setHasMore(cachedData.hasMore);
           setOffset(prevOffset => prevOffset + cachedData.events.length);
           setIsLoadingMore(false);
-          return;
+          return { hasMore: cachedData.hasMore };
         }
       }
       
@@ -512,7 +546,8 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
       const newEvents = data.events || [];
       
       setAllEvents(prevEvents => [...prevEvents, ...newEvents]);
-      setHasMore(data.hasMore || false);
+      const hasMoreData = data.hasMore || false;
+      setHasMore(hasMoreData);
       setOffset(prevOffset => prevOffset + newEvents.length);
 
       // Save new events to cache
@@ -521,8 +556,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         console.log(`[Steps] Saved ${newEvents.length} additional events to IndexedDB`);
       }
 
+      return { hasMore: hasMoreData };
+
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return null;
     } finally {
       setIsLoadingMore(false);
     }
@@ -857,6 +895,45 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
   // --- End of Reactive Data Processing ---
 
+  // Manual load more function
+  const manualLoadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+    await loadMoreEvents(MANUAL_LOAD_CHUNK_SIZE);
+  }, [isLoadingMore, hasMore, MANUAL_LOAD_CHUNK_SIZE]);
+
+  // Load all remaining data
+  const loadAll = useCallback(async () => {
+    if (!totalEventCount || loadAllProgress) return;
+
+    const remainingCount = totalEventCount - allEvents.length;
+    if (remainingCount <= 0) return;
+
+    const estimatedMemoryMB = (remainingCount * 2) / 1024; // Rough estimate: 2KB per event
+    if (estimatedMemoryMB > 100) {
+      const confirmed = confirm(
+        `Loading all ${remainingCount.toLocaleString()} remaining events may use ~${estimatedMemoryMB.toFixed(1)}MB of memory. ` +
+        `This could slow down your browser. Continue?`
+      );
+      if (!confirmed) return;
+    }
+
+    setLoadAllProgress({ loaded: allEvents.length, total: totalEventCount });
+
+    try {
+      while (hasMore && allEvents.length < totalEventCount) {
+        const currentLoadedCount = allEvents.length;
+        const chunkSize = Math.min(1000, totalEventCount - currentLoadedCount);
+        
+        setLoadAllProgress({ loaded: currentLoadedCount, total: totalEventCount });
+        
+        const result = await loadMoreEvents(chunkSize);
+        if (!result || !result.hasMore) break;
+      }
+    } finally {
+      setLoadAllProgress(null);
+    }
+  }, [totalEventCount, allEvents.length, hasMore, loadAllProgress]);
+
   const handleLoadMoreRequest = () => {
     let amount = parseInt(loadAmount, 10);
     // In case of 'all', we'll need a different strategy, for now, let's use a very large number
@@ -957,9 +1034,20 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           </div>
           <div className="flex-grow" />
           <div className="flex items-center gap-2">
-            {hasMore && (
-              <Button variant="outline" size="sm" onClick={() => setIsLoadMoreModalOpen(true)} disabled={isLoadingMore}>
+            {hasMore && autoLoadingComplete && (
+              <Button variant="outline" size="sm" onClick={manualLoadMore} disabled={isLoadingMore}>
                 {isLoadingMore ? 'Loading...' : 'Load More'}
+              </Button>
+            )}
+            {totalEventCount && allEvents.length < totalEventCount && autoLoadingComplete && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={loadAll} 
+                disabled={!!loadAllProgress}
+                title={`Load all ${(totalEventCount - allEvents.length).toLocaleString()} remaining events`}
+              >
+                Load All ({(totalEventCount - allEvents.length).toLocaleString()})
               </Button>
             )}
             {usingCachedAnalyses && (
@@ -981,6 +1069,41 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           )}
         </CardContent>
       </Card>
+      
+      {/* Auto-loading indicator */}
+      {!autoLoadingComplete && (
+        <div className="flex items-center space-x-2 my-2 text-sm text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>Auto-loading events...</span>
+        </div>
+      )}
+
+      {/* Load More indicator */}
+      {isLoadingMore && (
+        <div className="flex items-center space-x-2 my-2 text-sm text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span className="ml-2 text-muted-foreground">Loading more events...</span>
+        </div>
+      )}
+
+      {/* Load All Progress */}
+      {loadAllProgress && (
+        <Card className="my-2">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between text-sm">
+              <span>Loading all events...</span>
+              <span>{loadAllProgress.loaded.toLocaleString()} / {loadAllProgress.total.toLocaleString()}</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+              <div 
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(loadAllProgress.loaded / loadAllProgress.total) * 100}%` }}
+              ></div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
       <div className="flex items-center my-4 space-x-2">
         <div className="w-12 text-xs text-gray-500">(Included)</div>
         <div className="flex-1"></div>

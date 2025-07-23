@@ -68,6 +68,9 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const { userId } = use(params);
   const sharedStorage = getSharedEventsStorage(userId);
+  const [currentLimit, setCurrentLimit] = useState(50);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const SORT_ORDER_STORAGE_KEY = `ui-trees-sort-order-${userId}`;
 
@@ -82,22 +85,34 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
     }
   }, [SORT_ORDER_STORAGE_KEY]);
 
-  const fetchUITrees = useCallback(async () => {
+  const fetchUITrees = useCallback(async (limit: number = 50, loadMore: boolean = false) => {
     if (!userId) return;
-    setLoading(true);
-    setError(null);
+    if (!loadMore) {
+      setLoading(true);
+      setError(null);
+    } else {
+      setIsLoadingMore(true);
+    }
     try {
       // First, try to load UI tree events from IndexedDB cache
-      const cachedData = await sharedStorage.getCachedEvents(50, 0, true); // Get UI tree events only
+      const cachedData = await sharedStorage.getCachedEvents(limit, 0, true); // Get UI tree events only
       
       if (cachedData.events.length > 0) {
         console.log(`[UI Trees] Loaded ${cachedData.events.length} UI tree events from IndexedDB cache`);
-        setEvents(cachedData.events as UITreeEvent[]);
-        setUsingCachedData(true);
-        setLoading(false);
+        if (!loadMore) {
+          setEvents(cachedData.events as UITreeEvent[]);
+          setUsingCachedData(true);
+          setLoading(false);
+        } else {
+          setEvents(prev => [...prev, ...cachedData.events.slice(events.length)] as UITreeEvent[]);
+          setIsLoadingMore(false);
+        }
+        setHasMore(cachedData.hasMore);
         
         // Continue to check for new UI tree events in background
-        console.log('[UI Trees] Checking for new UI tree events in background...');
+        if (!loadMore) {
+          console.log('[UI Trees] Checking for new UI tree events in background...');
+        }
       }
       
       // Always check API for fresh data (either as fallback or background refresh)
@@ -105,11 +120,12 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
         console.log('[UI Trees] No cached data found, fetching from API');
         setUsingCachedData(false);
       }
-      const response = await fetch(`/api/low-level/${userId}/ui-trees`);
+      const response = await fetch(`/api/low-level/${userId}/ui-trees?limit=${limit}`);
       if (!response.ok) {
         throw new Error('Failed to fetch UI tree events');
       }
       const data = await response.json();
+      setHasMore(data.hasMore || false);
       
       // If we had cached data, check for new UI tree events and merge
       if (cachedData.events.length > 0) {
@@ -118,8 +134,12 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
         
         if (reallyNewEvents.length > 0) {
           console.log(`[UI Trees] Found ${reallyNewEvents.length} new UI tree events, updating cache and UI`);
-          const mergedEvents = [...reallyNewEvents, ...cachedData.events] as UITreeEvent[];
-          setEvents(mergedEvents);
+          if (!loadMore) {
+            const mergedEvents = [...reallyNewEvents, ...cachedData.events] as UITreeEvent[];
+            setEvents(mergedEvents);
+          } else {
+            setEvents(prev => [...prev, ...reallyNewEvents] as UITreeEvent[]);
+          }
           
           // Save new events to cache
           await sharedStorage.saveEvents(reallyNewEvents);
@@ -128,7 +148,11 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
         }
       } else {
         // No cached data, use fresh data as-is
-        setEvents(data.events);
+        if (!loadMore) {
+          setEvents(data.events);
+        } else {
+          setEvents(prev => [...prev, ...data.events] as UITreeEvent[]);
+        }
         
         // Save to cache for future use
         if (data.events && data.events.length > 0) {
@@ -143,6 +167,13 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
       setLoading(false);
     }
   }, [userId, sharedStorage]);
+
+  const loadMoreUITrees = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+    const newLimit = currentLimit + 50;
+    setCurrentLimit(newLimit);
+    await fetchUITrees(newLimit, true);
+  }, [isLoadingMore, hasMore, currentLimit, fetchUITrees]);
 
   const forceRefreshFromAPI = useCallback(async () => {
     if (!userId) return;
@@ -313,6 +344,11 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
               Refresh
             </Button>
           )}
+          {hasMore && (
+            <Button variant="outline" size="sm" onClick={loadMoreUITrees} disabled={isLoadingMore}>
+              {isLoadingMore ? 'Loading...' : 'Load More'}
+            </Button>
+          )}
         </div>
         <div className="text-sm text-muted-foreground flex items-center gap-2">
           <span>Total Trees: {events.length}</span>
@@ -323,6 +359,14 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
           )}
         </div>
       </div>
+      
+      {/* Load More indicator */}
+      {isLoadingMore && (
+        <div className="flex items-center space-x-2 my-2 text-sm text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>Loading more UI trees...</span>
+        </div>
+      )}
       
       {loading && (
         <div className="space-y-2">
