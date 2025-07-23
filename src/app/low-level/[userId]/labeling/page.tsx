@@ -23,6 +23,9 @@ import {
 } from '@tanstack/react-table';
 import { useUser } from '@/context/UserContext';
 import type { LowLevelEvent } from '@/types';
+import { getSharedEventsStorage } from '@/lib/sharedEventsStorage';
+import { getSharedAnalysisStorage } from '@/lib/sharedAnalysisStorage';
+import { getSharedDatasetStorage } from '@/lib/sharedDatasetStorage';
 import { RefreshCw, ThumbsUp, ThumbsDown, AlertCircle } from 'lucide-react';
 import {
   DropdownMenu,
@@ -127,8 +130,28 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   const { setUserId } = useUser();
   const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
   const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
+  const [usingCachedData, setUsingCachedData] = useState(false);
+  const [usingCachedAnalyses, setUsingCachedAnalyses] = useState(false);
+  const [usingCachedDataset, setUsingCachedDataset] = useState(false);
+  const [liveUpdateIndicator, setLiveUpdateIndicator] = useState(false);
+  
+  // Storage instances
+  const sharedStorage = getSharedEventsStorage(userId);
+  const analysisStorage = getSharedAnalysisStorage(userId);
+  const datasetStorage = getSharedDatasetStorage(userId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadAllProgress, setLoadAllProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(0);
+  const [totalEventCount, setTotalEventCount] = useState<number>(0);
+
+  // Loading constants
+  const AUTO_LOAD_CHUNK_SIZE = 200;
+  const AUTO_LOAD_LIMIT = 2000;
+  const MANUAL_LOAD_CHUNK_SIZE = 1000;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -164,19 +187,84 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     setUserId(userId);
   }, [userId, setUserId]);
 
-  const fetchAllEvents = useCallback(async () => {
-    if (!userId) return;
+  const fetchAllEvents = useCallback(async (limit: number = 1000, offset: number = 0) => {
+    if (!userId) return { events: [], hasMore: false, totalEventCount: 0 };
+    
     try {
-      const response = await fetch(`/api/low-level/${userId}`);
+      // First, try to load from IndexedDB cache
+      const cachedData = await sharedStorage.getCachedEvents(limit, offset, false);
+      
+      if (cachedData.events.length > 0) {
+        console.log(`[Labeling] Loaded ${cachedData.events.length} events from IndexedDB cache`);
+        setUsingCachedData(true);
+        setHasMore(cachedData.hasMore);
+        setOffset(cachedData.events.length);
+        
+        // Continue to check for new events in background
+        console.log('[Labeling] Checking for new events in background...');
+      }
+      
+      // Always check API for fresh data
+      if (cachedData.events.length === 0) {
+        console.log('[Labeling] No cached data found, fetching from API');
+        setUsingCachedData(false);
+      }
+      
+      const response = await fetch(`/api/low-level/${userId}?offset=${offset}&limit=${limit}`);
       if (!response.ok) throw new Error('Failed to fetch events');
+      
       const data = await response.json();
-      return data.events.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime());
+      const newEvents = data.events || [];
+      
+      // If we had cached data, check for new events and merge
+      if (cachedData.events.length > 0) {
+        const cachedIds = new Set(cachedData.events.map(e => e.id));
+        const reallyNewEvents = newEvents.filter(e => !cachedIds.has(e.id));
+        
+        if (reallyNewEvents.length > 0) {
+          console.log(`[Labeling] Found ${reallyNewEvents.length} new events, updating cache and UI`);
+          const mergedEvents = [...reallyNewEvents, ...cachedData.events];
+          await sharedStorage.saveEvents(reallyNewEvents);
+          return {
+            events: mergedEvents.sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()),
+            hasMore: data.hasMore || false,
+            totalEventCount: data.totalEventCount || mergedEvents.length
+          };
+        } else {
+          console.log('[Labeling] No new events found');
+          return {
+            events: cachedData.events.sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()),
+            hasMore: cachedData.hasMore,
+            totalEventCount: cachedData.totalCached
+          };
+        }
+      } else {
+        // No cached data, use fresh data as-is
+        if (newEvents.length > 0) {
+          await sharedStorage.saveEvents(newEvents);
+          console.log(`[Labeling] Saved ${newEvents.length} events to IndexedDB`);
+        }
+        
+        const sortedEvents = newEvents.sort((a: LowLevelEvent, b: LowLevelEvent) => 
+          new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()
+        );
+        
+        setHasMore(data.hasMore || false);
+        setOffset(newEvents.length);
+        
+        return {
+          events: sortedEvents,
+          hasMore: data.hasMore || false,
+          totalEventCount: data.totalEventCount || newEvents.length
+        };
+      }
+      
     } catch (err) {
-      console.error(err);
+      console.error("Failed to fetch events", err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      return [];
+      return { events: [], hasMore: false, totalEventCount: 0 };
     }
-  }, [userId]);
+  }, [userId, sharedStorage]);
 
   const fetchAllWorkflowAnalyses = useCallback(async () => {
     if (!userId) return;
