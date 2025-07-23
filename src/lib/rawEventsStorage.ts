@@ -168,15 +168,74 @@ export class RawEventsStorage {
     const transaction = this.db.transaction([EVENTS_STORE], 'readwrite');
     const store = transaction.objectStore(EVENTS_STORE);
 
+    // First, check which events already exist to avoid double-counting in metadata
+    const existingEventIds = new Set<number>();
+    for (const event of events) {
+      try {
+        const existing = await this.getFromStore<LowLevelEvent>(store, event.id);
+        if (existing) {
+          existingEventIds.add(event.id);
+        }
+      } catch {
+        // Event doesn't exist, which is fine
+      }
+    }
+
+    // Calculate only new events for metadata counting
+    const newEvents = events.filter(event => !existingEventIds.has(event.id));
+    const newEventsCount = newEvents.length;
+    
     let totalSize = 0;
     const promises = events.map(event => {
-      const size = this.estimateEventSize(event);
-      totalSize += size;
+      // Only count size for new events in metadata
+      if (!existingEventIds.has(event.id)) {
+        const size = this.estimateEventSize(event);
+        totalSize += size;
+      }
       return this.putToStore(store, event);
     });
 
     await Promise.all(promises);
-    await this.updateStorageMetadata(totalSize, events.length);
+    
+    // Only update metadata with the count of actually new events
+    if (newEventsCount > 0) {
+      await this.updateStorageMetadata(totalSize, newEventsCount);
+      console.log(`[RawEventsStorage] Saved ${events.length} events (${newEventsCount} new, ${existingEventIds.size} updated)`);
+    } else {
+      console.log(`[RawEventsStorage] Updated ${events.length} existing events (no new events)`);
+    }
+  }
+
+  // Add method to recalculate metadata from actual stored data
+  async recalculateMetadata(): Promise<void> {
+    if (!this.db) return;
+
+    console.log('[RawEventsStorage] Recalculating metadata from actual stored data...');
+    
+    // Get all events for this user
+    const allEvents = await this.getEventsSortedByAge();
+    
+    // Calculate accurate totals
+    let totalSize = 0;
+    allEvents.forEach(event => {
+      totalSize += this.estimateEventSize(event);
+    });
+
+    // Reset metadata to accurate values
+    const transaction = this.db.transaction([METADATA_STORE], 'readwrite');
+    const store = transaction.objectStore(METADATA_STORE);
+    
+    const metadataKey = `storage_${this.userId}`;
+    const metadata: StorageMetadata = {
+      id: metadataKey,
+      totalSize: totalSize,
+      eventCount: allEvents.length,
+      lastCleanup: Date.now(),
+    };
+
+    await this.putToStore(store, metadata);
+    
+    console.log(`[RawEventsStorage] Metadata recalculated: ${allEvents.length} events, ${(totalSize / 1024 / 1024).toFixed(2)}MB`);
   }
 
   async loadEvents(limit: number = 1000, offset: number = 0): Promise<LowLevelEvent[]> {
