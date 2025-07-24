@@ -78,7 +78,7 @@ export class AIClient {
             try {
               const parsed = JSON.parse(data);
               yield parsed;
-            } catch (e) {
+            } catch {
               // Skip invalid JSON lines
               continue;
             }
