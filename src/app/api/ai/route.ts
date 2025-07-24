@@ -25,11 +25,23 @@ function authenticate(request: NextRequest): boolean {
   
   if (authHeader.startsWith('Basic ')) {
     const credentials = Buffer.from(authHeader.substring(6), 'base64').toString();
-    const [, password] = credentials.split(':');
+    const [username, password] = credentials.split(':');
     return password === API_PASSWORD;
   }
 
   return false;
+}
+
+// Helper function to process tools received from Tauri app
+function processMCPTools(toolsFromTauri?: Record<string, any>) {
+  if (!toolsFromTauri || Object.keys(toolsFromTauri).length === 0) {
+    return {};
+  }
+
+  console.log('MCP Tools received from Tauri app:', Object.keys(toolsFromTauri));
+  
+  // Tools are already in AI SDK format from the Tauri app
+  return toolsFromTauri;
 }
 
 // OPTIONS endpoint for CORS preflight requests
@@ -40,7 +52,7 @@ export async function OPTIONS() {
   });
 }
 
-// POST endpoint for text generation
+// POST endpoint for text generation with optional MCP tools
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
@@ -58,7 +70,9 @@ export async function POST(request: NextRequest) {
       stream = false,
       maxTokens = 1000,
       temperature = 0.7,
-      systemPrompt
+      systemPrompt,
+      mcpTools, // New: MCP tools from Tauri app (already in AI SDK format)
+      enableTools = false // New: whether to enable MCP tools
     } = body;
 
     if (!prompt) {
@@ -68,7 +82,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Configure Vertex AI using your existing base64 credentials (no file needed!)
+    // Configure Vertex AI using your existing base64 credentials
     let vertex;
     
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
@@ -92,8 +106,13 @@ export async function POST(request: NextRequest) {
     
     const vertexModel = vertex(model);
     
+    // Get MCP tools if enabled and tools provided from Tauri app
+    let tools = {};
+    if (enableTools && mcpTools) {
+      tools = processMCPTools(mcpTools);
+    }
+    
     // Prepare messages
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages: any[] = [];
     
     if (systemPrompt) {
@@ -108,14 +127,18 @@ export async function POST(request: NextRequest) {
       content: prompt
     });
 
+    // Common AI SDK options
+    const aiOptions = {
+      model: vertexModel as any,
+      messages,
+      maxTokens,
+      temperature,
+      ...(Object.keys(tools).length > 0 && { tools }) // Only add tools if we have them
+    };
+
     // Handle streaming response
     if (stream) {
-      const result = streamText({
-        model: vertexModel,
-        messages,
-        maxTokens,
-        temperature
-      });
+      const result = streamText(aiOptions);
 
       // Convert to streaming response
       const encoder = new TextEncoder();
@@ -126,10 +149,22 @@ export async function POST(request: NextRequest) {
               const data = encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`);
               controller.enqueue(data);
             }
+            
+            // Send tool calls if any
+            try {
+              const finishResult = await result.text; // Wait for completion
+              // Note: Tool calls in streaming are handled differently in AI SDK v5
+              // They're included in the stream automatically
+            } catch (toolError) {
+              console.error('Tool execution error:', toolError);
+            }
+            
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
             controller.close();
           } catch (error) {
             controller.error(error);
+          } finally {
+            // No cleanup needed - tools came from Tauri app
           }
         }
       });
@@ -145,26 +180,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle non-streaming response
-    const result = await generateText({
-      model: vertexModel,
-      messages,
-      maxTokens,
-      temperature
-    });
+    const result = await generateText(aiOptions);
 
     return NextResponse.json({
       text: result.text,
       usage: result.usage,
-      model: model
+      model: model,
+      toolCalls: result.toolCalls || [],
+      toolResults: result.toolResults || [],
+      mcpToolsUsed: Object.keys(tools).length > 0 ? Object.keys(tools) : undefined
     }, { headers: corsHeaders });
 
-  } catch (error: unknown) {
+  } catch (error: any) {
     console.error('AI API Error:', error);
     
     return NextResponse.json(
       { 
         error: 'Failed to generate response',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error.message
       },
       { status: 500, headers: corsHeaders }
     );
@@ -194,14 +227,16 @@ export async function GET(request: NextRequest) {
       endpoints: {
         generate: {
           method: 'POST',
-          description: 'Generate text using AI',
+          description: 'Generate text using AI with optional MCP tools',
           parameters: {
             prompt: 'string (required) - The input prompt',
-            model: 'string (optional) - Model name, default: gemini-1.5-pro',
+            model: 'string (optional) - Model name, default: gemini-2.5-pro',
             stream: 'boolean (optional) - Enable streaming response, default: false',
             maxTokens: 'number (optional) - Maximum tokens to generate, default: 1000',
             temperature: 'number (optional) - Creativity level 0-1, default: 0.7',
-            systemPrompt: 'string (optional) - System prompt for the AI'
+            systemPrompt: 'string (optional) - System prompt for the AI',
+            enableTools: 'boolean (optional) - Enable MCP tools, default: false',
+            mcpTools: 'object (optional) - MCP tools from Tauri app in AI SDK format'
           }
         }
       },
