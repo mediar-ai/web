@@ -32,6 +32,7 @@ interface SavedSynthesis {
 
 interface SavedSynthesesSectionProps {
   userId: string;
+  refreshTrigger?: number;
 }
 
 interface TimelineAnnotation {
@@ -65,7 +66,7 @@ interface TimelineAnnotation {
   event_created_at?: string;
 }
 
-export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
+export function SavedSynthesesSection({ userId, refreshTrigger }: SavedSynthesesSectionProps) {
   const [savedSyntheses, setSavedSyntheses] = useState<SavedSynthesis[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSynthesis, setSelectedSynthesis] = useState<SavedSynthesis | null>(null);
@@ -77,7 +78,7 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
     if (userId) {
       fetchSavedSyntheses();
     }
-  }, [userId]);
+  }, [userId, refreshTrigger]);
 
   // Fetch timeline annotations when a synthesis is selected
   useEffect(() => {
@@ -87,6 +88,10 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
       setTimelineAnnotations(null);
     }
   }, [selectedSynthesis]);
+
+
+
+
 
   const fetchSavedSyntheses = async () => {
     try {
@@ -156,12 +161,7 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
     });
   };
 
-  const formatDuration = (seconds?: number) => {
-    if (!seconds) return 'Unknown';
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
-  };
+
 
   // Helper function to format workflow results to match live synthesis structure
   const formatWorkflowResults = (results: Array<Record<string, unknown>>) => {
@@ -208,9 +208,8 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-8 text-center mb-6">
-      <Card>
-        <CardContent>
+    <Card>
+      <CardContent>
           <Collapsible open={isOpen} onOpenChange={setIsOpen}>
             <div className="mb-4 text-left">
               <CollapsibleTrigger className="w-full flex items-center justify-between hover:bg-gray-50 p-2 rounded">
@@ -224,12 +223,11 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
               )}>
                 <div className="mt-4">
                   {/* Table Header */}
-                  <div className="grid grid-cols-12 gap-4 p-4 bg-white border-b border-black text-sm font-medium text-black">
+                  <div className="grid grid-cols-9 gap-4 p-4 bg-white border-b border-black text-sm font-medium text-black">
+                    <div className="col-span-1">ID</div>
                     <div className="col-span-4">Title</div>
                     <div className="col-span-2">Created</div>
                     <div className="col-span-2">Workflows</div>
-                    <div className="col-span-2">Duration</div>
-                    <div className="col-span-2">Model</div>
                   </div>
                   
                   {/* Table Rows */}
@@ -237,12 +235,15 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
                     <div
                       key={synthesis.id}
                       onClick={() => setSelectedSynthesis(synthesis)}
-                      className={`grid grid-cols-12 gap-4 p-4 cursor-pointer transition-colors hover:bg-gray-100 border-b border-gray-300 ${
+                      className={`grid grid-cols-9 gap-4 p-4 cursor-pointer transition-colors hover:bg-gray-100 border-b border-gray-300 ${
                         selectedSynthesis?.id === synthesis.id 
                           ? 'bg-gray-200 border-black' 
                           : ''
                       }`}
                     >
+                      <div className="col-span-1 text-sm text-gray-700 font-mono">
+                        #{synthesis.id}
+                      </div>
                       <div className="col-span-4">
                         <div className="font-semibold text-black">{synthesis.title}</div>
                         {synthesis.description && (
@@ -256,23 +257,12 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
                         <div>{synthesis.workflowIds.length} workflows</div>
                         <div className="text-xs text-gray-600">{synthesis.processData.identifiedWorkflows.length} identified</div>
                       </div>
-                      <div className="col-span-2 text-sm text-gray-700">
-                        {formatDuration(synthesis.synthesisDuration)}
-                      </div>
-                      <div className="col-span-2 text-xs text-black">
-                        <div>{synthesis.version}</div>
-                        {synthesis.modelsUsed.map(model => (
-                          <div key={model} className="text-gray-600">
-                            {model.split('-')[0]}
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   ))}
 
                   {/* Selected Synthesis Details - Replicate Live Synthesis Structure */}
                   {selectedSynthesis && (
-                    <div className="mt-6 max-w-4xl mx-auto py-6">
+                    <div className="mt-6 py-6">
                       <h4 className="text-2xl font-bold text-center mb-8">
                         {selectedSynthesis.title}
                       </h4>
@@ -579,6 +569,5 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
           </Collapsible>
         </CardContent>
       </Card>
-    </div>
   );
 } 
