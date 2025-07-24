@@ -40,7 +40,7 @@ interface TimelineAnnotation {
   is_workflow_related: boolean;
   model_used: string;
   unrelated_reason: string | null;
-  workflow_template_id: number | null;
+  workflow_id: number | null;
   workflow_type_id: number | null;
   workflow_instance_id: number | null;
   workflow_step_id: number | null;
@@ -315,13 +315,13 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
     filteredAnnotations
       .filter(a => a.is_workflow_related)
       .forEach(annotation => {
-        const workflowKey = `${annotation.workflow_template_id || 'unknown'}`;
+        const workflowKey = `${annotation.workflow_id || 'unknown'}`;
         const stepKey = `${annotation.workflow_step_id || 'unknown'}`;
         const substepKey = `${annotation.workflow_substep_id || 'unknown'}`;
         
         if (!workflows[workflowKey]) {
           workflows[workflowKey] = {
-            template_id: annotation.workflow_template_id,
+            template_id: annotation.workflow_id,
             template_name: annotation.template_name || 'Unknown Workflow',
             type_id: annotation.workflow_type_id,
             type_name: annotation.type_name || 'Unknown Type',
@@ -402,7 +402,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
         updated[actualIndex] = {
             ...updated[actualIndex],
             is_workflow_related: false,
-            workflow_template_id: null,
+            workflow_id: null,
             workflow_type_id: null,
             workflow_instance_id: null,
             workflow_step_id: null,
@@ -431,7 +431,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
         updated[actualIndex] = {
             ...updated[actualIndex],
             is_workflow_related: true,
-            workflow_template_id: workflow.template_id,
+            workflow_id: workflow.template_id,
             template_name: workflow.template_name,
             workflow_type_id: workflow.type_id,
             type_name: workflow.type_name,
@@ -650,9 +650,9 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                             Workflow Template:
                           </Label>
                           <Select
-                            value={annotation.workflow_template_id?.toString() || ""}
+                            value={annotation.workflow_id?.toString() || ""}
                             onValueChange={(value) => 
-                              handleAnnotationChange(index, 'workflow_template_id', parseInt(value))
+                              handleAnnotationChange(index, 'workflow_id', parseInt(value))
                             }
                           >
                             <SelectTrigger id={`template-${annotation.analysis_id}`} className="flex-1">
@@ -683,7 +683,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                             </SelectTrigger>
                             <SelectContent>
                               {workflowComponents.types
-                                .filter(type => type.template_id === annotation.workflow_template_id)
+                                .filter(type => type.template_id === annotation.workflow_id)
                                 .map(type => (
                                   <SelectItem key={type.id} value={type.id.toString()}>
                                     {type.name}
@@ -708,7 +708,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                             </SelectTrigger>
                             <SelectContent>
                               {workflowComponents.instances
-                                .filter(instance => instance.template_id === annotation.workflow_template_id)
+                                .filter(instance => instance.template_id === annotation.workflow_id)
                                 .map(instance => (
                                   <SelectItem key={instance.id} value={instance.id.toString()}>
                                     {instance.name}
@@ -733,7 +733,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                             </SelectTrigger>
                             <SelectContent>
                               {workflowComponents.steps
-                                .filter(step => step.template_id === annotation.workflow_template_id)
+                                .filter(step => step.template_id === annotation.workflow_id)
                                 .map(step => (
                                   <SelectItem key={step.id} value={step.id.toString()}>
                                     {step.name}
