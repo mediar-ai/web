@@ -17,7 +17,7 @@ function authenticate(request: NextRequest): boolean {
   
   if (authHeader.startsWith('Basic ')) {
     const credentials = Buffer.from(authHeader.substring(6), 'base64').toString();
-    const [username, password] = credentials.split(':');
+    const [, password] = credentials.split(':');
     return password === API_PASSWORD;
   }
 
@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
     const vertexModel = vertex(model);
     
     // Prepare messages
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages: any[] = [];
     
     if (systemPrompt) {
@@ -119,13 +120,13 @@ export async function POST(request: NextRequest) {
       model: model
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('AI API Error:', error);
     
     return NextResponse.json(
       { 
         error: 'Failed to generate response',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     );
@@ -172,13 +173,13 @@ export async function GET(request: NextRequest) {
       }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('AI API Health Check Error:', error);
     
     return NextResponse.json(
       { 
         error: 'Health check failed',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     );
