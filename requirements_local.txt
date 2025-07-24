@@ -1,2 +1,0 @@
-httpx==0.27.0
-asyncio-compat==0.2.0 

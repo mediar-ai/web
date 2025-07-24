@@ -52,6 +52,15 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
+.env
+.venv
+venv
+*.egg-info/
+.pytest_cache/
+
+# UV Python package manager
+uv.lock
 
 # sveltekit
 .svelte-kit/
@@ -69,3 +78,31 @@ dev.log
 *.log
 scripts/Mediar Log*
 .env*.local
+
+# Temporary and generated files
+*.tmp
+*.temp
+execution_*.json
+execution_*.txt
+*_response_*.json
+step_details_*.json
+formatted_output_*.txt
+last_*_lines_*.txt
+mcp_response_*.json
+
+# Downloaded data folders
+downloaded_sequences/
+downloaded_events/
+transcripts/
+windows-remote-service/
+
+# Screenshots and images (except in public)
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+test-screenshot.*
+
+# Database dumps and backups
+*.sql.gz
+*.backup
