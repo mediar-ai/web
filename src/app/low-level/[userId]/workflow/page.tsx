@@ -403,7 +403,7 @@ const StepperItem = memo(({
                         ) : id === 'timeline-mapping' && isMappingTimeline ? (
                             <AnalysisProgressBubble status={logic.timelineMappingStatus} progress={logic.timelineMappingProgress} elapsedTime={logic.timelineMappingElapsedTime} batchInfo={logic.timelineMappingBatch} />
                         ) : showComponent ? (
-                            <div className="p-4 border rounded-lg bg-muted/50">
+                            <div className="p-4 border border-black rounded-lg bg-muted/50">
                                 {id === 'define-context' && (
                                     <div className={completed && !editable ? 'opacity-60 pointer-events-none' : ''}>
                                         <div className="grid grid-cols-[auto_1fr] items-start gap-x-4 gap-y-2">
@@ -493,7 +493,7 @@ const StepperItem = memo(({
                                                   onAnnotationsChange={logic.handleTimelineAnnotationsChange as any}
                                                 />
                                               ) : (
-                                                <div className="text-center text-muted-foreground p-4 border rounded-lg bg-muted/50">
+                                                <div className="text-center text-muted-foreground p-4 border border-black rounded-lg bg-muted/50">
                                                   Click the button above to generate and view the timeline mapping data.
                                                 </div>
                                               )}
@@ -725,7 +725,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             </div>
 
             {/* Main Content */}
-            <div className="max-w-4xl mx-auto p-8 text-center mb-6">
+            <div className="max-w-4xl mx-auto p-8 space-y-6">
                 <Card>
                     <CardContent>
                         <Collapsible open={mainWorkflowOpen} onOpenChange={setMainWorkflowOpen}>
@@ -736,7 +736,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 </CollapsibleTrigger>
                                 
                                 <CollapsibleContent className={cn(
-                                    "transition-all duration-300 ease-in-out",
+                                    "transition-all duration-300 ease-in-out w-full",
                                     mainWorkflowOpen ? "max-h-[5000px] opacity-100" : "max-h-0 opacity-50 overflow-hidden"
                                 )}>
                                     <div className="mt-4">
@@ -774,10 +774,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                         </Collapsible>
                     </CardContent>
                 </Card>
+                
+                {/* Saved Syntheses Section */}
+                <SavedSynthesesSection userId={userId} />
             </div>
-            
-            {/* Saved Syntheses Section */}
-            <SavedSynthesesSection userId={userId} />
         </div>
     );
 } 
