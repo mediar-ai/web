@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import { WORKFLOW_BOUNDARIES_PROMPT, WORKFLOW_BOUNDARIES_SCHEMA } from '@/lib/prompts';
+import { buildComprehensiveContext, TranscriptItem } from '@/lib/transcriptUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -110,7 +111,46 @@ export async function POST(req: NextRequest) {
 
     console.log(`Loaded ${analyses.length} analyses for boundary definition`);
 
+    // Fetch transcripts for the same time range if they exist
+    let transcriptsData: TranscriptItem[] = [];
+    try {
+      let transcriptQuery = supabaseAdmin
+        .from('agent_live_transcriptions')
+        .select('session_id, role, content, created_at, type, item_id')
+        .eq('user_id', context.userId);
+
+      // Apply same time filtering as analyses
+      if (startDate && endDate) {
+        transcriptQuery = transcriptQuery
+          .gte('created_at', startDate)
+          .lte('created_at', endDate);
+      }
+
+      const { data: transcripts, error: transcriptError } = await transcriptQuery
+        .order('created_at', { ascending: true })
+        .limit(500); // Limit transcripts to prevent overwhelming context
+
+      if (transcriptError) {
+        console.warn('Error fetching transcripts for boundaries:', transcriptError);
+      } else {
+        transcriptsData = transcripts || [];
+        console.log(`Loaded ${transcriptsData.length} transcript items for boundary definition`);
+      }
+    } catch (error) {
+      console.warn('Transcript fetching failed, continuing without transcripts:', error);
+    }
+
     const workflowList = workflowNames.map((name: string) => `- "${name}"`).join('\n');
+    
+    // Build comprehensive context including transcripts and user instructions
+    console.log('🎯 BOUNDARIES: Building context with transcripts and user instructions');
+    console.log(`📋 User instructions: ${context.userInstructions ? 'YES - ' + context.userInstructions.substring(0, 50) + '...' : 'NO'}`);
+    
+    const comprehensiveContext = buildComprehensiveContext(
+      transcriptsData, 
+      context.userInstructions, 
+      1000 // Max transcript length for boundary definition
+    );
     
     const prompt = `${WORKFLOW_BOUNDARIES_PROMPT}
 
@@ -119,6 +159,8 @@ ${workflowList}
 
 User's High-Level Context:
 ${JSON.stringify(context.userContext, null, 2)}
+
+${comprehensiveContext}
 
 Combined Analyses Data:
 The combinedAnalyses array contains events with the following structure:

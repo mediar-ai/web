@@ -18,18 +18,38 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ work
     return NextResponse.json({ error: 'Missing workflowId parameter' }, { status: 400 });
   }
 
+  if (!updatedData.userId) {
+    return NextResponse.json({ error: 'Missing userId in request' }, { status: 400 });
+  }
+
   try {
+    // Handle both old and new data formats for backward compatibility
+    const updateFields: Record<string, unknown> = {};
+    
+    if (updatedData.title) {
+      updateFields.title = updatedData.title;
+    }
+    
+    if (updatedData.chat_history) {
+      updateFields.chat_history = updatedData.chat_history;
+    }
+    
+    // Handle new detailed workflow data format
+    if (updatedData.detailed_workflow_data) {
+      updateFields.detailed_workflow_data = updatedData.detailed_workflow_data;
+    }
+    
+    // Handle legacy format for backward compatibility
+    if (updatedData.inputs) updateFields.inputs = updatedData.inputs;
+    if (updatedData.outputs) updateFields.outputs = updatedData.outputs;
+    if (updatedData.steps) updateFields.steps = updatedData.steps;
+    if (updatedData.businessLogic) updateFields.business_logic = updatedData.businessLogic;
+
     const { data, error } = await supabaseAdmin
       .from('low_level_workflows')
-      .update({
-          title: updatedData.title,
-          inputs: updatedData.inputs,
-          outputs: updatedData.outputs,
-          steps: updatedData.steps,
-          business_logic: updatedData.businessLogic,
-          chat_history: updatedData.chat_history,
-      })
+      .update(updateFields)
       .eq('id', workflowId)
+      .eq('user_id', updatedData.userId)
       .select()
       .single();
 

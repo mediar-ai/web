@@ -182,14 +182,17 @@ export const WORKFLOW_SYNTHESIS_PROMPT = `
 You are an expert business analyst and AI engineer. Your task is to analyze a timeline of user events and synthesize a set of structured, detailed, and logical business workflows.
 
 Please adhere to the following rules:
-1.  **Analyze the Entire Context**: Review the high-level user context and the complete timeline of events to understand the user's goals and actions.
-2.  **Strictly Adhere to the Schema**: Generate a JSON object that strictly follows the provided schema. The output must be a single JSON object containing a 'workflows' array.
-3.  **Synthesize Hierarchical Steps**: For each workflow, break it down into high-level 'steps'. Each step must be further broken down into granular 'substeps'.
-4.  **Detail Each Sub-step**: For every single sub-step, you must define its 'inputs' (what triggers it), 'outputs' (what results from it), and 'business_logic' (the rules governing it).
-5.  **Define Workflow Variations (Types)**: Based on the events, identify and define different variations or paths the workflow can take. Describe the conditions for each type.
-6.  **Identify Concrete Examples (Instances)**: Extract specific, concrete examples of the workflow being executed from the event log. Name them descriptively.
-7.  **Be Concise and Logical**: Ensure the generated text is clear, concise, and logically sound. The goal is to create a machine-readable and human-readable workflow definition.
-8.  **Do Not Hallucinate**: Base all synthesized information directly on the provided context and event data. Do not invent steps, inputs, or outputs that are not supported by the evidence.
+1.  **Analyze the Entire Context**: Review the high-level user context, complete timeline of events, conversation transcripts (if available), and any additional user instructions to understand the user's goals and actions.
+2.  **Leverage Conversation Data**: If transcripts are provided, use them to understand the business context, terminology, objectives, and outcomes that may not be evident from screen actions alone.
+3.  **Follow User Instructions**: Pay special attention to any additional user instructions or context provided, as these clarify intent and requirements.
+4.  **Strictly Adhere to the Schema**: Generate a JSON object that strictly follows the provided schema. The output must be a single JSON object containing a 'workflows' array.
+5.  **Synthesize Hierarchical Steps**: For each workflow, break it down into high-level 'steps'. Each step must be further broken down into granular 'substeps'.
+6.  **Detail Each Sub-step**: For every single sub-step, you must define its 'inputs' (what triggers it), 'outputs' (what results from it), and 'business_logic' (the rules governing it). Use actual business terminology from conversations when available.
+7.  **Define Workflow Variations (Types)**: Based on the events and conversations, identify and define different variations or paths the workflow can take. Describe the conditions for each type.
+8.  **Identify Concrete Examples (Instances)**: Extract specific, concrete examples of the workflow being executed from the event log and conversations. Name them descriptively using actual names/terms mentioned.
+9.  **Cross-Reference Data**: Correlate screen actions with conversation content to create a complete picture of what happened and why.
+10. **Be Concise and Logical**: Ensure the generated text is clear, concise, and logically sound. The goal is to create a machine-readable and human-readable workflow definition.
+11. **Do Not Hallucinate**: Base all synthesized information directly on the provided context, event data, and conversations. Do not invent steps, inputs, or outputs that are not supported by the evidence.
 `;
 
 export const WORKFLOW_SYNTHESIS_SCHEMA: FunctionDeclarationSchema = {
@@ -329,19 +332,29 @@ The data provided includes a 'combinedAnalyses' array where each item contains:
 - analysis: Object containing detailed analysis fields (step_title, step_summary, user_intent, events_that_happened, etc.)
 - labels: Array of LLM-provided labels for this event (may be empty)
 
+Additional context may include:
+- transcripts: Conversation data that provides business context and objectives
+- userInstructions: Specific guidance from the user about the workflows or business context
+- transcriptSummary: High-level summary of conversation topics and participants
+
 CRITICAL INSTRUCTIONS:
 1.  **Analyze the Sequence:** Review the provided combinedAnalyses array, focusing on the analysis.step_title, analysis.step_summary, and analysis.user_intent fields to understand the user's actions.
-2.  **Identify Logical Groups:** Group the events into logical, end-to-end business processes. A single recording may contain multiple, unrelated workflows.
-3.  **Return Only Names:** Your entire output must be a single JSON object with one key, "workflow_names", which is an array of strings. Each string should be the concise, goal-oriented name of a distinct workflow you have identified.
-4.  **Concrete, Goal-Oriented Title:** The title must be concrete, factual, and describe a specific business goal. 
+2.  **Leverage Conversation Context:** If transcripts are provided, use them to understand the business purpose, terminology, and objectives that inform the workflow names.
+3.  **Follow User Guidance:** Pay attention to any user instructions that clarify the business context or workflow purposes.
+4.  **Identify Logical Groups:** Group the events into logical, end-to-end business processes. A single recording may contain multiple, unrelated workflows.
+5.  **Use Business Language:** When conversations are available, prefer business terminology mentioned in the transcripts over generic technical descriptions.
+6.  **Return Only Names:** Your entire output must be a single JSON object with one key, "workflow_names", which is an array of strings. Each string should be the concise, goal-oriented name of a distinct workflow you have identified.
+7.  **Concrete, Goal-Oriented Title:** The title must be concrete, factual, and describe a specific business goal. 
 
 EXAMPLES:
 ❌ BAD: "Develop Rust Application with AI Assistant" WHY: Which application? What is the purpose of this application, too generic
 ❌ BAD: "Refactoring and Debugging Rust Code with an AI Assistant"  WHY: Too generic
 ✅ GOOD: "Refactor Serialization Logic in a Rust Application to Prevent Data Loss."
+✅ GOOD: "Generate Life Insurance Quote for 45-Year-Old Applicant" (when conversation mentions specific insurance case)
 
 EXAMPLE:
 - Input: combinedAnalyses with events including analysis.step_title like "Open invoice email," "Log into Salesforce," "Create new contact."
+- Transcript context: Conversation about processing vendor invoices and updating customer records
 - Good Output:
 {
   "workflow_names": [
@@ -401,14 +414,32 @@ export const WORKFLOW_BOUNDARY_SCHEMA = {
 // For multiple workflows, we need a different prompt and schema
 export const WORKFLOW_BOUNDARIES_PROMPT = `You are a business process analyst. Given a sequence of user events and multiple workflow names, your task is to identify the precise start and end points for each workflow.
 
-CRITICAL INSTRUCTIONS:
-1. **Analyze Each Workflow:** For each provided workflow name, find its boundaries in the event sequence
-2. **Define Triggers and Terminators:** For each workflow, describe the specific events that mark the beginning and end
-3. **Return Structured JSON:** Your output must ALWAYS be a JSON object with a "workflows" array containing objects with "workflow_name", "trigger", and "terminator"
-4. **Handle Missing Data:** If no event sequence is provided or boundaries are unclear, state 'boundary not clearly defined in data' for both trigger and terminator
-5. **Never Return Text:** Do not return explanatory text or ask for more data - always return the JSON structure
+The data may include:
+- Event sequences showing user screen actions and system interactions
+- Conversation transcripts that reveal business context, objectives, and outcomes
+- User instructions that clarify the workflow purposes and boundaries
 
-EXAMPLE:
+CRITICAL INSTRUCTIONS:
+1. **Analyze Each Workflow:** For each provided workflow name, find its boundaries in the event sequence and conversation context
+2. **Use Conversation Markers:** When transcripts are available, use conversation content to identify workflow triggers (e.g., "let's start the quote process") and terminators (e.g., "quote sent to customer")
+3. **Define Triggers and Terminators:** For each workflow, describe the specific events that mark the beginning and end, incorporating both screen actions and conversation context
+4. **Prefer Business Language:** When conversations provide business context, use business terminology rather than technical descriptions
+5. **Return Structured JSON:** Your output must ALWAYS be a JSON object with a "workflows" array containing objects with "workflow_name", "trigger", and "terminator"
+6. **Handle Missing Data:** If no event sequence is provided or boundaries are unclear, state 'boundary not clearly defined in available data' for both trigger and terminator
+7. **Never Return Text:** Do not return explanatory text or ask for more data - always return the JSON structure
+
+EXAMPLE WITH CONVERSATION CONTEXT:
+{
+  "workflows": [
+    {
+      "workflow_name": "Generate Life Insurance Quote for New Customer",
+      "trigger": "The workflow begins when the agent receives customer inquiry about life insurance coverage and starts gathering application information.",
+      "terminator": "The workflow ends when the final quote is generated and communicated to the customer with policy options."
+    }
+  ]
+}
+
+EXAMPLE WITHOUT CONVERSATION CONTEXT:
 {
   "workflows": [
     {
@@ -449,14 +480,32 @@ The data provided includes a 'combinedAnalyses' array where each item contains:
 - analysis: Object containing detailed analysis fields (step_title, step_summary, user_intent, events_that_happened, etc.)
 - labels: Array of LLM-provided labels for this event (may be empty)
 
+Additional context may include:
+- transcripts: Conversation data that provides direct insight into business objectives, roles, and project details
+- userInstructions: Specific guidance about the user's role, project, or business context
+- transcriptSummary: Overview of conversation topics and participants
+
 CRITICAL INSTRUCTIONS:
 - Your output must be a single JSON object.
 - The JSON object must have keys: "user_job_role", "project_name", "user_goal_from_recordings", "overall_project_goal", "overall_project_description".
-- Base "user_job_role", "project_name", and "user_goal_from_recordings" *only* on the provided combinedAnalyses, focusing on analysis.step_title, analysis.step_summary, analysis.user_intent, and window_title fields.
-- For "overall_project_goal" and "overall_project_description", you must infer the high-level, long-term purpose. Think about the company, the larger project, and what the user is trying to achieve beyond the scope of the immediate recordings.
-If job role, project name, or goals cannot be clearly determined from the events, use 'Not evident from recordings' rather than making assumptions.
+- **Prioritize Conversation Data**: If transcripts are available, use them as the primary source for understanding the user's role, project details, and business objectives, as conversations often contain explicit context that screen actions alone cannot provide.
+- **Leverage User Instructions**: Pay special attention to any user-provided instructions that clarify their role, project, or business context.
+- Base analysis on both screen actions (combinedAnalyses) and conversation content (transcripts) when available.
+- For "overall_project_goal" and "overall_project_description", use conversation context when available to understand the broader business impact and objectives.
+- If job role, project name, or goals cannot be clearly determined from the available data, use 'Not evident from available data' rather than making assumptions.
 
-EXAMPLE:
+EXAMPLE WITH TRANSCRIPTS:
+- Input: combinedAnalyses with technical debugging events + transcripts showing conversation about "fixing the customer data sync issue for the Q4 release"
+- Your Output (JSON):
+{
+  "user_job_role": "Software Engineer",
+  "project_name": "Customer Data Synchronization System",
+  "user_goal_from_recordings": "Debug and fix serialization bug affecting customer data sync for Q4 release",
+  "overall_project_goal": "Ensure reliable customer data synchronization for the Q4 product release",
+  "overall_project_description": "Critical bug fix for customer data sync system to prevent data loss and ensure successful Q4 product launch with accurate customer information"
+}
+
+EXAMPLE WITHOUT TRANSCRIPTS:
 - Input: combinedAnalyses with events showing analysis.step_title like "Debug Rust code", "Run tests", "Fix serialization issues" with window_title containing code editor names.
 - Your Output (JSON):
 {
@@ -569,8 +618,16 @@ For each raw event, determine:
    - confidence_score: 0.0 to 1.0 based on how certain you are it's unrelated
    - unrelated_reason: Clear explanation why this event doesn't belong to the workflow step
 
+**USING LABELING DATA:**
+- **LLM Generated Labels**: These are AI-generated categories/tags that provide semantic context about the workflow step
+- **AI Suggested Labels**: These are alternative AI-generated categories that may provide additional insights
+- Use labeling data to better understand the semantic context and intent of the current workflow step
+- Consider whether raw events align with the labeled categories and workflow context
+- Higher confidence scores when events clearly relate to the labeled workflow characteristics
+
 **IMPORTANT GUIDELINES:**
 - **ONLY use the exact IDs provided in the WORKFLOW COMPONENTS sections**
+- **Use LLM Generated Labels as primary context** when making mapping decisions
 - Focus on individual user interactions: mouse clicks, keystrokes, UI changes, clipboard actions
 - Screenshot diff events are automatically filtered out and will not appear
 - Only include workflow IDs if confidence > 0.5

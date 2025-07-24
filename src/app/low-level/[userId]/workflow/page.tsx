@@ -44,6 +44,7 @@ import {
   AiThinkingBubble,
   AnalysisProgressBubble,
   EditableWorkflowBoundaries,
+  EditableSynthesizedWorkflows,
 } from './components';
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -52,6 +53,7 @@ import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
+import { EditableTimelineMappings } from '@/components/low-level/EditableTimelineMappings';
 import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
 import { FilteredStatsDisplay } from '@/components/FilteredStatsDisplay';
 
@@ -239,7 +241,7 @@ const STEP_DEFINITIONS: StepDefinition[] = [
 ];
 
 const StepperItem = memo(({
-  id, number, title, description, actionText, isLast, logic
+  id, number, title, description, actionText, isLast, logic, saveStatus, setSaveStatus, setRefreshTrigger
 }: {
   id: string;
   number: number;
@@ -248,6 +250,9 @@ const StepperItem = memo(({
   actionText: string;
   isLast: boolean;
   logic: WorkflowPageLogicType;
+  saveStatus: 'idle' | 'saving' | 'success' | 'error';
+  setSaveStatus: (status: 'idle' | 'saving' | 'success' | 'error') => void;
+  setRefreshTrigger: (fn: (prev: number) => number) => void;
 }) => {
     const { 
       synthesisStep, isFetchingEvents, isAnalyzingEvents, runInitialAnalysis, isLoading, 
@@ -307,7 +312,7 @@ const StepperItem = memo(({
                 case 'define-boundaries':
                     return synthesisStep === 'defining_boundaries' || synthesisStep === 'boundaries_editing'; // Editable when processing or editing
                 case 'synthesize-workflows':
-                    return synthesisStep === 'done'; // Editable when done with synthesis
+                    return synthesisStep === 'done' && !isMappingTimeline; // Editable when done with synthesis AND not mapping timeline
                 case 'timeline-mapping':
                     return synthesisStep === 'done'; // Editable when done with timeline mapping
                 default:
@@ -394,9 +399,9 @@ const StepperItem = memo(({
                     {!isCollapsed && (
                       <div className="mt-4">
                         {id === 'define-context' && isAnalyzingEvents ? (
-                            <AnalysisProgressBubble status={logic.analysisStatus} progress={logic.analysisProgress} elapsedTime={logic.elapsedTime} />
+                                                          <AnalysisProgressBubble status={logic.analysisStatus} progress={logic.analysisProgress} elapsedTime={logic.elapsedTime} batchInfo={null} />
                         ) : id === 'timeline-mapping' && isMappingTimeline ? (
-                            <AnalysisProgressBubble status={logic.timelineMappingStatus} progress={logic.timelineMappingProgress} elapsedTime={logic.timelineMappingElapsedTime} />
+                            <AnalysisProgressBubble status={logic.timelineMappingStatus} progress={logic.timelineMappingProgress} elapsedTime={logic.timelineMappingElapsedTime} batchInfo={logic.timelineMappingBatch} />
                         ) : showComponent ? (
                             <div className="p-4 border rounded-lg bg-muted/50">
                                 {id === 'define-context' && (
@@ -430,7 +435,7 @@ const StepperItem = memo(({
                                     <div className={completed && !editable ? 'opacity-60 pointer-events-none' : ''}>
                                         <EditableWorkflowBoundaries boundaries={logic.workflowBoundaries} onBoundariesChange={logic.setWorkflowBoundaries} />
                                         {['boundaries_editing', 'synthesizing'].includes(synthesisStep) && (
-                                            <CardFooter className="flex justify-between">
+                                            <CardFooter className="flex justify-between mt-6">
                                               <Button onClick={logic.goBackToWorkflowEditing} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>Back</Button>
                                               <Button onClick={logic.confirmBoundaries} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>
                                                 {logic.synthesisStep === 'synthesizing' ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Synthesizing...</> : 'Confirm Boundaries & Synthesize'}
@@ -441,43 +446,107 @@ const StepperItem = memo(({
                                 )}
                                 
                                 {id === 'synthesize-workflows' && showComponent && (
-                                    <div className="pt-4 flex-grow w-full">
-                                      <div className="space-y-4">
-                                        <Accordion type="multiple" defaultValue={["human-friendly"]} className="w-full">
-                                          <AccordionItem value="human-friendly">
-                                            <AccordionTrigger className="text-lg font-semibold">
-                                              Synthesized Workflows (Human-Friendly View)
-                                            </AccordionTrigger>
-                                            <AccordionContent>
-                                              <div className="max-h-[600px] overflow-auto">
-                                                <WorkflowFormattedView workflows={logic.workflows} />
-                                              </div>
-                                            </AccordionContent>
-                                          </AccordionItem>
-                                          
-                                          <AccordionItem value="raw-json">
-                                            <AccordionTrigger className="text-lg font-semibold">
-                                              Raw JSON Data
-                                            </AccordionTrigger>
-                                            <AccordionContent>
-                                              <pre className="text-xs whitespace-pre-wrap max-h-[600px] overflow-auto bg-background p-4 rounded border">
-                                                {JSON.stringify(logic.workflows, null, 2)}
-                                              </pre>
-                                            </AccordionContent>
-                                          </AccordionItem>
-                                        </Accordion>
+                                    <div className={completed && !editable ? 'opacity-60 pointer-events-none' : ''}>
+                                      <div className="pt-4 flex-grow w-full">
+                                        <div className="space-y-4">
+                                          <Accordion type="multiple" defaultValue={["human-friendly"]} className="w-full">
+                                            <AccordionItem value="human-friendly">
+                                              <AccordionTrigger className="text-lg font-semibold">
+                                                Synthesized Workflows (Human-Friendly View)
+                                              </AccordionTrigger>
+                                              <AccordionContent>
+                                                <div className="max-h-[600px] overflow-auto">
+                                                  <EditableSynthesizedWorkflows 
+                                                    workflows={logic.workflows} 
+                                                    onWorkflowsChange={logic.handleWorkflowsChange} 
+                                                  />
+                                                </div>
+                                              </AccordionContent>
+                                            </AccordionItem>
+                                            
+                                            <AccordionItem value="raw-json">
+                                              <AccordionTrigger className="text-lg font-semibold">
+                                                Raw JSON Data
+                                              </AccordionTrigger>
+                                              <AccordionContent>
+                                                <pre className="text-xs whitespace-pre-wrap max-h-[600px] overflow-auto bg-background p-4 rounded border">
+                                                  {JSON.stringify(logic.workflows, null, 2)}
+                                                </pre>
+                                              </AccordionContent>
+                                            </AccordionItem>
+                                          </Accordion>
+                                        </div>
                                       </div>
                                     </div>
                                 )}
                                 {id === 'timeline-mapping' && showComponent && (
-                                    <div className="w-full">
-                                      {timelineAnnotations ? (
-                                        <TimelineAnnotationsTable annotations={timelineAnnotations as any} />
-                                      ) : (
-                                        <div className="text-center text-muted-foreground p-4 border rounded-lg bg-muted/50">
-                                          Click the button above to generate and view the timeline mapping data.
+                                    <div className={completed && !editable ? 'opacity-60 pointer-events-none' : ''}>
+                                      <div className="pt-4 flex-grow w-full">
+                                        <div className="space-y-4">
+                                          <div className="w-full">
+                                            <h3 className="text-lg font-semibold mb-4">Timeline Event Mappings</h3>
+                                            <div className="max-h-[800px] overflow-auto">
+                                              {timelineAnnotations ? (
+                                                <EditableTimelineMappings 
+                                                  annotations={timelineAnnotations as any} 
+                                                  workflows={logic.workflows as any}
+                                                  onAnnotationsChange={logic.handleTimelineAnnotationsChange as any}
+                                                />
+                                              ) : (
+                                                <div className="text-center text-muted-foreground p-4 border rounded-lg bg-muted/50">
+                                                  Click the button above to generate and view the timeline mapping data.
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                          
+                                          {/* Save Synthesis Button - Outside of mappings view */}
+                                          {logic.workflows && logic.workflows.length > 0 && logic.synthesisStep === 'done' && timelineAnnotations && (
+                                            <div className="mt-8 pt-6 border-t flex justify-center">
+                                              <Button 
+                                                variant="default" 
+                                                size="lg"
+                                                disabled={saveStatus === 'saving'}
+                                                onClick={async () => {
+                                                  setSaveStatus('saving');
+                                                  const result = await logic.saveSynthesis();
+                                                  if (result.success) {
+                                                    setSaveStatus('success');
+                                                    setRefreshTrigger(prev => prev + 1);
+                                                    setTimeout(() => setSaveStatus('idle'), 2000);
+                                                  } else {
+                                                    setSaveStatus('error');
+                                                    setTimeout(() => setSaveStatus('idle'), 3000);
+                                                  }
+                                                }}
+                                                className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
+                                              >
+                                                {saveStatus === 'saving' ? (
+                                                  <>
+                                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                                    Saving...
+                                                  </>
+                                                ) : saveStatus === 'success' ? (
+                                                  <>
+                                                    <CheckCircle className="h-4 w-4" />
+                                                    Saved!
+                                                  </>
+                                                ) : saveStatus === 'error' ? (
+                                                  <>
+                                                    <AlertCircle className="h-4 w-4" />
+                                                    Error
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <PlusCircle className="h-4 w-4" />
+                                                    Save Synthesis
+                                                  </>
+                                                )}
+                                              </Button>
+                                            </div>
+                                          )}
                                         </div>
-                                      )}
+                                      </div>
                                     </div>
                                 )}
                             </div>
@@ -491,19 +560,23 @@ const StepperItem = memo(({
 });
 StepperItem.displayName = 'StepperItem';
 
-const Stepper = ({ logic, userId }: { logic: WorkflowPageLogicType; userId: string }) => {
+const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }: { 
+  logic: WorkflowPageLogicType; 
+  userId: string;
+  saveStatus: 'idle' | 'saving' | 'success' | 'error';
+  setSaveStatus: (status: 'idle' | 'saving' | 'success' | 'error') => void;
+  setRefreshTrigger: (fn: (prev: number) => number) => void;
+}) => {
   const { synthesisStep, isFetchingEvents } = logic;
 
   // Show stats above the stepper when not fetching events
   const showStatsCard = !isFetchingEvents;
 
   return (
-    <div className="w-full">
+    <div className="max-w-4xl mx-auto">
       {/* Stats Card - shown when in idle state */}
       {showStatsCard && (
-        <div className="w-full p-8 text-center mb-6">
-          <Card>
-            <CardContent>
+        <div className="mb-6">
               {/* Time Boundary Selection */}
               <div className="mb-6">
                 <TimeBoundarySelector
@@ -542,8 +615,6 @@ const Stepper = ({ logic, userId }: { logic: WorkflowPageLogicType; userId: stri
                       </div>
                   </div>
               )}
-            </CardContent>
-          </Card>
         </div>
       )}
 
@@ -560,6 +631,9 @@ const Stepper = ({ logic, userId }: { logic: WorkflowPageLogicType; userId: stri
               actionText={step.actionText}
               isLast={index === STEP_DEFINITIONS.length - 1}
               logic={logic}
+              saveStatus={saveStatus}
+              setSaveStatus={setSaveStatus}
+              setRefreshTrigger={setRefreshTrigger}
             />
           ))}
         </div>
@@ -618,59 +692,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
-                        
-                        {/* Save Synthesis Button */}
-                        {logic.workflows && logic.workflows.length > 0 && logic.synthesisStep === 'done' && (
-                            <TooltipProvider>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button 
-                                            variant="default" 
-                                            size="sm"
-                                            disabled={saveStatus === 'saving'}
-                                            onClick={async () => {
-                                                setSaveStatus('saving');
-                                                const result = await logic.saveSynthesis();
-                                                if (result.success) {
-                                                    setSaveStatus('success');
-                                                    setRefreshTrigger(prev => prev + 1);
-                                                    setTimeout(() => setSaveStatus('idle'), 2000); // Reset after 2 seconds
-                                                } else {
-                                                    setSaveStatus('error');
-                                                    setTimeout(() => setSaveStatus('idle'), 3000); // Reset after 3 seconds
-                                                }
-                                            }}
-                                            className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
-                                        >
-                                            {saveStatus === 'saving' ? (
-                                                <>
-                                                    <RefreshCw className="h-4 w-4 animate-spin" />
-                                                    Saving...
-                                                </>
-                                            ) : saveStatus === 'success' ? (
-                                                <>
-                                                    <CheckCircle className="h-4 w-4" />
-                                                    Saved!
-                                                </>
-                                            ) : saveStatus === 'error' ? (
-                                                <>
-                                                    <AlertCircle className="h-4 w-4" />
-                                                    Error
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <PlusCircle className="h-4 w-4" />
-                                                    Save Synthesis
-                                                </>
-                                            )}
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Save this completed synthesis for future reference</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
-                        )}
+
                         
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -703,7 +725,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             </div>
 
             {/* Main Content */}
-            <div className="w-full p-8 text-center mb-6">
+            <div className="max-w-4xl mx-auto p-8 text-center mb-6">
                 <Card>
                     <CardContent>
                         <Collapsible open={mainWorkflowOpen} onOpenChange={setMainWorkflowOpen}>
@@ -713,9 +735,39 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                     {mainWorkflowOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                 </CollapsibleTrigger>
                                 
-                                <CollapsibleContent>
+                                <CollapsibleContent className={cn(
+                                    "transition-all duration-300 ease-in-out",
+                                    mainWorkflowOpen ? "max-h-[5000px] opacity-100" : "max-h-0 opacity-50 overflow-hidden"
+                                )}>
                                     <div className="mt-4">
-                                        <Stepper logic={logic} userId={userId} />
+                                        {/* Instructions Input Area - Before Synthesis Begins */}
+                                        <div className="mb-8">
+                                            <Card className="w-full border-black">
+                                                <CardHeader>
+                                                    <h3 className="text-lg font-semibold">Setup Instructions</h3>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Provide any additional context, requirements, or specific instructions for workflow synthesis (optional)
+                                                    </p>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    <Textarea 
+                                                        value={logic.editableContext?.user_instructions || ''} 
+                                                        onChange={(e) => logic.handleContextChange('user_instructions', e.target.value)} 
+                                                        className="min-h-[120px]" 
+                                                        placeholder="Examples:&#10;• Focus on compliance and validation steps&#10;• This is for agent training - emphasize required checks&#10;• Include customer interaction points&#10;• Highlight data validation requirements&#10;• Note any specific business rules or exceptions"
+                                                        disabled={logic.isLoading}
+                                                    />
+                                                </CardContent>
+                                            </Card>
+                                        </div>
+                                        
+                                        <Stepper 
+                                          logic={logic} 
+                                          userId={userId} 
+                                          saveStatus={saveStatus} 
+                                          setSaveStatus={setSaveStatus} 
+                                          setRefreshTrigger={setRefreshTrigger} 
+                                        />
                                     </div>
                                 </CollapsibleContent>
                             </div>

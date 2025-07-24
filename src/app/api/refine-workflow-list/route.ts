@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import { PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, WORKFLOW_REFINEMENT_SCHEMA } from '@/lib/prompts';
+import { TranscriptItem } from '@/lib/transcriptUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -99,9 +100,39 @@ export async function POST(req: NextRequest) {
 
     console.log(`Loaded ${analyses.length} analyses for refinement`);
 
-    // Create context with the new combined structure
+    // Fetch transcripts for the same time range if they exist
+    let transcriptsData: TranscriptItem[] = [];
+    try {
+      let transcriptQuery = supabaseAdmin
+        .from('agent_live_transcriptions')
+        .select('session_id, role, content, created_at, type, item_id')
+        .eq('user_id', userId);
+
+      // Apply same time filtering as analyses
+      if (startDate && endDate) {
+        transcriptQuery = transcriptQuery
+          .gte('created_at', startDate)
+          .lte('created_at', endDate);
+      }
+
+      const { data: transcripts, error: transcriptError } = await transcriptQuery
+        .order('created_at', { ascending: true })
+        .limit(500); // Limit transcripts to prevent overwhelming context
+
+      if (transcriptError) {
+        console.warn('Error fetching transcripts for refinement:', transcriptError);
+      } else {
+        transcriptsData = transcripts || [];
+        console.log(`Loaded ${transcriptsData.length} transcript items for refinement`);
+      }
+    } catch (error) {
+      console.warn('Transcript fetching failed, continuing without transcripts:', error);
+    }
+
+    // Create context with the new combined structure including transcripts
     const context = {
       combinedAnalyses: analyses,
+      transcripts: transcriptsData,
       workflow_context: workflow_context,
       workflow_names: draft_workflow_names,
     };

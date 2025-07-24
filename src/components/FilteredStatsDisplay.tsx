@@ -77,11 +77,7 @@ export function FilteredStatsDisplay({
   }, [userId, timeBoundary]);
 
   if (!timeBoundary.startDate || !timeBoundary.endDate) {
-    return (
-      <div className="text-center text-muted-foreground p-4">
-        <p className="text-sm">Select a time range to see filtered data statistics</p>
-      </div>
-    );
+    return null;
   }
 
   if (isLoading || isLoadingStats) {
