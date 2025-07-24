@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
 import { cn } from '@/lib/utils';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface SavedSynthesis {
   id: number;
@@ -191,16 +192,14 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
 
   if (loading) {
     return (
-      <div className="w-full p-8 text-center mb-6">
-        <Card>
-          <CardContent>
+      <Card>
+        <CardContent>
             <div className="mb-4 text-left">
               <h3 className="text-lg font-semibold mb-2">Saved Workflow Syntheses</h3>
               <div className="text-center py-8 text-gray-600">Loading saved syntheses...</div>
             </div>
           </CardContent>
         </Card>
-      </div>
     );
   }
 
@@ -209,18 +208,18 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
   }
 
   return (
-    <div className="w-full p-8 text-center mb-6">
+    <div className="max-w-4xl mx-auto p-8 text-center mb-6">
       <Card>
         <CardContent>
           <Collapsible open={isOpen} onOpenChange={setIsOpen}>
             <div className="mb-4 text-left">
               <CollapsibleTrigger className="w-full flex items-center justify-between hover:bg-gray-50 p-2 rounded">
                 <h3 className="text-lg font-semibold">Saved Workflow Syntheses ({savedSyntheses.length})</h3>
-                <span className="text-sm font-mono">{isOpen ? '▼' : '▶'}</span>
+                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               </CollapsibleTrigger>
               
               <CollapsibleContent className={cn(
-                  "transition-all duration-300 ease-in-out",
+                  "transition-all duration-300 ease-in-out w-full",
                   isOpen ? "max-h-[5000px] opacity-100" : "max-h-0 opacity-50 overflow-hidden"
               )}>
                 <div className="mt-4">
