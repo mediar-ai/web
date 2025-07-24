@@ -68,3 +68,4 @@ server.log
 dev.log
 *.log
 scripts/Mediar Log*
+.env*.local
