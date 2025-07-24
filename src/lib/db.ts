@@ -21,7 +21,7 @@ export interface Session {
   total_workflow_analyses?: number;
   distinct_workflows_created?: number;
   total_labeled_steps?: number;
-  human_labeled_steps?: number;
+  llm_generated_labeled_steps?: number;
   llm_labeled_steps?: number;
   human_annotated_steps?: number;
 }
