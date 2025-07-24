@@ -79,7 +79,7 @@ export async function GET(
         stepsProcessed: analysesCount || 0, // For backward compatibility
         totalSteps: eventsCount || 0, // For backward compatibility  
         labelingTotal: annotationsCount || 0, // For backward compatibility
-        humanLabeled: 0, // For backward compatibility
+        llmGeneratedLabeled: 0, // For backward compatibility
       };
 
       return NextResponse.json(filteredStats);
@@ -102,7 +102,7 @@ export async function GET(
         stepsProcessed: 0,
         totalSteps: 0,
         labelingTotal: 0,
-        humanLabeled: 0,
+        llmGeneratedLabeled: 0,
       });
     }
 
@@ -111,14 +111,14 @@ export async function GET(
     const totalUiSteps = sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
     const totalProcessedEvents = sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
     const totalLabeled = sessions.reduce((sum, s) => sum + (s.total_labeled_steps || 0), 0);
-    const totalHumanLabeled = sessions.reduce((sum, s) => sum + (s.human_labeled_steps || 0), 0);
+    const totalLlmGeneratedLabeled = sessions.reduce((sum, s) => sum + (s.human_labeled_steps || 0), 0);
 
     const stats = {
       totalEvents,
       stepsProcessed: totalProcessedEvents,
       totalSteps: totalUiSteps,
       labelingTotal: totalLabeled,
-      humanLabeled: totalHumanLabeled,
+      llmGeneratedLabeled: totalLlmGeneratedLabeled,
     };
 
     return NextResponse.json(stats);
