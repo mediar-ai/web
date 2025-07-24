@@ -286,8 +286,8 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
                    </div>
                  )}
 
-                                 {/* Data Flow */}
-                 {(annotation.inputs || annotation.outputs || annotation.business_logics) && (
+                                 {/* Data Flow - Only show when workflow related */}
+                 {annotation.is_workflow_related && (annotation.inputs || annotation.outputs || annotation.business_logics) && (
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                      {annotation.inputs && (
                        <div>
