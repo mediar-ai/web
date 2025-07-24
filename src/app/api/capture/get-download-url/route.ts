@@ -37,11 +37,11 @@ export async function POST(request: Request) {
     
     const { path } = validation.data;
     
-    // Generate a signed URL that's valid for 60 seconds.
+    // Generate a signed URL that's valid for 10 minutes.
     // This provides temporary, secure access to the private file.
     const { data, error } = await supabaseAdmin.storage
       .from('low-level-event-screenshots')
-      .createSignedUrl(path, 60); 
+      .createSignedUrl(path, 600); // 10 minutes = 600 seconds
 
     if (error) {
       console.error('[API/get-download-url] Supabase error:', error);

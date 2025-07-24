@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import { WORKFLOW_SYNTHESIS_PROMPT } from '@/lib/prompts';
 import { WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/prompts';
+import { buildComprehensiveContext, TranscriptItem } from '@/lib/transcriptUtils';
 
 interface WorkflowSynthesisInput {
   name: string;
@@ -105,6 +106,26 @@ export async function POST(req: NextRequest) {
 
     console.log(`Loaded ${analyses.length} analyses for workflow synthesis`);
 
+    // Fetch transcripts for the same time range if they exist
+    let transcriptsData: TranscriptItem[] = [];
+    try {
+      const { data: transcripts, error: transcriptError } = await supabaseAdmin
+        .from('agent_live_transcriptions')
+        .select('session_id, role, content, created_at, type, item_id')
+        .eq('user_id', context.userId)
+        .order('created_at', { ascending: true })
+        .limit(500); // Limit transcripts to prevent overwhelming context
+
+      if (transcriptError) {
+        console.warn('Error fetching transcripts:', transcriptError);
+      } else {
+        transcriptsData = transcripts || [];
+        console.log(`Loaded ${transcriptsData.length} transcript items for synthesis`);
+      }
+    } catch (error) {
+      console.warn('Transcript fetching failed, continuing without transcripts:', error);
+    }
+
     // Check if this is multiple workflows synthesis  
     const isMultipleWorkflows = context.workflows && Array.isArray(context.workflows);
     
@@ -126,14 +147,29 @@ TERMINATOR: ${workflow.terminator || 'Not specified'}`;
       
       const workflowNames = context.workflows.map((w: WorkflowSynthesisInput) => w.name).join(', ');
       
+      // Build comprehensive context including transcripts and user instructions
+      console.log('🚀 SYNTHESIS: Building context with transcripts and user instructions');
+      console.log(`📋 User instructions: ${context.userInstructions ? 'YES - ' + context.userInstructions.substring(0, 50) + '...' : 'NO'}`);
+      
+      const comprehensiveContext = buildComprehensiveContext(
+        transcriptsData, 
+        context.userInstructions, 
+        1000 // Max transcript length for multiple workflows
+      );
+
+            console.log('🔗 INJECTING comprehensive context into LLM prompt');
+      console.log(`📤 Context length: ${comprehensiveContext.length} characters`);
+      
       prompt = `${WORKFLOW_SYNTHESIS_PROMPT}
-
-IMPORTANT: You must synthesize workflows for EXACTLY these workflow names (do not change or create new names): ${workflowNames}
-
-User's High-Level Context:
-${JSON.stringify(context.workflowContext, null, 2)}
-
-WORKFLOW DEFINITIONS:
+      
+      IMPORTANT: You must synthesize workflows for EXACTLY these workflow names (do not change or create new names): ${workflowNames}
+      
+      User's High-Level Context:
+      ${JSON.stringify(context.workflowContext, null, 2)}
+      
+      ${comprehensiveContext}
+      
+      WORKFLOW DEFINITIONS:
 ${workflowDetails}
 
 ALL EVENTS (determine which events belong to which workflows based on the triggers/terminators above):
@@ -143,12 +179,25 @@ Note: Each event contains embedded labels where available.`;
     } else {
       // Single workflow synthesis (legacy support)
       const processedSingleEvents = context.events ? processEvents(context.events) : [];
+      
+      // Build comprehensive context including transcripts and user instructions
+      console.log('🚀 SYNTHESIS (Single): Building context with transcripts and user instructions');
+      console.log(`📋 User instructions: ${context.userInstructions ? 'YES - ' + context.userInstructions.substring(0, 50) + '...' : 'NO'}`);
+      
+      const comprehensiveContext = buildComprehensiveContext(
+        transcriptsData, 
+        context.userInstructions, 
+        1200 // Max transcript length for single workflow
+      );
+
       prompt = `${WORKFLOW_SYNTHESIS_PROMPT}
 
 IMPORTANT: You must synthesize a workflow with EXACTLY this name (do not change it): ${context.workflow_name}
 
 User's High-Level Context:
 ${JSON.stringify(context.workflowContext, null, 2)}
+
+${comprehensiveContext}
 
 WORKFLOW: ${context.workflow_name}
 TRIGGER: ${context.trigger || 'Not specified'}

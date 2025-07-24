@@ -13,6 +13,7 @@ export interface WorkflowContext {
     user_goal_from_recordings: string;
     overall_project_goal: string;
     overall_project_description: string;
+    user_instructions?: string;
 }
 
 export interface WorkflowBoundary {

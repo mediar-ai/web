@@ -49,6 +49,9 @@ interface TimelineAnnotation {
   business_logics?: string | null;
   event_payload?: Record<string, unknown>;
   event_created_at?: string;
+  // Labeling data
+  selected_labels?: string[];
+  suggested_labels?: string[];
 }
 
 interface TimelineAnnotationsTableProps {
@@ -77,6 +80,9 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
         ...(annotation.inputs || []),
         ...(annotation.outputs || []),
         ...(annotation.business_logic || []),
+        // Include labeling data in search
+        ...(annotation.selected_labels || []),
+        ...(annotation.suggested_labels || []),
       ].filter(Boolean);
 
       return searchableFields.some(field => 
@@ -324,6 +330,32 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
                          </div>
                        </div>
                      )}
+                   </div>
+                 )}
+
+                 {/* Labeling Data */}
+                 {((annotation.selected_labels?.length ?? 0) > 0 || (annotation.suggested_labels?.length ?? 0) > 0) && (
+                   <div className="mt-3 pt-3 border-t border-gray-200">
+                     <div className="text-gray-700 text-xs mb-2 font-medium">LABELING DATA:</div>
+                     <div className="space-y-2">
+                       {annotation.selected_labels && annotation.selected_labels.length > 0 && (
+                         <div>
+                           <div className="text-gray-600 text-xs mb-1">LLM Generated Labels:</div>
+                           <div className="text-xs text-gray-900 bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words">
+                             {annotation.selected_labels.join('\n\n')}
+                           </div>
+                         </div>
+                       )}
+
+                       {annotation.suggested_labels && annotation.suggested_labels.length > 0 && (
+                         <div>
+                           <div className="text-gray-600 text-xs mb-1">AI Suggested Labels:</div>
+                           <div className="text-xs text-gray-700 bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words">
+                             {annotation.suggested_labels.join('\n\n')}
+                           </div>
+                         </div>
+                       )}
+                     </div>
                    </div>
                  )}
 

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import { TIMELINE_MAPPING_ANALYSIS_PROMPT } from '@/lib/prompts';
+import { TranscriptItem } from '@/lib/transcriptUtils';
 
 function toSSE(data: object): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
@@ -105,13 +106,13 @@ export async function POST(req: NextRequest) {
 
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-        // Get synthesized workflows for the user (only draft, not saved syntheses)
-        controller.enqueue(toSSE({ status: 'Loading draft workflows for mapping...', progress: 10 }));
+        // Get synthesized workflows for the user (include both draft and saved workflows)
+        controller.enqueue(toSSE({ status: 'Loading workflows for mapping...', progress: 10 }));
         const { data: workflows, error: workflowError } = await supabaseAdmin
           .from('low_level_workflows')
           .select('id, title, detailed_workflow_data, synthesis_session_id, synthesis_status')
           .eq('user_id', userId)
-          .eq('synthesis_status', 'draft') // Only map to draft workflows, not saved ones
+          .in('synthesis_status', ['draft', 'saved']) // Include both draft and saved workflows
           .not('detailed_workflow_data', 'is', null);
 
         if (workflowError) {
@@ -122,13 +123,43 @@ export async function POST(req: NextRequest) {
         }
 
         if (!workflows || workflows.length === 0) {
-          controller.enqueue(toSSE({ error: 'No draft workflows found for mapping. Saved syntheses are excluded from timeline mapping.' }));
+          controller.enqueue(toSSE({ error: 'No workflows found for mapping. Please ensure you have synthesized workflows available.' }));
           controller.close();
           return;
         }
 
-        console.log(`📊 Found ${workflows.length} draft workflows for mapping`);
-        controller.enqueue(toSSE({ status: `Found ${workflows.length} draft workflows for mapping`, progress: 20 }));
+        console.log(`📊 Found ${workflows.length} workflows for mapping (draft + saved)`);
+        controller.enqueue(toSSE({ status: `Found ${workflows.length} workflows for mapping`, progress: 20 }));
+
+        // Fetch transcripts for correlation with timeline events
+        controller.enqueue(toSSE({ status: 'Loading conversation transcripts...', progress: 25 }));
+        let transcriptsData: TranscriptItem[] = [];
+        try {
+          let transcriptQuery = supabaseAdmin
+            .from('agent_live_transcriptions')
+            .select('session_id, role, content, created_at, type, item_id')
+            .eq('user_id', userId);
+
+          // Apply same time filtering as other data
+          if (startDate && endDate) {
+            transcriptQuery = transcriptQuery
+              .gte('created_at', startDate)
+              .lte('created_at', endDate);
+          }
+
+          const { data: transcripts, error: transcriptError } = await transcriptQuery
+            .order('created_at', { ascending: true })
+            .limit(1000); // More transcripts for timeline correlation
+
+          if (transcriptError) {
+            console.warn('Error fetching transcripts for timeline mapping:', transcriptError);
+          } else {
+            transcriptsData = transcripts || [];
+            console.log(`📝 Loaded ${transcriptsData.length} transcript items for timeline correlation`);
+          }
+        } catch (error) {
+          console.warn('Transcript fetching failed, continuing without transcripts:', error);
+        }
 
         // Fetch UI tree events - either specific ones if targetUiEventIds provided, or recent ones for full processing
         const statusMessage = targetUiEventIds 
@@ -282,7 +313,19 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          console.log(`✅ Batch ${batchIndex + 1}: ${batchEvents.length} events, analysis: found`);
+          // Fetch labeling data for this analysis to enhance mapping context
+          console.log(`🏷️ Fetching labeling data for analysis ID: ${analysisData.id}`);
+          const { data: labelingData, error: labelingError } = await supabaseAdmin
+            .from('low_level_workflow_labeling')
+            .select('selected_labels, suggested_labels')
+            .eq('low_level_workflow_analysis_id', analysisData.id)
+            .maybeSingle();
+
+          if (labelingError && labelingError.code !== 'PGRST116') {
+            console.warn(`⚠️ Error fetching labeling data for analysis ${analysisData.id}:`, labelingError);
+          }
+
+          console.log(`✅ Batch ${batchIndex + 1}: ${batchEvents.length} events, analysis: found, labels: ${labelingData?.selected_labels?.length || 0}`);
           
           const batchAnalysis = {
             id: analysisData.id,
@@ -293,7 +336,10 @@ export async function POST(req: NextRequest) {
               step_summary?: string;
               user_goal?: string;
               workflow_context?: Record<string, unknown>;
-            }
+            },
+            // Include labeling data for enhanced context
+            selected_labels: labelingData?.selected_labels || [],
+            suggested_labels: labelingData?.suggested_labels || []
           };
 
           // Extract workflow components with IDs for LLM context
@@ -314,43 +360,12 @@ export async function POST(req: NextRequest) {
             .filter((wf): wf is NonNullable<typeof wf> => wf !== null);
 
           // Create comprehensive prompt for this batch using the comprehensive prompt template
-          const prompt = `${TIMELINE_MAPPING_ANALYSIS_PROMPT}
-
-CURRENT BATCH ANALYSIS STEP:
-- Window: ${batchAnalysis.window_title || 'Unknown'}
-- Step: ${batchAnalysis.analysis?.step_title || 'Unknown'}
-- Summary: ${batchAnalysis.analysis?.step_summary || 'No summary'}
-- User Goal: ${batchAnalysis.analysis?.user_goal || 'Unknown goal'}
-
-AVAILABLE WORKFLOW COMPONENTS WITH IDS:
-
-${workflowComponents.map(wf => `
-WORKFLOW TEMPLATE: ${wf.title} (ID: ${wf.workflow_template_id})
-
-WORKFLOW TYPES:
-${wf.workflow_types.map((wt: Record<string, unknown>) => `- ID: ${wt.id}, Name: "${wt.type_name}", Description: "${wt.type_description}"`).join('\n')}
-
-WORKFLOW INSTANCES:
-${wf.workflow_instances.map((wi: Record<string, unknown>) => `- ID: ${wi.id}, Name: "${wi.instance_name}"`).join('\n')}
-
-WORKFLOW STEPS:
-${wf.steps.map((step: Record<string, unknown>) => `- Step ID: ${step.id}, Name: "${step.step_name}"
-  Substeps: ${(step.substeps as Record<string, unknown>[])?.map((sub: Record<string, unknown>) => `ID: ${sub.id}, Name: "${sub.substep_name}"`).join(', ') || ''}`).join('\n')}
-`).join('\n---\n')}
-
-RAW EVENTS TO MAP (${batchEvents.length} events):
-${batchEvents.map(event => `Event ${event.id}: ${JSON.stringify(event.payload)}`).join('\n')}
-
-ANALYSIS GOAL:
-Map each raw event above to determine if it belongs to the current workflow analysis step. Focus on the specific step: "${batchAnalysis.analysis?.step_title || 'Unknown'}" with the goal: "${batchAnalysis.analysis?.user_goal || 'Unknown goal'}"
-
-IMPORTANT: Only use the exact IDs provided above in the WORKFLOW COMPONENTS section.
-
-Return your analysis in the specified JSON format.`;
+          const prompt = `${TIMELINE_MAPPING_ANALYSIS_PROMPT}\n\nCURRENT BATCH ANALYSIS STEP:\n- Window: ${batchAnalysis.window_title || 'Unknown'}\n- Step: ${batchAnalysis.analysis?.step_title || 'Unknown'}\n- Summary: ${batchAnalysis.analysis?.step_summary || 'No summary'}\n- User Goal: ${batchAnalysis.analysis?.user_goal || 'Unknown goal'}\n- LLM Generated Labels: ${batchAnalysis.selected_labels.length > 0 ? batchAnalysis.selected_labels.join(', ') : 'None'}\n- AI Suggested Labels: ${batchAnalysis.suggested_labels.length > 0 ? batchAnalysis.suggested_labels.join(', ') : 'None'}\n\nAVAILABLE WORKFLOW COMPONENTS WITH IDS:\n\n${workflowComponents.map(wf => `\nWORKFLOW TEMPLATE: ${wf.title} (ID: ${wf.workflow_template_id})\n\nWORKFLOW TYPES:\n${wf.workflow_types.map((wt: Record<string, unknown>) => `- ID: ${wt.id}, Name: "${wt.type_name}", Description: "${wt.type_description}"`).join('\n')}\n\nWORKFLOW INSTANCES:\n${wf.workflow_instances.map((wi: Record<string, unknown>) => `- ID: ${wi.id}, Name: "${wi.instance_name}"`).join('\n')}\n\nWORKFLOW STEPS:\n${wf.steps.map((step: Record<string, unknown>) => `- Step ID: ${step.id}, Name: "${step.step_name}"\n  Substeps: ${(step.substeps as Record<string, unknown>[])?.map((sub: Record<string, unknown>) => `ID: ${sub.id}, Name: "${sub.substep_name}"`).join(', ') || ''}`).join('\n')}\n`).join('\n---\n')}\n\nRAW EVENTS TO MAP (${batchEvents.length} events):\n${batchEvents.map(event => `Event ${event.id}: ${JSON.stringify(event.payload)}`).join('\n')}\n\nANALYSIS GOAL:\nMap each raw event above to determine if it belongs to the current workflow analysis step. Focus on the specific step: "${batchAnalysis.analysis?.step_title || 'Unknown'}" with the goal: "${batchAnalysis.analysis?.user_goal || 'Unknown goal'}"\n\nIMPORTANT: Only use the exact IDs provided above in the WORKFLOW COMPONENTS section.\n\nReturn your analysis in the specified JSON format.`;
 
           controller.enqueue(toSSE({ 
-            status: `Processing batch ${batchIndex + 1} with LLM...`, 
-            progress: Math.round(currentProgress)
+            status: `Processing batch ${batchIndex + 1} of ${totalBatches} with LLM...`, 
+            progress: Math.round(currentProgress),
+            data: { currentBatch: batchIndex + 1, totalBatches, phase: 'llm_processing' }
           }));
 
           console.log(`Sending batch ${batchIndex + 1} to LLM for timeline mapping...`);

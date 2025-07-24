@@ -9,6 +9,7 @@ import {
   PROMPT_REFINE_WORKFLOWS_AND_CONTEXT,
   WORKFLOW_REFINEMENT_SCHEMA,
 } from '@/lib/prompts';
+import { TranscriptItem } from '@/lib/transcriptUtils';
 
 function toSSE(data: object): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
@@ -119,9 +120,52 @@ export async function POST(req: NextRequest) {
         });
 
         console.log(`Loaded ${analyses.length} analyses with ${labelsData?.length || 0} labeled items`);
-        controller.enqueue(toSSE({ status: `Loaded ${analyses.length} analyses, starting identification...`, progress: 20 }));
+        controller.enqueue(toSSE({ status: `Loaded ${analyses.length} analyses, fetching transcripts...`, progress: 15 }));
 
-        const context = { combinedAnalyses: analyses };
+        // Fetch transcripts for the same time range if they exist
+        let transcriptsData: TranscriptItem[] = [];
+        try {
+          let transcriptQuery = supabaseAdmin
+            .from('agent_live_transcriptions')
+            .select('session_id, role, content, created_at, type, item_id')
+            .eq('user_id', userId);
+
+          // Apply same time filtering as analyses
+          if (startDate && endDate) {
+            transcriptQuery = transcriptQuery
+              .gte('created_at', startDate)
+              .lte('created_at', endDate);
+          }
+
+          const { data: transcripts, error: transcriptError } = await transcriptQuery
+            .order('created_at', { ascending: true })
+            .limit(500); // Limit transcripts to prevent overwhelming context
+
+          if (transcriptError) {
+            console.warn('Error fetching transcripts:', transcriptError);
+          } else {
+            transcriptsData = transcripts || [];
+            console.log(`Loaded ${transcriptsData.length} transcript items`);
+          }
+        } catch (error) {
+          console.warn('Transcript fetching failed, continuing without transcripts:', error);
+        }
+
+        controller.enqueue(toSSE({ status: `Loaded data, starting identification...`, progress: 20 }));
+
+        // Build enhanced context with transcripts and user instructions if available
+        const context = { 
+          combinedAnalyses: analyses,
+          transcripts: transcriptsData,
+          transcriptSummary: transcriptsData.length > 0 ? {
+            totalMessages: transcriptsData.length,
+            timeRange: transcriptsData.length > 0 ? {
+              start: transcriptsData[0].created_at,
+              end: transcriptsData[transcriptsData.length - 1].created_at
+            } : null,
+            sessionIds: [...new Set(transcriptsData.map(t => t.session_id))]
+          } : null
+        };
 
         // Step 1: Initial Workflow Identification with structured output
         controller.enqueue(toSSE({ status: 'Identifying initial workflows...', progress: 25 }));

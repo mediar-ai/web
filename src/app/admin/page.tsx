@@ -170,12 +170,12 @@ export default function AdminPage() {
   
   if (!hasAdminRole && !hasMemberRole) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full space-y-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="max-w-md w-full space-y-8 text-center border border-black rounded-lg p-8">
+          <h2 className="text-2xl font-bold text-black">Access Denied</h2>
           <p className="text-gray-600">You need admin or member privileges to access this dashboard.</p>
           <Link href="/">
-            <Button variant="outline">Return to Home</Button>
+            <Button variant="black-outline">Return to Home</Button>
           </Link>
         </div>
       </div>
@@ -678,9 +678,7 @@ function AuthenticatedAdminPage({
   };
 
   const getAccessLevelColor = () => {
-    if (isGlobalAdmin) return "text-purple-600";
-    if (isAdmin) return "text-blue-600";
-    return "text-green-600";
+    return "text-black";
   };
 
   if (loading) {
@@ -711,7 +709,7 @@ function AuthenticatedAdminPage({
           </div>
         <div className="flex items-center gap-2">
           {isLiveRefreshing && (
-            <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+            <div className="flex items-center gap-1 text-xs text-black bg-white px-2 py-1 rounded border border-black">
               <RefreshCw className="h-3 w-3 animate-spin" />
               Auto-updating...
             </div>
@@ -721,7 +719,7 @@ function AuthenticatedAdminPage({
             placeholder="Filter by User ID or Name..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="h-8 w-48"
+            className="h-8 w-48 border-black focus:border-black focus:ring-black"
           />
           <ThemeSwitcher />
           {isAdmin && (
@@ -778,11 +776,11 @@ function AuthenticatedAdminPage({
       
       {/* Overall Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-        <Card className="border-gray-200">
+        <Card className="border-black">
           <CardContent className="p-4">
             <div className="relative">
               <p className="text-sm font-mono text-gray-600">TOTAL USERS</p>
-              <p className="text-3xl font-mono font-bold text-gray-900">
+              <p className="text-3xl font-mono font-bold text-black">
                 {Object.keys(userSessions).length}
               </p>
               <FloatingDelta value={Object.keys(userSessions).length - Object.keys(previousData.current).length} />
@@ -790,11 +788,11 @@ function AuthenticatedAdminPage({
           </CardContent>
         </Card>
         
-        <Card className="border-gray-200">
+        <Card className="border-black">
           <CardContent className="p-4">
             <div className="relative">
               <p className="text-sm font-mono text-gray-600">TOTAL EVENTS</p>
-              <p className="text-3xl font-mono font-bold text-gray-900">
+              <p className="text-3xl font-mono font-bold text-black">
                 {Object.values(userSessions).reduce((total, userData) => 
                   total + userData.sessions.reduce((sum, s) => sum + (s.eventCount || 0), 0), 0
                 )}
@@ -806,11 +804,11 @@ function AuthenticatedAdminPage({
           </CardContent>
         </Card>
         
-        <Card className="border-gray-200">
+        <Card className="border-black">
           <CardContent className="p-4">
             <div className="relative">
               <p className="text-sm font-mono text-gray-600">TOTAL STEPS</p>
-              <p className="text-3xl font-mono font-bold text-gray-900">
+              <p className="text-3xl font-mono font-bold text-black">
                 {Object.values(userSessions).reduce((total, userData) => 
                   total + userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0), 0
                 )}
@@ -822,11 +820,11 @@ function AuthenticatedAdminPage({
           </CardContent>
         </Card>
         
-        <Card className="border-gray-200">
+        <Card className="border-black">
           <CardContent className="p-4">
             <div className="relative">
               <p className="text-sm font-mono text-gray-600">WORKFLOWS</p>
-              <p className="text-3xl font-mono font-bold text-gray-900">
+              <p className="text-3xl font-mono font-bold text-black">
                 {Object.values(userSessions).reduce((total, userData) => 
                   total + (userData.workflowCount || 0), 0
                 )}
@@ -838,16 +836,16 @@ function AuthenticatedAdminPage({
           </CardContent>
         </Card>
         
-        <Card className="border-gray-200">
+        <Card className="border-black">
           <CardContent className="p-4">
             <div className="relative">
               <p className="text-sm font-mono text-gray-600">ACTIVE USERS</p>
-              <p className="text-3xl font-mono font-bold text-gray-900">
+              <p className="text-3xl font-mono font-bold text-black">
                 {liveUsers.size}
               </p>
               {liveUsers.size > 0 && (
                 <div className="absolute -top-1 -right-1 z-20 pointer-events-none animate-bounce-in">
-                  <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-lg border border-green-600 font-medium animate-pulse">
+                  <div className="bg-black text-white text-xs px-2 py-1 rounded-full shadow-lg border border-black font-medium animate-pulse">
                     LIVE
                   </div>
                 </div>
@@ -862,10 +860,10 @@ function AuthenticatedAdminPage({
         <div className="mb-6">
         <button
           onClick={() => setProcessingHealthCollapsed(!processingHealthCollapsed)}
-          className="flex items-center justify-between w-full p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors mb-4"
+          className="flex items-center justify-between w-full p-3 bg-white hover:bg-gray-50 rounded-lg border border-black transition-colors mb-4"
         >
-          <h3 className="text-lg font-semibold text-gray-900">Processing Health</h3>
-          <span className="text-gray-500">
+          <h3 className="text-lg font-semibold text-black">Processing Health</h3>
+          <span className="text-black">
             {processingHealthCollapsed ? '▼' : '▲'}
           </span>
         </button>
@@ -874,11 +872,11 @@ function AuthenticatedAdminPage({
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 mb-4">
               {/* Health Status Card - B&W */}
-              <Card className="border border-gray-300">
+              <Card className="border border-black">
                 <CardContent className="p-4">
                   <div className="text-center">
                     <p className="text-sm font-mono text-gray-600">HEALTH STATUS</p>
-                    <p className="text-2xl font-mono font-bold text-gray-900">
+                    <p className="text-2xl font-mono font-bold text-black">
                       {processingHealth?.healthStatus?.toUpperCase() || 'UNKNOWN'}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
@@ -889,11 +887,11 @@ function AuthenticatedAdminPage({
               </Card>
 
               {/* Processed Today Card - B&W */}
-              <Card className="border border-gray-300">
+              <Card className="border border-black">
                 <CardContent className="p-4">
                   <div className="text-center">
                     <p className="text-sm font-mono text-gray-600">PROCESSED TODAY</p>
-                    <p className="text-2xl font-mono font-bold text-gray-900">
+                    <p className="text-2xl font-mono font-bold text-black">
                       {processingHealth?.processedToday || 0}
                     </p>
                   </div>
@@ -901,11 +899,11 @@ function AuthenticatedAdminPage({
               </Card>
 
               {/* Pending Events Card - B&W */}
-              <Card className="border border-gray-300">
+              <Card className="border border-black">
                 <CardContent className="p-4">
                   <div className="text-center">
                     <p className="text-sm font-mono text-gray-600">PENDING</p>
-                    <p className="text-2xl font-mono font-bold text-gray-900">
+                    <p className="text-2xl font-mono font-bold text-black">
                       {processingHealth?.pendingCount || 0}
                     </p>
                     {processingHealth?.oldestPendingAge && processingHealth.oldestPendingAge > 300 && (
@@ -918,11 +916,11 @@ function AuthenticatedAdminPage({
               </Card>
 
               {/* Failed Events Card - B&W with Details */}
-              <Card className="border border-gray-300">
+              <Card className="border border-black">
                 <CardContent className="p-4">
                   <div className="text-center">
                     <p className="text-sm font-mono text-gray-600">FAILED TODAY</p>
-                    <p className="text-2xl font-mono font-bold text-gray-900">
+                    <p className="text-2xl font-mono font-bold text-black">
                       {processingHealth?.failedToday || 0}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
@@ -931,21 +929,21 @@ function AuthenticatedAdminPage({
                     {processingHealth?.recentFailures && processingHealth.recentFailures.length > 0 && (
                       <button
                         onClick={() => setFailedEventsExpanded(!failedEventsExpanded)}
-                        className="text-xs text-gray-500 hover:text-gray-700 mt-1 underline"
+                        className="text-xs text-black hover:text-gray-700 mt-1 underline border border-black px-2 py-1 rounded bg-white hover:bg-gray-50"
                       >
                         {failedEventsExpanded ? 'Hide Recent Failures' : 'Show Recent Failures'}
                       </button>
                     )}
                   </div>
                   {failedEventsExpanded && processingHealth?.recentFailures && (
-                    <div className="mt-3 border-t border-gray-200 pt-3">
+                    <div className="mt-3 border-t border-black pt-3">
                       <div className="text-left space-y-2">
                         {processingHealth.recentFailures.slice(0, 5).map((failure, idx) => (
-                          <div key={idx} className="text-xs bg-gray-50 p-2 rounded">
-                            <div className="font-mono text-gray-700">
+                          <div key={idx} className="text-xs bg-gray-50 p-2 rounded border border-black">
+                            <div className="font-mono text-black">
                               Event: {failure.event_id as string}
                             </div>
-                            <div className="text-gray-500">
+                            <div className="text-gray-600">
                               User: {String(failure.user_id).substring(0, 8)}...
                             </div>
                             <div className="text-red-600">
@@ -954,7 +952,7 @@ function AuthenticatedAdminPage({
                           </div>
                         ))}
                         {processingHealth.recentFailures.length > 5 && (
-                          <div className="text-xs text-gray-500 text-center pt-1">
+                          <div className="text-xs text-gray-600 text-center pt-1">
                             ...and {processingHealth.recentFailures.length - 5} more recent failures
                           </div>
                         )}
@@ -965,11 +963,11 @@ function AuthenticatedAdminPage({
               </Card>
 
               {/* Stale Locks Card - B&W with Details */}
-              <Card className="border border-gray-300">
+              <Card className="border border-black">
                 <CardContent className="p-4">
                   <div className="text-center">
                     <p className="text-sm font-mono text-gray-600">STALE LOCKS</p>
-                    <p className="text-2xl font-mono font-bold text-gray-900">
+                    <p className="text-2xl font-mono font-bold text-black">
                       {processingHealth?.staleLocksCount || 0}
                     </p>
                     {processingHealth?.staleLocksCount && processingHealth.staleLocksCount > 0 && (
@@ -977,7 +975,7 @@ function AuthenticatedAdminPage({
                         <p className="text-xs text-gray-600 mt-1">⚠ Action Required</p>
                         <button
                           onClick={() => setStaleLocksExpanded(!staleLocksExpanded)}
-                          className="text-xs text-gray-500 hover:text-gray-700 mt-1 underline"
+                          className="text-xs text-black hover:text-gray-700 mt-1 underline border border-black px-2 py-1 rounded bg-white hover:bg-gray-50"
                         >
                           {staleLocksExpanded ? 'Hide Details' : 'Show Details'}
                         </button>
@@ -985,14 +983,14 @@ function AuthenticatedAdminPage({
                     )}
                   </div>
                   {staleLocksExpanded && processingHealth?.staleLocksDetails && (
-                    <div className="mt-3 border-t border-gray-200 pt-3">
+                    <div className="mt-3 border-t border-black pt-3">
                       <div className="text-left space-y-2">
                         {processingHealth.staleLocksDetails.slice(0, 5).map((lock, idx) => (
-                          <div key={idx} className="text-xs bg-gray-50 p-2 rounded">
-                            <div className="font-mono text-gray-700">
+                          <div key={idx} className="text-xs bg-gray-50 p-2 rounded border border-black">
+                            <div className="font-mono text-black">
                               Event: {lock.eventId}
                             </div>
-                            <div className="text-gray-500">
+                            <div className="text-gray-600">
                               User: {lock.userId.substring(0, 8)}...
                             </div>
                             <div className="text-red-600 font-semibold">
@@ -1001,7 +999,7 @@ function AuthenticatedAdminPage({
                           </div>
                         ))}
                         {processingHealth.staleLocksDetails.length > 5 && (
-                          <div className="text-xs text-gray-500 text-center pt-1">
+                          <div className="text-xs text-gray-600 text-center pt-1">
                             ...and {processingHealth.staleLocksDetails.length - 5} more
                           </div>
                         )}
@@ -1012,11 +1010,11 @@ function AuthenticatedAdminPage({
               </Card>
 
               {/* User Alerts Card - B&W */}
-              <Card className="border border-gray-300">
+              <Card className="border border-black">
                 <CardContent className="p-4">
                   <div className="text-center">
                     <p className="text-sm font-mono text-gray-600">USER ALERTS</p>
-                    <p className="text-2xl font-mono font-bold text-gray-900">
+                    <p className="text-2xl font-mono font-bold text-black">
                       {processingHealth?.userFailures?.length || 0}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
@@ -1033,14 +1031,14 @@ function AuthenticatedAdminPage({
                 {(processingHealth?.staleLocksCount || 0) > 0 && (
                   <button
                     onClick={clearStaleLocks}
-                    className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors text-sm font-medium"
+                    className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium border border-black"
                   >
                     Clear Stale Locks ({processingHealth?.staleLocksCount})
                   </button>
                 )}
                 <button
                   onClick={fetchProcessingHealth}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium"
+                  className="px-4 py-2 bg-white text-black border border-black rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
                 >
                   Refresh Health Data
                 </button>
@@ -1051,291 +1049,293 @@ function AuthenticatedAdminPage({
         </div>
       )}
       
-      <table className="w-full text-sm text-left" style={{ tableLayout: 'fixed' }}>
-        <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-          <tr>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.user}px` }}>
-              User
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'user')} />
-            </th>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.organization}px` }}>
-              <Tooltip>
-                <TooltipTrigger className="cursor-help">Organization</TooltipTrigger>
-                <TooltipContent>
-                  <p>User&apos;s organization name</p>
-                </TooltipContent>
-              </Tooltip>
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'organization')} />
-            </th>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.ss}px` }}>
-              <Tooltip>
-                <TooltipTrigger className="cursor-help">SS</TooltipTrigger>
-                <TooltipContent>
-                  <p>Total Sessions - Total number of sessions for this user</p>
-                </TooltipContent>
-              </Tooltip>
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'ss')} />
-            </th>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.type}px` }}>
-              <Tooltip>
-                <TooltipTrigger className="cursor-help">Type</TooltipTrigger>
-                <TooltipContent>
-                  <p>Session type: web, low-level, or mixed</p>
-                </TooltipContent>
-              </Tooltip>
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'type')} />
-            </th>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.events}px` }}>
-              <Tooltip>
-                <TooltipTrigger className="cursor-help">EVENTS</TooltipTrigger>
-                <TooltipContent>
-                  <p>Total number of events across all sessions</p>
-                </TooltipContent>
-              </Tooltip>
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'events')} />
-            </th>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.steps}px` }}>
-              <Tooltip>
-                <TooltipTrigger className="cursor-help">STEPS PRCSD/TTL</TooltipTrigger>
-                <TooltipContent>
-                  <p>Workflow Analyses: Completed / Total UI Steps - Shows processing completion percentage</p>
-                </TooltipContent>
-              </Tooltip>
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'steps')} />
-            </th>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.annotation}px` }}>
-              <Tooltip>
-                <TooltipTrigger className="cursor-help">ANNOTATION<br/>LLM/HUMAN</TooltipTrigger>
-                <TooltipContent>
-                  <p>Annotated steps: LLM labeled / Human annotated</p>
-                </TooltipContent>
-              </Tooltip>
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'annotation')} />
-            </th>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.workflow}px` }}>
-              <Tooltip>
-                <TooltipTrigger className="cursor-help">WORKFLOW (DISTINCT)</TooltipTrigger>
-                <TooltipContent>
-                  <p>Number of distinct workflows created</p>
-                </TooltipContent>
-              </Tooltip>
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'workflow')} />
-            </th>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.duration}px` }}>
-              Duration
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'duration')} />
-            </th>
-            <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.lastActive}px` }}>
-              Last Active
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'lastActive')} />
-            </th>
-            <th scope="col" className="px-1 py-2 text-right relative" style={{ width: `${columnWidths.actions}px` }}>
-              Actions
-              <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'actions')} />
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {Object.entries(userSessions)
-            .filter(([userId, userData]) => {
-              if (!userId) return false;
-              if (!filter) return true;
-              return userId.includes(filter) || 
-                (userData.name && userData.name.toLowerCase().includes(filter.toLowerCase()));
-            })
-            .sort(([, aData], [, bData]) => {
-              // Sort by most recent session activity
-              const aLatest = Math.max(...aData.sessions.map(s => new Date(s.timestamp).getTime()));
-              const bLatest = Math.max(...bData.sessions.map(s => new Date(s.timestamp).getTime()));
-              return bLatest - aLatest;
-            })
-            .map(([userId, userData]) => {
-              const totalSessions = userData.sessions.length;
-              const totalEvents = userData.sessions.reduce((sum, s) => sum + (s.eventCount || 0), 0);
-              const totalUiSteps = userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
-              const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
-              const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
-              const totalLlmLabeledSteps = userData.sessions.reduce((sum, s) => sum + (s.llm_labeled_steps || 0), 0);
-              const totalHumanAnnotatedSteps = userData.sessions.reduce((sum, s) => sum + (s.human_annotated_steps || 0), 0);
-              const mostRecentSession = userData.sessions.sort((a, b) => 
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-              )[0];
+      <div className="rounded-lg border border-black overflow-hidden">
+        <table className="w-full text-sm text-left" style={{ tableLayout: 'fixed' }}>
+          <thead className="text-xs text-black uppercase bg-white border-b border-black">
+            <tr>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.user}px` }}>
+                User
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'user')} />
+              </th>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.organization}px` }}>
+                <Tooltip>
+                  <TooltipTrigger className="cursor-help">Organization</TooltipTrigger>
+                  <TooltipContent>
+                    <p>User&apos;s organization name</p>
+                  </TooltipContent>
+                </Tooltip>
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'organization')} />
+              </th>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.ss}px` }}>
+                <Tooltip>
+                  <TooltipTrigger className="cursor-help">SS</TooltipTrigger>
+                  <TooltipContent>
+                    <p>Total Sessions - Total number of sessions for this user</p>
+                  </TooltipContent>
+                </Tooltip>
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'ss')} />
+              </th>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.type}px` }}>
+                <Tooltip>
+                  <TooltipTrigger className="cursor-help">Type</TooltipTrigger>
+                  <TooltipContent>
+                    <p>Session type: web, low-level, or mixed</p>
+                  </TooltipContent>
+                </Tooltip>
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'type')} />
+              </th>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.events}px` }}>
+                <Tooltip>
+                  <TooltipTrigger className="cursor-help">EVENTS</TooltipTrigger>
+                  <TooltipContent>
+                    <p>Total number of events across all sessions</p>
+                  </TooltipContent>
+                </Tooltip>
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'events')} />
+              </th>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.steps}px` }}>
+                <Tooltip>
+                  <TooltipTrigger className="cursor-help">STEPS PRCSD/TTL</TooltipTrigger>
+                  <TooltipContent>
+                    <p>Workflow Analyses: Completed / Total UI Steps - Shows processing completion percentage</p>
+                  </TooltipContent>
+                </Tooltip>
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'steps')} />
+              </th>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.annotation}px` }}>
+                <Tooltip>
+                  <TooltipTrigger className="cursor-help">ANNOTATION<br/>LLM/HUMAN</TooltipTrigger>
+                  <TooltipContent>
+                    <p>Annotated steps: LLM labeled / Human annotated</p>
+                  </TooltipContent>
+                </Tooltip>
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'annotation')} />
+              </th>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.workflow}px` }}>
+                <Tooltip>
+                  <TooltipTrigger className="cursor-help">WORKFLOW (DISTINCT)</TooltipTrigger>
+                  <TooltipContent>
+                    <p>Number of distinct workflows created</p>
+                  </TooltipContent>
+                </Tooltip>
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'workflow')} />
+              </th>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.duration}px` }}>
+                Duration
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'duration')} />
+              </th>
+              <th scope="col" className="px-1 py-2 relative" style={{ width: `${columnWidths.lastActive}px` }}>
+                Last Active
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'lastActive')} />
+              </th>
+              <th scope="col" className="px-1 py-2 text-right relative" style={{ width: `${columnWidths.actions}px` }}>
+                Actions
+                <ResizeHandle onMouseDown={(e) => handleResizeStart(e, 'actions')} />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(userSessions)
+              .filter(([userId, userData]) => {
+                if (!userId) return false;
+                if (!filter) return true;
+                return userId.includes(filter) || 
+                  (userData.name && userData.name.toLowerCase().includes(filter.toLowerCase()));
+              })
+              .sort(([, aData], [, bData]) => {
+                // Sort by most recent session activity
+                const aLatest = Math.max(...aData.sessions.map(s => new Date(s.timestamp).getTime()));
+                const bLatest = Math.max(...bData.sessions.map(s => new Date(s.timestamp).getTime()));
+                return bLatest - aLatest;
+              })
+              .map(([userId, userData]) => {
+                const totalSessions = userData.sessions.length;
+                const totalEvents = userData.sessions.reduce((sum, s) => sum + (s.eventCount || 0), 0);
+                const totalUiSteps = userData.sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
+                const totalProcessedEvents = userData.sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
+                const totalDuration = userData.sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+                const totalLlmLabeledSteps = userData.sessions.reduce((sum, s) => sum + (s.llm_labeled_steps || 0), 0);
+                const totalHumanAnnotatedSteps = userData.sessions.reduce((sum, s) => sum + (s.human_annotated_steps || 0), 0);
+                const mostRecentSession = userData.sessions.sort((a, b) => 
+                  new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                )[0];
 
-              const sessionTypes = new Set(userData.sessions.map(s => s.type?.toLowerCase()).filter(Boolean));
-              let userType = 'N/A';
-              const hasWeb = sessionTypes.has('web');
-              const hasLowLevel = sessionTypes.has('low-level');
+                const sessionTypes = new Set(userData.sessions.map(s => s.type?.toLowerCase()).filter(Boolean));
+                let userType = 'N/A';
+                const hasWeb = sessionTypes.has('web');
+                const hasLowLevel = sessionTypes.has('low-level');
 
-              if (hasWeb && hasLowLevel) {
-                userType = 'mixed';
-              } else if (hasWeb) {
-                userType = 'web';
-              } else if (hasLowLevel) {
-                userType = 'low-level';
-              }
+                if (hasWeb && hasLowLevel) {
+                  userType = 'mixed';
+                } else if (hasWeb) {
+                  userType = 'web';
+                } else if (hasLowLevel) {
+                  userType = 'low-level';
+                }
 
-              return (
-                <React.Fragment key={userId}>
-                  <tr className="bg-white border-b hover:bg-gray-50">
-                    <td className="px-1 py-1 font-medium text-gray-900 whitespace-nowrap relative">
-                      <div className="flex items-center">
-                        <button
-                          onClick={() => toggleUserExpansion(userId)}
-                          className="mr-1 p-1 hover:bg-gray-200 rounded"
-                        >
-                          {expandedUsers.has(userId) ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </button>
-                        {editingUser === userId ? (
-                          <div className="flex items-center">
-                            <Input
-                              type="text"
-                              value={userNameInput}
-                              onChange={(e) => setUserNameInput(e.target.value)}
-                              placeholder="Enter user name"
-                              className="mr-2 h-8"
-                            />
-                            <Button onClick={() => handleSaveName(userId)} className="mr-2 h-8">Save</Button>
-                            <Button variant="outline" onClick={() => setEditingUser(null)} className="h-8">Cancel</Button>
-                          </div>
-                        ) : (
-                          <div 
-                            className="flex items-center gap-2 cursor-pointer group"
+                return (
+                  <React.Fragment key={userId}>
+                    <tr className="bg-white border-b border-black hover:bg-gray-50">
+                      <td className="px-1 py-1 font-medium text-black whitespace-nowrap relative">
+                        <div className="flex items-center">
+                          <button
+                            onClick={() => toggleUserExpansion(userId)}
+                            className="mr-1 p-1 hover:bg-gray-200 rounded"
                           >
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Link href={`/low-level/${userId}/workflow`} className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">
-                                  {userData.name || `User ${truncateId(userId)}`}
-                                </Link>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Full User ID: {userId}</p>
-                                {userData.name && <p>Name: {userData.name}</p>}
-                              </TooltipContent>
-                            </Tooltip>
-                            {isAdmin && (
-                              <button 
-                                onClick={() => handleEditName(userId, userData.name || '')}
-                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded"
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </button>
+                            {expandedUsers.has(userId) ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
                             )}
-                          </div>
-                        )}
-                      </div>
-                      <LiveUserPill isLive={liveUsers.has(userId)} />
-                    </td>
-                    <td className="px-1 py-1">
-                      <Tooltip>
-                        <TooltipTrigger className="cursor-help truncate max-w-[100px] block">
-                          {userData.organizationName}
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{userData.organizationName}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </td>
-                    <td className="px-1 py-1">{totalSessions}</td>
-                    <td className="px-1 py-1">{userType}</td>
-                    <td className="px-1 py-1 relative">
-                      {totalEvents}
-                      <FloatingDelta value={deltas[userId]?.events || 0} />
-                    </td>
-                    <td className="px-1 py-1 relative">
-                      {totalProcessedEvents} / {totalUiSteps}
-                      <FloatingDelta value={deltas[userId]?.processed || 0} delay={100} />
-                    </td>
-                    <td className="px-1 py-1 relative">
-                      {totalLlmLabeledSteps} / {totalHumanAnnotatedSteps}
-                      <FloatingDelta value={deltas[userId]?.llmLabeled || 0} delay={150} />
-                      <FloatingDelta value={deltas[userId]?.humanAnnotated || 0} delay={250} />
-                    </td>
-                    <td className="px-1 py-1 relative">
-                      {userData.workflowCount}
-                      <FloatingDelta value={deltas[userId]?.workflows || 0} delay={200} />
-                    </td>
-                    <td className="px-1 py-1">{formatDuration(totalDuration)}</td>
-                    <td className="px-1 py-1">{mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}</td>
-                    <td className="px-1 py-1 text-right">
-                      <div className="flex items-center justify-end space-x-1">
-                        {isAdmin && (
-                          <Button 
-                            variant="destructive" 
-                            size="sm"
-                            onClick={() => setUserToDelete({ id: userId, name: userData.name || `User ${truncateId(userId)}` })}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  {expandedUsers.has(userId) && (
-                    <tr>
-                      <td colSpan={10} className="px-4 py-2 bg-gray-50">
-                        <table className="w-full text-sm text-left">
-                          <thead className="text-xs text-gray-700 uppercase bg-gray-100">
-                            <tr>
-                              <th scope="col" className="px-1 py-1">Session ID</th>
-                              <th scope="col" className="px-1 py-1">Type</th>
-                              <th scope="col" className="px-1 py-1">Events</th>
-                              <th scope="col" className="px-1 py-1">Duration</th>
-                              <th scope="col" className="px-1 py-1">Status</th>
-                              <th scope="col" className="px-1 py-1">Timestamp</th>
-                              <th scope="col" className="px-1 py-1 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {userData.sessions.map((session) => (
-                              <tr key={session.id} className="border-b border-gray-200">
-                                <td className="px-1 py-1 font-mono text-xs">
-                                  <Tooltip>
-                                    <TooltipTrigger className="cursor-help">
-                                      {truncateId(session.id)}
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Full Session ID: {session.id}</p>
-                                      <p>Session Type: {session.type}</p>
-                                      <p>Status: {session.status}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </td>
-                                <td className="px-1 py-1">{session.type}</td>
-                                <td className="px-1 py-1">{session.eventCount || 0}</td>
-                                <td className="px-1 py-1">{formatDuration(session.duration_seconds || 0)}</td>
-                                <td className="px-1 py-1">
-                                  <span className={`px-2 py-0.5 text-xs rounded-full ${
-                                    session.status === 'live' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {session.status}
-                                  </span>
-                                </td>
-                                <td className="px-1 py-1 text-gray-500">{new Date(session.timestamp).toLocaleString()}</td>
-                                <td className="px-1 py-1 text-right">
-                                  {session.type.toLowerCase() === 'low-level' ? (
-                                    <Link href={`/sessions/low-level/${session.id}`}>
-                                      <Button size="sm" variant="outline">Raw JSON</Button>
-                                    </Link>
-                                  ) : (
-                                    <Button size="sm" variant="outline" disabled>Raw JSON</Button>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                          </button>
+                          {editingUser === userId ? (
+                            <div className="flex items-center">
+                              <Input
+                                type="text"
+                                value={userNameInput}
+                                onChange={(e) => setUserNameInput(e.target.value)}
+                                placeholder="Enter user name"
+                                className="mr-2 h-8"
+                              />
+                              <Button onClick={() => handleSaveName(userId)} className="mr-2 h-8">Save</Button>
+                              <Button variant="outline" onClick={() => setEditingUser(null)} className="h-8">Cancel</Button>
+                            </div>
+                          ) : (
+                            <div 
+                              className="flex items-center gap-2 cursor-pointer group"
+                            >
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Link href={`/low-level/${userId}/workflow`} className="mr-2 border-b border-dotted border-gray-400 group-hover:border-gray-600">
+                                    {userData.name || `User ${truncateId(userId)}`}
+                                  </Link>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Full User ID: {userId}</p>
+                                  {userData.name && <p>Name: {userData.name}</p>}
+                                </TooltipContent>
+                              </Tooltip>
+                              {isAdmin && (
+                                <button 
+                                  onClick={() => handleEditName(userId, userData.name || '')}
+                                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <LiveUserPill isLive={liveUsers.has(userId)} />
+                      </td>
+                      <td className="px-1 py-1">
+                        <Tooltip>
+                          <TooltipTrigger className="cursor-help truncate max-w-[100px] block">
+                            {userData.organizationName}
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{userData.organizationName}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </td>
+                      <td className="px-1 py-1">{totalSessions}</td>
+                      <td className="px-1 py-1">{userType}</td>
+                      <td className="px-1 py-1 relative">
+                        {totalEvents}
+                        <FloatingDelta value={deltas[userId]?.events || 0} />
+                      </td>
+                      <td className="px-1 py-1 relative">
+                        {totalProcessedEvents} / {totalUiSteps}
+                        <FloatingDelta value={deltas[userId]?.processed || 0} delay={100} />
+                      </td>
+                      <td className="px-1 py-1 relative">
+                        {totalLlmLabeledSteps} / {totalHumanAnnotatedSteps}
+                        <FloatingDelta value={deltas[userId]?.llmLabeled || 0} delay={150} />
+                        <FloatingDelta value={deltas[userId]?.humanAnnotated || 0} delay={250} />
+                      </td>
+                      <td className="px-1 py-1 relative">
+                        {userData.workflowCount}
+                        <FloatingDelta value={deltas[userId]?.workflows || 0} delay={200} />
+                      </td>
+                      <td className="px-1 py-1">{formatDuration(totalDuration)}</td>
+                      <td className="px-1 py-1">{mostRecentSession ? new Date(mostRecentSession.timestamp).toLocaleString() : 'Never'}</td>
+                      <td className="px-1 py-1 text-right">
+                        <div className="flex items-center justify-end space-x-1">
+                          {isAdmin && (
+                            <Button 
+                              variant="black-outline" 
+                              size="sm"
+                              onClick={() => setUserToDelete({ id: userId, name: userData.name || `User ${truncateId(userId)}` })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-        </tbody>
-      </table>
+                    {expandedUsers.has(userId) && (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-2 bg-gray-50">
+                          <table className="w-full text-sm text-left border border-black">
+                            <thead className="text-xs text-black uppercase bg-white border-b border-black">
+                              <tr>
+                                <th scope="col" className="px-1 py-1">Session ID</th>
+                                <th scope="col" className="px-1 py-1">Type</th>
+                                <th scope="col" className="px-1 py-1">Events</th>
+                                <th scope="col" className="px-1 py-1">Duration</th>
+                                <th scope="col" className="px-1 py-1">Status</th>
+                                <th scope="col" className="px-1 py-1">Timestamp</th>
+                                <th scope="col" className="px-1 py-1 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {userData.sessions.map((session) => (
+                                <tr key={session.id} className="border-b border-black">
+                                  <td className="px-1 py-1 font-mono text-xs">
+                                    <Tooltip>
+                                      <TooltipTrigger className="cursor-help">
+                                        {truncateId(session.id)}
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Full Session ID: {session.id}</p>
+                                        <p>Session Type: {session.type}</p>
+                                        <p>Status: {session.status}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </td>
+                                  <td className="px-1 py-1">{session.type}</td>
+                                  <td className="px-1 py-1">{session.eventCount || 0}</td>
+                                  <td className="px-1 py-1">{formatDuration(session.duration_seconds || 0)}</td>
+                                  <td className="px-1 py-1">
+                                    <span className={`px-2 py-0.5 text-xs rounded-full border border-black ${
+                                      session.status === 'live' ? 'bg-black text-white' : 'bg-white text-black'
+                                    }`}>
+                                      {session.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-1 py-1 text-gray-500">{new Date(session.timestamp).toLocaleString()}</td>
+                                  <td className="px-1 py-1 text-right">
+                                    {session.type.toLowerCase() === 'low-level' ? (
+                                      <Link href={`/sessions/low-level/${session.id}`}>
+                                        <Button size="sm" variant="black-outline">Raw JSON</Button>
+                                      </Link>
+                                    ) : (
+                                      <Button size="sm" variant="black-outline" disabled>Raw JSON</Button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
       
       {userToDelete && (
         <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
@@ -1351,7 +1351,7 @@ function AuthenticatedAdminPage({
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => handleDeleteUser(userToDelete.id)}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className="bg-black text-white hover:bg-gray-800"
               >
                 Delete User
               </AlertDialogAction>

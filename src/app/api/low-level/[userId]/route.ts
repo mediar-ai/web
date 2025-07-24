@@ -31,6 +31,7 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
   const eventType = searchParams.get('eventType'); // New filter parameter
+  const uiTreesOnly = searchParams.get('ui_trees_only') === 'true'; // UI trees only filter for Steps tab
   const afterTimestamp = searchParams.get('after_timestamp'); // New parameter for efficient polling
   const startDate = searchParams.get('startDate'); // Start date for period loading
   const endDate = searchParams.get('endDate'); // End date for period loading
@@ -54,8 +55,11 @@ export async function GET(
       query = query.eq('session_id', sessionId);
     }
 
-    // Add event type filter if provided
-    if (eventType) {
+    // Add UI trees only filter (optimized for Steps tab)
+    if (uiTreesOnly) {
+      query = query.eq('event_type', 'ui_tree');
+    } else if (eventType) {
+      // Add event type filter if provided (and not using ui_trees_only)
       query = query.eq('event_type', eventType);
     }
 

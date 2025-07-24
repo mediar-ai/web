@@ -167,7 +167,7 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
             ))}
           {uiTreeEvents.map((event, index) => (
             <div
-              key={event.id}
+              key={`event-${event.id}-${index}-${getEventTimestamp(event)}`}
               className={cn(
                 'absolute w-2 h-2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-150 group-hover:scale-125',
                 selectedIndex === index ? 'bg-primary scale-150' : 'bg-muted-foreground'
@@ -190,7 +190,7 @@ const UITreeTimeline: React.FC<UITreeTimelineProps> = ({
           
           return (
             <div
-              key={`${label.id}-${label.index}`}
+              key={`label-${label.id}-${label.index}-${label.time}`}
               className={cn(
                 'absolute text-xs text-muted-foreground whitespace-nowrap',
                 label.isFirst ? 'left-0' : label.isLast ? 'right-0' : '-translate-x-1/2'

@@ -102,6 +102,13 @@ type EventFeedbackData = {
     feedback_reason: string | null;
 }
 
+type WorkflowLabelData = {
+    low_level_workflow_analysis_id: number;
+    selected_labels: string[];
+    suggested_labels: string[] | null;
+    created_at: string;
+}
+
 type ProcessingMode = 'unprocessed' | 'all' | 'range';
 
 interface GenericEvent {
@@ -194,19 +201,54 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   const fetchEventData = useCallback(async () => {
     if (!userId) return;
     try {
-      const response = await fetch(`/api/get-dataset-entries?userId=${userId}&datasetType=workflow_event_feedback`);
-      if (!response.ok) throw new Error('Failed to fetch event feedback data');
-      const data = await response.json();
+      // Fetch from workflow labeling table first (where the actual annotations are)
+      const labelingResponse = await fetch(`/api/fetch-llm-labels?userId=${userId}`);
+      if (!labelingResponse.ok) throw new Error('Failed to fetch workflow labeling data');
+      const labelingData = await labelingResponse.json();
       
       const eventMap: Record<string, EventFeedbackData> = {};
-      data.entries.forEach((entry: FetchedEventData) => {
-          const analysisId = String(entry.low_level_workflow_analysis_id);
-          eventMap[analysisId] = {
-              generated_output: entry.generated_output,
-              feedback: entry.feedback,
-              feedback_reason: entry.feedback_reason
-          };
+      
+             // Process workflow labels first
+       labelingData.labels.forEach((label: WorkflowLabelData) => {
+          const analysisId = String(label.low_level_workflow_analysis_id);
+          if (label.selected_labels && label.selected_labels.length > 0) {
+              eventMap[analysisId] = {
+                  generated_output: label.selected_labels.join('; '), // Join multiple labels
+                  feedback: null, // Will be populated from dataset entries if available
+                  feedback_reason: null
+              };
+          }
       });
+      
+      // Then fetch any existing feedback from dataset entries
+      try {
+        const response = await fetch(`/api/get-dataset-entries?userId=${userId}&datasetType=workflow_event_feedback`);
+        if (response.ok) {
+          const data = await response.json();
+          data.entries.forEach((entry: FetchedEventData) => {
+              const analysisId = String(entry.low_level_workflow_analysis_id);
+              if (eventMap[analysisId]) {
+                  // Update existing entry with feedback data
+                  eventMap[analysisId].feedback = entry.feedback;
+                  eventMap[analysisId].feedback_reason = entry.feedback_reason;
+                  // Use dataset generated_output if it exists, otherwise keep the labels
+                  if (entry.generated_output) {
+                      eventMap[analysisId].generated_output = entry.generated_output;
+                  }
+              } else {
+                  // Create new entry from dataset
+                  eventMap[analysisId] = {
+                      generated_output: entry.generated_output,
+                      feedback: entry.feedback,
+                      feedback_reason: entry.feedback_reason
+                  };
+              }
+          });
+        }
+      } catch (datasetErr) {
+        console.warn("Could not fetch dataset entries, continuing with workflow labels only:", datasetErr);
+      }
+      
       setWorkflowEvents(eventMap);
     } catch (err) {
       console.error("Failed to fetch event data:", err);

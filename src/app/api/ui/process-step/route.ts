@@ -9,6 +9,13 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
 const processStepApiUrl = `${vercelUrl}/api/process-workflow-step`;
 
+// Type for labeling data from database
+interface LabelingData {
+  low_level_workflow_analysis_id: number;
+  selected_labels: string[] | null;
+  suggested_labels: string[] | null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { userId, sessionId, clientTimestamp, context, model } = await req.json();
@@ -26,13 +33,76 @@ export async function POST(req: NextRequest) {
         client_timestamp: new Date(clientTimestamp).toISOString() 
       });
 
-    // 2. Call the original, stateless processing API to generate the analysis
+    // 2. Fetch existing labeling data for context enrichment
+    console.log('🏷️ Fetching neighbor analyses and labeling data for enhanced context...');
+    
+    // Get analyses around this timestamp to provide contextual labeling data
+    const targetTime = new Date(clientTimestamp);
+    const timeWindow = 30 * 60 * 1000; // 30 minutes in milliseconds
+    const beforeTime = new Date(targetTime.getTime() - timeWindow).toISOString();
+    const afterTime = new Date(targetTime.getTime() + timeWindow).toISOString();
+    
+    const { data: neighborAnalyses, error: analysesError } = await supabase
+      .from('low_level_workflow_analyses')
+      .select('id, client_timestamp, llm_structured_output')
+      .eq('user_id', userId)
+      .gte('client_timestamp', beforeTime)
+      .lte('client_timestamp', afterTime)
+      .order('client_timestamp', { ascending: true })
+      .limit(10);
+
+    if (analysesError) {
+      console.warn('⚠️ Error fetching neighbor analyses:', analysesError);
+    }
+
+    // Fetch labeling data for neighbor analyses
+    let labelingData: LabelingData[] = [];
+    if (neighborAnalyses && neighborAnalyses.length > 0) {
+      const analysisIds = neighborAnalyses.map(a => a.id);
+      const { data: labelsData, error: labelsError } = await supabase
+        .from('low_level_workflow_labeling')
+        .select('low_level_workflow_analysis_id, selected_labels, suggested_labels')
+        .in('low_level_workflow_analysis_id', analysisIds);
+
+      if (labelsError) {
+        console.warn('⚠️ Error fetching labeling data:', labelsError);
+      } else {
+        labelingData = labelsData || [];
+      }
+    }
+
+    // Create labeling context map
+    const labelingMap = new Map();
+    labelingData.forEach(label => {
+      labelingMap.set(label.low_level_workflow_analysis_id, {
+        selected_labels: label.selected_labels || [],
+        suggested_labels: label.suggested_labels || []
+      });
+    });
+
+    // Enhance context with labeling information
+    const enhancedContext = {
+      ...context,
+      // Add neighbor labeling context for better step understanding
+      neighbor_labeling_context: neighborAnalyses?.map(analysis => ({
+        timestamp: analysis.client_timestamp,
+        step_title: analysis.llm_structured_output?.step_title || 'Unknown',
+        step_summary: analysis.llm_structured_output?.step_summary || 'No summary',
+        user_intent: analysis.llm_structured_output?.user_intent || 'Unknown intent',
+        selected_labels: labelingMap.get(analysis.id)?.selected_labels || [],
+        suggested_labels: labelingMap.get(analysis.id)?.suggested_labels || []
+      })) || []
+    };
+
+    console.log(`🏷️ Enhanced context with ${enhancedContext.neighbor_labeling_context.length} neighbor analyses and labeling data`);
+
+    // 3. Call the original, stateless processing API to generate the analysis with enhanced context
     const processResponse = await fetch(processStepApiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         prompt: 'WORKFLOW_STEP_ANALYSIS_V2_PROMPT',
-        context, 
+        context: enhancedContext, 
         model 
       }),
     });
@@ -48,7 +118,7 @@ export async function POST(req: NextRequest) {
       throw new Error('Core processor did not return a valid structured_output.');
     }
 
-    // 3. Save the new analysis to the database
+    // 4. Save the new analysis to the database
     const { error: insertError } = await supabase.from('low_level_workflow_analyses').insert([{
         user_id: userId,
         session_id: sessionId,
@@ -60,7 +130,7 @@ export async function POST(req: NextRequest) {
       throw new Error(`Failed to save new analysis to DB: ${insertError.message}`);
     }
 
-    // 4. Return the successful analysis to the UI
+    // 5. Return the successful analysis to the UI
     return NextResponse.json({ success: true, analysis });
 
   } catch (error: unknown) {

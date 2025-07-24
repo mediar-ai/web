@@ -4,6 +4,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
+import { cn } from '@/lib/utils';
 
 interface SavedSynthesis {
   id: number;
@@ -31,17 +33,59 @@ interface SavedSynthesesSectionProps {
   userId: string;
 }
 
+interface TimelineAnnotation {
+  analysis_id: number;
+  is_workflow_related: boolean;
+  unrelated_reason: string | null;
+  confidence_score: number | null;
+  model_used: string | null;
+  created_at: string;
+  raw_event_id?: number;
+  user_id?: string;
+  workflow_template_id?: number | null;
+  workflow_type_id?: number | null;
+  workflow_instance_id?: number | null;
+  workflow_step_id?: number | null;
+  workflow_substep_id?: number | null;
+  template_name?: string;
+  type_name?: string;
+  instance_name?: string;
+  step_name?: string;
+  substep_name?: string;
+  event_type?: string;
+  step_title?: string;
+  user_intent?: string;
+  step_summary?: string;
+  window_title?: string;
+  inputs?: string | string[] | null;
+  outputs?: string | string[] | null;
+  business_logics?: string | null;
+  event_payload?: Record<string, unknown>;
+  event_created_at?: string;
+}
+
 export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
   const [savedSyntheses, setSavedSyntheses] = useState<SavedSynthesis[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSynthesis, setSelectedSynthesis] = useState<SavedSynthesis | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [timelineAnnotations, setTimelineAnnotations] = useState<TimelineAnnotation[] | null>(null);
+  const [loadingAnnotations, setLoadingAnnotations] = useState(false);
 
   useEffect(() => {
     if (userId) {
       fetchSavedSyntheses();
     }
   }, [userId]);
+
+  // Fetch timeline annotations when a synthesis is selected
+  useEffect(() => {
+    if (selectedSynthesis && selectedSynthesis.id) {
+      fetchTimelineAnnotations(selectedSynthesis);
+    } else {
+      setTimelineAnnotations(null);
+    }
+  }, [selectedSynthesis]);
 
   const fetchSavedSyntheses = async () => {
     try {
@@ -56,6 +100,48 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
       console.error('Error fetching saved syntheses:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTimelineAnnotations = async (synthesis: SavedSynthesis) => {
+    setLoadingAnnotations(true);
+    try {
+      const response = await fetch(`/api/timeline-event-mappings?user_id=${userId}&raw_events=true&include_unrelated=true`);
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Filter annotations to those created around the synthesis time
+        // Use a broader time range to catch related annotations
+        const synthesisStart = synthesis.synthesisStartedAt || synthesis.createdAt;
+        const synthesisEnd = synthesis.synthesisCompletedAt || synthesis.createdAt;
+        
+        if (synthesisStart && synthesisEnd) {
+          const startTime = new Date(synthesisStart);
+          const endTime = new Date(synthesisEnd);
+          
+          // Add buffer time (e.g., 1 hour before and after)
+          startTime.setHours(startTime.getHours() - 1);
+          endTime.setHours(endTime.getHours() + 1);
+          
+          const filteredAnnotations = result.annotations?.filter((annotation: TimelineAnnotation) => {
+            const annotationTime = new Date(annotation.created_at);
+            return annotationTime >= startTime && annotationTime <= endTime;
+          }) || [];
+          
+          setTimelineAnnotations(filteredAnnotations);
+        } else {
+          // If no synthesis dates, show all annotations for this user
+          setTimelineAnnotations(result.annotations || []);
+        }
+      } else {
+        console.error('Failed to fetch timeline annotations');
+        setTimelineAnnotations([]);
+      }
+    } catch (error) {
+      console.error('Error fetching timeline annotations:', error);
+      setTimelineAnnotations([]);
+    } finally {
+      setLoadingAnnotations(false);
     }
   };
 
@@ -133,7 +219,10 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
                 <span className="text-sm font-mono">{isOpen ? '▼' : '▶'}</span>
               </CollapsibleTrigger>
               
-              <CollapsibleContent>
+              <CollapsibleContent className={cn(
+                  "transition-all duration-300 ease-in-out",
+                  isOpen ? "max-h-[5000px] opacity-100" : "max-h-0 opacity-50 overflow-hidden"
+              )}>
                 <div className="mt-4">
                   {/* Table Header */}
                   <div className="grid grid-cols-12 gap-4 p-4 bg-white border-b border-black text-sm font-medium text-black">
@@ -468,17 +557,17 @@ export function SavedSynthesesSection({ userId }: SavedSynthesesSectionProps) {
                           
                           <div className="p-4 border rounded-lg bg-muted/50">
                             <div className="w-full">
-                              <div className="text-center text-muted-foreground p-4 border rounded-lg bg-muted/50">
-                                <div className="space-y-2">
-                                  <p className="font-medium">Timeline Mapping Completed</p>
-                                  <div className="text-sm">
-                                    <div><strong>Workflows Mapped:</strong> {selectedSynthesis.workflowIds.length} workflows processed</div>
-                                    <div><strong>Models Used:</strong> {selectedSynthesis.modelsUsed.join(', ')}</div>
-                                    <div><strong>Total Tokens:</strong> {selectedSynthesis.totalTokensUsed.toLocaleString()}</div>
-                                    <div><strong>Messages in Process:</strong> {selectedSynthesis.processData.conversation.length} synthesis messages</div>
-                                  </div>
+                              {loadingAnnotations ? (
+                                <div className="text-center text-muted-foreground p-4 border rounded-lg bg-muted/50">
+                                  <p>Loading timeline annotations...</p>
                                 </div>
-                              </div>
+                              ) : timelineAnnotations && timelineAnnotations.length > 0 ? (
+                                <TimelineAnnotationsTable annotations={timelineAnnotations} />
+                              ) : (
+                                <div className="text-center text-muted-foreground p-4 border rounded-lg bg-muted/50">
+                                  <p>No timeline annotations found for this synthesis.</p>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>

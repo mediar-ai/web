@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVertexGenAI } from '@/lib/vertexai';
 import { HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
 import { WORKFLOW_STEP_ANALYSIS_V2_PROMPT } from '@/lib/prompts';
+import { createClient } from '@supabase/supabase-js';
 // import { v2AnalysisSchema } from '@/lib/llmSchemas';
 
 // const getGenAI = () => {
@@ -20,12 +21,110 @@ const safetySettings: Array<{category: HarmCategory, threshold: HarmBlockThresho
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
 ];
 
+// Type for labeling data enhancement
+interface LabelingData {
+  low_level_workflow_analysis_id: number;
+  selected_labels: string[] | null;
+  suggested_labels: string[] | null;
+}
+
+// Type for analysis with optional labeling data
+interface AnalysisWithLabels {
+  id?: string | number;
+  selected_labels?: string[];
+  suggested_labels?: string[];
+  [key: string]: unknown;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { model: modelName, context } = await req.json();
 
     if (!modelName || !context) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
+    }
+
+    // Enhanced context with labeling data
+    const enhancedContext = { ...context };
+
+    // Check if we have analysis IDs to fetch labeling data
+    const analysisIds: number[] = [];
+    
+    // Extract target analysis ID
+    if (context.targetAnalysis?.id) {
+      analysisIds.push(parseInt(context.targetAnalysis.id));
+    }
+    
+    // Extract neighbor analysis IDs
+    if (context.neighborAnalyses && Array.isArray(context.neighborAnalyses)) {
+      context.neighborAnalyses.forEach((neighbor: AnalysisWithLabels) => {
+        if (neighbor.id) {
+          analysisIds.push(parseInt(neighbor.id.toString()));
+        }
+      });
+    }
+
+    // Fetch labeling data if we have analysis IDs
+    if (analysisIds.length > 0) {
+      console.log(`🏷️ Fetching labeling data for ${analysisIds.length} analyses...`);
+      
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+      if (supabaseUrl && supabaseServiceKey) {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        
+        const { data: labelingData, error: labelingError } = await supabase
+          .from('low_level_workflow_labeling')
+          .select('low_level_workflow_analysis_id, selected_labels, suggested_labels')
+          .in('low_level_workflow_analysis_id', analysisIds);
+
+        if (labelingError) {
+          console.warn('⚠️ Error fetching labeling data:', labelingError);
+        } else {
+          // Create labeling map
+          const labelingMap = new Map<number, { selected_labels: string[]; suggested_labels: string[] }>();
+          (labelingData as LabelingData[])?.forEach(label => {
+            labelingMap.set(label.low_level_workflow_analysis_id, {
+              selected_labels: label.selected_labels || [],
+              suggested_labels: label.suggested_labels || []
+            });
+          });
+
+          // Enhance target analysis with labeling data
+          if (context.targetAnalysis?.id) {
+            const targetId = parseInt(context.targetAnalysis.id);
+            const targetLabels = labelingMap.get(targetId);
+            if (targetLabels) {
+              enhancedContext.targetAnalysis = {
+                ...context.targetAnalysis,
+                selected_labels: targetLabels.selected_labels,
+                suggested_labels: targetLabels.suggested_labels
+              };
+            }
+          }
+
+          // Enhance neighbor analyses with labeling data
+          if (context.neighborAnalyses && Array.isArray(context.neighborAnalyses)) {
+            enhancedContext.neighborAnalyses = context.neighborAnalyses.map((neighbor: AnalysisWithLabels) => {
+              if (neighbor.id) {
+                const neighborId = parseInt(neighbor.id.toString());
+                const neighborLabels = labelingMap.get(neighborId);
+                if (neighborLabels) {
+                  return {
+                    ...neighbor,
+                    selected_labels: neighborLabels.selected_labels,
+                    suggested_labels: neighborLabels.suggested_labels
+                  };
+                }
+              }
+              return neighbor;
+            });
+          }
+
+          console.log(`🏷️ Enhanced context with labeling data for target and ${enhancedContext.neighborAnalyses?.length || 0} neighbors`);
+        }
+      }
     }
 
     // 🔥 SWITCHED TO VERTEX AI 🔥
@@ -38,8 +137,15 @@ export async function POST(req: NextRequest) {
     
     const prompt = `${WORKFLOW_STEP_ANALYSIS_V2_PROMPT}
 
+ENHANCED LABELING CONTEXT:
+The context below may include human-curated labels (selected_labels) and AI-suggested labels (suggested_labels) for the target analysis and neighboring analyses. Use this labeling data to:
+- Better understand the semantic context and workflow patterns
+- Generate more accurate and contextually-aware step summaries
+- Align the generated event with established labeling categories
+- Prioritize human-selected labels over AI-suggested labels when making decisions
+
 CONTEXT:
-${JSON.stringify(context, null, 2)}
+${JSON.stringify(enhancedContext, null, 2)}
 
 Please respond with a JSON object in this exact format:
 {

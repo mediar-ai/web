@@ -98,6 +98,10 @@ interface RawAnnotationWithWorkflow {
     id: number;
     window_title?: string;
     llm_structured_output?: Record<string, unknown>;
+    labeling_data?: {
+      selected_labels: string[] | null;
+      suggested_labels: string[] | null;
+    } | null;
   };
 }
 
@@ -260,7 +264,11 @@ export async function GET(req: NextRequest) {
           analysis_data:low_level_workflow_analyses!raw_timeline_event_annotations_analysis_id_fkey(
             id,
             window_title,
-            llm_structured_output
+            llm_structured_output,
+            labeling_data:low_level_workflow_labeling(
+              selected_labels,
+              suggested_labels
+            )
           )
         `)
         .eq('user_id', user_id)
@@ -305,19 +313,25 @@ export async function GET(req: NextRequest) {
         // Find type name
         if (components.workflow_types && annotation.workflow_type_id) {
           const type = components.workflow_types.find((t: WorkflowComponent) => t.id === annotation.workflow_type_id);
-          if (type) result.type_name = type.type_name || type.name || 'Unknown Type';
+          if (type) {
+            result.type_name = type.type_name || type.name || 'Unknown Type';
+          }
         }
 
         // Find instance name  
         if (components.workflow_instances && annotation.workflow_instance_id) {
           const instance = components.workflow_instances.find((i: WorkflowComponent) => i.id === annotation.workflow_instance_id);
-          if (instance) result.instance_name = instance.instance_name || instance.name || 'Unknown Instance';
+          if (instance) {
+            result.instance_name = instance.instance_name || instance.name || 'Unknown Instance';
+          }
         }
 
         // Find step name
         if (components.steps && annotation.workflow_step_id) {
           const step = components.steps.find((s: WorkflowComponent) => s.id === annotation.workflow_step_id);
-          if (step) result.step_name = step.name || step.step_name || 'Unknown Step';
+          if (step) {
+            result.step_name = step.name || step.step_name || 'Unknown Step';
+          }
         }
 
         // Find substep name (nested in steps)
@@ -354,7 +368,7 @@ export async function GET(req: NextRequest) {
         // Extract analysis information
         const analysisInfo = (() => {
           try {
-            const analysisData = annotation.analysis_data as { llm_structured_output?: Record<string, unknown>, window_title?: string };
+            const analysisData = annotation.analysis_data as { llm_structured_output?: Record<string, unknown>, window_title?: string, labeling_data?: { selected_labels: string[] | null, suggested_labels: string[] | null } | null };
             const structuredOutput = analysisData?.llm_structured_output;
             return {
               step_title: (structuredOutput?.step_title as string) || 'Unknown Step',
@@ -372,6 +386,20 @@ export async function GET(req: NextRequest) {
           }
         })();
 
+        // Extract labeling information
+        const labelingInfo = (() => {
+          try {
+            const analysisData = annotation.analysis_data as { labeling_data?: { selected_labels: string[] | null, suggested_labels: string[] | null } | null };
+            const labelingData = analysisData?.labeling_data;
+            return {
+              selected_labels: labelingData?.selected_labels || [],
+              suggested_labels: labelingData?.suggested_labels || []
+            };
+          } catch {
+            return { selected_labels: [], suggested_labels: [] };
+          }
+        })();
+
         return {
           user_id: annotation.user_id,
           raw_event_id: annotation.raw_event_id,
@@ -380,7 +408,7 @@ export async function GET(req: NextRequest) {
           is_workflow_related: annotation.is_workflow_related,
           model_used: annotation.model_used,
           unrelated_reason: annotation.unrelated_reason,
-          workflow_template_id: annotation.workflow_template_id,
+          workflow_id: annotation.workflow_template_id, // Use the correct field name
           workflow_type_id: annotation.workflow_type_id,
           workflow_instance_id: annotation.workflow_instance_id,
           workflow_step_id: annotation.workflow_step_id,
@@ -405,6 +433,9 @@ export async function GET(req: NextRequest) {
           // Include event payload and timestamp
           event_payload: annotation.event_data?.payload,
           event_created_at: annotation.event_data?.created_at,
+          // Include labeling data
+          selected_labels: labelingInfo.selected_labels,
+          suggested_labels: labelingInfo.suggested_labels,
         };
       });
 
@@ -481,4 +512,4 @@ export async function GET(req: NextRequest) {
       details: error instanceof Error ? error.message : 'Unknown error' 
     }, { status: 500 });
   }
-} 
+}
