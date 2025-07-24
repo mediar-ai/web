@@ -21,7 +21,9 @@ import {
   AlertCircle,
   Search,
   Trash2,
-  PlusCircle
+  PlusCircle,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import {
   Dialog,
@@ -86,7 +88,7 @@ interface WorkflowSubstep {
 interface WorkflowStep {
   id: number;
   step_name: string;
-  workflow_substeps?: WorkflowSubstep[];
+  substeps?: WorkflowSubstep[];
 }
 
 interface CanvasContent {
@@ -181,38 +183,37 @@ const extractWorkflowComponents = (workflows: CanvasContent[]): WorkflowComponen
       return;
     }
 
-    // Types - combine workflow ID and index to ensure uniqueness
-    workflowComponents.workflow_types?.forEach((type: WorkflowType, typeIndex: number) => {
+    // Types - use the original IDs from workflow_components_with_ids
+    workflowComponents.workflow_types?.forEach((type: WorkflowType) => {
       components.types.push({
-        id: workflow.id * 1000000 + typeIndex + 1000000, // Unique across all workflows
+        id: type.id, // Use the original ID from the database
         name: type.type_name,
         template_id: workflow.id
       });
     });
 
-    // Instances - combine workflow ID and index to ensure uniqueness
-    workflowComponents.workflow_instances?.forEach((instance: WorkflowInstance, instanceIndex: number) => {
+    // Instances - use the original IDs from workflow_components_with_ids
+    workflowComponents.workflow_instances?.forEach((instance: WorkflowInstance) => {
       components.instances.push({
-        id: workflow.id * 1000000 + instanceIndex + 2000000, // Unique across all workflows
+        id: instance.id, // Use the original ID from the database
         name: instance.instance_name,
         template_id: workflow.id
       });
     });
 
-    // Steps and substeps - combine workflow ID and index to ensure uniqueness
-    workflowComponents.steps?.forEach((step: WorkflowStep, stepIndex: number) => {
-      const stepId = workflow.id * 1000000 + stepIndex + 3000000; // Unique across all workflows
+    // Steps and substeps - use the original IDs from workflow_components_with_ids
+    workflowComponents.steps?.forEach((step: WorkflowStep) => {
       components.steps.push({
-        id: stepId,
+        id: step.id, // Use the original ID from the database
         name: step.step_name,
         template_id: workflow.id
       });
 
-      step.workflow_substeps?.forEach((substep: WorkflowSubstep, substepIndex: number) => {
+      step.substeps?.forEach((substep: WorkflowSubstep) => {
         components.substeps.push({
-          id: workflow.id * 1000000 + substepIndex + 4000000, // Unique across all workflows
+          id: substep.id, // Use the original ID from the database
           name: substep.substep_name,
-          step_id: stepId
+          step_id: step.id // Use the original step ID
         });
       });
     });
@@ -240,6 +241,9 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
     step: StepInHierarchy | null;
     substep: SubstepInHierarchy | null;
   }>({ isOpen: false, workflow: null, step: null, substep: null });
+  
+  // State for tracking expanded events to show raw JSON
+  const [expandedEvents, setExpandedEvents] = useState<Set<number>>(new Set());
 
   // Keep local state in sync when parent updates
   useEffect(() => {
@@ -365,9 +369,6 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
     return Object.values(workflows);
   }, [filteredAnnotations]);
 
-  const relatedCount = filteredAnnotations.filter(a => a.is_workflow_related).length;
-  const unrelatedCount = filteredAnnotations.filter(a => !a.is_workflow_related).length;
-
   const handleAnnotationChange = (
     annotationIndex: number,
     field: keyof TimelineAnnotation,
@@ -454,6 +455,41 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
     }
   };
 
+  // Helper function to toggle event expansion
+  const toggleEventExpansion = (eventId: number) => {
+    setExpandedEvents(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(eventId)) {
+        newSet.delete(eventId);
+      } else {
+        newSet.add(eventId);
+      }
+      return newSet;
+    });
+  };
+
+  // Helper function to render raw JSON payload
+  const renderRawJsonPayload = (annotation: TimelineAnnotation) => {
+    if (!annotation.event_payload) {
+      return (
+        <div className="text-xs text-gray-500 italic p-2 bg-gray-50 rounded border">
+          No raw event payload available
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        <div className="text-xs font-medium text-gray-700">Raw Event JSON:</div>
+        <pre className="text-xs bg-gray-50 p-3 rounded border overflow-x-auto whitespace-pre-wrap font-mono">
+          {JSON.stringify(annotation.event_payload, null, 2)}
+        </pre>
+      </div>
+    );
+  };
+
+  const relatedCount = filteredAnnotations.filter(a => a.is_workflow_related).length;
+  const unrelatedCount = filteredAnnotations.filter(a => !a.is_workflow_related).length;
 
   const getStatusBadge = (annotation: TimelineAnnotation) => {
     if (annotation.is_workflow_related) {
@@ -522,7 +558,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
 
       {/* View Mode Toggle and Stats */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex border border-gray-300 rounded-lg">
+        <div className="flex border border-black rounded-lg">
           <button
             onClick={() => setViewMode('events')}
             className={`px-3 py-1 text-sm rounded-l-lg transition-colors ${
@@ -547,7 +583,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
         <div className="flex items-center gap-4 text-sm text-gray-700">
           <span className="font-medium">Total: {filteredAnnotations.length}</span>
           <Badge variant="default" className="bg-black text-white">{relatedCount} RELATED</Badge>
-          <Badge variant="outline" className="border-gray-400 text-gray-700">{unrelatedCount} UNRELATED</Badge>
+          <Badge variant="outline" className="border-black text-gray-700">{unrelatedCount} UNRELATED</Badge>
         </div>
       </div>
 
@@ -597,6 +633,20 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                             </div>
                           )}
                         </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleEventExpansion(annotation.raw_event_id || annotation.analysis_id)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {expandedEvents.has(annotation.raw_event_id || annotation.analysis_id) ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
                     </div>
                   </CardHeader>
@@ -865,6 +915,13 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                         )}
                       </div>
                     )}
+
+                    {/* Expandable Raw JSON Section */}
+                    {expandedEvents.has(annotation.raw_event_id || annotation.analysis_id) && (
+                      <div className="border-t pt-3 mt-3">
+                        {renderRawJsonPayload(annotation)}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );
@@ -875,14 +932,14 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
         /* Workflow View */
         <div className="max-h-[600px] overflow-y-auto w-full space-y-6 pr-2">
           {workflowHierarchy.length === 0 ? (
-            <div className="text-center py-12 text-gray-600 border border-gray-300 rounded-lg bg-gray-50">
+            <div className="text-center py-12 text-gray-600 border border-black rounded-lg bg-gray-50">
               No related workflow mappings found.
             </div>
           ) : (
             workflowHierarchy.map((workflow, workflowIndex) => (
-              <div key={workflowIndex} className="border border-gray-300 rounded-lg bg-white">
+              <div key={workflowIndex} className="border border-black rounded-lg bg-white">
                 {/* Workflow Header */}
-                <div className="border-b border-gray-200 p-4 bg-gray-50">
+                <div className="border-b border-black p-4 bg-gray-50">
                   <div className="space-y-2 text-sm">
                     <div className="font-bold text-lg text-gray-900">{workflow.template_name}</div>
                     <div className="text-gray-700"><span className="font-medium">Type:</span> {workflow.type_name}</div>
@@ -893,8 +950,8 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                 {/* Steps */}
                 <div className="p-4 space-y-4">
                   {Object.values(workflow.steps).map((step, stepIndex) => (
-                    <div key={stepIndex} className="border border-gray-200 rounded-lg bg-gray-50">
-                      <div className="p-3 bg-gray-100 border-b border-gray-200">
+                    <div key={stepIndex} className="border border-black rounded-lg bg-gray-50">
+                      <div className="p-3 bg-gray-100 border-b border-black">
                         <div className="font-medium text-gray-900">
                           <span className="font-medium">Step:</span> {step.step_name}
                         </div>
@@ -903,9 +960,9 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                       {/* Substeps */}
                       <div className="p-3 space-y-3">
                         {Object.values(step.substeps).map((substep, substepIndex) => (
-                          <div key={substepIndex} className="border border-gray-300 rounded-lg bg-white">
+                          <div key={substepIndex} className="border border-black rounded-lg bg-white">
                             {/* Substep Header */}
-                            <div className="border-b border-gray-200 p-3 bg-gray-50">
+                            <div className="border-b border-black p-3 bg-gray-50">
                               <div className="space-y-2 text-sm">
                                 <div className="font-medium text-gray-900">
                                   <span className="font-medium">Substep:</span> {substep.substep_name}
@@ -935,7 +992,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                             <div className="p-3 space-y-2">
                               {substep.events.map((event, eventIndex) => {
                                 return (
-                                  <div key={eventIndex} className={`border rounded-lg p-2 bg-gray-50`}>
+                                  <div key={eventIndex} className={`border border-black rounded-lg p-2 bg-gray-50`}>
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center space-x-2">
                                         <div className="text-xs text-gray-600">
@@ -948,9 +1005,23 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                                           Event #{event.raw_event_id}
                                         </Badge>
                                       </div>
-                                      <Button variant="ghost" size="sm" onClick={() => handleRemoveEventFromWorkflow(event.annotation.analysis_id)}>
-                                          <Trash2 className="h-4 w-4 text-red-500" />
-                                      </Button>
+                                      <div className="flex items-center gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => toggleEventExpansion(event.raw_event_id)}
+                                          className="h-6 w-6 p-0"
+                                        >
+                                          {expandedEvents.has(event.raw_event_id) ? (
+                                            <ChevronUp className="h-3 w-3" />
+                                          ) : (
+                                            <ChevronDown className="h-3 w-3" />
+                                          )}
+                                        </Button>
+                                        <Button variant="ghost" size="sm" onClick={() => handleRemoveEventFromWorkflow(event.annotation.analysis_id)}>
+                                            <Trash2 className="h-4 w-4 text-red-500" />
+                                        </Button>
+                                      </div>
                                     </div>
                                     
                                     {(event.inputs || event.outputs || event.business_logics) && (
@@ -964,6 +1035,13 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                                         {event.business_logics && (
                                           <div><span className="font-medium">Business Logic:</span> {event.business_logics}</div>
                                         )}
+                                      </div>
+                                    )}
+
+                                    {/* Expandable Raw JSON Section for Workflow View */}
+                                    {expandedEvents.has(event.raw_event_id) && (
+                                      <div className="mt-2 pt-2 border-t border-gray-300">
+                                        {renderRawJsonPayload(event.annotation)}
                                       </div>
                                     )}
                                   </div>
@@ -1009,19 +1087,40 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                               {unrelatedEvent.inputs ? `Input: ${unrelatedEvent.inputs}` : ''}
                             </div>
                           </div>
-                          <Button 
-                            size="sm"
-                            onClick={() => handleAddEventToWorkflow(
-                              unrelatedEvent,
-                              addEventModalState.workflow!,
-                              addEventModalState.step!,
-                              addEventModalState.substep!
-                            )}
-                          >
-                              <PlusCircle className="h-4 w-4 mr-2" />
-                              Add
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleEventExpansion(unrelatedEvent.raw_event_id || unrelatedEvent.analysis_id)}
+                              className="h-8 w-8 p-0"
+                            >
+                              {expandedEvents.has(unrelatedEvent.raw_event_id || unrelatedEvent.analysis_id) ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button 
+                              size="sm"
+                              onClick={() => handleAddEventToWorkflow(
+                                unrelatedEvent,
+                                addEventModalState.workflow!,
+                                addEventModalState.step!,
+                                addEventModalState.substep!
+                              )}
+                            >
+                                <PlusCircle className="h-4 w-4 mr-2" />
+                                Add
+                            </Button>
+                          </div>
                         </div>
+
+                        {/* Expandable Raw JSON Section for Add Event Modal */}
+                        {expandedEvents.has(unrelatedEvent.raw_event_id || unrelatedEvent.analysis_id) && (
+                          <div className="mt-3 pt-3 border-t">
+                            {renderRawJsonPayload(unrelatedEvent)}
+                          </div>
+                        )}
                       </Card>
                     ))
                   ) : (
