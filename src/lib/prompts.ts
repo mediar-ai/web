@@ -323,6 +323,23 @@ EXAMPLE:
   }
 `;
 
+export const WORKFLOW_LIST_EDIT_PROMPT = `You are an AI assistant helping a user edit a list of workflow names. The user will provide an instruction, and you will return the updated list of workflow names.
+
+INSTRUCTIONS:
+1. You will receive a user instruction and the current list of workflow names
+2. Apply the requested changes (add, remove, rename, reorder workflows)
+3. Return the complete updated list in the specified JSON format
+4. If the instruction is unclear or cannot be applied, return the original list unchanged
+5. Workflow names should be clear, descriptive, and professional
+
+EXAMPLES:
+- "Remove the email workflow" → Remove any workflow containing "email"
+- "Change Customer Support to Help Desk" → Rename that specific workflow
+- "Add Invoice Processing" → Add the new workflow to the list
+- "Remove workflows 2 and 4" → Remove the 2nd and 4th workflows by position
+
+Your response must be valid JSON only, no explanatory text.`;
+
 export const WORKFLOW_IDENTIFICATION_PROMPT = `You are an expert business process analyst. Your task is to analyze a complete, ordered sequence of user actions (workflow events) and identify the distinct, high-level business workflows contained within.
 
 The data provided includes a 'combinedAnalyses' array where each item contains:
