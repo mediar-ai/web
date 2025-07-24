@@ -1,6 +1,0 @@
-HTTP/2 200 
-cache-control: no-cache
-content-type: text/event-stream
-date: Mon, 14 Jul 2025 22:29:54 GMT
-mcp-session-id: 3be64582-1c2a-4cd8-ba8a-81bfcd055188
-
