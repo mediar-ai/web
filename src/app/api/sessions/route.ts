@@ -14,7 +14,7 @@ interface Session {
   total_ui_steps: number;
   total_workflow_analyses: number;
   distinct_workflows_created: number;
-  human_labeled_steps: number;
+  llm_generated_labeled_steps: number;
   llm_labeled_steps: number;
   human_annotated_steps: number;
   status: 'live' | 'offline';
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
         total_ui_steps: session.total_ui_steps || 0,
         total_workflow_analyses: session.total_workflow_analyses || 0,
         distinct_workflows_created: 0,
-        human_labeled_steps: session.human_labeled_steps || 0,
+        llm_generated_labeled_steps: session.human_labeled_steps || 0,
         llm_labeled_steps: session.total_labeled_steps || 0, // Using total_labeled_steps for llm_labeled_steps
         human_annotated_steps: session.human_labeled_steps || 0, // Keep for backwards compatibility
         duration_seconds: session.duration_seconds,
