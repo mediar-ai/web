@@ -26,7 +26,7 @@ type UserStats = {
   stepsProcessed: number;
   totalSteps: number;
   labelingTotal: number;
-  humanLabeled: number;
+  llmGeneratedLabeled: number;
 };
 
 type CombinedAnalysisData = {
@@ -1039,13 +1039,24 @@ export function useWorkflowPageLogic(userId: string) {
     try {
       const workflowIds = workflows.map(w => w.id);
       
+      // Include current session state in the save request
+      const currentSessionState = {
+        workflow_context: editableContext,
+        identified_workflow_names: identifiedWorkflowNames,
+        workflow_boundaries: workflowBoundaries,
+        messages: messages,
+        synthesis_step: synthesisStep,
+        synthesized_workflows: workflows
+      };
+      
       const response = await fetch('/api/workflows/save-synthesis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           workflowIds, 
           userId,
-          name // Optional custom name for the synthesis
+          name, // Optional custom name for the synthesis
+          sessionState: currentSessionState // Include current session state
         }),
       });
 
