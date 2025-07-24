@@ -110,7 +110,7 @@ export interface FlattenedWorkflowAnalysis {
   // Additional metadata
   schema_version?: string;
   raw_llm_output?: LLMStructuredOutput;
-  human_label?: string | null;
+  llm_generated_label?: string | null;
 }
 
 export interface InitialFrameDumpAnalysis {
@@ -354,7 +354,7 @@ export interface Session {
   total_ui_steps?: number;
   total_workflow_analyses?: number;
   distinct_workflows_created?: number;
-  human_labeled_steps?: number;
+  llm_generated_labeled_steps?: number;
   duration_seconds?: number;
   status: 'live' | 'ended';
   timestamp: string;
