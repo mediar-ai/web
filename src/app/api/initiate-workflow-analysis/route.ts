@@ -137,18 +137,25 @@ export async function POST(req: NextRequest) {
               .lte('created_at', endDate);
           }
 
-          const { data: transcripts, error: transcriptError } = await transcriptQuery
+          transcriptQuery = transcriptQuery
             .order('created_at', { ascending: true })
             .limit(500); // Limit transcripts to prevent overwhelming context
 
+          const { data: transcripts, error: transcriptError } = await transcriptQuery;
+
           if (transcriptError) {
-            console.warn('Error fetching transcripts:', transcriptError);
+            console.warn('❌ Error fetching transcripts:', transcriptError);
           } else {
             transcriptsData = transcripts || [];
-            console.log(`Loaded ${transcriptsData.length} transcript items`);
+            console.log(`✅ Loaded ${transcriptsData.length} transcript items for analysis`);
+            
+            if (transcriptsData.length > 0) {
+              console.log(`📊 Transcript session: ${transcriptsData[0]?.session_id}`);
+              console.log(`📊 Transcript time range: ${transcriptsData[0]?.created_at} to ${transcriptsData[transcriptsData.length - 1]?.created_at}`);
+            }
           }
         } catch (error) {
-          console.warn('Transcript fetching failed, continuing without transcripts:', error);
+          console.error('Error fetching transcripts:', error);
         }
 
         controller.enqueue(toSSE({ status: `Loaded data, starting identification...`, progress: 20 }));
