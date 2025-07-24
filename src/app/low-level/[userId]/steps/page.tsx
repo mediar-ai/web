@@ -18,8 +18,6 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useState, useEffect, use, useCallback, useMemo } from "react";
 import type { LowLevelEvent } from "@/types";
-import { getSharedEventsStorage } from '@/lib/sharedEventsStorage';
-import { getSharedAnalysisStorage } from '@/lib/sharedAnalysisStorage';
 import { generateSimplifiedUiTreeString } from '@/lib/uiTreeUtils';
 import UITreeTimeline from "@/components/low-level/UITreeTimeline";
 import FormattedUITree from "@/components/low-level/FormattedUITree";
@@ -124,11 +122,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const { userId } = use(params);
   const { setUserId } = useUser();
   const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
-  const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
-  const [usingCachedData, setUsingCachedData] = useState(false);
-  const [usingCachedAnalyses, setUsingCachedAnalyses] = useState(false);
-  const sharedStorage = getSharedEventsStorage(userId);
-  const analysisStorage = getSharedAnalysisStorage(userId);
   const [selectedEvent, setSelectedEvent] = useState<LowLevelEvent | null>(null);
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const [openContextGroupItems, setOpenContextGroupItems] = useState<string[]>([]);
@@ -139,6 +132,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro'); // 🔥 Updated to stable Vertex AI model name
+  const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
   const [pendingJobCount, setPendingJobCount] = useState(0);
   const [rawLlmInputForDisplay, setRawLlmInputForDisplay] = useState<string | null>(null);
   const [totalEventCount, setTotalEventCount] = useState<number>(0);
@@ -148,14 +142,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isLoadMoreModalOpen, setIsLoadMoreModalOpen] = useState(false);
   const [loadAmount, setLoadAmount] = useState('1000');
-  const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
-  const [loadAllProgress, setLoadAllProgress] = useState<{ loaded: number; total: number } | null>(null);
-  const [liveUpdateIndicator, setLiveUpdateIndicator] = useState(false);
-  
-  // Loading constants
-  const AUTO_LOAD_CHUNK_SIZE = 200;
-  const AUTO_LOAD_LIMIT = 2000; // Auto-load up to 2000 events for steps tab
-  const MANUAL_LOAD_CHUNK_SIZE = 1000;
   
   // State to control which context elements are included
   const [contextConfig, ] = useState({
@@ -289,201 +275,41 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const fetchAllWorkflowAnalyses = useCallback(async () => {
     if (!userId) return;
     try {
-      // First, try to load from IndexedDB cache
-      const cachedData = await analysisStorage.getCachedAnalyses(300, 0);
-      
-      if (cachedData.analyses.length > 0) {
-        console.log(`[Steps] Loaded ${cachedData.analyses.length} analyses from IndexedDB cache`);
-        setAllWorkflowAnalyses(cachedData.analyses);
-        setUsingCachedAnalyses(true);
-        
-        // Continue to check for new analyses in background
-        console.log('[Steps] Checking for new analyses in background...');
-      }
-      
-      // Always check API for fresh data (either as fallback or background refresh)
-      if (cachedData.analyses.length === 0) {
-        console.log('[Steps] No cached analyses found, fetching from API');
-        setUsingCachedAnalyses(false);
-      }
       const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch workflow analyses');
       }
       const data = await response.json();
-      const analyses: WorkflowStepAnalysis[] = data.analyses || [];
-      
-      // If we had cached data, check for new analyses and merge
-      if (cachedData.analyses.length > 0) {
-        const cachedIds = new Set(cachedData.analyses.map(a => a.id));
-        const reallyNewAnalyses = analyses.filter(a => !cachedIds.has(a.id));
-        
-        if (reallyNewAnalyses.length > 0) {
-          console.log(`[Steps] Found ${reallyNewAnalyses.length} new analyses, updating cache and UI`);
-          const mergedAnalyses = [...reallyNewAnalyses, ...cachedData.analyses];
-          setAllWorkflowAnalyses(mergedAnalyses);
-          
-          // Save new analyses to cache
-          await analysisStorage.saveAnalyses(reallyNewAnalyses);
-        } else {
-          console.log('[Steps] No new analyses found');
-        }
-      } else {
-        // No cached data, use fresh data as-is
-        setAllWorkflowAnalyses(analyses);
-        
-        // Save to cache for future use
-        if (analyses.length > 0) {
-          await analysisStorage.saveAnalyses(analyses);
-          console.log(`[Steps] Saved ${analyses.length} analyses to IndexedDB for future use`);
-        }
-      }
-      
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [userId, analysisStorage]);
-
-  // Load events for display from IndexedDB (single source of truth)
-  const loadEventsForDisplay = useCallback(async (limit: number = 1000) => {
-    try {
-      const cachedData = await sharedStorage.getCachedEvents(limit, 0, false);
-      // Display events are just used for display, we don't need a separate state for this
-      setUsingCachedData(cachedData.events.length > 0);
-      console.log(`[Steps] Loaded ${cachedData.events.length} events for display from IndexedDB`);
-    } catch (error) {
-      console.error('[Steps] Failed to load events for display:', error);
-    }
-  }, [sharedStorage]);
-
-  // Load analyses for display from IndexedDB (single source of truth)  
-  // const loadAnalysesForDisplay = useCallback(async (limit: number = 1000) => {
-  //   try {
-  //     const cachedData = await analysisStorage.getCachedAnalyses(limit, 0);
-  //     // setDisplayAnalyses(cachedData.analyses); // This line was removed
-  //     setUsingCachedAnalyses(cachedData.analyses.length > 0);
-  //     console.log(`[Steps] Loaded ${cachedData.analyses.length} analyses for display from IndexedDB`);
-  //   } catch (error) {
-  //     console.error('[Steps] Failed to load analyses for display:', error);
-  //     // setDisplayAnalyses([]); // This line was removed
-  //   }
-  // }, [analysisStorage]);
-
-  const forceRefreshAnalyses = useCallback(async () => {
-    if (!userId) return;
-    setUsingCachedAnalyses(false);
-    
-    try {
-      console.log('[Steps] Force refreshing analyses from API');
-      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch workflow analyses');
-      }
-      const data = await response.json();
+      // The API now returns flattened analyses for backward compatibility
       const analyses: WorkflowStepAnalysis[] = data.analyses || [];
       setAllWorkflowAnalyses(analyses);
-      
-      // Update cache with fresh data
-      if (analyses.length > 0) {
-        await analysisStorage.saveAnalyses(analyses);
-        console.log(`[Steps] Updated cache with ${analyses.length} fresh analyses`);
-      }
-      
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [userId, analysisStorage]);
+  }, [userId]);
 
   useEffect(() => {
     setUserId(userId);
-    const loadEvents = async () => {
+    const fetchEvents = async () => {
       if (!userId) return;
       setLoading(true);
       try {
-        // First, try to load from IndexedDB cache
-        const cachedData = await sharedStorage.getCachedEvents(1000, 0, false); // Get all events (ui_tree, screenshot_diff, etc.)
-        
-        if (cachedData.events.length > 0) {
-          console.log(`[Steps] Found ${cachedData.events.length} events in IndexedDB cache`);
-          setUsingCachedData(true);
-          setHasMore(cachedData.hasMore);
-          setOffset(cachedData.events.length);
-          
-          // Get storage info for additional metadata
-          const storageInfo = await sharedStorage.getStorageInfo();
-          setTotalEventCount(storageInfo.eventCount);
-          
-          // Count UI tree events for steps count
-          const uiTreeCount = cachedData.events.filter(event => 
-            (event.payload as StepsPageEventPayload)?.payload?.type === 'ui_tree'
-          ).length;
-          setTotalStepsCount(uiTreeCount);
-          
-          // Load events for display
-          await loadEventsForDisplay(1000);
-          setLoading(false);
-          
-          // Continue to check for new events in background
-          console.log('[Steps] Checking for new events in background...');
-        }
-        
-        // Always check API for fresh data (either as fallback or background refresh)
-        if (cachedData.events.length === 0) {
-          console.log('[Steps] No cached data found, fetching from API');
-          setUsingCachedData(false);
-        }
         const response = await fetch(`/api/low-level/${userId}?offset=0`);
         if (!response.ok) {
           throw new Error('Network response was not ok when fetching events');
         }
         const data = await response.json();
+        // The API now provides pre-sorted, stable data. No need to sort on the client.
         const newEvents = data.events || [];
-        
-        // If we had cached data, check for new events and merge
-        if (cachedData.events.length > 0) {
-          const cachedIds = new Set(cachedData.events.map((e: LowLevelEvent) => e.id));
-          const reallyNewEvents = newEvents.filter((e: LowLevelEvent) => !cachedIds.has(e.id));
-          
-          if (reallyNewEvents.length > 0) {
-            console.log(`[Steps] Found ${reallyNewEvents.length} new events, updating cache and UI`);
-            const mergedEvents = [...reallyNewEvents, ...cachedData.events];
-            setAllEvents(mergedEvents);
-            setOffset(mergedEvents.length);
-            
-            // Save new events to cache
-            await sharedStorage.saveEvents(reallyNewEvents);
-          } else {
-            console.log('[Steps] No new events found');
-          }
-        } else {
-          // No cached data, use fresh data as-is
-          setAllEvents(newEvents);
-          setHasMore(data.hasMore || false);
-          setOffset(newEvents.length);
-          
-          // Save to cache for future use
-          if (newEvents.length > 0) {
-            await sharedStorage.saveEvents(newEvents);
-            console.log(`[Steps] Saved ${newEvents.length} events to IndexedDB for future use`);
-          }
-        }
-        
+        setAllEvents(newEvents);
+        setHasMore(data.hasMore || false);
+        setOffset(newEvents.length);
         if (data.totalEventCount) {
           setTotalEventCount(data.totalEventCount);
         }
         if (data.totalStepsCount) {
           setTotalStepsCount(data.totalStepsCount);
         }
-        
-        // Start auto-loading additional chunks if we have more data and haven't reached limit
-        const currentEventCount = cachedData.events.length > 0 ? 
-          Math.max(cachedData.events.length, newEvents.length) : newEvents.length;
-        if (data.hasMore && currentEventCount < AUTO_LOAD_LIMIT) {
-          setTimeout(() => autoLoadMore(currentEventCount), 100);
-        } else {
-          setAutoLoadingComplete(true);
-        }
-        
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -492,74 +318,10 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     };
 
     if (userId) {
-      loadEvents();
+      fetchEvents();
       fetchAllWorkflowAnalyses();
     }
-  }, [userId, setUserId, fetchAllWorkflowAnalyses, sharedStorage]);
-
-  const loadMoreEvents = useCallback(async (amount: number): Promise<{ hasMore: boolean } | null> => {
-    if (!hasMore || isLoadingMore || !userId) return null;
-    setIsLoadingMore(true);
-    try {
-      // First try to load more from IndexedDB cache
-      if (usingCachedData) {
-        const cachedData = await sharedStorage.getCachedEvents(amount, offset, false);
-        if (cachedData.events.length > 0) {
-          console.log(`[Steps] Loaded ${cachedData.events.length} more events from IndexedDB cache`);
-          setAllEvents(prevEvents => [...prevEvents, ...cachedData.events]);
-          setHasMore(cachedData.hasMore);
-          setOffset(prevOffset => prevOffset + cachedData.events.length);
-          setIsLoadingMore(false);
-          return { hasMore: cachedData.hasMore };
-        }
-      }
-      
-      // Fallback to API if cache doesn't have more data
-      const response = await fetch(`/api/low-level/${userId}?offset=${offset}&limit=${amount}`);
-      if (!response.ok) {
-        throw new Error('Network response was not ok when fetching more events');
-      }
-      const data = await response.json();
-      const newEvents = data.events || [];
-      
-      setAllEvents(prevEvents => [...prevEvents, ...newEvents]);
-      const hasMoreData = data.hasMore || false;
-      setHasMore(hasMoreData);
-      setOffset(prevOffset => prevOffset + newEvents.length);
-
-      // Save new events to cache
-      if (newEvents.length > 0) {
-        await sharedStorage.saveEvents(newEvents);
-        console.log(`[Steps] Saved ${newEvents.length} additional events to IndexedDB`);
-      }
-
-      return { hasMore: hasMoreData };
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      return null;
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [hasMore, isLoadingMore, userId, usingCachedData, sharedStorage, offset]);
-
-  // Auto-load more data progressively
-  const autoLoadMore = useCallback(async (currentCount: number) => {
-    if (currentCount >= AUTO_LOAD_LIMIT) {
-      setAutoLoadingComplete(true);
-      return;
-    }
-
-    const nextChunkSize = Math.min(AUTO_LOAD_CHUNK_SIZE, AUTO_LOAD_LIMIT - currentCount);
-    const result = await loadMoreEvents(nextChunkSize);
-    
-    if (result && result.hasMore && (currentCount + nextChunkSize) < AUTO_LOAD_LIMIT) {
-      // Continue auto-loading with a small delay
-      setTimeout(() => autoLoadMore(currentCount + nextChunkSize), 100);
-    } else {
-      setAutoLoadingComplete(true);
-    }
-  }, [AUTO_LOAD_LIMIT, AUTO_LOAD_CHUNK_SIZE, loadMoreEvents]);
+  }, [userId, setUserId, fetchAllWorkflowAnalyses]);
 
   useEffect(() => {
     if (!userId) return;
@@ -571,14 +333,11 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
         const data = await response.json();
         setPendingJobCount(data.pendingCount || 0);
         
-        // Check if we need to refresh analyses
+        // To avoid re-fetching all analyses, we can just update the count
+        // if it's different from the length of our current analyses array.
+        // A more robust solution might merge new analyses, but this is efficient.
         if (data.processedCount !== allWorkflowAnalyses.length) {
-          if (usingCachedAnalyses) {
-            // If using cached data, force refresh from API to get latest analyses
-            console.log('[Steps] New analyses detected, forcing refresh from API');
-            setUsingCachedAnalyses(false);
-          }
-          fetchAllWorkflowAnalyses();
+            fetchAllWorkflowAnalyses();
         }
 
       } catch (e) {
@@ -591,54 +350,30 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
     const interval = setInterval(fetchStatus, 5000);
 
     return () => clearInterval(interval);
-  }, [userId, allWorkflowAnalyses.length, fetchAllWorkflowAnalyses, usingCachedAnalyses]);
+  }, [userId, allWorkflowAnalyses.length, fetchAllWorkflowAnalyses]);
 
-  // Live polling for new events every 3 seconds
-  useEffect(() => {
-    if (!userId || loading) return; // Don't start polling until initial load is complete
-
-    const pollForNewEvents = async () => {
-      try {
-        // Check for new events by fetching first chunk and comparing with cache
-        const response = await fetch(`/api/low-level/${userId}?offset=0&limit=10`);
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        const latestEvents = data.events || [];
-        
-        if (latestEvents.length > 0 && allEvents.length > 0) {
-          // Check if we have any new events by comparing IDs
-          const existingIds = new Set(allEvents.slice(0, 10).map((e: LowLevelEvent) => e.id));
-          const newEvents = latestEvents.filter((e: LowLevelEvent) => !existingIds.has(e.id));
-          
-          if (newEvents.length > 0) {
-            console.log(`[Steps] Found ${newEvents.length} new events via polling`);
-            setLiveUpdateIndicator(true);
-            setAllEvents(prevEvents => [...newEvents, ...prevEvents]);
-            
-            // Save new events to cache
-            await sharedStorage.saveEvents(newEvents);
-            
-            // Update counts
-            if (data.totalEventCount) setTotalEventCount(data.totalEventCount);
-            if (data.totalStepsCount) setTotalStepsCount(data.totalStepsCount);
-            
-            // Hide indicator after 2 seconds
-            setTimeout(() => setLiveUpdateIndicator(false), 2000);
-          }
-        }
-      } catch (error) {
-        console.error('[Steps] Error polling for new events:', error);
+  const loadMoreEvents = async (amount: number) => {
+    if (!hasMore || isLoadingMore || !userId) return;
+    setIsLoadingMore(true);
+    try {
+      const response = await fetch(`/api/low-level/${userId}?offset=${offset}&limit=${amount}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok when fetching more events');
       }
-    };
+      const data = await response.json();
+      // The API now provides pre-sorted, stable data. No need to sort on the client.
+      const newEvents = data.events || [];
+      
+      setAllEvents(prevEvents => [...prevEvents, ...newEvents]);
+      setHasMore(data.hasMore || false);
+      setOffset(prevOffset => prevOffset + newEvents.length);
 
-    // Poll immediately and then every 3 seconds
-    const interval = setInterval(pollForNewEvents, 3000);
-
-    return () => clearInterval(interval);
-  }, [userId, loading, allEvents, sharedStorage]);
-
-
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   // Filter for UI tree events and sort them
   const uiTreeEvents = useMemo(() => {
@@ -969,45 +704,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
 
   // --- End of Reactive Data Processing ---
 
-  // Manual load more function
-  const manualLoadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore) return;
-    await loadMoreEvents(MANUAL_LOAD_CHUNK_SIZE);
-  }, [isLoadingMore, hasMore, MANUAL_LOAD_CHUNK_SIZE]);
-
-  // Load all remaining data
-  const loadAll = useCallback(async () => {
-    if (!totalEventCount || loadAllProgress) return;
-
-    const remainingCount = totalEventCount - allEvents.length;
-    if (remainingCount <= 0) return;
-
-    const estimatedMemoryMB = (remainingCount * 2) / 1024; // Rough estimate: 2KB per event
-    if (estimatedMemoryMB > 100) {
-      const confirmed = confirm(
-        `Loading all ${remainingCount.toLocaleString()} remaining events may use ~${estimatedMemoryMB.toFixed(1)}MB of memory. ` +
-        `This could slow down your browser. Continue?`
-      );
-      if (!confirmed) return;
-    }
-
-    setLoadAllProgress({ loaded: allEvents.length, total: totalEventCount });
-
-    try {
-      while (hasMore && allEvents.length < totalEventCount) {
-        const currentLoadedCount = allEvents.length;
-        const chunkSize = Math.min(1000, totalEventCount - currentLoadedCount);
-        
-        setLoadAllProgress({ loaded: currentLoadedCount, total: totalEventCount });
-        
-        const result = await loadMoreEvents(chunkSize);
-        if (!result || !result.hasMore) break;
-      }
-    } finally {
-      setLoadAllProgress(null);
-    }
-  }, [totalEventCount, allEvents.length, hasMore, loadAllProgress]);
-
   const handleLoadMoreRequest = () => {
     let amount = parseInt(loadAmount, 10);
     // In case of 'all', we'll need a different strategy, for now, let's use a very large number
@@ -1059,7 +755,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   }, [selectedEvent, userId, llmContext, selectedModel, fetchAllWorkflowAnalyses]);
 
   if (error) {
-    return <div className="p-4 font-bold border rounded-md">Error: {error}</div>;
+    return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
   }
 
   if (!loading && allEvents.length === 0) {
@@ -1087,16 +783,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">Total Events:</span>
             <span className="font-semibold">{totalEventCount} (loaded {allEvents.length})</span>
-            {usingCachedData && (
-              <Badge variant="outline" className="text-xs">
-                IndexedDB
-              </Badge>
-            )}
-            {liveUpdateIndicator && (
-              <Badge variant="outline" className="text-xs animate-pulse">
-                Live Update
-              </Badge>
-            )}
           </div>
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">UI Steps:</span>
@@ -1105,37 +791,13 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           <div className="flex items-center space-x-1.5">
             <span className="text-muted-foreground">Processed:</span>
             <span className="font-semibold">{processedStepsCount}</span>
-            {usingCachedAnalyses && (
-              <Badge variant="outline" className="text-xs">
-                Cached
-              </Badge>
-            )}
           </div>
           <div className="flex-grow" />
-          <div className="flex items-center gap-2">
-            {hasMore && autoLoadingComplete && (
-              <Button variant="outline" size="sm" onClick={manualLoadMore} disabled={isLoadingMore}>
-                {isLoadingMore ? 'Loading...' : 'Load More'}
-              </Button>
-            )}
-            {totalEventCount && allEvents.length < totalEventCount && autoLoadingComplete && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={loadAll} 
-                disabled={!!loadAllProgress}
-                title={`Load all ${(totalEventCount - allEvents.length).toLocaleString()} remaining events`}
-              >
-                Load All ({(totalEventCount - allEvents.length).toLocaleString()})
-              </Button>
-            )}
-            {usingCachedAnalyses && (
-              <Button variant="outline" size="sm" onClick={forceRefreshAnalyses}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh Analyses
-              </Button>
-            )}
-          </div>
+          {hasMore && (
+            <Button variant="outline" size="sm" onClick={() => setIsLoadMoreModalOpen(true)} disabled={isLoadingMore}>
+              {isLoadingMore ? 'Loading...' : 'Load More'}
+            </Button>
+          )}
           {pendingJobCount > 0 ? (
             <Badge variant="outline">
               <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
@@ -1148,41 +810,6 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
           )}
         </CardContent>
       </Card>
-      
-      {/* Auto-loading indicator */}
-      {!autoLoadingComplete && (
-        <div className="flex items-center space-x-2 my-2 text-sm text-muted-foreground">
-          <RefreshCw className="h-4 w-4 animate-spin" />
-          <span>Auto-loading events...</span>
-        </div>
-      )}
-
-      {/* Load More indicator */}
-      {isLoadingMore && (
-        <div className="flex items-center space-x-2 my-2 text-sm text-muted-foreground">
-          <RefreshCw className="h-4 w-4 animate-spin" />
-          <span className="ml-2 text-muted-foreground">Loading more events...</span>
-        </div>
-      )}
-
-      {/* Load All Progress */}
-      {loadAllProgress && (
-        <Card className="my-2">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-sm">
-              <span>Loading all events...</span>
-              <span>{loadAllProgress.loaded.toLocaleString()} / {loadAllProgress.total.toLocaleString()}</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${(loadAllProgress.loaded / loadAllProgress.total) * 100}%` }}
-              ></div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      
       <div className="flex items-center my-4 space-x-2">
         <div className="w-12 text-xs text-gray-500">(Included)</div>
         <div className="flex-1"></div>

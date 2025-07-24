@@ -9,7 +9,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { DatasetEntry } from '@/lib/sharedDatasetStorage';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ArrowUpDown } from 'lucide-react';
@@ -24,9 +23,6 @@ import {
 } from '@tanstack/react-table';
 import { useUser } from '@/context/UserContext';
 import type { LowLevelEvent } from '@/types';
-import { getSharedEventsStorage } from '@/lib/sharedEventsStorage';
-import { getSharedAnalysisStorage } from '@/lib/sharedAnalysisStorage';
-import { getSharedDatasetStorage } from '@/lib/sharedDatasetStorage';
 import { RefreshCw, ThumbsUp, ThumbsDown, AlertCircle } from 'lucide-react';
 import {
   DropdownMenu,
@@ -53,7 +49,6 @@ import {
 import UITreeTimeline from '@/components/low-level/UITreeTimeline';
 import ScreenshotView from '@/components/low-level/ScreenshotView';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { DateRange } from 'react-day-picker';
@@ -132,27 +127,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   const { setUserId } = useUser();
   const [allEvents, setAllEvents] = useState<LowLevelEvent[]>([]);
   const [allWorkflowAnalyses, setAllWorkflowAnalyses] = useState<WorkflowStepAnalysis[]>([]);
-  const [usingCachedData, setUsingCachedData] = useState(false);
-  const [usingCachedAnalyses, setUsingCachedAnalyses] = useState(false);
-  const [usingCachedDataset, setUsingCachedDataset] = useState(false);
-  const [liveUpdateIndicator, setLiveUpdateIndicator] = useState(false);
-  
-  // Storage instances
-  const sharedStorage = getSharedEventsStorage(userId);
-  const analysisStorage = getSharedAnalysisStorage(userId);
-  const datasetStorage = getSharedDatasetStorage(userId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [autoLoadingComplete, setAutoLoadingComplete] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [loadAllProgress, setLoadAllProgress] = useState<{ loaded: number; total: number } | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [offset, setOffset] = useState(0);
-  const [totalEventCount, setTotalEventCount] = useState<number>(0);
-
-  // Loading constants
-  const AUTO_LOAD_LIMIT = 2000;
-  const MANUAL_LOAD_CHUNK_SIZE = 1000;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -188,390 +164,77 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     setUserId(userId);
   }, [userId, setUserId]);
 
-  const fetchAllEvents = useCallback(async (limit: number = 1000, offset: number = 0) => {
-    if (!userId) return { events: [], hasMore: false, totalEventCount: 0 };
-    
+  const fetchAllEvents = useCallback(async () => {
+    if (!userId) return;
     try {
-      // First, try to load from IndexedDB cache
-      const cachedData = await sharedStorage.getCachedEvents(limit, offset, false);
-      
-      if (cachedData.events.length > 0) {
-        console.log(`[Labeling] Loaded ${cachedData.events.length} events from IndexedDB cache`);
-        setUsingCachedData(true);
-        setHasMore(cachedData.hasMore);
-        setOffset(cachedData.events.length);
-        
-        // Continue to check for new events in background
-        console.log('[Labeling] Checking for new events in background...');
-      }
-      
-      // Always check API for fresh data
-      if (cachedData.events.length === 0) {
-        console.log('[Labeling] No cached data found, fetching from API');
-        setUsingCachedData(false);
-      }
-      
-      const response = await fetch(`/api/low-level/${userId}?offset=${offset}&limit=${limit}`);
+      const response = await fetch(`/api/low-level/${userId}`);
       if (!response.ok) throw new Error('Failed to fetch events');
-      
       const data = await response.json();
-      const newEvents = data.events || [];
-      
-      // If we had cached data, check for new events and merge
-      if (cachedData.events.length > 0) {
-        const cachedIds = new Set(cachedData.events.map((e: LowLevelEvent) => e.id));
-        const reallyNewEvents = newEvents.filter((e: LowLevelEvent) => !cachedIds.has(e.id));
-        
-        if (reallyNewEvents.length > 0) {
-          console.log(`[Labeling] Found ${reallyNewEvents.length} new events, updating cache and UI`);
-          const mergedEvents = [...reallyNewEvents, ...cachedData.events];
-          await sharedStorage.saveEvents(reallyNewEvents);
-          return {
-            events: mergedEvents.sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()),
-            hasMore: data.hasMore || false,
-            totalEventCount: data.totalEventCount || mergedEvents.length
-          };
-        } else {
-          console.log('[Labeling] No new events found');
-          return {
-            events: cachedData.events.sort((a, b) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()),
-            hasMore: cachedData.hasMore,
-            totalEventCount: cachedData.totalCached
-          };
-        }
-      } else {
-        // No cached data, use fresh data as-is
-        if (newEvents.length > 0) {
-          await sharedStorage.saveEvents(newEvents);
-          console.log(`[Labeling] Saved ${newEvents.length} events to IndexedDB`);
-        }
-        
-        const sortedEvents = newEvents.sort((a: LowLevelEvent, b: LowLevelEvent) => 
-          new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()
-        );
-        
-        setHasMore(data.hasMore || false);
-        setOffset(newEvents.length);
-        
-        return {
-          events: sortedEvents,
-          hasMore: data.hasMore || false,
-          totalEventCount: data.totalEventCount || newEvents.length
-        };
-      }
-      
+      return data.events.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime());
     } catch (err) {
-      console.error("Failed to fetch events", err);
+      console.error(err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      return { events: [], hasMore: false, totalEventCount: 0 };
-    }
-  }, [userId, sharedStorage]);
-
-  const fetchAllWorkflowAnalyses = useCallback(async () => {
-    if (!userId) return [];
-    try {
-      // First, try to load from IndexedDB cache
-      const cachedData = await analysisStorage.getCachedAnalyses(1000, 0);
-      
-      if (cachedData.analyses.length > 0) {
-        console.log(`[Labeling] Loaded ${cachedData.analyses.length} analyses from IndexedDB cache`);
-        setUsingCachedAnalyses(true);
-        
-        // Continue to check for new analyses in background
-        console.log('[Labeling] Checking for new analyses in background...');
-      }
-      
-      // Always check API for fresh data
-      if (cachedData.analyses.length === 0) {
-        console.log('[Labeling] No cached analyses found, fetching from API');
-        setUsingCachedAnalyses(false);
-      }
-      
-      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
-      if (!response.ok) throw new Error('Failed to fetch workflow analyses');
-      
-      const data = await response.json();
-      const analyses = data.analyses || [];
-      
-      // If we had cached data, check for new analyses and merge
-      if (cachedData.analyses.length > 0) {
-        const cachedIds = new Set(cachedData.analyses.map((a: WorkflowStepAnalysis) => a.id));
-        const reallyNewAnalyses = analyses.filter((a: WorkflowStepAnalysis) => !cachedIds.has(a.id));
-        
-        if (reallyNewAnalyses.length > 0) {
-          console.log(`[Labeling] Found ${reallyNewAnalyses.length} new analyses, updating cache and UI`);
-          const mergedAnalyses = [...reallyNewAnalyses, ...cachedData.analyses];
-          await analysisStorage.saveAnalyses(reallyNewAnalyses);
-          return mergedAnalyses;
-        } else {
-          console.log('[Labeling] No new analyses found');
-          return cachedData.analyses;
-        }
-      } else {
-        // No cached data, use fresh data as-is
-        if (analyses.length > 0) {
-          await analysisStorage.saveAnalyses(analyses);
-          console.log(`[Labeling] Saved ${analyses.length} analyses to IndexedDB`);
-        }
-        return analyses;
-      }
-      
-    } catch (err) {
-      console.error("Failed to fetch workflow analyses", err);
       return [];
     }
-  }, [userId, analysisStorage]);
+  }, [userId]);
+
+  const fetchAllWorkflowAnalyses = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await fetch(`/api/fetch-llm-analyses?userId=${userId}&limit=1000`);
+      if (!response.ok) throw new Error('Failed to fetch all workflow analyses');
+      const data = await response.json();
+      return data.analyses;
+    } catch (err) {
+      console.error("Failed to fetch all workflow analyses", err);
+      return [];
+    }
+  }, [userId]);
 
   const fetchEventData = useCallback(async () => {
-    if (!userId) return {};
+    if (!userId) return;
     try {
-      // First, try to load from IndexedDB cache
-      const cachedData = await datasetStorage.getCachedEntries(1000, 0);
-      
-      if (cachedData.entries.length > 0) {
-        console.log(`[Labeling] Loaded ${cachedData.entries.length} dataset entries from IndexedDB cache`);
-        setUsingCachedDataset(true);
-        
-        // Convert cached entries to eventMap format
-        const eventMap: Record<string, EventFeedbackData> = {};
-        cachedData.entries.forEach((entry) => {
-          const analysisId = String(entry.low_level_workflow_analysis_id);
-          eventMap[analysisId] = {
-            generated_output: entry.generated_output,
-            feedback: entry.feedback,
-            feedback_reason: entry.feedback_reason
-          };
-        });
-        
-        // Continue to check for new entries in background
-        console.log('[Labeling] Checking for new dataset entries in background...');
-      }
-      
-      // Always check API for fresh data
-      if (cachedData.entries.length === 0) {
-        console.log('[Labeling] No cached dataset entries found, fetching from API');
-        setUsingCachedDataset(false);
-      }
-      
       const response = await fetch(`/api/get-dataset-entries?userId=${userId}&datasetType=workflow_event_feedback`);
       if (!response.ok) throw new Error('Failed to fetch event feedback data');
-      
       const data = await response.json();
-      const entries = data.entries || [];
       
-      // Convert API entries to proper format for caching
-      const datasetEntries = entries.map((entry: FetchedEventData) => ({
-        id: String(entry.low_level_workflow_analysis_id),
-        user_id: userId,
-        low_level_workflow_analysis_id: String(entry.low_level_workflow_analysis_id),
-        generated_output: entry.generated_output,
-        feedback: entry.feedback,
-        feedback_reason: entry.feedback_reason,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }));
-      
-      // If we had cached data, check for new entries and merge
-      if (cachedData.entries.length > 0) {
-        const cachedIds = new Set(cachedData.entries.map((e: DatasetEntry) => e.low_level_workflow_analysis_id));
-        const reallyNewEntries = datasetEntries.filter((e: DatasetEntry) => !cachedIds.has(e.low_level_workflow_analysis_id));
-        
-        if (reallyNewEntries.length > 0) {
-          console.log(`[Labeling] Found ${reallyNewEntries.length} new dataset entries, updating cache`);
-          await datasetStorage.saveEntries(reallyNewEntries);
-          
-          // Merge and convert to eventMap
-          const allEntries = [...reallyNewEntries, ...cachedData.entries];
-          const eventMap: Record<string, EventFeedbackData> = {};
-          allEntries.forEach((entry) => {
-            const analysisId = String(entry.low_level_workflow_analysis_id);
-            eventMap[analysisId] = {
-              generated_output: entry.generated_output,
-              feedback: entry.feedback,
-              feedback_reason: entry.feedback_reason
-            };
-          });
-          setWorkflowEvents(eventMap);
-          return eventMap;
-        } else {
-          console.log('[Labeling] No new dataset entries found');
-          // Use cached data
-          const eventMap: Record<string, EventFeedbackData> = {};
-          cachedData.entries.forEach((entry) => {
-            const analysisId = String(entry.low_level_workflow_analysis_id);
-            eventMap[analysisId] = {
-              generated_output: entry.generated_output,
-              feedback: entry.feedback,
-              feedback_reason: entry.feedback_reason
-            };
-          });
-          setWorkflowEvents(eventMap);
-          return eventMap;
-        }
-      } else {
-        // No cached data, use fresh data and cache it
-        if (datasetEntries.length > 0) {
-          await datasetStorage.saveEntries(datasetEntries);
-          console.log(`[Labeling] Saved ${datasetEntries.length} dataset entries to IndexedDB`);
-        }
-        
-        const eventMap: Record<string, EventFeedbackData> = {};
-        entries.forEach((entry: FetchedEventData) => {
+      const eventMap: Record<string, EventFeedbackData> = {};
+      data.entries.forEach((entry: FetchedEventData) => {
           const analysisId = String(entry.low_level_workflow_analysis_id);
           eventMap[analysisId] = {
-            generated_output: entry.generated_output,
-            feedback: entry.feedback,
-            feedback_reason: entry.feedback_reason
+              generated_output: entry.generated_output,
+              feedback: entry.feedback,
+              feedback_reason: entry.feedback_reason
           };
-        });
-        setWorkflowEvents(eventMap);
-        return eventMap;
-      }
-      
+      });
+      setWorkflowEvents(eventMap);
     } catch (err) {
       console.error("Failed to fetch event data:", err);
-      return {};
     }
-  }, [userId, datasetStorage]);
+  }, [userId]);
 
-    useEffect(() => {
+  useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
+      const [events, analyses] = await Promise.all([
+        fetchAllEvents(),
+        fetchAllWorkflowAnalyses(),
+        fetchEventData(),
+      ]);
+      const sortedEvents = events?.sort((a: LowLevelEvent, b: LowLevelEvent) => new Date(getEventTimestamp(a)).getTime() - new Date(getEventTimestamp(b)).getTime()) || [];
+      setAllEvents(sortedEvents);
+      setAllWorkflowAnalyses(analyses || []);
       
-      try {
-        const [eventsResult, analyses] = await Promise.all([
-          fetchAllEvents(),
-          fetchAllWorkflowAnalyses(),
-          fetchEventData(),
-        ]);
-        
-        const events = eventsResult?.events || [];
-        setAllEvents(events);
-        setAllWorkflowAnalyses(analyses || []);
-        
-        if (eventsResult?.totalEventCount) {
-          setTotalEventCount(eventsResult.totalEventCount);
-        }
-        
-        // Mark auto-loading as complete since we removed the auto-loading feature
-          setAutoLoadingComplete(true);
-
-        const uiTrees = events.filter((e: LowLevelEvent) => e.payload.payload?.type === 'ui_tree');
-        if (uiTrees.length > 0) {
-          setSelectedEvent(uiTrees[uiTrees.length - 1]);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load data');
-      } finally {
-        setLoading(false);
+      const uiTrees = sortedEvents.filter((e: LowLevelEvent) => e.payload.payload?.type === 'ui_tree');
+      if (uiTrees.length > 0) {
+        setSelectedEvent(uiTrees[uiTrees.length - 1]);
       }
+      setLoading(false);
     };
     fetchData();
-  }, [fetchAllEvents, fetchAllWorkflowAnalyses, fetchEventData, AUTO_LOAD_LIMIT]);
-
-  // Load more events function
-  const loadMoreEvents = useCallback(async (amount: number): Promise<{ hasMore: boolean } | null> => {
-    if (!hasMore || isLoadingMore || !userId) return null;
-    setIsLoadingMore(true);
-    
-    try {
-      const result = await fetchAllEvents(amount, offset);
-      if (result?.events && result.events.length > 0) {
-        setAllEvents(prevEvents => [...prevEvents, ...result.events]);
-        setHasMore(result.hasMore);
-        setOffset(prevOffset => prevOffset + result.events.length);
-        
-        if (result.totalEventCount) {
-          setTotalEventCount(result.totalEventCount);
-        }
-        
-        return { hasMore: result.hasMore };
-      }
-      return { hasMore: false };
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load more events');
-      return null;
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [hasMore, isLoadingMore, userId, offset, fetchAllEvents]);
-
-  // Manual load more function
-  const manualLoadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore) return;
-    await loadMoreEvents(MANUAL_LOAD_CHUNK_SIZE);
-  }, [isLoadingMore, hasMore, MANUAL_LOAD_CHUNK_SIZE, loadMoreEvents]);
-
-  // Load all remaining data
-  const loadAll = useCallback(async () => {
-    if (!totalEventCount || loadAllProgress) return;
-
-    const remainingCount = totalEventCount - allEvents.length;
-    if (remainingCount <= 0) return;
-
-    const estimatedMemoryMB = (remainingCount * 2) / 1024;
-    if (estimatedMemoryMB > 100) {
-      const confirmed = confirm(
-        `Loading all ${remainingCount.toLocaleString()} remaining events may use ~${estimatedMemoryMB.toFixed(1)}MB of memory. Continue?`
-      );
-      if (!confirmed) return;
-    }
-
-    setLoadAllProgress({ loaded: allEvents.length, total: totalEventCount });
-
-    try {
-      while (hasMore && allEvents.length < totalEventCount) {
-        const currentLoadedCount = allEvents.length;
-        const chunkSize = Math.min(1000, totalEventCount - currentLoadedCount);
-        
-        setLoadAllProgress({ loaded: currentLoadedCount, total: totalEventCount });
-        
-        const result = await loadMoreEvents(chunkSize);
-        if (!result || !result.hasMore) break;
-      }
-    } finally {
-      setLoadAllProgress(null);
-    }
-  }, [totalEventCount, allEvents.length, hasMore, loadAllProgress, loadMoreEvents]);
-
-  // Live polling for new events every 3 seconds
-  useEffect(() => {
-    if (!userId || loading) return;
-
-    const pollForNewEvents = async () => {
-      try {
-        const response = await fetch(`/api/low-level/${userId}?offset=0&limit=10`);
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        const latestEvents = data.events || [];
-        
-        if (latestEvents.length > 0 && allEvents.length > 0) {
-          const existingIds = new Set(allEvents.slice(0, 10).map((e: LowLevelEvent) => e.id));
-          const newEvents = latestEvents.filter((e: LowLevelEvent) => !existingIds.has(e.id));
-          
-          if (newEvents.length > 0) {
-            console.log(`[Labeling] Found ${newEvents.length} new events via polling`);
-            setLiveUpdateIndicator(true);
-            setAllEvents(prevEvents => [...newEvents, ...prevEvents]);
-            
-            await sharedStorage.saveEvents(newEvents);
-            
-            if (data.totalEventCount) setTotalEventCount(data.totalEventCount);
-            
-            setTimeout(() => setLiveUpdateIndicator(false), 2000);
-          }
-        }
-      } catch (error) {
-        console.error('[Labeling] Error polling for new events:', error);
-      }
-    };
-
-    const interval = setInterval(pollForNewEvents, 3000);
-    return () => clearInterval(interval);
-  }, [userId, loading, allEvents, sharedStorage]);
-
+  }, [fetchAllEvents, fetchAllWorkflowAnalyses, fetchEventData]);
+  
   const tableData = useMemo<TableData[]>(() => {
     if (loading || allEvents.length === 0 || allWorkflowAnalyses.length === 0) {
       return [];
@@ -1080,7 +743,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   }, []); // Empty dependency array: run once on mount, cleanup on unmount.
 
   if (error) {
-    return <div className="p-4 font-bold border rounded-md">Error: {error}</div>;
+    return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
   }
 
   return (
@@ -1161,99 +824,6 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             </>
         )}
       </div>
-      
-      {/* Summary and Loading Controls */}
-      <Card className="mx-4 my-4">
-        <CardContent className="p-4 flex items-center space-x-4 text-sm">
-          <span className="font-semibold text-base">Summary:</span>
-          <div className="flex items-center space-x-1.5">
-            <span className="text-muted-foreground">Total Events:</span>
-            <span className="font-semibold">{totalEventCount} (loaded {allEvents.length})</span>
-            {usingCachedData && (
-              <Badge variant="outline" className="text-xs">
-                IndexedDB
-              </Badge>
-            )}
-            {liveUpdateIndicator && (
-              <Badge variant="outline" className="text-xs animate-pulse">
-                Live Update
-              </Badge>
-            )}
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="text-muted-foreground">Analyses:</span>
-            <span className="font-semibold">{allWorkflowAnalyses.length}</span>
-            {usingCachedAnalyses && (
-              <Badge variant="outline" className="text-xs">
-                Cached
-              </Badge>
-            )}
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="text-muted-foreground">Dataset:</span>
-            <span className="font-semibold">{Object.keys(workflowEvents).length}</span>
-            {usingCachedDataset && (
-              <Badge variant="outline" className="text-xs">
-                Cached
-              </Badge>
-            )}
-          </div>
-          <div className="flex-grow" />
-          <div className="flex items-center gap-2">
-            {hasMore && autoLoadingComplete && (
-              <Button variant="outline" size="sm" onClick={manualLoadMore} disabled={isLoadingMore}>
-                {isLoadingMore ? 'Loading...' : 'Load More'}
-              </Button>
-            )}
-            {totalEventCount && allEvents.length < totalEventCount && autoLoadingComplete && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={loadAll} 
-                disabled={!!loadAllProgress}
-                title={`Load all ${(totalEventCount - allEvents.length).toLocaleString()} remaining events`}
-              >
-                Load All ({(totalEventCount - allEvents.length).toLocaleString()})
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* Auto-loading indicator */}
-      {!autoLoadingComplete && (
-        <div className="flex items-center space-x-2 mx-4 my-2 text-sm text-muted-foreground">
-          <RefreshCw className="h-4 w-4 animate-spin" />
-          <span>Auto-loading events...</span>
-        </div>
-      )}
-
-      {/* Load More indicator */}
-      {isLoadingMore && (
-        <div className="flex items-center space-x-2 mx-4 my-2 text-sm text-muted-foreground">
-          <RefreshCw className="h-4 w-4 animate-spin" />
-          <span>Loading more events...</span>
-        </div>
-      )}
-
-      {/* Load All Progress */}
-      {loadAllProgress && (
-        <Card className="mx-4 my-2">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-sm">
-              <span>Loading all events...</span>
-              <span>{loadAllProgress.loaded.toLocaleString()} / {loadAllProgress.total.toLocaleString()}</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-              <div 
-                className="bg-black h-2 rounded-full transition-all duration-300"
-                style={{ width: `${(loadAllProgress.loaded / loadAllProgress.total) * 100}%` }}
-              ></div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      
       <div className="mt-4 px-4">
         <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
