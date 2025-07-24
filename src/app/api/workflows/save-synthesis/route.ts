@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export async function POST(req: NextRequest) {
   try {
-    const { workflowIds, userId, name } = await req.json();
+    const { workflowIds, userId, name, sessionState } = await req.json();
 
     if (!workflowIds || !Array.isArray(workflowIds) || workflowIds.length === 0) {
       return NextResponse.json({ error: 'Missing or invalid workflowIds' }, { status: 400 });
@@ -50,17 +50,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Use provided sessionState if available, otherwise fall back to database session data
+    const contextData = sessionState?.workflow_context || synthesisSessionData?.session_state?.workflow_context || {};
+    const identifiedNames = sessionState?.identified_workflow_names || synthesisSessionData?.session_state?.identified_workflow_names || [];
+    const boundaries = sessionState?.workflow_boundaries || synthesisSessionData?.session_state?.workflow_boundaries || {};
+    const messages = sessionState?.messages || synthesisSessionData?.session_state?.messages || [];
+    const processData = sessionState || synthesisSessionData?.session_state || {};
+    
     // Create comprehensive saved synthesis record
     const savedSynthesis = {
       user_id: userId,
       title: name || `Workflow Synthesis - ${new Date().toLocaleDateString()}`,
-      synthesis_process_data: synthesisSessionData?.session_state || {},
+      synthesis_process_data: processData,
       synthesis_session_id: synthesisSessionId,
       workflow_ids: JSON.stringify(workflowIds),
-      workflow_context: synthesisSessionData?.session_state?.workflow_context || {},
-      identified_workflow_names: JSON.stringify(synthesisSessionData?.session_state?.identified_workflow_names || []),
-      workflow_boundaries: synthesisSessionData?.session_state?.workflow_boundaries || {},
-      conversation_history: synthesisSessionData?.session_state?.messages || [],
+      workflow_context: contextData,
+      identified_workflow_names: JSON.stringify(identifiedNames),
+      workflow_boundaries: boundaries,
+      conversation_history: messages,
       synthesis_results: workflows.map(w => w.detailed_workflow_data),
       models_used: JSON.stringify(['gemini-2.5-pro']), // Could be extracted from session data
       synthesis_started_at: workflows[0]?.created_at,
