@@ -138,11 +138,11 @@ export async function POST(req: NextRequest) {
     const prompt = `${WORKFLOW_STEP_ANALYSIS_V2_PROMPT}
 
 ENHANCED LABELING CONTEXT:
-The context below may include human-curated labels (selected_labels) and AI-suggested labels (suggested_labels) for the target analysis and neighboring analyses. Use this labeling data to:
+The context below may include LLM-generated labels (selected_labels) and AI-suggested labels (suggested_labels) for the target analysis and neighboring analyses. Use this labeling data to:
 - Better understand the semantic context and workflow patterns
 - Generate more accurate and contextually-aware step summaries
 - Align the generated event with established labeling categories
-- Prioritize human-selected labels over AI-suggested labels when making decisions
+- Prioritize LLM-generated labels over AI-suggested labels when making decisions
 
 CONTEXT:
 ${JSON.stringify(enhancedContext, null, 2)}
