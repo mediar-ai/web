@@ -168,7 +168,7 @@ The combinedAnalyses array contains events with the following structure:
 - timestamp: When the event occurred  
 - window_title: Application/window title
 - analysis: Object with step_title, step_summary, user_intent, events_that_happened, etc.
-- labels: Array of human-provided labels
+- labels: Array of LLM-generated labels
 
 Combined Analyses:
 ${JSON.stringify(analyses, null, 2)}`;
