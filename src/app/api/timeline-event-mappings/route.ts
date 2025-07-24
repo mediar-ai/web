@@ -374,6 +374,11 @@ export async function GET(req: NextRequest) {
               step_title: (structuredOutput?.step_title as string) || 'Unknown Step',
               user_intent: (structuredOutput?.user_intent as string) || '',
               step_summary: (structuredOutput?.step_summary as string) || '',
+              events_that_happened: (structuredOutput?.events_that_happened as string) || '',
+              how_content_changed: (structuredOutput?.how_content_changed as string) || '',
+              results_if_any: (structuredOutput?.results_if_any as string) || '',
+              what_was_clicked: (structuredOutput?.what_was_clicked as string) || '',
+              what_was_typed: (structuredOutput?.what_was_typed as string) || '',
               window_title: analysisData?.window_title || ''
             };
           } catch {
@@ -381,6 +386,11 @@ export async function GET(req: NextRequest) {
               step_title: 'Unknown Step',
               user_intent: '',
               step_summary: '',
+              events_that_happened: '',
+              how_content_changed: '',
+              results_if_any: '',
+              what_was_clicked: '',
+              what_was_typed: '',
               window_title: ''
             };
           }
@@ -425,6 +435,11 @@ export async function GET(req: NextRequest) {
           step_title: analysisInfo.step_title,
           user_intent: analysisInfo.user_intent,
           step_summary: analysisInfo.step_summary,
+          events_that_happened: analysisInfo.events_that_happened,
+          how_content_changed: analysisInfo.how_content_changed,
+          results_if_any: analysisInfo.results_if_any,
+          what_was_clicked: analysisInfo.what_was_clicked,
+          what_was_typed: analysisInfo.what_was_typed,
           window_title: analysisInfo.window_title,
           inputs: annotation.inputs,
           outputs: annotation.outputs,
