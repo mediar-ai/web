@@ -609,8 +609,8 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
                               <p className="font-bold text-2xl">{logic.userStats.stepsProcessed} / {logic.userStats.totalSteps}</p>
                           </div>
                           <div className="bg-white border border-black p-3 rounded-lg">
-                              <p className="text-muted-foreground">LLM Labeled / Human Labeled</p>
-                              <p className="font-bold text-2xl">{logic.userStats.labelingTotal} / {logic.userStats.humanLabeled}</p>
+                                                             <p className="text-muted-foreground">LLM Labeled / LLM Generated Labels</p>
+                              <p className="font-bold text-2xl">{logic.userStats.labelingTotal} / {logic.userStats.llmGeneratedLabeled}</p>
                           </div>
                       </div>
                   </div>
@@ -648,6 +648,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [mainWorkflowOpen, setMainWorkflowOpen] = useState(true);
+
+
+
+
 
     return (
         <div className="h-full bg-background flex flex-col relative">
@@ -725,7 +729,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             </div>
 
             {/* Main Content */}
-            <div className="max-w-4xl mx-auto p-8 space-y-6">
+            <div className="w-full max-w-4xl mx-auto p-8 space-y-6">
                 <Card>
                     <CardContent>
                         <Collapsible open={mainWorkflowOpen} onOpenChange={setMainWorkflowOpen}>
@@ -776,7 +780,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                 </Card>
                 
                 {/* Saved Syntheses Section */}
-                <SavedSynthesesSection userId={userId} />
+                <SavedSynthesesSection userId={userId} refreshTrigger={refreshTrigger} />
             </div>
         </div>
     );
