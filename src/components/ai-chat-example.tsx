@@ -66,7 +66,7 @@ export function AIChatExample() {
 
     if (useStreaming) {
       setStreaming(true);
-      const messageId = addMessage('assistant', '');
+      addMessage('assistant', '');
       let fullResponse = '';
 
       try {
@@ -272,7 +272,7 @@ export function AIChatExample() {
           <li>Enter your API password (set in your environment variables)</li>
           <li>Choose your preferred AI model</li>
           <li>Toggle streaming mode if you want real-time responses</li>
-          <li>Click "Connect" to initialize the client</li>
+          <li>Click &quot;Connect&quot; to initialize the client</li>
           <li>Start chatting with the AI!</li>
         </ol>
       </div>
