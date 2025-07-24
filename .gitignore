@@ -68,3 +68,6 @@ server.log
 dev.log
 *.log
 scripts/Mediar Log*
+
+# Local scripts folder for temporary/development scripts
+local-scripts/

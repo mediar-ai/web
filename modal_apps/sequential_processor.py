@@ -1,12 +1,19 @@
 import modal
 import os
 import psycopg2
+import psycopg2.extras
 import json
 import requests
 from datetime import datetime, timedelta, timezone
 import uuid
 import time
 import difflib
+import sys
+from datetime import datetime
+# === GRACEFUL SHUTDOWN HANDLING ===
+import signal
+import threading
+import atexit
 
 app = modal.App("sequential-workflow-processor")
 app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
@@ -52,6 +59,70 @@ CLEANUP_PROCESSING_LOCKS_SQL = """
 -- Clean up expired locks
 DELETE FROM processing_locks WHERE expires_at < NOW();
 """
+
+# Global variables for graceful shutdown
+shutdown_requested = threading.Event()
+active_processors = {}  # processor_id -> {conn, processor_id, user_id}
+shutdown_lock = threading.Lock()
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    print(f"\n🛑 Received shutdown signal {signum}, initiating graceful shutdown...")
+    shutdown_requested.set()
+    
+    # Clean up all active processors
+    with shutdown_lock:
+        for processor_id, info in active_processors.items():
+            try:
+                print(f"🧹 Cleaning up processor {processor_id} for user {info.get('user_id', 'unknown')}")
+                cleanup_processor_on_shutdown(info['conn'], processor_id)
+            except Exception as e:
+                print(f"❌ Error cleaning up processor {processor_id}: {e}")
+    
+    print("✅ Graceful shutdown completed")
+    sys.exit(0)
+
+def cleanup_processor_on_shutdown(conn, processor_id):
+    """Clean up processor locks when shutting down gracefully"""
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE processing_locks 
+            SET status = 'failed',
+                updated_at = NOW(),
+                expires_at = NOW()
+            WHERE processor_id = %s AND status = 'in_progress'
+        """, (processor_id,))
+        affected = cur.rowcount
+        conn.commit()
+        cur.close()
+        if affected > 0:
+            print(f"🧹 Released {affected} locks for processor {processor_id}")
+        return affected
+    except Exception as e:
+        print(f"❌ Error cleaning up processor {processor_id}: {e}")
+        return 0
+
+def register_processor(processor_id, conn, user_id=None):
+    """Register a processor for graceful shutdown handling"""
+    with shutdown_lock:
+        active_processors[processor_id] = {
+            'conn': conn,
+            'processor_id': processor_id,
+            'user_id': user_id
+        }
+    print(f"📋 Registered processor {processor_id} for graceful shutdown")
+
+def unregister_processor(processor_id):
+    """Unregister a processor when it completes normally"""
+    with shutdown_lock:
+        if processor_id in active_processors:
+            del active_processors[processor_id]
+            print(f"📋 Unregistered processor {processor_id}")
+
+# Register signal handlers
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
 
 def get_database_connection():
     """Get a database connection with proper error handling and optimized settings"""
@@ -780,7 +851,7 @@ def process_and_filter_intermediate_events(events):
     """
     Filters and processes a list of raw database event rows for context.
     - Skips screenshot_diff events.
-    - Truncates ui_tree strings in ui_tree events to 300 characters.
+    - Passes UI tree events unchanged (truncation only happens in logs).
     """
     processed_payloads = []
     for event in events:
@@ -792,20 +863,9 @@ def process_and_filter_intermediate_events(events):
             continue  # Ignore screenshot_diff events entirely
 
         if event_type == 'ui_tree':
-            try:
-                ui_tree_str = original_payload.get('event', {}).get('screen', {}).get('ui_tree')
-                if ui_tree_str and isinstance(ui_tree_str, str) and len(ui_tree_str) > 300:
-                    import copy
-                    payload_to_add = copy.deepcopy(original_payload)
-                    truncated_tree = ui_tree_str[:300] + '... (truncated)'
-                    payload_to_add['event']['screen']['ui_tree'] = truncated_tree
-                    processed_payloads.append(payload_to_add)
-                else:
-                    # No truncation needed, add original payload
-                    processed_payloads.append(original_payload)
-            except Exception as e:
-                print(f"Warning: Could not process intermediate ui_tree. Error: {e}")
-                processed_payloads.append(original_payload) # Fallback
+            # Pass through UI tree events unchanged for LLM analysis
+            # Truncation only happens in log_truncated_context for logging
+            processed_payloads.append(original_payload)
         else:
             # Not a ui_tree or screenshot_diff, so add it as is
             processed_payloads.append(original_payload)
@@ -1038,6 +1098,9 @@ def process_all_events_for_user(user_id: str):
         conn = get_database_connection()
         cur = conn.cursor()
         
+        # === GRACEFUL SHUTDOWN: Register this processor ===
+        register_processor(processor_id, conn, user_id)
+        
         # Clean up expired locks (table already exists in production)
         cur.execute("DELETE FROM processing_locks WHERE expires_at < NOW();")
         conn.commit()
@@ -1051,6 +1114,22 @@ def process_all_events_for_user(user_id: str):
         
         # Process events in a loop until no more remain
         while True:
+            # === HEARTBEAT: Update heartbeat every event to show processor is alive ===
+            if total_processed % 5 == 0:  # Update heartbeat every 5 events to reduce DB load
+                update_heartbeat(conn, processor_id)
+            
+            # Check for shutdown signal
+            if shutdown_requested.is_set():
+                print(f"🛑 Shutdown signal received. Exiting processor {processor_id}.")
+                unregister_processor(processor_id)
+                return {
+                    "success": False,
+                    "message": "Shutdown signal received",
+                    "user_id": user_id,
+                    "total_processed": total_processed,
+                    "processor_id": processor_id
+                }
+            
             # Get next event with lock
             event = get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id)
             
@@ -1167,229 +1246,51 @@ def process_all_events_for_user(user_id: str):
                 print(f"❌ Max retries ({max_retries}) exceeded for event {event_id}. Marking as failed.")
                 release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['FAILED'])
         
+        # Final success message
+        print(f"✅ Successfully processed {total_processed} events for user: {user_id}")
+        
+        # === GRACEFUL SHUTDOWN: Unregister processor on success ===
+        unregister_processor(processor_id)
+        
         return {
             "success": True,
-            "message": f"Processed all events for user (total: {total_processed})",
+            "message": f"Processed {total_processed} events",
             "user_id": user_id,
             "total_processed": total_processed,
             "processor_id": processor_id
         }
         
     except Exception as e:
-        print(f"❌ Error processing user {user_id}: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "user_id": user_id,
-            "total_processed": total_processed,
-            "processor_id": processor_id
-        }
+        print(f"❌ Error processing events for user {user_id}: {e}")
         
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
-
-# DEPRECATED: This function processes only ONE event per user - inefficient
-# Use process_all_events_for_user() instead which processes ALL events per user
-# @app.function(
-#     secrets=[
-#         modal.Secret.from_name("supabase-secret"),
-#         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
-#     ],
-#     timeout=1800,  # 30 minutes
-#     retries=0  # No automatic retries to prevent duplicates
-# )
-def process_next_event_for_user_deprecated(user_id: str):
-    """
-    Process the next unprocessed event for a specific user with duplicate prevention.
-    Uses database locks to ensure only one instance processes each event.
-    """
-    processor_id = f"processor-{uuid.uuid4().hex[:8]}-{int(time.time())}"
-    print(f"🚀 Starting processor {processor_id} for user: {user_id}")
-    
-    conn = None
-    cur = None
-    event_id = None
-    
-    try:
-        # Connect to database
-        conn = get_database_connection()
-        cur = conn.cursor()
-        
-        # Clean up expired locks (table already exists in production) 
-        cur.execute("DELETE FROM processing_locks WHERE expires_at < NOW();")
-        conn.commit()
-        
-        # Additional smart cleanup
-        cleanup_expired_locks(cur, conn)
-        
-        # Get next event with lock
-        event = get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id)
-        
-        if not event:
-            print(f"✅ No more unprocessed events for user: {user_id}")
-            return {
-                "success": True,
-                "message": "No unprocessed events",
-                "user_id": user_id,
-                "processor_id": processor_id
-            }
-        
-        event_id, user_id, session_id, created_at, payload = event
-        print(f"🔄 Processing event {event_id} for user {user_id}")
-        
-        # Double-check if event was already processed (race condition protection)
-        if is_event_already_processed(cur, user_id, created_at.isoformat()):
-            print(f"⏭️  Event {event_id} already processed, skipping")
-            release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
-            return {
-                "success": True,
-                "message": "Event already processed",
-                "user_id": user_id,
-                "event_id": event_id,
-                "processor_id": processor_id
-            }
-        
-        # Build FRESH context including all previous analyses
-        context, context_metadata = build_fresh_context(cur, user_id, event)
-        context_fields = list(context.keys())
-        print(f"Built fresh context for event {event_id} with fields: {context_fields}")
-        
-        # Generate context metadata for tracking
-        context_metadata = generate_context_metadata(context)
-        print(f"Context metadata: {context_metadata}")
-        
-        log_truncated_context(context, f"Context for Event {event_id}")
-        
-        # Prepare LLM API call
-        model_name = 'gemini-2.5-pro'  # Default model (was: gemini-2.5-pro-preview-06-05)
-        api_payload = {
-            'prompt': 'WORKFLOW_STEP_ANALYSIS_V2_PROMPT',  # This will be overridden by the API
-            'model': model_name,
-            'context': context
-        }
-        
-        # Debug: Print API payload summary
-        print(f"API Payload summary: prompt length={len(api_payload['prompt'])}, model={api_payload['model']}, context_fields={list(api_payload['context'].keys())}")
-        
-        # Record start time for performance tracking
-        start_time = time.time()
-        
-        # Add small delay to prevent API rate limiting (stagger requests)
-        import random
-        delay = random.uniform(1, 3)  # 1-3 second random delay
-        print(f"⏱️  Adding {delay:.1f}s delay to prevent rate limiting...")
-        time.sleep(delay)
-        
-        print(f"Calling LLM API for event {event_id}...")
-        try:
-            response = requests.post(
-                "https://app.mediar.ai/api/process-workflow-step",  # Use production URL
-                json=api_payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=300  # 5 minute timeout
-            )
-            response.raise_for_status()
-            result = response.json()
-            
-            # Calculate processing time
-            end_time = time.time()
-            processing_time_ms = int((end_time - start_time) * 1000)
-            
-            # Extract metrics from response (if available)
-            structured_output = result.get('structured_output')
-            print(f"📝 LLM Response (structured_output): {json.dumps(structured_output, indent=2)}")
-            tokens_input = result.get('usage', {}).get('input_tokens')
-            tokens_output = result.get('usage', {}).get('output_tokens')
-            cost_usd = estimate_cost_usd(model_name, tokens_input, tokens_output)
-            
-            # Save the analysis result
-            analysis_id = None
-            if structured_output:
-                window_title = get_window_title(event)
-                print(f"💾 SAVING to DB: analysis for event {event_id} with title '{window_title}'")
-                cur.execute("""
-                    INSERT INTO low_level_workflow_analyses 
-                    (user_id, session_id, client_timestamp, llm_structured_output, window_title)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (user_id, session_id, created_at.isoformat(), json.dumps(structured_output), window_title))
-                conn.commit()
-                print(f"✅ Successfully processed and saved analysis for event {event_id}")
-                
-                # Save context metadata now that column exists
-                cur.execute("""
-                    UPDATE low_level_workflow_analyses 
-                    SET context_metadata = %s
-                    WHERE user_id = %s AND client_timestamp = %s
-                """, (json.dumps(context_metadata), user_id, created_at.isoformat()))
-                
-            else:
-                print(f"❌ No structured output received for event {event_id}")
-            
-            # Log LLM trace (temporarily disabled until migration is applied)
-            # log_llm_trace(
-            #     cur, conn, user_id, session_id, analysis_id, 
-            #     call_type='workflow_analysis',
-            #     model_name=model_name,
-            #     raw_input={'prompt': api_payload['prompt'], 'context': api_payload['context']},
-            #     raw_output=result,
-            #     structured_output=structured_output,
-            #     processing_time_ms=processing_time_ms,
-            #     tokens_input=tokens_input,
-            #     tokens_output=tokens_output,
-            #     cost_usd=cost_usd,
-            #     status='success',
-            #     context_metadata=context_metadata
-            # )
-            
-        except Exception as llm_error:
-            # Calculate processing time even for errors
-            end_time = time.time()
-            processing_time_ms = int((end_time - start_time) * 1000)
-            
-            print(f"❌ LLM API call failed for event {event_id}: {llm_error}")
-            
-            # Log failed LLM trace
-            log_llm_trace(
-                cur, conn, user_id, session_id, None, 'workflow_analysis', model_name,
-                api_payload, None, None, processing_time_ms,
-                None, None, None, 'error', str(llm_error), context_metadata
-            )
-            
-            raise llm_error
-        
-        # Release lock with completed status
-        release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
-        
-        return {
-            "success": True,
-            "message": "Event processed successfully",
-            "user_id": user_id,
-            "event_id": event_id,
-            "processor_id": processor_id
-        }
-        
-    except Exception as e:
-        print(f"❌ Error processing event for user {user_id}: {e}")
-        
-        # Release lock with failed status
-        if conn and cur and event_id:
+        # Release any remaining locks
+        if conn and cur:
             try:
-                release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['FAILED'])
+                # Clean up any locks for this processor
+                cur.execute("""
+                    UPDATE processing_locks 
+                    SET status = 'failed', updated_at = NOW(), expires_at = NOW()
+                    WHERE processor_id = %s AND status = 'in_progress'
+                """, (processor_id,))
+                conn.commit()
             except:
                 pass
         
+        # === GRACEFUL SHUTDOWN: Unregister processor on error ===
+        unregister_processor(processor_id)
+        
         return {
             "success": False,
             "error": str(e),
             "user_id": user_id,
-            "event_id": event_id,
+            "total_processed": total_processed,
             "processor_id": processor_id
         }
         
     finally:
+        # === GRACEFUL SHUTDOWN: Ensure processor is unregistered ===
+        unregister_processor(processor_id)
+        
         if cur:
             cur.close()
         if conn:
@@ -1401,7 +1302,7 @@ def process_next_event_for_user_deprecated(user_id: str):
         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
     ],
     schedule=modal.Period(minutes=1),   # Changed from 60 to 1 minute for faster processing  
-    timeout=45   # Reduced from 1800 to 45 seconds to prevent overlaps
+    timeout=2000   # FIXED: Increased from 45 to 2000 seconds (33+ minutes) to accommodate full processing cycle
 )
 def scheduled_processing():
     """
@@ -1414,7 +1315,14 @@ def scheduled_processing():
         conn = get_database_connection()
         cur = conn.cursor()
         
-        # Count active processors
+        # === HEARTBEAT MECHANISM: Check for stuck processors first ===
+        print("💓 Checking for stuck processors...")
+        stuck_processors = detect_stuck_processors(conn, stale_threshold_minutes=15)
+        if stuck_processors:
+            cleaned_count = cleanup_stuck_processors(conn, stuck_processors)
+            print(f"🧹 Cleaned {cleaned_count} stuck processors before starting new cycle")
+        
+        # Count active processors (excluding the ones we just cleaned)
         cur.execute("""
             SELECT COUNT(DISTINCT processor_id) as active_processors
             FROM processing_locks 
@@ -1601,115 +1509,6 @@ def trigger_full_parallel_processing():
             "coordinator_id": coordinator_id
         }
 
-# DEPRECATED: This function uses the old inefficient approach
-# It triggers process_all_events_for_user() but with concurrency limits
-# The scheduled_processing() now calls trigger_full_parallel_processing() directly
-# @app.function(
-#     secrets=[modal.Secret.from_name("supabase-secret")],
-#     timeout=1800
-# )
-def find_and_trigger_users_with_prevention_deprecated():
-    """
-    Find users with unprocessed events and trigger sequential processing.
-    Includes duplicate prevention to avoid multiple processors for same user.
-    """
-    processor_id = f"coordinator-{uuid.uuid4().hex[:8]}-{int(time.time())}"
-    print(f"🎯 Starting coordinator {processor_id}")
-    
-    try:
-        conn = get_database_connection()
-        cur = conn.cursor()
-        
-        # Clean up expired locks (table already exists in production)
-        cur.execute("DELETE FROM processing_locks WHERE expires_at < NOW();")
-        conn.commit()
-        
-        # Additional smart cleanup
-        cleanup_expired_locks(cur, conn)
-        
-        # Find users with unprocessed events (not currently being processed)
-        cur.execute("""
-            SELECT DISTINCT user_id::text 
-            FROM low_level_events 
-            WHERE payload->'payload'->>'type' = 'ui_tree'
-              AND id NOT IN (
-                  SELECT DISTINCT lle.id
-                  FROM low_level_events lle
-                  INNER JOIN low_level_workflow_analyses llwa 
-                  ON lle.created_at = llwa.client_timestamp 
-                  AND lle.user_id = llwa.user_id
-              )
-              AND user_id::text NOT IN (
-                  SELECT DISTINCT user_id FROM processing_locks 
-                  WHERE status = 'in_progress' AND expires_at > NOW()
-              )
-            ORDER BY user_id
-        """)
-        
-        users = [row[0] for row in cur.fetchall()]
-        print(f"📋 Found {len(users)} users with unprocessed events")
-        
-        # Check current active processors to avoid overload
-        cur.execute("""
-            SELECT COUNT(DISTINCT processor_id) as active_processors
-            FROM processing_locks 
-            WHERE status = 'in_progress' AND expires_at > NOW()
-        """)
-        current_active = cur.fetchone()[0]
-        MAX_CONCURRENT = 100  # Allow massive parallel processing
-        available_slots = max(0, MAX_CONCURRENT - current_active)
-        
-        # Limit number of users to process based on available slots
-        users_to_process = users[:available_slots] if available_slots > 0 else []
-        
-        print(f"📊 Active: {current_active}/{MAX_CONCURRENT}, Available slots: {available_slots}, Processing: {len(users_to_process)} users")
-        
-        results = []
-        for user_id in users_to_process:
-            try:
-                print(f"🚀 Triggering FULL processor for user: {user_id}")
-                
-                # Trigger processing ALL events for this user
-                result = process_all_events_for_user.remote(user_id)
-                results.append({
-                    "user_id": user_id,
-                    "status": "triggered",
-                    "result": result
-                })
-                
-            except Exception as e:
-                print(f"❌ Failed to trigger processor for user {user_id}: {e}")
-                results.append({
-                    "user_id": user_id,
-                    "status": "failed",
-                    "error": str(e)
-                })
-        
-        # Report skipped users due to concurrency limits
-        skipped_users = users[available_slots:] if available_slots < len(users) else []
-        if skipped_users:
-            print(f"⏸️  Skipped {len(skipped_users)} users due to concurrency limits: {skipped_users[:3]}{'...' if len(skipped_users) > 3 else ''}")
-        
-        return {
-            "success": True,
-            "message": f"Triggered processors for {len(users)} users",
-            "coordinator_id": processor_id,
-            "results": results
-        }
-        
-    except Exception as e:
-        print(f"❌ Error in coordinator: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "coordinator_id": processor_id
-        }
-    finally:
-        if 'cur' in locals() and cur:
-            cur.close()
-        if 'conn' in locals() and conn:
-            conn.close()
-
 @app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
     timeout=1800
@@ -1809,3 +1608,132 @@ def get_processing_status():
             cur.close()
         if 'conn' in locals() and conn:
             conn.close() 
+
+# === HEARTBEAT MECHANISM FOR STUCK PROCESSOR DETECTION ===
+
+def update_heartbeat(conn, processor_id):
+    """Update heartbeat (updated_at) for an active processor to show it's still alive"""
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE processing_locks 
+            SET updated_at = NOW() 
+            WHERE processor_id = %s AND status = 'in_progress'
+        """, (processor_id,))
+        affected = cur.rowcount
+        conn.commit()
+        if affected > 0:
+            print(f"💓 Heartbeat updated for processor {processor_id}")
+        cur.close()
+        return affected > 0
+    except Exception as e:
+        print(f"❌ Failed to update heartbeat for {processor_id}: {e}")
+        return False
+
+def detect_stuck_processors(conn, stale_threshold_minutes=15):
+    """
+    Detect processors that haven't sent a heartbeat in the specified time.
+    Returns list of stuck processor info.
+    """
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT processor_id, user_id, event_id, created_at, updated_at,
+                   EXTRACT(EPOCH FROM (NOW() - COALESCE(updated_at, created_at))) / 60 as minutes_stale
+            FROM processing_locks 
+            WHERE status = 'in_progress' 
+            AND COALESCE(updated_at, created_at) < NOW() - INTERVAL '%s minutes'
+            ORDER BY minutes_stale DESC
+        """, (stale_threshold_minutes,))
+        
+        stuck_processors = cur.fetchall()
+        cur.close()
+        
+        if stuck_processors:
+            print(f"⚠️  Found {len(stuck_processors)} stuck processors (no heartbeat for >{stale_threshold_minutes}m):")
+            for proc in stuck_processors:
+                processor_id, user_id, event_id, created_at, updated_at, minutes_stale = proc
+                print(f"   - {processor_id}: user {user_id}, stale for {minutes_stale:.1f}m")
+        
+        return stuck_processors
+    except Exception as e:
+        print(f"❌ Error detecting stuck processors: {e}")
+        return []
+
+def cleanup_stuck_processors(conn, stuck_processors):
+    """
+    Clean up processors that are truly stuck (no heartbeat for extended period).
+    Marks them as failed and releases their locks.
+    """
+    cleaned_count = 0
+    try:
+        cur = conn.cursor()
+        
+        for proc in stuck_processors:
+            processor_id, user_id, event_id, created_at, updated_at, minutes_stale = proc
+            
+            # Mark as failed with detailed reason
+            cur.execute("""
+                UPDATE processing_locks 
+                SET status = 'failed', 
+                    updated_at = NOW(),
+                    expires_at = NOW()  -- Immediately expire
+                WHERE processor_id = %s AND status = 'in_progress'
+            """, (processor_id,))
+            
+            if cur.rowcount > 0:
+                cleaned_count += 1
+                print(f"🧹 Cleaned stuck processor {processor_id} (stale for {minutes_stale:.1f}m)")
+        
+        conn.commit()
+        cur.close()
+        
+        if cleaned_count > 0:
+            print(f"✅ Cleaned up {cleaned_count} stuck processors")
+        
+        return cleaned_count
+    except Exception as e:
+        print(f"❌ Error cleaning stuck processors: {e}")
+        return 0
+
+# === END HEARTBEAT MECHANISM ===
+
+@app.function(
+    secrets=[modal.Secret.from_name("supabase-secret")],
+    timeout=1800
+)
+def emergency_cleanup_stuck_processors():
+    """Emergency function to clean up stuck processors - use with caution!"""
+    try:
+        conn = get_database_connection()
+        cur = conn.cursor()
+        
+        # Get count before cleanup for reporting
+        cur.execute("SELECT COUNT(*) FROM processing_locks WHERE status = 'in_progress'")
+        before_count = cur.fetchone()[0]
+        
+        # Detect stuck processors
+        stuck_processors = detect_stuck_processors(conn)
+        
+        # Clean up stuck processors
+        cleaned_count = cleanup_stuck_processors(conn, stuck_processors)
+        
+        return {
+            "success": True,
+            "message": f"Emergency cleanup completed",
+            "locks_before": before_count,
+            "locks_cleaned": cleaned_count,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+    finally:
+        if 'cur' in locals() and cur:
+            cur.close()
+        if 'conn' in locals() and conn:
+            conn.close()

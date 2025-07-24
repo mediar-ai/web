@@ -56,6 +56,11 @@ interface TimelineAnnotation {
   step_title?: string;
   user_intent?: string;
   step_summary?: string;
+  events_that_happened?: string;
+  how_content_changed?: string;
+  results_if_any?: string;
+  what_was_clicked?: string;
+  what_was_typed?: string;
   window_title?: string;
   inputs?: string | string[] | null;
   outputs?: string | string[] | null;
@@ -234,7 +239,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'related' | 'unrelated'>('all');
   const [sortBy, setSortBy] = useState<'timestamp' | 'confidence' | 'event_type'>('timestamp');
-  const [viewMode, setViewMode] = useState<'events' | 'workflows'>('workflows');
+  const [viewMode, setViewMode] = useState<'events' | 'workflows'>('events');
   const [addEventModalState, setAddEventModalState] = useState<{
     isOpen: boolean;
     workflow: WorkflowInHierarchy | null;
@@ -369,15 +374,69 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
     return Object.values(workflows);
   }, [filteredAnnotations]);
 
+  // Group annotations by analysis_id for event view
+  const analysisGroups = useMemo(() => {
+    const groups: Record<number, {
+      analysis_id: number;
+      analysis_info: {
+        step_title: string;
+        user_intent: string;
+        step_summary: string;
+        events_that_happened: string;
+        how_content_changed: string;
+        results_if_any: string;
+        what_was_clicked: string;
+        what_was_typed: string;
+        window_title: string;
+        selected_labels: string[];
+        suggested_labels: string[];
+      };
+      events: TimelineAnnotation[];
+    }> = {};
+
+    filteredAnnotations.forEach(annotation => {
+      const analysisId = annotation.analysis_id;
+      
+      if (!groups[analysisId]) {
+        groups[analysisId] = {
+          analysis_id: analysisId,
+          analysis_info: {
+            step_title: annotation.step_title || 'Unknown Step',
+            user_intent: annotation.user_intent || '',
+            step_summary: annotation.step_summary || '',
+            events_that_happened: annotation.events_that_happened || '',
+            how_content_changed: annotation.how_content_changed || '',
+            results_if_any: annotation.results_if_any || '',
+            what_was_clicked: annotation.what_was_clicked || '',
+            what_was_typed: annotation.what_was_typed || '',
+            window_title: annotation.window_title || '',
+            selected_labels: annotation.selected_labels || [],
+            suggested_labels: annotation.suggested_labels || []
+          },
+          events: []
+        };
+      }
+      
+      groups[analysisId].events.push(annotation);
+    });
+
+    return Object.values(groups).sort((a, b) => {
+      // Sort by the earliest event timestamp in each group
+      const aEarliest = Math.min(...a.events.map(e => new Date(e.created_at).getTime()));
+      const bEarliest = Math.min(...b.events.map(e => new Date(e.created_at).getTime()));
+      return bEarliest - aEarliest; // Most recent first
+    });
+  }, [filteredAnnotations]);
+
   const handleAnnotationChange = (
-    annotationIndex: number,
+    annotation: TimelineAnnotation,
     field: keyof TimelineAnnotation,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     value: any
   ) => {
     const updated = [...localAnnotations];
     const actualIndex = localAnnotations.findIndex(
-      ann => ann.analysis_id === filteredAnnotations[annotationIndex].analysis_id
+      ann => ann.analysis_id === annotation.analysis_id && ann.raw_event_id === annotation.raw_event_id
     );
     
     if (actualIndex !== -1) {
@@ -590,342 +649,461 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
       {/* Mappings List */}
       {viewMode === 'events' ? (
         <div className="space-y-3">
-          {filteredAnnotations.length === 0 ? (
+          {analysisGroups.length === 0 ? (
             <Card className="p-8 text-center text-muted-foreground">
               <AlertCircle className="h-8 w-8 mx-auto mb-2" />
               <p>No timeline mappings found matching your criteria.</p>
             </Card>
           ) : (
-            filteredAnnotations.map((annotation, index) => {
-              
-              return (
-                <Card key={`${annotation.analysis_id}-${index}`} className={`${annotation.is_workflow_related ? 'ring-2 ring-primary' : ''}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <Badge variant="outline">
-                              Event #{annotation.raw_event_id || annotation.analysis_id}
-                            </Badge>
-                            <Badge variant="outline">
-                              {annotation.event_type || 'Unknown'}
-                            </Badge>
+                         analysisGroups.map((group) => (
+                             <Card key={group.analysis_id} className="p-4 border border-black rounded-lg bg-white">
+                 {/* Analysis Header */}
+                 <div className="border-b border-gray-200 pb-4 mb-4">
+                   <div className="flex items-center justify-between mb-3">
+                     <div className="space-y-1">
+                       <div className="font-semibold text-lg text-gray-900">{group.analysis_info.step_title}</div>
+                       <div className="text-sm text-muted-foreground">
+                         Analysis #{group.analysis_id} • {group.events.length} event{group.events.length !== 1 ? 's' : ''}
+                       </div>
+                     </div>
+                     <div className="flex items-center gap-2">
+                       {group.analysis_info.selected_labels && group.analysis_info.selected_labels.length > 0 && (
+                         <Badge variant="default" className="text-xs">
+                           LLM Labels: {group.analysis_info.selected_labels.length}
+                         </Badge>
+                       )}
+                       {group.analysis_info.suggested_labels && group.analysis_info.suggested_labels.length > 0 && (
+                         <Badge variant="secondary" className="text-xs">
+                           AI Suggestions: {group.analysis_info.suggested_labels.length}
+                         </Badge>
+                       )}
+                     </div>
+                   </div>
+
+                   {/* Analysis Details */}
+                   <div className="space-y-3 text-sm">
+                     {/* Step Overview */}
+                     <div className="space-y-2">
+                       <h5 className="font-medium text-gray-800">Step Overview</h5>
+                       {group.analysis_info.step_summary && (
+                         <div className="text-gray-700">
+                           <span className="font-medium">Summary:</span> {group.analysis_info.step_summary}
+                         </div>
+                       )}
+                       {group.analysis_info.user_intent && (
+                         <div className="text-gray-700">
+                           <span className="font-medium">User Intent:</span> {group.analysis_info.user_intent}
+                         </div>
+                       )}
+                     </div>
+
+                     {/* Actions Taken */}
+                     {(group.analysis_info.events_that_happened || group.analysis_info.what_was_clicked || group.analysis_info.what_was_typed) && (
+                       <div className="space-y-2">
+                         <h5 className="font-medium text-gray-800">Actions Taken</h5>
+                         {group.analysis_info.events_that_happened && (
+                           <div className="text-gray-700">
+                             <span className="font-medium">Events:</span> {group.analysis_info.events_that_happened}
+                           </div>
+                         )}
+                         {group.analysis_info.what_was_clicked && (
+                           <div className="text-gray-700">
+                             <span className="font-medium">Clicked Elements:</span> {group.analysis_info.what_was_clicked}
+                           </div>
+                         )}
+                         {group.analysis_info.what_was_typed && (
+                           <div className="text-gray-700">
+                             <span className="font-medium">Text Typed:</span> {group.analysis_info.what_was_typed}
+                           </div>
+                         )}
+                       </div>
+                     )}
+
+                     {/* Outcomes */}
+                     {(group.analysis_info.how_content_changed || group.analysis_info.results_if_any) && (
+                       <div className="space-y-2">
+                         <h5 className="font-medium text-gray-800">Outcomes</h5>
+                         {group.analysis_info.how_content_changed && (
+                           <div className="text-gray-700">
+                             <span className="font-medium">Content Changes:</span> {group.analysis_info.how_content_changed}
+                           </div>
+                         )}
+                         {group.analysis_info.results_if_any && (
+                           <div className="text-gray-700">
+                             <span className="font-medium">Results:</span> {group.analysis_info.results_if_any}
+                           </div>
+                         )}
+                       </div>
+                     )}
+
+                     {/* Context */}
+                     {group.analysis_info.window_title && (
+                       <div className="space-y-2">
+                         <h5 className="font-medium text-gray-800">Context</h5>
+                         <div className="text-gray-700">
+                           <span className="font-medium">Window:</span> {group.analysis_info.window_title}
+                         </div>
+                       </div>
+                     )}
+                   </div>
+
+                   {/* Analysis Labels */}
+                   {((group.analysis_info.selected_labels?.length ?? 0) > 0 || (group.analysis_info.suggested_labels?.length ?? 0) > 0) && (
+                     <div className="mt-3 space-y-3">
+                       {group.analysis_info.selected_labels && group.analysis_info.selected_labels.length > 0 && (
+                         <div className="flex items-start space-x-3">
+                           <Label className="min-w-[140px] text-sm pt-2">LLM Generated Labels:</Label>
+                           <div className="flex-1">
+                             <div className="text-sm text-gray-900 bg-gray-50 border rounded-md p-2 min-h-[2.5rem] whitespace-pre-wrap break-words">
+                               {group.analysis_info.selected_labels.join('\n\n')}
+                             </div>
+                           </div>
+                         </div>
+                       )}
+
+                       {group.analysis_info.suggested_labels && group.analysis_info.suggested_labels.length > 0 && (
+                         <div className="flex items-start space-x-3">
+                           <Label className="min-w-[140px] text-sm pt-2">AI Suggested Labels:</Label>
+                           <div className="flex-1">
+                             <div className="text-sm text-gray-700 bg-gray-50 border rounded-md p-2 min-h-[2.5rem] whitespace-pre-wrap break-words">
+                               {group.analysis_info.suggested_labels.join('\n\n')}
+                             </div>
+                           </div>
+                         </div>
+                       )}
+                     </div>
+                   )}
+                 </div>
+
+                 {/* Raw Events */}
+                 <div className="space-y-3">
+                   {group.events.length > 0 && <h4 className="text-sm font-medium text-gray-700 mb-3">Raw Events ({group.events.length}):</h4>}
+
+                {group.events.map((annotation, eventIndex) => {
+                  return (
+                    <Card key={`${annotation.analysis_id}-${eventIndex}`} className={`${annotation.is_workflow_related ? 'ring-2 ring-primary' : ''}`}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center space-x-2">
+                                <Badge variant="outline">
+                                  Event #{annotation.raw_event_id || annotation.analysis_id}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {annotation.event_type || 'Unknown'}
+                                </Badge>
                                                                                       {getStatusBadge(annotation)}
+                                </div>
+                              
+                              <div className="text-sm text-muted-foreground">
+                                {annotation.event_created_at 
+                                  ? new Date(annotation.event_created_at).toLocaleString()
+                                  : new Date(annotation.created_at).toLocaleString()
+                                }
+                              </div>
+                              
+                              {annotation.step_title && (
+                                <div className="text-sm">
+                                  <strong>Step:</strong> {annotation.step_title}
+                                </div>
+                              )}
+                              
+                              {annotation.window_title && (
+                                <div className="text-sm text-muted-foreground">
+                                  <strong>Window:</strong> {annotation.window_title}
+                                </div>
+                              )}
                             </div>
-                          
-                          <div className="text-sm text-muted-foreground">
-                            {annotation.event_created_at 
-                              ? new Date(annotation.event_created_at).toLocaleString()
-                              : new Date(annotation.created_at).toLocaleString()
-                            }
                           </div>
-                          
-                          {annotation.step_title && (
-                            <div className="text-sm">
-                              <strong>Step:</strong> {annotation.step_title}
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleEventExpansion(annotation.raw_event_id || annotation.analysis_id)}
+                              className="h-8 w-8 p-0"
+                            >
+                              {expandedEvents.has(annotation.raw_event_id || annotation.analysis_id) ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </CardHeader>
+
+                      <CardContent className="space-y-3">
+                        {/* Related/Unrelated Toggle */}
+                        <div className="flex items-center space-x-3">
+                          <Label htmlFor={`toggle-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
+                            Workflow Status:
+                          </Label>
+                          <div className="flex items-center space-x-3">
+                            <Switch
+                              id={`toggle-${annotation.analysis_id}`}
+                              checked={annotation.is_workflow_related}
+                                                             onCheckedChange={(checked) => 
+                                 handleAnnotationChange(annotation, 'is_workflow_related', checked)
+                               }
+                            />
+                            <span className="text-sm font-medium">
+                              {annotation.is_workflow_related ? 'Related' : 'Unrelated'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Confidence Score */}
+                        <div className="flex items-center space-x-3">
+                          <Label htmlFor={`confidence-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
+                            Confidence Score:
+                          </Label>
+                          <div className="flex items-center space-x-2">
+                            <Input
+                              id={`confidence-${annotation.analysis_id}`}
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={Math.round((annotation.confidence_score || 0) * 100)}
+                                                             onChange={(e) => 
+                                 handleAnnotationChange(annotation, 'confidence_score', parseInt(e.target.value || '0') / 100)
+                               }
+                              className="w-20"
+                            />
+                            <span className="text-sm text-gray-500">%</span>
+                          </div>
+                        </div>
+
+                        {annotation.is_workflow_related ? (
+                          /* Workflow Component Selectors */
+                          <div className="grid grid-cols-1 gap-3">
+                            <div className="flex items-center space-x-3">
+                              <Label htmlFor={`template-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
+                                Workflow Template:
+                              </Label>
+                              <Select
+                                value={annotation.workflow_id?.toString() || ""}
+                                                                 onValueChange={(value) => 
+                                   handleAnnotationChange(annotation, 'workflow_id', parseInt(value))
+                                 }
+                              >
+                                <SelectTrigger id={`template-${annotation.analysis_id}`} className="flex-1">
+                                  <SelectValue placeholder="Select template..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {workflowComponents.templates.map(template => (
+                                    <SelectItem key={template.id} value={template.id.toString()}>
+                                      {template.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
-                          )}
-                          
-                          {annotation.window_title && (
-                            <div className="text-sm text-muted-foreground">
-                              <strong>Window:</strong> {annotation.window_title}
+
+                            <div className="flex items-center space-x-3">
+                              <Label htmlFor={`type-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
+                                Workflow Type:
+                              </Label>
+                              <Select
+                                value={annotation.workflow_type_id?.toString() || ""}
+                                onValueChange={(value) => 
+                                  handleAnnotationChange(annotation, 'workflow_type_id', parseInt(value))
+                                }
+                              >
+                                <SelectTrigger id={`type-${annotation.analysis_id}`} className="flex-1">
+                                  <SelectValue placeholder="Select type..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {workflowComponents.types
+                                    .filter(type => type.template_id === annotation.workflow_id)
+                                    .map(type => (
+                                      <SelectItem key={type.id} value={type.id.toString()}>
+                                        {type.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleEventExpansion(annotation.raw_event_id || annotation.analysis_id)}
-                          className="h-8 w-8 p-0"
-                        >
-                          {expandedEvents.has(annotation.raw_event_id || annotation.analysis_id) ? (
-                            <ChevronUp className="h-4 w-4" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
 
-                  <CardContent className="space-y-3">
-                    {/* Related/Unrelated Toggle */}
-                    <div className="flex items-center space-x-3">
-                      <Label htmlFor={`toggle-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
-                        Workflow Status:
-                      </Label>
-                      <div className="flex items-center space-x-3">
-                        <Switch
-                          id={`toggle-${annotation.analysis_id}`}
-                          checked={annotation.is_workflow_related}
-                          onCheckedChange={(checked) => 
-                            handleAnnotationChange(index, 'is_workflow_related', checked)
-                          }
-                        />
-                        <span className="text-sm font-medium">
-                          {annotation.is_workflow_related ? 'Related' : 'Unrelated'}
-                        </span>
-                      </div>
-                    </div>
+                            <div className="flex items-center space-x-3">
+                              <Label htmlFor={`instance-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
+                                Workflow Instance:
+                              </Label>
+                              <Select
+                                value={annotation.workflow_instance_id?.toString() || ""}
+                                onValueChange={(value) => 
+                                  handleAnnotationChange(annotation, 'workflow_instance_id', parseInt(value))
+                                }
+                              >
+                                <SelectTrigger id={`instance-${annotation.analysis_id}`} className="flex-1">
+                                  <SelectValue placeholder="Select instance..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {workflowComponents.instances
+                                    .filter(instance => instance.template_id === annotation.workflow_id)
+                                    .map(instance => (
+                                      <SelectItem key={instance.id} value={instance.id.toString()}>
+                                        {instance.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
 
-                    {/* Confidence Score */}
-                    <div className="flex items-center space-x-3">
-                      <Label htmlFor={`confidence-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
-                        Confidence Score:
-                      </Label>
-                      <div className="flex items-center space-x-2">
-                        <Input
-                          id={`confidence-${annotation.analysis_id}`}
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={Math.round((annotation.confidence_score || 0) * 100)}
-                          onChange={(e) => 
-                            handleAnnotationChange(index, 'confidence_score', parseInt(e.target.value || '0') / 100)
-                          }
-                          className="w-20"
-                        />
-                        <span className="text-sm text-gray-500">%</span>
-                      </div>
-                    </div>
+                            <div className="flex items-center space-x-3">
+                              <Label htmlFor={`step-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
+                                Workflow Step:
+                              </Label>
+                              <Select
+                                value={annotation.workflow_step_id?.toString() || ""}
+                                onValueChange={(value) => 
+                                  handleAnnotationChange(annotation, 'workflow_step_id', parseInt(value))
+                                }
+                              >
+                                <SelectTrigger id={`step-${annotation.analysis_id}`} className="flex-1">
+                                  <SelectValue placeholder="Select step..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {workflowComponents.steps
+                                    .filter(step => step.template_id === annotation.workflow_id)
+                                    .map(step => (
+                                      <SelectItem key={step.id} value={step.id.toString()}>
+                                        {step.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
 
-                    {annotation.is_workflow_related ? (
-                      /* Workflow Component Selectors */
-                      <div className="grid grid-cols-1 gap-3">
-                        <div className="flex items-center space-x-3">
-                          <Label htmlFor={`template-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
-                            Workflow Template:
-                          </Label>
-                          <Select
-                            value={annotation.workflow_id?.toString() || ""}
-                            onValueChange={(value) => 
-                              handleAnnotationChange(index, 'workflow_id', parseInt(value))
-                            }
-                          >
-                            <SelectTrigger id={`template-${annotation.analysis_id}`} className="flex-1">
-                              <SelectValue placeholder="Select template..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {workflowComponents.templates.map(template => (
-                                <SelectItem key={template.id} value={template.id.toString()}>
-                                  {template.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="flex items-center space-x-3">
-                          <Label htmlFor={`type-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
-                            Workflow Type:
-                          </Label>
-                          <Select
-                            value={annotation.workflow_type_id?.toString() || ""}
-                            onValueChange={(value) => 
-                              handleAnnotationChange(index, 'workflow_type_id', parseInt(value))
-                            }
-                          >
-                            <SelectTrigger id={`type-${annotation.analysis_id}`} className="flex-1">
-                              <SelectValue placeholder="Select type..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {workflowComponents.types
-                                .filter(type => type.template_id === annotation.workflow_id)
-                                .map(type => (
-                                  <SelectItem key={type.id} value={type.id.toString()}>
-                                    {type.name}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="flex items-center space-x-3">
-                          <Label htmlFor={`instance-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
-                            Workflow Instance:
-                          </Label>
-                          <Select
-                            value={annotation.workflow_instance_id?.toString() || ""}
-                            onValueChange={(value) => 
-                              handleAnnotationChange(index, 'workflow_instance_id', parseInt(value))
-                            }
-                          >
-                            <SelectTrigger id={`instance-${annotation.analysis_id}`} className="flex-1">
-                              <SelectValue placeholder="Select instance..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {workflowComponents.instances
-                                .filter(instance => instance.template_id === annotation.workflow_id)
-                                .map(instance => (
-                                  <SelectItem key={instance.id} value={instance.id.toString()}>
-                                    {instance.name}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="flex items-center space-x-3">
-                          <Label htmlFor={`step-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
-                            Workflow Step:
-                          </Label>
-                          <Select
-                            value={annotation.workflow_step_id?.toString() || ""}
-                            onValueChange={(value) => 
-                              handleAnnotationChange(index, 'workflow_step_id', parseInt(value))
-                            }
-                          >
-                            <SelectTrigger id={`step-${annotation.analysis_id}`} className="flex-1">
-                              <SelectValue placeholder="Select step..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {workflowComponents.steps
-                                .filter(step => step.template_id === annotation.workflow_id)
-                                .map(step => (
-                                  <SelectItem key={step.id} value={step.id.toString()}>
-                                    {step.name}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="flex items-center space-x-3">
-                          <Label htmlFor={`substep-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
-                            Workflow Substep:
-                          </Label>
-                          <Select
-                            value={annotation.workflow_substep_id?.toString() || "none"}
-                            onValueChange={(value) => 
-                              handleAnnotationChange(index, 'workflow_substep_id', value === "none" ? null : parseInt(value))
-                            }
-                          >
-                            <SelectTrigger id={`substep-${annotation.analysis_id}`} className="flex-1">
-                              <SelectValue placeholder="Select substep (optional)..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">No substep</SelectItem>
-                              {workflowComponents.substeps
-                                .filter(substep => substep.step_id === annotation.workflow_step_id)
-                                .map(substep => (
-                                  <SelectItem key={substep.id} value={substep.id.toString()}>
-                                    {substep.name}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Show unrelated event information */
-                      <div className="bg-gray-50 p-3 rounded-md border">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <XCircle className="w-4 h-4 text-red-500" />
-                          <span className="text-sm font-medium text-gray-700">Unrelated to Workflow</span>
-                        </div>
-                        {annotation.unrelated_reason && (
-                          <p className="text-xs text-gray-600 italic">
-                            <strong>Reason:</strong> {annotation.unrelated_reason}
-                          </p>
+                            <div className="flex items-center space-x-3">
+                              <Label htmlFor={`substep-${annotation.analysis_id}`} className="min-w-[140px] text-sm">
+                                Workflow Substep:
+                              </Label>
+                              <Select
+                                value={annotation.workflow_substep_id?.toString() || "none"}
+                                onValueChange={(value) => 
+                                  handleAnnotationChange(annotation, 'workflow_substep_id', value === "none" ? null : parseInt(value))
+                                }
+                              >
+                                <SelectTrigger id={`substep-${annotation.analysis_id}`} className="flex-1">
+                                  <SelectValue placeholder="Select substep (optional)..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">No substep</SelectItem>
+                                  {workflowComponents.substeps
+                                    .filter(substep => substep.step_id === annotation.workflow_step_id)
+                                    .map(substep => (
+                                      <SelectItem key={substep.id} value={substep.id.toString()}>
+                                        {substep.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Show unrelated event information */
+                          <div className="space-y-3">
+                            {annotation.unrelated_reason && (
+                              <div className="flex items-start space-x-3">
+                                <Label htmlFor={`reason-${annotation.analysis_id}`} className="min-w-[140px] text-sm pt-2">
+                                  Reason:
+                                </Label>
+                                <Textarea
+                                  id={`reason-${annotation.analysis_id}`}
+                                  value={annotation.unrelated_reason || ''}
+                                  onChange={(e) => 
+                                    handleAnnotationChange(annotation, 'unrelated_reason', e.target.value || null)
+                                  }
+                                  placeholder="Why this event is unrelated..."
+                                  rows={2}
+                                  className="resize-none flex-1"
+                                />
+                              </div>
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
 
-                    {/* Event Details Section */}
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-medium text-gray-700">Event Details</h4>
-                      
-                      <div className="flex items-start space-x-3">
-                        <Label htmlFor={`inputs-${annotation.analysis_id}`} className="min-w-[140px] text-sm pt-2">
-                          Inputs:
-                        </Label>
-                        <Textarea
-                          id={`inputs-${annotation.analysis_id}`}
-                          value={annotation.inputs || ''}
-                          onChange={(e) => 
-                            handleAnnotationChange(index, 'inputs', e.target.value || null)
-                          }
-                          placeholder="What led to this event..."
-                          rows={2}
-                          className="resize-none flex-1"
-                        />
-                      </div>
+                        {/* Event Details Section - Only show when workflow related */}
+                        {annotation.is_workflow_related && (
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-700">Event Details</h4>
+                            
+                            <div className="flex items-start space-x-3">
+                              <Label htmlFor={`inputs-${annotation.analysis_id}`} className="min-w-[140px] text-sm pt-2">
+                                Inputs:
+                              </Label>
+                              <Textarea
+                                id={`inputs-${annotation.analysis_id}`}
+                                value={annotation.inputs || ''}
+                                onChange={(e) => 
+                                  handleAnnotationChange(annotation, 'inputs', e.target.value || null)
+                                }
+                                placeholder="What led to this event..."
+                                rows={2}
+                                className="resize-none flex-1"
+                              />
+                            </div>
 
-                      <div className="flex items-start space-x-3">
-                        <Label htmlFor={`outputs-${annotation.analysis_id}`} className="min-w-[140px] text-sm pt-2">
-                          Outputs:
-                        </Label>
-                        <Textarea
-                          id={`outputs-${annotation.analysis_id}`}
-                          value={annotation.outputs || ''}
-                          onChange={(e) => 
-                            handleAnnotationChange(index, 'outputs', e.target.value || null)
-                          }
-                          placeholder="What this event produced..."
-                          rows={2}
-                          className="resize-none flex-1"
-                        />
-                      </div>
+                            <div className="flex items-start space-x-3">
+                              <Label htmlFor={`outputs-${annotation.analysis_id}`} className="min-w-[140px] text-sm pt-2">
+                                Outputs:
+                              </Label>
+                              <Textarea
+                                id={`outputs-${annotation.analysis_id}`}
+                                value={annotation.outputs || ''}
+                                onChange={(e) => 
+                                  handleAnnotationChange(annotation, 'outputs', e.target.value || null)
+                                }
+                                placeholder="What this event produced..."
+                                rows={2}
+                                className="resize-none flex-1"
+                              />
+                            </div>
 
-                      <div className="flex items-start space-x-3">
-                        <Label htmlFor={`business-logic-${annotation.analysis_id}`} className="min-w-[140px] text-sm pt-2">
-                          Business Logic:
-                        </Label>
-                        <Textarea
-                          id={`business-logic-${annotation.analysis_id}`}
-                          value={annotation.business_logics || ''}
-                          onChange={(e) => 
-                            handleAnnotationChange(index, 'business_logics', e.target.value || null)
-                          }
-                          placeholder="Business rules governing this event..."
-                          rows={2}
-                          className="resize-none flex-1"
-                        />
-                      </div>
-                    </div>
+                            <div className="flex items-start space-x-3">
+                              <Label htmlFor={`business-logic-${annotation.analysis_id}`} className="min-w-[140px] text-sm pt-2">
+                                Business Logic:
+                              </Label>
+                              <Textarea
+                                id={`business-logic-${annotation.analysis_id}`}
+                                value={annotation.business_logics || ''}
+                                onChange={(e) => 
+                                  handleAnnotationChange(annotation, 'business_logics', e.target.value || null)
+                                }
+                                placeholder="Business rules governing this event..."
+                                rows={2}
+                                className="resize-none flex-1"
+                              />
+                            </div>
+                          </div>
+                        )}
 
-                    {/* Labeling Data Section */}
-                    {((annotation.selected_labels?.length ?? 0) > 0 || (annotation.suggested_labels?.length ?? 0) > 0) && (
-                      <div className="space-y-3">
-                        <h4 className="text-sm font-medium text-gray-700">Labeling Data</h4>
                         
-                        {annotation.selected_labels && annotation.selected_labels.length > 0 && (
-                          <div className="flex items-start space-x-3">
-                            <Label className="min-w-[140px] text-sm pt-2">Human Labels:</Label>
-                            <div className="flex-1">
-                              <div className="text-sm text-gray-900 bg-gray-50 border rounded-md p-2 min-h-[2.5rem] whitespace-pre-wrap break-words">
-                                {annotation.selected_labels.join('\n\n')}
-                              </div>
-                            </div>
+
+                        {/* Expandable Raw JSON Section */}
+                        {expandedEvents.has(annotation.raw_event_id || annotation.analysis_id) && (
+                          <div className="border-t pt-3 mt-3">
+                            {renderRawJsonPayload(annotation)}
                           </div>
                         )}
-
-                        {annotation.suggested_labels && annotation.suggested_labels.length > 0 && (
-                          <div className="flex items-start space-x-3">
-                            <Label className="min-w-[140px] text-sm pt-2">AI Suggested Labels:</Label>
-                            <div className="flex-1">
-                              <div className="text-sm text-gray-700 bg-gray-50 border rounded-md p-2 min-h-[2.5rem] whitespace-pre-wrap break-words">
-                                {annotation.suggested_labels.join('\n\n')}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Expandable Raw JSON Section */}
-                    {expandedEvents.has(annotation.raw_event_id || annotation.analysis_id) && (
-                      <div className="border-t pt-3 mt-3">
-                        {renderRawJsonPayload(annotation)}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })
+                      </CardContent>
+                    </Card>
+                  );
+                                 })}
+                 
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   className="mt-2"
+                   onClick={() => setAddEventModalState({ isOpen: true, workflow: null, step: null, substep: null })}
+                 >
+                   <PlusCircle className="h-4 w-4 mr-2" />
+                   Add Event
+                 </Button>
+                 </div>
+               </Card>
+            ))
           )}
         </div>
       ) : (
