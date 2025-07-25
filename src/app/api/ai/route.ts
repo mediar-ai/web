@@ -12,6 +12,61 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
+// Clean JSON Schema for Vertex AI compatibility
+function cleanSchemaForVertexAI(schema: any): any {
+  if (!schema || typeof schema !== 'object') {
+    return {
+      type: 'object',
+      properties: {},
+    };
+  }
+
+  // Create clean schema with only Vertex AI supported fields
+  const cleanSchema: any = {
+    type: schema.type || 'object',
+  };
+
+  // Add properties if they exist
+  if (schema.properties && typeof schema.properties === 'object') {
+    cleanSchema.properties = {};
+
+    // Recursively clean each property
+    for (const [propName, propSchema] of Object.entries(schema.properties)) {
+      cleanSchema.properties[propName] = cleanSchemaForVertexAI(propSchema);
+    }
+  }
+
+  // Add required array if it exists
+  if (Array.isArray(schema.required)) {
+    cleanSchema.required = schema.required;
+  }
+
+  // Add description if it exists
+  if (schema.description) {
+    cleanSchema.description = schema.description;
+  }
+
+  // Add enum if it exists
+  if (Array.isArray(schema.enum)) {
+    cleanSchema.enum = schema.enum;
+  }
+
+  // Add format if it exists (for string types)
+  if (schema.format) {
+    cleanSchema.format = schema.format;
+  }
+
+  // Add items for array types
+  if (schema.type === 'array' && schema.items) {
+    cleanSchema.items = cleanSchemaForVertexAI(schema.items);
+  }
+
+  // Remove all unsupported fields (they're just not added)
+  // Unsupported: $schema, title, definitions, $ref, additionalProperties, etc.
+
+  return cleanSchema;
+}
+
 // Convert MCP tools format to Vertex AI function declarations
 function convertMCPToolsToVertexAI(mcpTools: any) {
   if (!mcpTools || typeof mcpTools !== 'object') {
@@ -24,13 +79,13 @@ function convertMCPToolsToVertexAI(mcpTools: any) {
     if (typeof mcpTool === 'object' && mcpTool !== null) {
       const tool = mcpTool as any;
 
+      // Clean the input schema to remove Vertex AI incompatible fields
+      const cleanedSchema = cleanSchemaForVertexAI(tool.inputSchema);
+
       functionDeclarations.push({
         name: toolName,
-        description: tool.description,
-        parameters: tool.inputSchema?.jsonSchema || {
-          type: 'object',
-          properties: {},
-        },
+        description: tool.description || `Execute ${toolName} tool`,
+        parameters: cleanedSchema,
       });
     }
   }
@@ -39,6 +94,18 @@ function convertMCPToolsToVertexAI(mcpTools: any) {
     originalCount: Object.keys(mcpTools).length,
     convertedCount: functionDeclarations.length,
     toolNames: functionDeclarations.map(f => f.name),
+    sampleTool: functionDeclarations[0]
+      ? {
+          name: functionDeclarations[0].name,
+          hasDescription: !!functionDeclarations[0].description,
+          hasParameters: !!functionDeclarations[0].parameters,
+          parameterType: functionDeclarations[0].parameters?.type,
+          hasProperties: !!functionDeclarations[0].parameters?.properties,
+          propertyCount: Object.keys(
+            functionDeclarations[0].parameters?.properties || {}
+          ).length,
+        }
+      : null,
   });
 
   return functionDeclarations;
@@ -84,8 +151,36 @@ function createStreamingResponse(
         // Send start event
         controller.enqueue(encoder.encode('data: {"type":"start"}\n\n'));
 
+        // Log tool configuration before model creation
+        console.log('🎯 Model configuration:', {
+          model,
+          temperature,
+          maxOutputTokens: maxTokens,
+          toolCount: functionDeclarations.length,
+          toolsConfigured: functionDeclarations.length > 0,
+          toolNames: functionDeclarations.map(f => f.name).slice(0, 5), // First 5 tools
+        });
+
+        // Debug: Log sample cleaned schema to verify Vertex AI compatibility
+        if (functionDeclarations.length > 0) {
+          console.log('🧪 Sample cleaned schema for Vertex AI:', {
+            toolName: functionDeclarations[0].name,
+            schema: JSON.stringify(functionDeclarations[0].parameters, null, 2),
+            hasUnsupportedFields:
+              JSON.stringify(functionDeclarations[0].parameters).includes(
+                '$schema'
+              ) ||
+              JSON.stringify(functionDeclarations[0].parameters).includes(
+                'definitions'
+              ) ||
+              JSON.stringify(functionDeclarations[0].parameters).includes(
+                'title'
+              ),
+          });
+        }
+
         // Initialize the generative model
-        const generativeModel = vertexAI.getGenerativeModel({
+        const modelConfig = {
           model: model,
           generationConfig: {
             temperature,
@@ -95,7 +190,15 @@ function createStreamingResponse(
             functionDeclarations.length > 0
               ? [{ functionDeclarations }]
               : undefined,
+        };
+
+        console.log('🤖 Creating Vertex AI model with config:', {
+          model: modelConfig.model,
+          hasTools: !!modelConfig.tools,
+          toolCount: functionDeclarations.length,
         });
+
+        const generativeModel = vertexAI.getGenerativeModel(modelConfig);
 
         // Convert messages to Vertex AI format
         const chatHistory = messages.slice(0, -1).map(msg => {
@@ -213,6 +316,19 @@ function createStreamingResponse(
           const candidate = chunk.candidates?.[0];
           if (!candidate) continue;
 
+          // Debug: Log chunk structure to understand AI response
+          if (candidate.content?.parts) {
+            const partTypes = candidate.content.parts.map(part => {
+              if (part.text) return 'text';
+              if (part.functionCall)
+                return `functionCall:${part.functionCall.name}`;
+              return 'unknown';
+            });
+            if (partTypes.length > 0) {
+              console.log('📦 Chunk parts:', partTypes);
+            }
+          }
+
           // Extract text from the response
           const textParts =
             candidate.content?.parts?.filter(part => part.text) || [];
@@ -249,6 +365,17 @@ function createStreamingResponse(
             }
           }
         }
+
+        // Log generation summary
+        console.log('📊 Generation summary:', {
+          textLength: fullText.length,
+          functionCallsGenerated: functionCalls.length,
+          functionCallNames: functionCalls.map(fc => fc.name),
+          hasToolResults: !!(toolResults && toolResults.length > 0),
+          willPauseForTools:
+            functionCalls.length > 0 &&
+            (!toolResults || toolResults.length === 0),
+        });
 
         // If we have function calls and no tool results were provided,
         // pause here and wait for frontend to execute tools

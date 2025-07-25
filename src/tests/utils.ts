@@ -266,8 +266,14 @@ export async function executeToolWorkflow(
 }
 
 export class TestLogger {
+  private static verbose = false;
+
   private static formatTimestamp(): string {
     return new Date().toISOString().substring(11, 23);
+  }
+
+  static setVerbose(enabled: boolean): void {
+    this.verbose = enabled;
   }
 
   static info(message: string, data?: any): void {
@@ -302,7 +308,7 @@ export class TestLogger {
   }
 
   static debug(message: string, data?: any): void {
-    if (process.env.NODE_ENV === 'development') {
+    if (this.verbose || process.env.NODE_ENV === 'development') {
       console.log(`[${this.formatTimestamp()}] 🔍 ${message}`);
       if (data) {
         console.log('   ', JSON.stringify(data, null, 2));
