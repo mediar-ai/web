@@ -17,13 +17,11 @@ interface FilteredStats {
 interface FilteredStatsDisplayProps {
   userId: string;
   timeBoundary: TimeBoundary;
-  isLoading?: boolean;
 }
 
 export function FilteredStatsDisplay({ 
   userId, 
-  timeBoundary, 
-  isLoading = false 
+  timeBoundary 
 }: FilteredStatsDisplayProps) {
   const [filteredStats, setFilteredStats] = useState<FilteredStats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
@@ -80,7 +78,7 @@ export function FilteredStatsDisplay({
     return null;
   }
 
-  if (isLoading || isLoadingStats) {
+  if (isLoadingStats) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin" />

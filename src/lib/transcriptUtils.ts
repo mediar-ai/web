@@ -30,19 +30,16 @@ export interface TranscriptSummary {
 /**
  * Format transcripts for inclusion in LLM prompts
  * @param transcripts Array of transcript items
- * @param maxLength Maximum character length for the formatted output
- * @returns Formatted transcript string for prompt inclusion
+ * @returns Formatted transcript string for prompt inclusion (no length limit)
  */
 export function formatTranscriptsForPrompt(
-  transcripts: TranscriptItem[], 
-  maxLength: number = 2000
+  transcripts: TranscriptItem[]
 ): string {
   if (!transcripts || transcripts.length === 0) {
     return 'No conversation transcripts available for this time period.';
   }
 
   let formatted = '';
-  let currentLength = 0;
 
   // Sort by timestamp
   const sortedTranscripts = transcripts.sort((a, b) => 
@@ -56,15 +53,7 @@ export function formatTranscriptsForPrompt(
       : String(transcript.content);
     
     const entry = `[${timestamp}] ${transcript.role}: ${content}\n`;
-    
-    // Check if adding this entry would exceed max length
-    if (currentLength + entry.length > maxLength) {
-      formatted += '... (transcript truncated due to length)\n';
-      break;
-    }
-    
     formatted += entry;
-    currentLength += entry.length;
   }
 
   return formatted;
@@ -224,20 +213,18 @@ export function formatUserInstructions(instructions?: string): string {
  * Combine transcript data with user instructions for comprehensive context
  * @param transcripts Array of transcript items
  * @param userInstructions Optional user instructions
- * @param maxTranscriptLength Maximum length for transcript portion
- * @returns Combined context string
+ * @returns Combined context string (no length limit)
  */
 export function buildComprehensiveContext(
   transcripts: TranscriptItem[],
-  userInstructions?: string,
-  maxTranscriptLength: number = 1500
+  userInstructions?: string
 ): string {
   console.log('🔧 Building comprehensive context for workflow synthesis:');
   console.log(`📊 Transcripts: ${transcripts.length} messages`);
   console.log(`📝 Instructions: ${userInstructions ? 'provided' : 'none'}`);
-  console.log(`📏 Max transcript length: ${maxTranscriptLength} chars`);
+  console.log('📏 No transcript length limits applied');
   
-  const transcriptContext = formatTranscriptsForPrompt(transcripts, maxTranscriptLength);
+  const transcriptContext = formatTranscriptsForPrompt(transcripts);
   const instructionsContext = formatUserInstructions(userInstructions);
   const summary = createTranscriptSummary(transcripts);
 

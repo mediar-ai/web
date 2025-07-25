@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { getTimezoneDisplay, dateToLocalString, dateStringToLocal } from '@/lib/timezoneUtils';
 
 interface TimeBoundary {
   startDate: Date | null;
@@ -21,6 +22,13 @@ interface TimeBoundarySelectorProps {
   selectedBoundary: TimeBoundary;
   onBoundaryChange: (boundary: TimeBoundary) => void;
   disabled?: boolean;
+  userId?: string; // Added userId prop
+}
+
+interface UserDataRange {
+  earliestTimestamp: string;
+  latestTimestamp: string;
+  totalRangeHours: number;
 }
 
 const QUICK_OPTIONS: QuickOption[] = [
@@ -29,40 +37,60 @@ const QUICK_OPTIONS: QuickOption[] = [
   { label: '24 hours', minutes: 24 * 60 },
 ];
 
-// Helper function to convert UTC Date to datetime-local format (displaying UTC time)
-const dateToUTCString = (date: Date): string => {
-  return date.toISOString().slice(0, 16);
-};
 
-// Helper function to interpret datetime-local input as UTC time
-const dateStringToUTC = (dateString: string): Date => {
-  // Treat the input as UTC by appending 'Z'
-  return new Date(dateString + ':00.000Z');
-};
 
 export function TimeBoundarySelector({ 
   selectedBoundary, 
   onBoundaryChange,
-  disabled = false 
+  disabled = false,
+  userId 
 }: TimeBoundarySelectorProps) {
   const [selectedQuickOption, setSelectedQuickOption] = useState<number | null>(null);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [useCustomRange, setUseCustomRange] = useState(false);
+  const [userDataRange, setUserDataRange] = useState<UserDataRange | null>(null);
+  const [isLoadingDataRange, setIsLoadingDataRange] = useState(false);
+
+  // Fetch user's data range when userId changes
+  useEffect(() => {
+    if (userId) {
+      setIsLoadingDataRange(true);
+      fetch(`/api/users/${userId}/data-range`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.earliestTimestamp && data.latestTimestamp) {
+            setUserDataRange(data);
+            console.log(`📊 User data range: ${data.earliestTimestamp} to ${data.latestTimestamp} (${data.totalRangeHours}h total)`);
+          } else {
+            console.warn('No data range found for user:', userId);
+            setUserDataRange(null);
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching user data range:', error);
+          setUserDataRange(null);
+        })
+        .finally(() => {
+          setIsLoadingDataRange(false);
+        });
+    }
+  }, [userId]);
 
   // Update custom date inputs when selectedBoundary changes from external source
   useEffect(() => {
     if (selectedBoundary.startDate && selectedBoundary.endDate) {
-      const startStr = dateToUTCString(selectedBoundary.startDate);
-      const endStr = dateToUTCString(selectedBoundary.endDate);
+      const startStr = dateToLocalString(selectedBoundary.startDate);
+      const endStr = dateToLocalString(selectedBoundary.endDate);
       setCustomStartDate(startStr);
       setCustomEndDate(endStr);
       
       // Only auto-detect quick options if not already in custom range mode
-      if (!useCustomRange) {
-        // Check if this matches any quick option
-        const now = new Date();
-        const diffMinutes = Math.round((now.getTime() - selectedBoundary.startDate.getTime()) / (1000 * 60));
+      if (!useCustomRange && userDataRange) {
+        // Check if this matches any quick option based on user's data range
+        const latestDataTime = new Date(userDataRange.latestTimestamp).getTime();
+        const selectedStartTime = selectedBoundary.startDate.getTime();
+        const diffMinutes = Math.round((latestDataTime - selectedStartTime) / (1000 * 60));
         const matchingOptionIndex = QUICK_OPTIONS.findIndex(opt => Math.abs(opt.minutes - diffMinutes) < 2);
         
         if (matchingOptionIndex >= 0) {
@@ -74,12 +102,33 @@ export function TimeBoundarySelector({
         }
       }
     }
-  }, [selectedBoundary, useCustomRange]);
+  }, [selectedBoundary, useCustomRange, userDataRange]);
 
   const handleQuickOptionSelect = (optionIndex: number) => {
     const option = QUICK_OPTIONS[optionIndex];
-    const endDate = new Date();
-    const startDate = new Date(endDate.getTime() - option.minutes * 60 * 1000);
+    
+    // If we have user data range, calculate from their latest data point
+    // Otherwise, fall back to current time
+    let endDate: Date;
+    let startDate: Date;
+    
+    if (userDataRange) {
+      endDate = new Date(userDataRange.latestTimestamp);
+      startDate = new Date(endDate.getTime() - option.minutes * 60 * 1000);
+      
+      // Ensure we don't go before the user's earliest data
+      const earliestDate = new Date(userDataRange.earliestTimestamp);
+      if (startDate < earliestDate) {
+        startDate = earliestDate;
+      }
+      
+      console.log(`🕐 Quick option: ${option.label} from user's data range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    } else {
+      // Fallback to current time if no user data range available
+      endDate = new Date();
+      startDate = new Date(endDate.getTime() - option.minutes * 60 * 1000);
+      console.log(`🕐 Quick option: ${option.label} from current time (fallback): ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    }
     
     setSelectedQuickOption(optionIndex);
     setUseCustomRange(false);
@@ -93,15 +142,25 @@ export function TimeBoundarySelector({
     
     if (newUseCustomRange) {
       // Switching to custom range - initialize with current values or reasonable defaults
-      const now = new Date();
-      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      let defaultEnd: Date;
+      let defaultStart: Date;
+      
+      if (userDataRange) {
+        // Use user's data range as defaults
+        defaultEnd = new Date(userDataRange.latestTimestamp);
+        defaultStart = new Date(userDataRange.earliestTimestamp);
+      } else {
+        // Fallback to current time
+        defaultEnd = new Date();
+        defaultStart = new Date(defaultEnd.getTime() - 60 * 60 * 1000); // 1 hour ago
+      }
       
       const startStr = selectedBoundary.startDate ? 
-        dateToUTCString(selectedBoundary.startDate) :
-        dateToUTCString(oneHourAgo);
+        dateToLocalString(selectedBoundary.startDate) :
+        dateToLocalString(defaultStart);
       const endStr = selectedBoundary.endDate ? 
-        dateToUTCString(selectedBoundary.endDate) :
-        dateToUTCString(now);
+        dateToLocalString(selectedBoundary.endDate) :
+        dateToLocalString(defaultEnd);
       
       setCustomStartDate(startStr);
       setCustomEndDate(endStr);
@@ -109,30 +168,25 @@ export function TimeBoundarySelector({
       // Only update boundary if we don't already have dates
       if (!selectedBoundary.startDate || !selectedBoundary.endDate) {
         onBoundaryChange({
-          startDate: dateStringToUTC(startStr),
-          endDate: dateStringToUTC(endStr)
+          startDate: dateStringToLocal(startStr),
+          endDate: dateStringToLocal(endStr)
         });
       }
     }
   };
 
-  const handleCustomDateChange = (type: 'start' | 'end', value: string) => {
-    if (type === 'start') {
-      setCustomStartDate(value);
-    } else {
-      setCustomEndDate(value);
-    }
-    
-    // Update boundary if both dates are valid - interpret as UTC
-    const startDate = type === 'start' ? dateStringToUTC(value) : dateStringToUTC(customStartDate);
-    const endDate = type === 'end' ? dateStringToUTC(value) : dateStringToUTC(customEndDate);
-    
-    if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && startDate <= endDate) {
-      onBoundaryChange({ startDate, endDate });
+  const handleCustomDateChange = () => {
+    if (customStartDate && customEndDate) {
+      const startDate = dateStringToLocal(customStartDate);
+      const endDate = dateStringToLocal(customEndDate);
+      
+      if (startDate && endDate && startDate <= endDate) {
+        onBoundaryChange({ startDate, endDate });
+      }
     }
   };
 
-  const resetToBoundary = () => {
+  const handleClear = () => {
     setSelectedQuickOption(null);
     setUseCustomRange(false);
     setCustomStartDate('');
@@ -142,10 +196,20 @@ export function TimeBoundarySelector({
 
   return (
     <Card className="w-full border-black">
-      <CardContent className="p-4">
+      <CardContent className="p-3">
+        {/* Title with timezone underneath */}
+        <div className="mb-3">
+          <Label className="text-sm font-semibold block">
+            Time Range for Synthesis
+            {isLoadingDataRange && <span className="ml-2 text-xs text-muted-foreground">(Loading data range...)</span>}
+          </Label>
+          <span className="text-xs text-muted-foreground">
+            ({getTimezoneDisplay()})
+          </span>
+        </div>
+        
         {/* Everything in one line */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <Label className="text-sm font-semibold whitespace-nowrap">Time Range for Synthesis</Label>
+        <div className="flex items-center gap-3 flex-wrap">
           
           {/* Time selection buttons */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -155,7 +219,7 @@ export function TimeBoundarySelector({
                 variant={selectedQuickOption === index ? "default" : "outline"}
                 size="sm"
                 onClick={() => handleQuickOptionSelect(index)}
-                disabled={disabled}
+                disabled={disabled || isLoadingDataRange}
                 className={cn(
                   "h-8 text-xs border-black",
                   selectedQuickOption === index 
@@ -187,12 +251,15 @@ export function TimeBoundarySelector({
             {selectedBoundary.startDate && selectedBoundary.endDate && (
               <span className="text-xs text-muted-foreground">
                 {selectedBoundary.startDate.toLocaleDateString()} {selectedBoundary.startDate.toLocaleTimeString()} - {selectedBoundary.endDate.toLocaleDateString()} {selectedBoundary.endDate.toLocaleTimeString()}
+                <span className="ml-1 text-xs opacity-75">
+                  (Local Time)
+                </span>
               </span>
             )}
             <Button
               variant="outline"
               size="sm"
-              onClick={resetToBoundary}
+              onClick={handleClear}
               disabled={disabled || (!selectedBoundary.startDate && !selectedBoundary.endDate)}
               className="h-8 px-2 text-xs border-black hover:bg-gray-100"
             >
@@ -203,25 +270,37 @@ export function TimeBoundarySelector({
 
         {/* Custom Date Inputs */}
         {useCustomRange && (
-          <div className="grid grid-cols-2 gap-4 mt-4">
+          <div className="grid grid-cols-2 gap-3 mt-3">
             <div className="space-y-1">
-              <Label htmlFor="start-date" className="text-xs">Start Date & Time</Label>
+              <Label htmlFor="start-date" className="text-xs">
+                Start Date & Time
+                <span className="text-muted-foreground ml-1">
+                  (Local: {getTimezoneDisplay().split(' ')[1]})
+                </span>
+              </Label>
               <Input
                 id="start-date"
                 type="datetime-local"
                 value={customStartDate}
-                onChange={(e) => handleCustomDateChange('start', e.target.value)}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                onBlur={handleCustomDateChange}
                 disabled={disabled}
                 className="h-8 text-xs border-black focus:border-black focus:ring-black"
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="end-date" className="text-xs">End Date & Time</Label>
+              <Label htmlFor="end-date" className="text-xs">
+                End Date & Time
+                <span className="text-muted-foreground ml-1">
+                  (Local: {getTimezoneDisplay().split(' ')[1]})
+                </span>
+              </Label>
               <Input
                 id="end-date"
                 type="datetime-local"
                 value={customEndDate}
-                onChange={(e) => handleCustomDateChange('end', e.target.value)}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                onBlur={handleCustomDateChange}
                 disabled={disabled}
                 className="h-8 text-xs border-black focus:border-black focus:ring-black"
               />

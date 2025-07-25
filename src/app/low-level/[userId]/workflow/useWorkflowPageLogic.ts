@@ -738,7 +738,12 @@ export function useWorkflowPageLogic(userId: string) {
             userId: userId,
             workflowContext: workflowContext,
             userInstructions: workflowContext?.user_instructions,
-          }
+          },
+          // Add time boundaries if they exist
+          ...(timeBoundary.startDate && timeBoundary.endDate && {
+            startDate: timeBoundary.startDate.toISOString(),
+            endDate: timeBoundary.endDate.toISOString()
+          })
         }),
       });
 
@@ -1116,6 +1121,11 @@ export function useWorkflowPageLogic(userId: string) {
   }, [userId]);
 
   // Load existing synthesis session on page load
+  useEffect(() => {
+    // Set user ID and mark fetching as complete since we don't fetch events on this page
+    setUserId(userId);
+    setIsFetchingEvents(false);
+  }, [userId, setUserId]);
 
   return {
     // Core State
