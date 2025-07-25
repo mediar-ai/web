@@ -8,7 +8,51 @@ const isDeploymentRoute = createRouteMatcher([
   '/deployments(.*)'
 ]);
 
+const isPublicApiRoute = createRouteMatcher([
+  '/api/ingest(.*)',
+  '/api/stream(.*)',
+  '/api/capture(.*)'
+]);
+
+const isProtectedApiRoute = createRouteMatcher([
+  '/api/workflows/export(.*)',
+  '/api/analyze-raw-timeline-events(.*)',
+  '/api/users/(.*)',
+  '/api/sessions/(.*)',
+  '/api/timeline-event-mappings(.*)',
+  '/api/save-dataset-entry(.*)',
+  '/api/fetch-analyses-by-timestamps(.*)',
+  '/api/fetch-combined-analyses-v2(.*)',
+  '/api/generate-events(.*)',
+  '/api/initiate-workflow-analysis(.*)',
+  '/api/mcp/(.*)',
+  '/api/remote-workflows/(.*)',
+  '/api/edit-workflow(.*)',
+  '/api/define-workflow-boundaries(.*)',
+  '/api/synthesize-workflow(.*)',
+  '/api/workflows/(.*)'
+]);
+
 export default clerkMiddleware(async (auth, req) => {
+  // Skip authentication for public API routes
+  if (isPublicApiRoute(req)) {
+    return;
+  }
+  
+  // Handle protected API routes - require authentication but allow any authenticated user
+  if (isProtectedApiRoute(req)) {
+    const { userId } = await auth();
+    
+    if (!userId) {
+      console.log('[Middleware] Protected API route accessed without authentication:', req.url);
+      await auth.protect();
+      return;
+    }
+    
+    console.log('[Middleware] Protected API route accessed by authenticated user:', userId);
+    return; // Allow access for authenticated users
+  }
+  
   // Protect admin and deployment routes
   if (isAdminRoute(req) || isDeploymentRoute(req)) {
     const { userId } = await auth();
