@@ -54,15 +54,28 @@ export async function POST(req: NextRequest) {
             actualPrompt,
             context,
             model,
-            WORKFLOW_STEP_ANALYSIS_SCHEMA
+            WORKFLOW_STEP_ANALYSIS_SCHEMA,
+            "application/json",
+            true // 🔥 ENABLE USAGE METADATA TRACKING
         );
 
         console.log('✅ Vertex AI step analysis successful');
         
+        // 🔥 EXTRACT CONTENT AND USAGE FROM NEW RESPONSE FORMAT
+        const analysisContent = result.content;
+        const usageMetadata = result.usage;
+        
+        console.log('📊 Usage metadata:', usageMetadata);
+        
         // Return both analysis and structured_output for compatibility with UI route
         return NextResponse.json({
-            analysis: result,
-            structured_output: result
+            analysis: analysisContent,
+            structured_output: analysisContent,
+            usage: usageMetadata ? {
+                input_tokens: usageMetadata.promptTokenCount,
+                output_tokens: usageMetadata.candidatesTokenCount,
+                total_tokens: usageMetadata.totalTokenCount
+            } : null
         });
 
     } catch (error) {
