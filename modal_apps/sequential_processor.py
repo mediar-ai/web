@@ -46,6 +46,55 @@ DB_CONFIG = {
     'password': 'dS64xX6mU3E4Sbyc'
 }
 
+# Function verification for edge case fix
+def verify_function_edge_case_fix():
+    """Verify the database query handles the edge case correctly"""
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    
+    # Test Matt's user (known edge case with multiple events per timestamp)
+    user_id = 'cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9'
+    
+    try:
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM low_level_events_enriched
+            WHERE user_id = %s
+              AND event_type = 'ui_tree'
+              AND NOT EXISTS (
+                  SELECT 1 FROM low_level_workflow_analyses llwa
+                  WHERE llwa.user_id = low_level_events_enriched.user_id
+                    AND llwa.client_timestamp = low_level_events_enriched.created_at
+              )
+        """, (user_id,))
+        unprocessed_count = cur.fetchone()[0]
+        
+        cur.execute("""SELECT COUNT(*) FROM low_level_events_enriched 
+                       WHERE user_id = %s 
+                       AND event_type = 'ui_tree'""", (user_id,))
+        ui_events = cur.fetchone()[0]
+        
+        cur.execute('SELECT COUNT(*) FROM low_level_workflow_analyses WHERE user_id = %s', (user_id,))
+        analyses = cur.fetchone()[0]
+        
+        expected = ui_events - analyses
+        
+        print(f"🧪 FUNCTION EDGE CASE TEST:")
+        print(f"  Matt UI Events: {ui_events}, Analyses: {analyses}")
+        print(f"  Function Result: {unprocessed_count}, Expected: {expected}")
+        
+        if unprocessed_count == expected and unprocessed_count > 0:
+            print(f"  ✅ EDGE CASE FUNCTION WORKING!")
+            return True
+        else:
+            print(f"  ❌ EDGE CASE FUNCTION BROKEN: Expected {expected}, got {unprocessed_count}")
+            return False
+    except Exception as e:
+        print(f"  ❌ FUNCTION TEST ERROR: {e}")
+        return False
+    finally:
+        conn.close()
+
 # Processing status constants
 PROCESSING_STATUS = {
     'PENDING': 'pending',
@@ -336,30 +385,31 @@ def get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id):
     Returns None if no events available or all are being processed.
     """
     try:
-        # Get next unprocessed UI tree event
+        # Get next unprocessed UI tree event using low_level_events_enriched view directly
         cur.execute("""
-            SELECT id, user_id, session_id, created_at, payload
-            FROM low_level_events_enriched
-            WHERE user_id = %s 
-              AND event_type = 'ui_tree'
-              AND id NOT IN (
-                  SELECT DISTINCT lle.id
-                  FROM low_level_events_enriched lle
-                  INNER JOIN low_level_workflow_analyses llwa 
-                  ON lle.created_at = llwa.client_timestamp 
-                  AND lle.user_id = llwa.user_id
-                  WHERE lle.user_id = %s
-              )
-              AND id NOT IN (
-                  SELECT event_id FROM processing_locks 
-                  WHERE user_id = %s AND (
-                      (status = 'in_progress' AND expires_at > NOW()) OR
-                      status = 'failed'
+            WITH available_events AS (
+                SELECT id, user_id, session_id, created_at, payload
+                FROM low_level_events_enriched
+                WHERE user_id = %s
+                  AND event_type = 'ui_tree'
+                  AND id NOT IN (
+                      SELECT event_id FROM processing_locks 
+                      WHERE user_id = %s AND (
+                          (status = 'in_progress' AND expires_at > NOW()) OR
+                          status = 'failed'
+                      )
                   )
-              )
-            ORDER BY created_at ASC
-            LIMIT 1
-        """, (user_id, user_id, user_id))
+                  AND NOT EXISTS (
+                      SELECT 1 FROM low_level_workflow_analyses llwa
+                      WHERE llwa.user_id = low_level_events_enriched.user_id
+                        AND llwa.client_timestamp = low_level_events_enriched.created_at
+                  )
+                ORDER BY created_at ASC, id ASC
+                LIMIT 1
+            )
+            SELECT id, user_id, session_id, created_at, payload
+            FROM available_events
+        """, (user_id, user_id))
         
         event = cur.fetchone()
         if not event:
@@ -382,7 +432,14 @@ def get_next_unprocessed_event(cur, user_id):
     """Get the next unprocessed UI tree event for a user"""
     cur.execute("""
         SELECT id, user_id, session_id, created_at, payload
-        FROM public.get_unprocessed_ui_tree_events(p_user_id := %s)
+        FROM low_level_events_enriched
+        WHERE user_id = %s
+          AND event_type = 'ui_tree'
+          AND NOT EXISTS (
+              SELECT 1 FROM low_level_workflow_analyses llwa
+              WHERE llwa.user_id = low_level_events_enriched.user_id
+                AND llwa.client_timestamp = low_level_events_enriched.created_at
+          )
         ORDER BY created_at ASC
         LIMIT 1;
     """, (user_id,))
@@ -989,7 +1046,15 @@ def build_fresh_context(cur, user_id, current_event):
 def has_more_unprocessed_events(cur, user_id):
     """Check if user has more unprocessed events"""
     cur.execute("""
-        SELECT COUNT(*) FROM public.get_unprocessed_ui_tree_events(p_user_id := %s);
+        SELECT COUNT(*)
+        FROM low_level_events_enriched
+        WHERE user_id = %s
+          AND event_type = 'ui_tree'
+          AND NOT EXISTS (
+              SELECT 1 FROM low_level_workflow_analyses llwa
+              WHERE llwa.user_id = low_level_events_enriched.user_id
+                AND llwa.client_timestamp = low_level_events_enriched.created_at
+          );
     """, (user_id,))
     count = cur.fetchone()[0]
     return count > 0
@@ -1108,6 +1173,27 @@ def process_all_events_for_user(user_id: str):
         # Additional smart cleanup
         cleanup_expired_locks(cur, conn)
 
+        # === EDGE CASE VERIFICATION: Test function for this specific user ===
+        if user_id == 'cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9':  # Matt's ID
+            print(f"🧪 INDIVIDUAL PROCESSOR FUNCTION TEST for Matt:")
+            cur.execute("""
+                SELECT COUNT(*)
+                FROM low_level_events_enriched
+                WHERE user_id = %s
+                  AND event_type = 'ui_tree'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM low_level_workflow_analyses llwa
+                      WHERE llwa.user_id = low_level_events_enriched.user_id
+                        AND llwa.client_timestamp = low_level_events_enriched.created_at
+                  )
+            """, (user_id,))
+            processor_result = cur.fetchone()[0]
+            print(f"  Individual processor sees: {processor_result} unprocessed events")
+            if processor_result == 0:
+                print(f"  ❌ PROCESSOR CACHE ISSUE: Should see 26 events!")
+            else:
+                print(f"  ✅ Processor sees events correctly")
+
         # Define retry logic variables
         base_retry_delay_seconds = 60
         max_retries = 6
@@ -1210,21 +1296,43 @@ def process_all_events_for_user(user_id: str):
                             INSERT INTO low_level_workflow_analyses 
                             (user_id, session_id, client_timestamp, llm_structured_output, window_title)
                             VALUES (%s, %s, %s, %s, %s)
+                            RETURNING id
                         """, (user_id, session_id, created_at.isoformat(), json.dumps(structured_output), window_title))
+                        
+                        # Get the analysis_id for logging
+                        analysis_id = cur.fetchone()[0]
                         conn.commit()
                         
                         # Save context metadata
                         cur.execute("""
                             UPDATE low_level_workflow_analyses 
                             SET context_metadata = %s
-                            WHERE user_id = %s AND client_timestamp = %s
-                        """, (json.dumps(context_metadata), user_id, created_at.isoformat()))
+                            WHERE id = %s
+                        """, (json.dumps(context_metadata), analysis_id))
                         conn.commit()
+                        
+                        # 🔥 LOG SUCCESSFUL LLM CALL
+                        print(f"📊 Logging LLM trace for analysis {analysis_id}...")
+                        log_llm_trace(
+                            cur, conn, user_id, session_id, analysis_id, 
+                            'workflow_analysis', model_name, api_payload, result, 
+                            structured_output, processing_time_ms, tokens_input, 
+                            tokens_output, cost_usd, 'success', None, context_metadata
+                        )
                         
                         total_processed += 1
                         print(f"✅ Successfully processed event {event_id} ({total_processed} total)")
                     else:
                         print(f"❌ No structured output received for event {event_id}")
+                        
+                        # 🔥 LOG FAILED LLM CALL (no structured output)
+                        print(f"📊 Logging failed LLM trace (no structured output)...")
+                        log_llm_trace(
+                            cur, conn, user_id, session_id, None, 
+                            'workflow_analysis', model_name, api_payload, result, 
+                            None, processing_time_ms, tokens_input, 
+                            tokens_output, cost_usd, 'failed', 'No structured output received', context_metadata
+                        )
                     
                     # Release lock with completed status
                     release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['COMPLETED'])
@@ -1232,11 +1340,51 @@ def process_all_events_for_user(user_id: str):
                     
                 except modal.exception.ClientClosed as modal_error:
                     print(f"🔌 Modal client disconnected for event {event_id}: {modal_error}")
+                    
+                    # 🔥 LOG MODAL CLIENT FAILURE (if we have LLM context)
+                    if 'api_payload' in locals() and 'model_name' in locals():
+                        print(f"📊 Logging Modal client failure for LLM call...")
+                        processing_time_ms = int((time.time() - start_time) * 1000) if 'start_time' in locals() else None
+                        log_llm_trace(
+                            cur, conn, user_id, session_id, None, 
+                            'workflow_analysis', model_name, api_payload, None, 
+                            None, processing_time_ms, None, None, None, 
+                            'failed', f'Modal client disconnected: {modal_error}', 
+                            context_metadata if 'context_metadata' in locals() else None
+                        )
+                    
                     # Release lock with failed status - Modal infrastructure failure
                     release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['FAILED'])
                     event_processed_or_failed = True  # Don't retry Modal client failures
                 except Exception as event_error:
                     print(f"❌ Error processing event {event_id}: {event_error}")
+                    
+                    # 🔥 LOG GENERAL LLM FAILURE (if we have LLM context)
+                    if 'api_payload' in locals() and 'model_name' in locals():
+                        print(f"📊 Logging general failure for LLM call...")
+                        processing_time_ms = int((time.time() - start_time) * 1000) if 'start_time' in locals() else None
+                        error_type = type(event_error).__name__
+                        error_message = f'{error_type}: {str(event_error)}'
+                        
+                        # Check if this was an HTTP error (API call made but failed)
+                        if hasattr(event_error, 'response'):
+                            try:
+                                response_data = event_error.response.json() if hasattr(event_error.response, 'json') else None
+                                status_code = getattr(event_error.response, 'status_code', None)
+                                error_message = f'HTTP {status_code}: {error_message}'
+                            except:
+                                response_data = None
+                        else:
+                            response_data = None
+                            
+                        log_llm_trace(
+                            cur, conn, user_id, session_id, None, 
+                            'workflow_analysis', model_name, api_payload, response_data, 
+                            None, processing_time_ms, None, None, None, 
+                            'failed', error_message, 
+                            context_metadata if 'context_metadata' in locals() else None
+                        )
+                    
                     # Release lock with failed status
                     release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['FAILED'])
                     event_processed_or_failed = True # Mark as failed to stop retrying this event
@@ -1310,6 +1458,12 @@ def scheduled_processing():
     Uses the efficient full parallel processing approach with better conflict prevention.
     """
     print("🔄 Starting scheduled FULL parallel processing...")
+    
+    # Verify edge case fix is working
+    print("🧪 Verifying edge case function fix...")
+    if not verify_function_edge_case_fix():
+        print("❌ EDGE CASE FUNCTION VERIFICATION FAILED!")
+    
     try:
         # Check current processor load before spawning more
         conn = get_database_connection()
@@ -1338,6 +1492,30 @@ def scheduled_processing():
             return {"success": True, "message": "Skipped due to active processors", "active_processors": active_count}
         
         print(f"📊 Active processors: {active_count}/{MAX_CONCURRENT_PROCESSORS}")
+        
+        # 🧹 CLEAN UP STALE COORDINATOR LOCKS BEFORE CHECKING
+        print("🧹 Cleaning up stale coordinator locks...")
+        cur.execute("""
+            UPDATE processing_locks 
+            SET status = 'failed', updated_at = NOW()
+            WHERE processor_id LIKE 'full-coordinator-%' 
+            AND (
+                expires_at < NOW() 
+                OR (NOW() - updated_at) > INTERVAL '5 minutes'
+                OR status = 'completed'
+            )
+            RETURNING processor_id
+        """)
+        
+        cleaned_coordinators = cur.fetchall()
+        if cleaned_coordinators:
+            print(f"🧹 Cleaned up {len(cleaned_coordinators)} stale coordinator locks")
+            for (processor_id,) in cleaned_coordinators:
+                print(f"  - {processor_id}")
+        else:
+            print("✅ No stale coordinator locks found")
+        
+        conn.commit()
         
         # Check if any scheduled processing is already running
         cur.execute("""
