@@ -79,6 +79,9 @@ dev.log
 scripts/Mediar Log*
 .env*.local
 
+# Modal logs (all variants)
+*modal_logs*.txt
+
 # Local scripts folder for temporary/development scripts
 local-scripts/
 
