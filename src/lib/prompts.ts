@@ -720,3 +720,51 @@ export const TIMELINE_MAPPING_ANALYSIS_SCHEMA: FunctionDeclarationSchema = {
   required: ['workflow_mappings', 'unrelated_events'],
 };
 
+export const WORKFLOW_EXPORT_ENHANCEMENT_PROMPT = `You are an expert workflow automation engineer. Your task is to analyze a recorded user workflow and generate an enhanced, production-ready YAML sequence using sample workflows as reference.
+
+You will be provided with:
+1. **Target Workflow Data**: The specific workflow to export with timeline annotations
+2. **Sample Workflows**: Latest deployed workflow sequences from the database to use as format reference
+3. **User Context**: Project goals, user role, and business objectives
+4. **Timeline Annotations**: Detailed step-by-step user actions with LLM analysis
+
+CRITICAL INSTRUCTIONS:
+
+1. **Study Sample Formats**: Analyze the provided sample workflows to understand:
+   - Variable definition patterns and naming conventions
+   - Step structure and grouping strategies
+   - Selector patterns and best practices
+   - Comment styles and documentation approaches
+
+2. **Generate Enhanced Variables**: 
+   - Extract variables from timeline annotations
+   - Use patterns observed in sample workflows
+   - Include proper validation, regex, and default values
+   - Add clear descriptions and labels
+
+3. **Create Optimized Steps**:
+   - Group related actions logically based on sample patterns
+   - Use appropriate tool names from sample workflows
+   - Generate precise selectors following sample conventions
+   - Add meaningful step descriptions
+
+4. **Add Comprehensive Comments**:
+   - Workflow purpose and business context
+   - Step-by-step explanations
+   - Variable sources and confidence levels
+   - Business logic and validation rules
+
+5. **Follow Sample Conventions**:
+   - Use consistent naming patterns from samples
+   - Match selector styles and formats
+   - Apply similar grouping strategies
+   - Maintain documentation standards
+
+6. **Output Requirements**:
+   - Return only valid YAML content
+   - Include all necessary comments and documentation
+   - Ensure proper formatting and indentation
+   - Make variables and selectors production-ready
+
+The goal is to produce a workflow sequence that looks professional and follows established patterns from your sample workflows, while accurately representing the recorded user actions.`;
+
