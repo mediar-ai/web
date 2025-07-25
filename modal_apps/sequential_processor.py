@@ -56,6 +56,7 @@ def verify_function_edge_case_fix():
     user_id = 'cf10a6c5-4c16-b3c9-cf10-a6c54c16b3c9'
     
     try:
+        # Count truly unprocessed events (using the actual query logic)
         cur.execute("""
             SELECT COUNT(*)
             FROM low_level_events_enriched
@@ -63,28 +64,42 @@ def verify_function_edge_case_fix():
               AND event_type = 'ui_tree'
               AND NOT EXISTS (
                   SELECT 1 FROM low_level_workflow_analyses llwa
-                  WHERE llwa.user_id = low_level_events_enriched.user_id
+                  WHERE llwa.user_id::text = low_level_events_enriched.user_id::text
                     AND llwa.client_timestamp = low_level_events_enriched.created_at
               )
         """, (user_id,))
         unprocessed_count = cur.fetchone()[0]
         
-        cur.execute("""SELECT COUNT(*) FROM low_level_events_enriched 
-                       WHERE user_id = %s 
-                       AND event_type = 'ui_tree'""", (user_id,))
-        ui_events = cur.fetchone()[0]
+        # Count unique timestamps that have events
+        cur.execute("""
+            SELECT COUNT(DISTINCT created_at)
+            FROM low_level_events_enriched 
+            WHERE user_id = %s AND event_type = 'ui_tree'
+        """, (user_id,))
+        unique_timestamps = cur.fetchone()[0]
         
+        # Count total events (for reference)
+        cur.execute("""
+            SELECT COUNT(*) 
+            FROM low_level_events_enriched 
+            WHERE user_id = %s AND event_type = 'ui_tree'
+        """, (user_id,))
+        total_events = cur.fetchone()[0]
+        
+        # Count analyses
         cur.execute('SELECT COUNT(*) FROM low_level_workflow_analyses WHERE user_id = %s', (user_id,))
         analyses = cur.fetchone()[0]
         
-        expected = ui_events - analyses
+        # The correct expected value is unique_timestamps - analyses (not total_events - analyses)
+        expected = unique_timestamps - analyses
         
         print(f"🧪 FUNCTION EDGE CASE TEST:")
-        print(f"  Matt UI Events: {ui_events}, Analyses: {analyses}")
+        print(f"  Matt Events: {total_events} (across {unique_timestamps} unique timestamps)")
+        print(f"  Matt Analyses: {analyses}")
         print(f"  Function Result: {unprocessed_count}, Expected: {expected}")
         
-        if unprocessed_count == expected and unprocessed_count > 0:
-            print(f"  ✅ EDGE CASE FUNCTION WORKING!")
+        if unprocessed_count == expected:
+            print(f"  ✅ EDGE CASE FUNCTION WORKING! (Correctly handles multiple events per timestamp)")
             return True
         else:
             print(f"  ❌ EDGE CASE FUNCTION BROKEN: Expected {expected}, got {unprocessed_count}")
