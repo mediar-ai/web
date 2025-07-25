@@ -94,10 +94,9 @@ interface WorkflowData {
   detailed_workflow_data: Record<string, unknown>;
   synthesis_session_id: number | null;
   created_at: string;
-  inputs: string[] | null;
-  outputs: string[] | null;
-  steps: string[] | null;
-  business_logic: string[] | null;
+  workflow_context: Record<string, unknown> | null;
+  chat_history: Record<string, unknown> | null;
+  synthesis_status: string | null;
 }
 
 interface ExampleWorkflow {
