@@ -45,6 +45,8 @@ export async function GET(request: Request) {
       process.env.SUPABASE_SERVICE_KEY!
     );
 
+    // ✅ REVERTED: Use original lightweight session_metadata table as designed
+    // This is the correct approach - lightweight metadata summary table
     const { data: sessions, error: sessionsError } = await supabase
       .from('session_metadata')
       .select('*');
@@ -80,7 +82,7 @@ export async function GET(request: Request) {
       };
     });
     
-    const userIds = [...new Set(processedSessions.map(s => s.userId).filter(id => id !== 'unknown_user'))];
+    const userIds = [...new Set(processedSessions.map((s: Session) => s.userId).filter((id: string) => id !== 'unknown_user'))];
     
     // GET ACTUAL WORKFLOW COUNTS BY USER from low_level_workflows table
     const { data: workflowData, error: workflowError } = await supabase
