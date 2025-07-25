@@ -342,10 +342,9 @@ export async function POST(req: NextRequest) {
         detailed_workflow_data, 
         synthesis_session_id,
         created_at,
-        inputs,
-        outputs,
-        steps,
-        business_logic
+        workflow_context,
+        chat_history,
+        synthesis_status
       `)
       .eq('id', workflowId)
       .eq('user_id', userId)
