@@ -50,6 +50,7 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
+import { WorkflowExportDropdown } from '@/components/WorkflowExportDropdown';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
@@ -241,7 +242,7 @@ const STEP_DEFINITIONS: StepDefinition[] = [
 ];
 
 const StepperItem = memo(({
-  id, number, title, description, actionText, isLast, logic, saveStatus, setSaveStatus, setRefreshTrigger
+  id, number, title, description, actionText, isLast, logic, saveStatus, setSaveStatus, setRefreshTrigger, userId
 }: {
   id: string;
   number: number;
@@ -253,12 +254,13 @@ const StepperItem = memo(({
   saveStatus: 'idle' | 'saving' | 'success' | 'error';
   setSaveStatus: (status: 'idle' | 'saving' | 'success' | 'error') => void;
   setRefreshTrigger: (fn: (prev: number) => number) => void;
+  userId: string;
 }) => {
     const { 
       synthesisStep, isFetchingEvents, isAnalyzingEvents, runInitialAnalysis, isLoading, 
       refineAndIdentifyWorkflows, identifiedWorkflowNames, processAllWorkflows, 
       workflowBoundaries, proceedToSynthesis, generateAndSaveTimelineMapping, workflows,
-      isMappingTimeline, timelineAnnotations
+      isMappingTimeline, timelineAnnotations, timeBoundary
     } = logic;
 
     const actionMap: Record<string, (() => void) | undefined> = {
@@ -278,7 +280,7 @@ const StepperItem = memo(({
 };
 
         const enabledStates = {
-            'define-context': !isFetchingEvents,
+            'define-context': Boolean(!isFetchingEvents && timeBoundary.startDate && timeBoundary.endDate),
             'select-workflows': synthesisStep === 'context_editing',
             'define-boundaries': synthesisStep === 'workflow_editing' && identifiedWorkflowNames.length > 0,
             'timeline-mapping': synthesisStep === 'done',
@@ -338,7 +340,7 @@ const StepperItem = memo(({
             enabled: enabledStates[id as keyof typeof enabledStates] ?? false,
             showComponent: showComponentStates[id as keyof typeof showComponentStates] ?? false,
         };
-    }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, identifiedWorkflowNames, isMappingTimeline, timelineAnnotations]);
+    }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, identifiedWorkflowNames, isMappingTimeline, timelineAnnotations, timeBoundary]);
     
     const { completed, active, editable, enabled, showComponent } = stepState;
     const action = actionMap[id];
@@ -360,6 +362,8 @@ const StepperItem = memo(({
             setIsCollapsed(true);
         }
     }, [shouldBeExpanded, completed]);
+
+
 
     return (
         <div className="relative">
@@ -500,51 +504,61 @@ const StepperItem = memo(({
                                             </div>
                                           </div>
                                           
-                                          {/* Save Synthesis Button - Outside of mappings view */}
-                                          {logic.workflows && logic.workflows.length > 0 && logic.synthesisStep === 'done' && timelineAnnotations && (
-                                            <div className="mt-8 pt-6 border-t flex justify-center">
-                                              <Button 
-                                                variant="default" 
-                                                size="lg"
-                                                disabled={saveStatus === 'saving'}
-                                                onClick={async () => {
-                                                  setSaveStatus('saving');
-                                                  const result = await logic.saveSynthesis();
-                                                  if (result.success) {
-                                                    setSaveStatus('success');
-                                                    setRefreshTrigger(prev => prev + 1);
-                                                    setTimeout(() => setSaveStatus('idle'), 2000);
-                                                  } else {
-                                                    setSaveStatus('error');
-                                                    setTimeout(() => setSaveStatus('idle'), 3000);
-                                                  }
-                                                }}
-                                                className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
-                                              >
-                                                {saveStatus === 'saving' ? (
-                                                  <>
-                                                    <RefreshCw className="h-4 w-4 animate-spin" />
-                                                    Saving...
-                                                  </>
-                                                ) : saveStatus === 'success' ? (
-                                                  <>
-                                                    <CheckCircle className="h-4 w-4" />
-                                                    Saved!
-                                                  </>
-                                                ) : saveStatus === 'error' ? (
-                                                  <>
-                                                    <AlertCircle className="h-4 w-4" />
-                                                    Error
-                                                  </>
-                                                ) : (
-                                                  <>
-                                                    <PlusCircle className="h-4 w-4" />
-                                                    Save Synthesis
-                                                  </>
-                                                )}
-                                              </Button>
-                                            </div>
-                                          )}
+                                                                    {/* Save Synthesis & Export Buttons - Outside of mappings view */}
+                          {logic.workflows && logic.workflows.length > 0 && logic.synthesisStep === 'done' && timelineAnnotations && (
+                            <div className="mt-8 pt-6 border-t flex justify-center gap-4">
+                              <Button 
+                                variant="default" 
+                                size="lg"
+                                disabled={saveStatus === 'saving'}
+                                onClick={async () => {
+                                  setSaveStatus('saving');
+                                  const result = await logic.saveSynthesis();
+                                  if (result.success) {
+                                    setSaveStatus('success');
+                                    setRefreshTrigger(prev => prev + 1);
+                                    setTimeout(() => setSaveStatus('idle'), 2000);
+                                  } else {
+                                    setSaveStatus('error');
+                                    setTimeout(() => setSaveStatus('idle'), 3000);
+                                  }
+                                }}
+                                className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
+                              >
+                                {saveStatus === 'saving' ? (
+                                  <>
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                    Saving...
+                                  </>
+                                ) : saveStatus === 'success' ? (
+                                  <>
+                                    <CheckCircle className="h-4 w-4" />
+                                    Saved!
+                                  </>
+                                ) : saveStatus === 'error' ? (
+                                  <>
+                                    <AlertCircle className="h-4 w-4" />
+                                    Error
+                                  </>
+                                ) : (
+                                  <>
+                                    <PlusCircle className="h-4 w-4" />
+                                    Save Synthesis
+                                  </>
+                                )}
+                              </Button>
+                              
+                              <WorkflowExportDropdown 
+                                workflows={logic.workflows.map(w => ({
+                                  id: w.id,
+                                  title: w.title || 'Untitled Workflow',
+                                  created_at: new Date().toISOString()
+                                }))}
+                                userId={userId}
+                                disabled={saveStatus === 'saving'}
+                              />
+                            </div>
+                          )}
                                         </div>
                                       </div>
                                     </div>
@@ -583,6 +597,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
                   selectedBoundary={logic.timeBoundary}
                   onBoundaryChange={logic.setTimeBoundary}
                   disabled={logic.isLoading}
+                  userId={userId}
                 />
               </div>
               
@@ -591,7 +606,6 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
                 <FilteredStatsDisplay 
                   userId={userId}
                   timeBoundary={logic.timeBoundary}
-                  isLoading={logic.isLoading}
                 />
               </div>
               
@@ -634,6 +648,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
               saveStatus={saveStatus}
               setSaveStatus={setSaveStatus}
               setRefreshTrigger={setRefreshTrigger}
+              userId={userId}
             />
           ))}
         </div>
