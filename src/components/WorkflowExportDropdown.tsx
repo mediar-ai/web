@@ -1,17 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Download, FileText, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 
 interface WorkflowItem {
   id: number;
@@ -32,30 +32,84 @@ export function WorkflowExportDropdown({ workflows, userId, disabled = false }: 
   const handleExportWorkflow = async (workflow: WorkflowItem) => {
     if (exportingWorkflowId) return; // Prevent multiple exports
 
+    const exportStartTime = Date.now();
+    const exportId = `ui_export_${workflow.id}_${exportStartTime}`;
+
+    console.log('🚀 [UI-EXPORT] Starting workflow export from UI:', {
+      exportId,
+      workflowId: workflow.id,
+      workflowTitle: workflow.title,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+
     setExportingWorkflowId(workflow.id);
     
     try {
-      console.log(`🔄 Exporting workflow: ${workflow.title} (ID: ${workflow.id})`);
-      
+      console.log(`🔄 [UI-EXPORT] Exporting workflow: ${workflow.title} (ID: ${workflow.id})`, {
+        exportId
+      });
+
+      const requestPayload = {
+        userId: userId,
+        workflowId: workflow.id,
+        selectedWorkflowName: workflow.title
+      };
+
+      console.log('📤 [UI-EXPORT] Sending API request:', {
+        exportId,
+        endpoint: '/api/workflows/export',
+        method: 'POST',
+        payload: requestPayload
+      });
+
+      const apiStartTime = Date.now();
       const response = await fetch('/api/workflows/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: userId,
-          workflowId: workflow.id,
-          selectedWorkflowName: workflow.title
-        }),
+        body: JSON.stringify(requestPayload),
+      });
+
+      const apiTime = Date.now() - apiStartTime;
+
+      console.log('📥 [UI-EXPORT] API response received:', {
+        exportId,
+        responseStatus: response.status,
+        responseOk: response.ok,
+        apiTimeMs: apiTime
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('❌ [UI-EXPORT] API request failed:', {
+          exportId,
+          status: response.status,
+          statusText: response.statusText,
+          errorData,
+          apiTimeMs: apiTime
+        });
         throw new Error(errorData.error || 'Failed to export workflow');
       }
 
       const result = await response.json();
       
+      console.log('📊 [UI-EXPORT] Export result received:', {
+        exportId,
+        success: result.success,
+        filename: result.filename,
+        contentLength: result.content?.length || 0,
+        metadata: result.metadata,
+        apiTimeMs: apiTime
+      });
+
       if (result.success) {
         // Create and trigger download
+        console.log('💾 [UI-EXPORT] Creating download blob...', {
+          exportId,
+          filename: result.filename,
+          contentType: 'text/yaml'
+        });
+
         const blob = new Blob([result.content], { type: 'text/yaml' });
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -66,18 +120,50 @@ export function WorkflowExportDropdown({ workflows, userId, disabled = false }: 
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
 
-        console.log(`✅ Successfully exported workflow: ${workflow.title}`);
-        console.log(`📊 Export metadata:`, result.metadata);
+        const totalTime = Date.now() - exportStartTime;
+
+        console.log(`✅ [UI-EXPORT] Successfully exported workflow: ${workflow.title}`, {
+          exportId,
+          filename: result.filename,
+          totalTimeMs: totalTime,
+          apiTimeMs: apiTime,
+          downloadTriggered: true
+        });
+        
+        if (result.metadata) {
+          console.log(`📊 [UI-EXPORT] Export metadata:`, {
+            exportId,
+            ...result.metadata
+          });
+        }
         
         setIsOpen(false); // Close dropdown after successful export
       } else {
         throw new Error('Export failed');
       }
     } catch (error) {
-      console.error('Error exporting workflow:', error);
+      const errorTime = Date.now() - exportStartTime;
+      
+      console.error('💥 [UI-EXPORT] Export failed with error:', {
+        exportId,
+        workflowId: workflow.id,
+        workflowTitle: workflow.title,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        errorType: error instanceof Error ? error.constructor.name : 'UnknownError',
+        stack: error instanceof Error ? error.stack : undefined,
+        totalTimeMs: errorTime,
+        timestamp: new Date().toISOString()
+      });
+      
       // You could add a toast notification here if available
       alert(`Failed to export workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
+      console.log('🏁 [UI-EXPORT] Export process finished:', {
+        exportId,
+        workflowId: workflow.id,
+        success: exportingWorkflowId === workflow.id
+      });
+      
       setExportingWorkflowId(null);
     }
   };
