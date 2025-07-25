@@ -59,13 +59,31 @@ export async function GET(
         throw analysesError;
       }
 
-      // Fetch filtered annotations count
-      const { count: annotationsCount, error: annotationsError } = await supabaseAdmin
-        .from('raw_timeline_event_annotations')
-        .select('*', { count: 'exact', head: true })
+      // Fetch filtered annotations count from correct table (low_level_workflow_labeling)
+      // First get analysis IDs for the user in the date range
+      const { data: userAnalyses, error: userAnalysesError } = await supabaseAdmin
+        .from('low_level_workflow_analyses')
+        .select('id')
         .eq('user_id', userId)
-        .gte('created_at', startDateTime.toISOString())
-        .lte('created_at', endDateTime.toISOString());
+        .gte('client_timestamp', startDateTime.toISOString())
+        .lte('client_timestamp', endDateTime.toISOString());
+
+      let annotationsCount = 0;
+      let annotationsError = null;
+
+      if (userAnalysesError) {
+        annotationsError = userAnalysesError;
+      } else if (userAnalyses && userAnalyses.length > 0) {
+        const analysisIds = userAnalyses.map(a => a.id);
+        
+        const { count, error } = await supabaseAdmin
+          .from('low_level_workflow_labeling')
+          .select('*', { count: 'exact', head: true })
+          .in('low_level_workflow_analysis_id', analysisIds);
+        
+        annotationsCount = count || 0;
+        annotationsError = error;
+      }
 
       if (annotationsError) {
         console.error(`Error counting annotations for user ${userId}:`, annotationsError);
@@ -85,40 +103,62 @@ export async function GET(
       return NextResponse.json(filteredStats);
     }
 
-    // Default behavior - fetch all-time stats from session metadata
-    const { data: sessions, error: sessionsError } = await supabaseAdmin
-      .from('session_metadata')
-      .select('event_count, total_ui_steps, processed_event_count, total_labeled_steps, human_labeled_steps')
+    // Default behavior - fetch all-time stats directly from tables (more accurate than session metadata)
+    
+    // Get total events count
+    const { count: totalEvents, error: eventsError } = await supabaseAdmin
+      .from('low_level_events')
+      .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
 
-    if (sessionsError) {
-      console.error(`Error fetching sessions for user ${userId}:`, sessionsError);
-      throw sessionsError;
+    if (eventsError) {
+      console.error(`Error counting events for user ${userId}:`, eventsError);
+      throw eventsError;
     }
 
-    if (!sessions) {
-      return NextResponse.json({
-        totalEvents: 0,
-        stepsProcessed: 0,
-        totalSteps: 0,
-        labelingTotal: 0,
-        llmGeneratedLabeled: 0,
-      });
+    // Get total analyses count
+    const { count: totalAnalyses, error: analysesError } = await supabaseAdmin
+      .from('low_level_workflow_analyses')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    if (analysesError) {
+      console.error(`Error counting analyses for user ${userId}:`, analysesError);
+      throw analysesError;
     }
 
-    // Aggregate the stats from all of the user's sessions
-    const totalEvents = sessions.reduce((sum, s) => sum + (s.event_count || 0), 0);
-    const totalUiSteps = sessions.reduce((sum, s) => sum + (s.total_ui_steps || 0), 0);
-    const totalProcessedEvents = sessions.reduce((sum, s) => sum + (s.processed_event_count || 0), 0);
-    const totalLabeled = sessions.reduce((sum, s) => sum + (s.total_labeled_steps || 0), 0);
-    const totalLlmGeneratedLabeled = sessions.reduce((sum, s) => sum + (s.human_labeled_steps || 0), 0);
+    // Get total annotations count from correct table
+    const { data: allUserAnalyses, error: allUserAnalysesError } = await supabaseAdmin
+      .from('low_level_workflow_analyses')
+      .select('id')
+      .eq('user_id', userId);
+
+    let totalAnnotations = 0;
+    if (allUserAnalysesError) {
+      console.error(`Error fetching user analyses for annotations count:`, allUserAnalysesError);
+    } else if (allUserAnalyses && allUserAnalyses.length > 0) {
+      const allAnalysisIds = allUserAnalyses.map(a => a.id);
+      
+      const { count, error: annotationsError } = await supabaseAdmin
+        .from('low_level_workflow_labeling')
+        .select('*', { count: 'exact', head: true })
+        .in('low_level_workflow_analysis_id', allAnalysisIds);
+      
+      if (annotationsError) {
+        console.error(`Error counting annotations for user ${userId}:`, annotationsError);
+      } else {
+        totalAnnotations = count || 0;
+      }
+    }
 
     const stats = {
-      totalEvents,
-      stepsProcessed: totalProcessedEvents,
-      totalSteps: totalUiSteps,
-      labelingTotal: totalLabeled,
-      llmGeneratedLabeled: totalLlmGeneratedLabeled,
+      totalEvents: totalEvents || 0,
+      totalAnalyses: totalAnalyses || 0,
+      totalAnnotations: totalAnnotations,
+      stepsProcessed: totalAnalyses || 0, // For backward compatibility
+      totalSteps: totalEvents || 0, // For backward compatibility  
+      labelingTotal: totalAnnotations, // For backward compatibility
+      llmGeneratedLabeled: totalAnnotations, // For backward compatibility (assuming most are LLM generated)
     };
 
     return NextResponse.json(stats);
