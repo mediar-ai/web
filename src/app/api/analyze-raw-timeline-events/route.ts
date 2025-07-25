@@ -285,20 +285,55 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          // Find corresponding analysis for this batch (30-minute window for this user's pattern)
-          const timeWindow = 1800; // 30 minutes = 1800 seconds  
-          const beforeTime = new Date(endTime.getTime() - timeWindow * 1000).toISOString();
-          const afterTime = new Date(endTime.getTime() + timeWindow * 1000).toISOString();
+          // IMPROVED: Find corresponding analysis using source UI tree event first, fallback to client_timestamp
+          console.log(`🔍 Batch ${batchIndex + 1}: Looking for analysis for UI event at ${endTime.toISOString()}`);
           
-          const { data: analysisData, error: analysisError } = await supabaseAdmin
+          // Strategy 1: Try to find analysis that directly references this UI tree event
+          let analysisData = null;
+          let analysisError = null;
+          
+          const currentUiEventId = uiTreeEvents[batchIndex].id;
+          console.log(`🎯 Batch ${batchIndex + 1}: Trying direct UI event reference for event ID ${currentUiEventId}`);
+          
+          const { data: directAnalysisData, error: directAnalysisError } = await supabaseAdmin
             .from('low_level_workflow_analyses')
-            .select('id, created_at, window_title, llm_structured_output')
+            .select('id, created_at, client_timestamp, window_title, llm_structured_output, source_ui_tree_event_id')
             .eq('user_id', userId)
-            .gte('created_at', beforeTime)
-            .lte('created_at', afterTime)
-            .order('created_at', { ascending: true })
-            .limit(1)
+            .eq('source_ui_tree_event_id', currentUiEventId)
             .maybeSingle();
+          
+          if (!directAnalysisError && directAnalysisData) {
+            analysisData = directAnalysisData;
+            console.log(`✅ Batch ${batchIndex + 1}: Found direct analysis match via source_ui_tree_event_id`);
+          } else {
+            // Strategy 2: Fallback to improved client_timestamp matching (smaller window)
+            console.log(`⚠️ Batch ${batchIndex + 1}: No direct match, falling back to client_timestamp matching`);
+            const timeWindow = 30; // REDUCED: 30 seconds instead of 30 minutes!
+            const beforeTime = new Date(endTime.getTime() - timeWindow * 1000).toISOString();
+            const afterTime = new Date(endTime.getTime() + timeWindow * 1000).toISOString();
+            
+            const { data: fallbackAnalysisData, error: fallbackAnalysisError } = await supabaseAdmin
+              .from('low_level_workflow_analyses')
+              .select('id, created_at, client_timestamp, window_title, llm_structured_output, source_ui_tree_event_id')
+              .eq('user_id', userId)
+              .gte('client_timestamp', beforeTime)  // FIXED: Use client_timestamp instead of created_at
+              .lte('client_timestamp', afterTime)   // FIXED: Use client_timestamp instead of created_at
+              .order('client_timestamp', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            
+            analysisData = fallbackAnalysisData;
+            analysisError = fallbackAnalysisError;
+            
+            if (analysisData) {
+              const timeDiff = Math.abs(new Date(endTime).getTime() - new Date(analysisData.client_timestamp).getTime()) / 1000;
+              console.log(`⚠️ Batch ${batchIndex + 1}: Fallback match found with ${timeDiff.toFixed(1)}s difference`);
+              
+              if (timeDiff > 60) {
+                console.warn(`⚠️ Batch ${batchIndex + 1}: Large time difference (${timeDiff.toFixed(1)}s) - annotation may be inaccurate`);
+              }
+            }
+          }
 
           if (analysisError && analysisError.code !== 'PGRST116') {
             console.error(`❌ Error fetching analysis for batch ${batchIndex + 1}:`, analysisError);
