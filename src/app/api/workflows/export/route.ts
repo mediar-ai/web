@@ -19,25 +19,7 @@ interface WorkflowExportRequest {
   selectedWorkflowName?: string;
 }
 
-interface WorkflowStep {
-  tool_name: string;
-  arguments: Record<string, unknown>;
-}
 
-interface WorkflowStepGroup {
-  group_name: string;
-  skippable: boolean;
-  steps: WorkflowStep[];
-}
-
-interface VariableDefinition {
-  type: string;
-  label: string;
-  description: string;
-  default: string;
-  regex?: string;
-  validation_message?: string;
-}
 
 
 
