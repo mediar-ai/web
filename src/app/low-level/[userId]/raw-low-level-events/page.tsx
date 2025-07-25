@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { getRawEventsStorage } from '@/lib/rawEventsStorage';
 import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
+import { formatDateWithTimezone } from '@/lib/timezoneUtils';
 
 // Helper function to estimate memory usage of events data
 const estimateMemoryUsage = (events: LowLevelEvent[]): number => {
@@ -119,7 +120,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   }, []);
 
   const getEventTimestamp = useCallback((event: LowLevelEvent): string => {
-    return new Date(event.created_at).toLocaleString();
+    return formatDateWithTimezone(event.created_at, { includeSeconds: true });
   }, []);
 
   // Helper function for incremental UI updates (much more efficient than full reloads)
@@ -1368,6 +1369,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
                   selectedBoundary={timeBoundary}
                   onBoundaryChange={setTimeBoundary}
                   disabled={loading || isLoadingPeriod}
+                  userId={userId}
                 />
                 <div className="flex justify-end">
                   <Button 
