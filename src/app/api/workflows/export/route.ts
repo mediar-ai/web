@@ -185,6 +185,12 @@ async function generateEnhancedExportWithLLM(
   console.log('🤖 [EXPORT] Starting enhanced export with Gemini LLM...');
   const startTime = Date.now();
 
+  // Extract workflow data from detailed_workflow_data if available
+  const workflowDetails = targetWorkflow.detailed_workflow_data || {};
+  const steps = (workflowDetails as Record<string, unknown>)?.steps || [];
+  const inputs = (workflowDetails as Record<string, unknown>)?.inputs || [];
+  const outputs = (workflowDetails as Record<string, unknown>)?.outputs || [];
+
   // Prepare context for LLM
   const llmContext = {
     targetWorkflow: {
@@ -193,7 +199,7 @@ async function generateEnhancedExportWithLLM(
       steps: steps,
       inputs: inputs,
       outputs: outputs,
-      businessLogic: (workflowDetails as any)?.business_logic || []
+      businessLogic: (workflowDetails as Record<string, unknown>)?.business_logic || []
     },
     userContext: context ? {
       userRole: context.user_job_role,
@@ -282,9 +288,23 @@ Please generate an enhanced YAML workflow sequence based on this data and the sa
     
     // Fallback to enhanced generation without LLM
     console.log('🔄 [EXPORT] Using fallback enhanced generation...');
+    
+    // Create properly typed workflow data for fallback
+    const fallbackWorkflowData = {
+      id: targetWorkflow.id,
+      title: targetWorkflow.title || workflowTitle,
+      detailed_workflow_data: targetWorkflow.detailed_workflow_data,
+      synthesis_session_id: targetWorkflow.synthesis_session_id,
+      created_at: targetWorkflow.created_at,
+      inputs: inputs as string[] | null,
+      outputs: outputs as string[] | null,
+      steps: steps as string[] | null,
+      business_logic: (workflowDetails as Record<string, unknown>)?.business_logic as string[] | null
+    };
+    
     return generateEnhancedWorkflowYAML(
       workflowTitle,
-      targetWorkflow,
+      fallbackWorkflowData,
       annotations,
       context,
       savedSynthesis,
@@ -346,7 +366,6 @@ export async function POST(req: NextRequest) {
         synthesis_status
       `)
       .eq('id', workflowId)
-      .eq('user_id', userId)
       .single() as { data: WorkflowData | null; error: unknown };
 
     const workflowFetchTime = Date.now() - workflowFetchStart;
@@ -362,20 +381,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
     }
 
-    // Extract workflow data from detailed_workflow_data if available
-    const workflowDetails = targetWorkflow.detailed_workflow_data || {};
-    const steps = (workflowDetails as any)?.steps || [];
-    const inputs = (workflowDetails as any)?.inputs || [];
-    const outputs = (workflowDetails as any)?.outputs || [];
-    
     console.log('✅ [EXPORT] Target workflow fetched successfully:', {
       requestId,
       workflowId: targetWorkflow.id,
       workflowTitle: targetWorkflow.title,
       hasSynthesisSession: !!targetWorkflow.synthesis_session_id,
-      hasSteps: !!steps?.length,
-      hasInputs: !!inputs?.length,
-      hasOutputs: !!outputs?.length,
+      hasDetailedData: !!targetWorkflow.detailed_workflow_data,
+      hasWorkflowContext: !!targetWorkflow.workflow_context,
+      hasChatHistory: !!targetWorkflow.chat_history,
       fetchTimeMs: workflowFetchTime
     });
 
@@ -572,35 +585,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function generateWorkflowYAML(
-  workflowTitle: string,
-  workflow: WorkflowData,
-  annotations: TimelineAnnotation[],
-  context: WorkflowContext | null,
-  savedSynthesis: SavedSynthesis | null
-): string {
-  // Extract variables from annotations
-  const variables = extractVariables(annotations);
-  const steps = generateStepsFromAnnotations(annotations);
-  const selectors = generateSelectorsFromAnnotations(annotations);
 
-  // Build the workflow structure based on example format
-  const workflowData = {
-    // Header comment will be added manually
-    tool_name: "execute_sequence",
-    arguments: {
-      variables,
-      inputs: generateDefaultInputs(variables),
-      selectors,
-      steps
-    }
-  };
-
-  // Generate YAML with custom comments
-  const yamlContent = generateYAMLWithComments(workflowData, workflowTitle, context, savedSynthesis, annotations.length);
-
-  return yamlContent;
-}
 
 function extractVariables(annotations: TimelineAnnotation[]): Record<string, VariableDefinition> {
   const variables: Record<string, VariableDefinition> = {};
