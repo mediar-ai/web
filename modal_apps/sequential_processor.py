@@ -296,6 +296,14 @@ def cleanup_expired_locks(cur, conn):
         """)
         stale_cleanup = cur.rowcount
         
+        # ⭐ FIX THE GAP: Delete old failed locks (>1 hour) to allow reprocessing
+        cur.execute("""
+            DELETE FROM processing_locks 
+            WHERE status = 'failed' 
+              AND updated_at < NOW() - INTERVAL '1 hour'
+        """)
+        old_failed_cleanup = cur.rowcount
+        
         # Aggressive cleanup: Remove duplicate locks for same user
         # (Keep only the most recent lock per user)
         cur.execute("""
@@ -310,9 +318,9 @@ def cleanup_expired_locks(cur, conn):
         """)
         duplicate_cleanup = cur.rowcount
         
-        total_cleaned = basic_cleanup + stale_cleanup + duplicate_cleanup
+        total_cleaned = basic_cleanup + stale_cleanup + old_failed_cleanup + duplicate_cleanup
         if total_cleaned > 0:
-            print(f"🧹 Smart cleanup: {basic_cleanup} expired + {stale_cleanup} stale + {duplicate_cleanup} duplicate locks = {total_cleaned} total")
+            print(f"🧹 Smart cleanup: {basic_cleanup} expired + {stale_cleanup} stale + {old_failed_cleanup} old failed + {duplicate_cleanup} duplicate locks = {total_cleaned} total")
         
         conn.commit()
         return total_cleaned
@@ -411,7 +419,7 @@ def get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id):
                       SELECT event_id FROM processing_locks 
                       WHERE user_id = %s AND (
                           (status = 'in_progress' AND expires_at > NOW()) OR
-                          status = 'failed'
+                          (status = 'failed' AND updated_at > NOW() - INTERVAL '1 hour')
                       )
                   )
                   AND NOT EXISTS (
