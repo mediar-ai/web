@@ -39,15 +39,7 @@ interface VariableDefinition {
   validation_message?: string;
 }
 
-interface WorkflowYAMLData {
-  tool_name: string;
-  arguments: {
-    variables: Record<string, VariableDefinition>;
-    inputs: Record<string, string>;
-    selectors: Record<string, string>;
-    steps: WorkflowStepGroup[];
-  };
-}
+
 
 interface TimelineAnnotation {
   analysis_id: number;
