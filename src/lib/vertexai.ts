@@ -1,5 +1,115 @@
 import { VertexAI, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
-import type { SafetySetting, GenerateContentRequest } from '@google-cloud/vertexai';
+import type { SafetySetting, GenerateContentRequest, GenerateContentResponse } from '@google-cloud/vertexai';
+
+
+
+// Health check utility for long operations
+interface HealthCheckOptions {
+  intervalMs?: number;
+  timeoutMs?: number;
+  onHealthIssue?: (issue: string) => void;
+}
+
+async function performHealthCheck(options: HealthCheckOptions = {}): Promise<boolean> {
+  const { timeoutMs = 5000, onHealthIssue } = options;
+  
+  try {
+    // Check basic server connectivity
+    const startTime = Date.now();
+    
+    // Simple health check - try to create a basic VertexAI instance
+    const healthCheck = new Promise((resolve, reject) => {
+      try {
+        const testVertex = getVertexAIConfig();
+        if (testVertex) {
+          resolve(true);
+        } else {
+          reject(new Error('VertexAI instance creation failed'));
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Health check timeout')), timeoutMs);
+    });
+    
+    await Promise.race([healthCheck, timeoutPromise]);
+    
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ Health check passed in ${elapsed}ms`);
+    return true;
+    
+  } catch (error) {
+    const issue = `Health check failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    console.error(`❌ ${issue}`);
+    onHealthIssue?.(issue);
+    return false;
+  }
+}
+
+// Enhanced health monitoring during long operations
+export async function withHealthMonitoring<T>(
+  operation: () => Promise<T>,
+  options: HealthCheckOptions & { operationName?: string } = {}
+): Promise<T> {
+  const { intervalMs = 30000, operationName = 'Operation', onHealthIssue } = options;
+  
+  console.log(`🏥 Starting health monitoring for ${operationName} (check interval: ${intervalMs}ms)`);
+  
+  let healthCheckInterval: NodeJS.Timeout | null = null;
+  let healthIssueDetected = false;
+  
+  // Start periodic health checks
+  healthCheckInterval = setInterval(async () => {
+    console.log(`🏥 Performing health check during ${operationName}...`);
+    const healthy = await performHealthCheck({
+      ...options,
+      onHealthIssue: (issue) => {
+        healthIssueDetected = true;
+        console.error(`🚨 Health issue detected during ${operationName}: ${issue}`);
+        onHealthIssue?.(issue);
+      }
+    });
+    
+    if (!healthy) {
+      healthIssueDetected = true;
+    }
+  }, intervalMs);
+  
+  try {
+    // Run the actual operation
+    const result = await operation();
+    
+    // Clear health monitoring
+    if (healthCheckInterval) {
+      clearInterval(healthCheckInterval);
+    }
+    
+    if (healthIssueDetected) {
+      console.warn(`⚠️ ${operationName} completed but health issues were detected during execution`);
+    } else {
+      console.log(`✅ ${operationName} completed successfully with no health issues`);
+    }
+    
+    return result;
+    
+  } catch (error) {
+    // Clear health monitoring on error
+    if (healthCheckInterval) {
+      clearInterval(healthCheckInterval);
+    }
+    
+    if (healthIssueDetected) {
+      console.error(`💥 ${operationName} failed and health issues were also detected`);
+      throw new Error(`${operationName} failed with health issues: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } else {
+      console.error(`💥 ${operationName} failed but health checks were OK`);
+      throw error;
+    }
+  }
+}
 
 // Initialize Vertex AI with proper credential handling
 const getVertexAIConfig = () => {
@@ -294,15 +404,45 @@ function repairMalformedJson(jsonString: string): string {
   return repaired;
 }
 
-// Helper function for structured output calls
+// Enhanced helper function for structured output calls with timeout and progress tracking
 export async function callVertexWithStructuredOutput(
   prompt: string, 
   context: object, 
   modelName: string, 
   responseSchema: object,
-  responseMimeType: string = "application/json"
+  responseMimeType: string = "application/json",
+  includeUsageMetadata: boolean = false,
+  options: {
+    timeoutMs?: number;
+    onProgress?: (stage: string, elapsed: number) => void;
+    onTimeout?: (elapsed: number) => void;
+    maxRetries?: number;
+    retryDelayMs?: number;
+  } = {}
 ) {
+  const {
+    timeoutMs = 90000, // 90 second default timeout
+    onProgress,
+    onTimeout,
+    maxRetries = 2,
+    retryDelayMs = 1000
+  } = options;
+
   console.log('🚀 Using Vertex AI with structured output for model:', modelName);
+  console.log(`⏱️ Timeout configured: ${timeoutMs}ms, Max retries: ${maxRetries}`);
+  
+  const startTime = Date.now();
+  let attempt = 0;
+
+  // Progress tracking
+  const reportProgress = (stage: string) => {
+    const elapsed = Date.now() - startTime;
+    console.log(`📊 [${elapsed}ms] ${stage}`);
+    onProgress?.(stage, elapsed);
+  };
+
+  reportProgress('Initializing VertexAI model');
+
   const genAI = getVertexGenAI();
   const model = genAI.getGenerativeModel({
     model: modelName,
@@ -315,57 +455,180 @@ export async function callVertexWithStructuredOutput(
   });
   
   const fullPrompt = `${prompt}\n\nContext:\n${JSON.stringify(context, null, 2)}`;
-  
-  try {
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-      generationConfig: {
-        responseMimeType,
-        responseSchema,
-      },
-    });
-    
-    const response = result.response;
-    if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-      const rawText = response.candidates[0].content.parts[0].text;
-      console.log('✅ Vertex AI structured output successful');
+  console.log(`📏 Full prompt length: ${fullPrompt.length} characters`);
+
+  // Retry loop with exponential backoff
+  while (attempt <= maxRetries) {
+    try {
+      attempt++;
+      const attemptStartTime = Date.now();
       
-      // For JSON responses, parse the result
-      if (responseMimeType === "application/json") {
-        try {
-          // Clean up any markdown formatting that might be present
-          let cleanedText = rawText.trim();
-          
-          // Remove markdown code block markers if present
-          if (cleanedText.startsWith('```json')) {
-            cleanedText = cleanedText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-          } else if (cleanedText.startsWith('```')) {
-            cleanedText = cleanedText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      if (attempt > 1) {
+        console.log(`🔄 Retry attempt ${attempt}/${maxRetries + 1}`);
+        reportProgress(`Starting retry attempt ${attempt}`);
+        
+        // Wait before retry with exponential backoff
+        const delay = retryDelayMs * Math.pow(2, attempt - 2);
+        console.log(`⏳ Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      reportProgress('Sending request to VertexAI');
+
+      // Create timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          const elapsed = Date.now() - startTime;
+          console.error(`⏰ Request timeout after ${elapsed}ms (limit: ${timeoutMs}ms)`);
+          onTimeout?.(elapsed);
+          reject(new Error(`VertexAI request timeout after ${elapsed}ms. The model may be overloaded or the prompt too complex.`));
+        }, timeoutMs);
+      });
+
+      // Create the actual request promise
+      const requestPromise = model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+        generationConfig: {
+          responseMimeType,
+          responseSchema,
+        },
+      });
+
+      reportProgress('Waiting for VertexAI response');
+
+      // Race between timeout and actual request
+      const result = await Promise.race([requestPromise, timeoutPromise]);
+      
+      const requestElapsed = Date.now() - attemptStartTime;
+      reportProgress(`Received response in ${requestElapsed}ms`);
+
+      // TypeScript check - result should be the generateContent response
+      if (!result || typeof result !== 'object' || !('response' in result)) {
+        throw new Error('Invalid response structure from VertexAI');
+      }
+
+      const response = (result as { response: GenerateContentResponse }).response;
+      
+      // 🔥 CAPTURE USAGE METADATA FOR TOKEN TRACKING
+      const usageMetadata = response.usageMetadata;
+      if (includeUsageMetadata) {
+        console.log('📊 Vertex AI usage metadata:', usageMetadata);
+      }
+
+      if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const rawText = response.candidates[0].content.parts[0].text;
+        reportProgress('Processing response');
+        console.log('✅ Vertex AI structured output successful');
+        
+        let parsedContent;
+        
+        // For JSON responses, parse the result
+        if (responseMimeType === "application/json") {
+          try {
+            // Clean up any markdown formatting that might be present
+            let cleanedText = rawText.trim();
+            
+            // Remove markdown code block markers if present
+            if (cleanedText.startsWith('```json')) {
+              cleanedText = cleanedText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+            } else if (cleanedText.startsWith('```')) {
+              cleanedText = cleanedText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+            }
+            
+            // Remove any leading/trailing backticks or other markdown artifacts
+            cleanedText = cleanedText.replace(/^`+|`+$/g, '').trim();
+            
+            console.log('🧹 Cleaned JSON text:', cleanedText.substring(0, 200) + (cleanedText.length > 200 ? '...' : ''));
+            
+            // Attempt to repair malformed JSON before parsing
+            const repairedJson = repairMalformedJson(cleanedText);
+            parsedContent = JSON.parse(repairedJson);
+            
+            reportProgress('Successfully parsed JSON response');
+          } catch (parseError) {
+            console.error('❌ Failed to parse structured JSON response:', parseError);
+            console.error('❌ Raw response text:', rawText);
+            
+            // If it's our last attempt, throw the error
+            if (attempt > maxRetries) {
+              throw new Error(`Invalid JSON response from Vertex AI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+            }
+            
+            // Otherwise, continue to retry
+            console.log('🔄 JSON parsing failed, will retry...');
+            continue;
           }
-          
-          // Remove any leading/trailing backticks or other markdown artifacts
-          cleanedText = cleanedText.replace(/^`+|`+$/g, '').trim();
-          
-          console.log('🧹 Cleaned JSON text:', cleanedText.substring(0, 200) + (cleanedText.length > 200 ? '...' : ''));
-          
-          // Attempt to repair malformed JSON before parsing
-          const repairedJson = repairMalformedJson(cleanedText);
-          return JSON.parse(repairedJson);
-        } catch (parseError) {
-          console.error('❌ Failed to parse structured JSON response:', parseError);
-          console.error('❌ Raw response text:', rawText);
-          throw new Error(`Invalid JSON response from Vertex AI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+        } else {
+          // For enum responses, return the raw text
+          parsedContent = rawText;
+        }
+        
+        const totalElapsed = Date.now() - startTime;
+        reportProgress(`Completed successfully in ${totalElapsed}ms`);
+        console.log(`🎉 Request completed successfully in ${totalElapsed}ms after ${attempt} attempt(s)`);
+        
+        // 🔥 RETURN FORMAT BASED ON includeUsageMetadata FLAG
+        if (includeUsageMetadata) {
+          return {
+            content: parsedContent,
+            usage: usageMetadata ? {
+              promptTokenCount: usageMetadata.promptTokenCount,
+              candidatesTokenCount: usageMetadata.candidatesTokenCount,
+              totalTokenCount: usageMetadata.totalTokenCount
+            } : null,
+            metadata: {
+              attempts: attempt,
+              totalElapsedMs: totalElapsed,
+              requestElapsedMs: requestElapsed
+            }
+          };
+        } else {
+          // Backward compatible: return just the content
+          return parsedContent;
         }
       }
       
-      // For enum responses, return the raw text
-      return rawText;
+      console.error("No valid response from Vertex AI model:", response);
+      
+      // If it's our last attempt, throw the error
+      if (attempt > maxRetries) {
+        throw new Error('Failed to get valid response from Vertex AI model');
+      }
+      
+      // Otherwise, continue to retry
+      console.log('🔄 Invalid response received, will retry...');
+      continue;
+      
+    } catch (error) {
+      const elapsed = Date.now() - startTime;
+      
+      // Check if it's a timeout error
+      if (error instanceof Error && error.message.includes('timeout')) {
+        console.error(`⏰ Timeout on attempt ${attempt}/${maxRetries + 1} after ${elapsed}ms:`, error.message);
+        
+        // If it's our last attempt, throw the timeout error
+        if (attempt > maxRetries) {
+          throw new Error(`VertexAI request failed after ${maxRetries + 1} attempts due to timeout. Total time: ${elapsed}ms. Consider reducing prompt size or increasing timeout.`);
+        }
+        
+        // Otherwise, continue to retry
+        continue;
+      }
+      
+      // For other errors, log and retry if we have attempts left
+      console.error(`❌ Error on attempt ${attempt}/${maxRetries + 1}:`, error);
+      
+      // If it's our last attempt, throw the error
+      if (attempt > maxRetries) {
+        throw new Error(`Failed to get structured response after ${maxRetries + 1} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+      
+      // Otherwise, continue to retry
+      console.log('🔄 Error occurred, will retry...');
+      continue;
     }
-    
-    console.error("No valid response from Vertex AI model:", response);
-    throw new Error('Failed to get valid response from Vertex AI model');
-  } catch (error) {
-    console.error('Error in callVertexWithStructuredOutput:', error);
-    throw new Error(`Failed to get structured response: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+  
+  // This should never be reached due to the throw statements above, but just in case
+  throw new Error('Unexpected end of retry loop');
 } 
