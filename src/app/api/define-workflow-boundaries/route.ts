@@ -148,8 +148,7 @@ export async function POST(req: NextRequest) {
     
     const comprehensiveContext = buildComprehensiveContext(
       transcriptsData, 
-      context.userInstructions, 
-      1000 // Max transcript length for boundary definition
+      context.userInstructions
     );
     
     const prompt = `${WORKFLOW_BOUNDARIES_PROMPT}
