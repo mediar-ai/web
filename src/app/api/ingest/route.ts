@@ -12,7 +12,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 // Helper function to create consistent hash regardless of JSON key order
-function createConsistentHash(obj: any): string {
+function createConsistentHash(obj: Record<string, unknown>): string {
   return createHash('md5')
     .update(JSON.stringify(obj, Object.keys(obj).sort()))
     .digest('hex');
