@@ -1374,31 +1374,122 @@ def process_all_events_for_user(user_id: str):
                 except Exception as event_error:
                     print(f"❌ Error processing event {event_id}: {event_error}")
                     
-                    # 🔥 LOG GENERAL LLM FAILURE (if we have LLM context)
-                    if 'api_payload' in locals() and 'model_name' in locals():
-                        print(f"📊 Logging general failure for LLM call...")
-                        processing_time_ms = int((time.time() - start_time) * 1000) if 'start_time' in locals() else None
-                        error_type = type(event_error).__name__
-                        error_message = f'{error_type}: {str(event_error)}'
-                        
-                        # Check if this was an HTTP error (API call made but failed)
-                        if hasattr(event_error, 'response'):
-                            try:
-                                response_data = event_error.response.json() if hasattr(event_error.response, 'json') else None
-                                status_code = getattr(event_error.response, 'status_code', None)
-                                error_message = f'HTTP {status_code}: {error_message}'
-                            except:
-                                response_data = None
-                        else:
-                            response_data = None
+                    # 🔥 ENHANCED ERROR LOGGING FOR API FAILURES
+                    error_details = {
+                        'event_id': event_id,
+                        'user_id': user_id,
+                        'error_type': type(event_error).__name__,
+                        'error_message': str(event_error),
+                        'processing_time_ms': int((time.time() - start_time) * 1000) if 'start_time' in locals() else None,
+                        'retry_attempt': retries,
+                        'max_retries': max_retries,
+                        'model_name': model_name if 'model_name' in locals() else 'unknown',
+                        'context_size': len(json.dumps(context)) if 'context' in locals() else 0,
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())
+                    }
+                    
+                    # Check if this was an HTTP error (API call made but failed)
+                    if hasattr(event_error, 'response'):
+                        try:
+                            response_obj = event_error.response
+                            error_details.update({
+                                'http_status_code': getattr(response_obj, 'status_code', None),
+                                'http_reason': getattr(response_obj, 'reason', None),
+                                'response_headers': dict(getattr(response_obj, 'headers', {})),
+                            })
                             
+                            # Try to get the response body for detailed error info
+                            try:
+                                if hasattr(response_obj, 'text'):
+                                    response_text = response_obj.text
+                                elif hasattr(response_obj, 'content'):
+                                    response_text = response_obj.content.decode('utf-8') if isinstance(response_obj.content, bytes) else str(response_obj.content)
+                                else:
+                                    response_text = str(response_obj)
+                                
+                                error_details['response_body'] = response_text[:2000]  # Limit to 2000 chars
+                                
+                                # Try to parse JSON response for structured error info
+                                try:
+                                    if hasattr(response_obj, 'json'):
+                                        response_data = response_obj.json()
+                                        error_details['response_json'] = response_data
+                                        
+                                        # Extract specific error details if available
+                                        if isinstance(response_data, dict):
+                                            error_details.update({
+                                                'api_error': response_data.get('error', 'Unknown API error'),
+                                                'api_details': response_data.get('details', 'No details provided'),
+                                                'api_request_id': response_data.get('requestId', 'No request ID'),
+                                            })
+                                except:
+                                    # JSON parsing failed, response_body already captured above
+                                    pass
+                                    
+                            except Exception as resp_error:
+                                error_details['response_parse_error'] = str(resp_error)
+                                
+                        except Exception as http_error:
+                            error_details['http_analysis_error'] = str(http_error)
+                    
+                    # Enhanced logging with all collected details
+                    print(f"🔍 DETAILED ERROR ANALYSIS for event {event_id}:")
+                    for key, value in error_details.items():
+                        if key == 'response_body' and len(str(value)) > 200:
+                            print(f"  {key}: {str(value)[:200]}... (truncated)")
+                        else:
+                            print(f"  {key}: {value}")
+                    
+                    # 🔥 LOG ENHANCED LLM FAILURE (if we have LLM context)
+                    if 'api_payload' in locals() and 'model_name' in locals():
+                        print(f"📊 Logging enhanced failure for LLM call...")
+                        
+                        error_message = f'{error_details["error_type"]}: {error_details["error_message"]}'
+                        if 'api_error' in error_details:
+                            error_message += f' | API Error: {error_details["api_error"]}'
+                        if 'api_details' in error_details:
+                            error_message += f' | Details: {error_details["api_details"]}'
+                        
+                        response_data = error_details.get('response_json', None)
+                        
                         log_llm_trace(
                             cur, conn, user_id, session_id, None, 
                             'workflow_analysis', model_name, api_payload, response_data, 
-                            None, processing_time_ms, None, None, None, 
+                            None, error_details.get('processing_time_ms'), None, None, None, 
                             'failed', error_message, 
                             context_metadata if 'context_metadata' in locals() else None
                         )
+                    
+                    # Additional debugging: Log the current context if available
+                    if 'context' in locals() and context:
+                        print(f"🔍 Context snapshot for failed event {event_id}:")
+                        print(f"  - Context keys: {list(context.keys()) if isinstance(context, dict) else 'Not a dict'}")
+                        if isinstance(context, dict):
+                            for key, value in context.items():
+                                if key == 'currentUiTree' and isinstance(value, str):
+                                    print(f"  - {key}: {len(value)} characters")
+                                elif isinstance(value, (str, int, float, bool)):
+                                    print(f"  - {key}: {value}")
+                                elif isinstance(value, (list, dict)):
+                                    print(f"  - {key}: {type(value).__name__} with {len(value)} items")
+                                else:
+                                    print(f"  - {key}: {type(value).__name__}")
+                    
+                    # Check for common failure patterns and suggest solutions
+                    if 'response_json' in error_details:
+                        response_data = error_details['response_json']
+                        if isinstance(response_data, dict):
+                            error_msg = response_data.get('error', '').lower()
+                            details_msg = response_data.get('details', '').lower()
+                            
+                            if 'timeout' in error_msg or 'timeout' in details_msg:
+                                print(f"💡 SUGGESTION: Timeout detected. Consider reducing context size or checking system load.")
+                            elif 'rate limit' in error_msg or 'quota' in error_msg:
+                                print(f"💡 SUGGESTION: Rate limit hit. API calls should have backoff, but may need longer delays.")
+                            elif 'json' in details_msg or 'parsing' in details_msg:
+                                print(f"💡 SUGGESTION: JSON parsing error in AI response. May be a temporary AI model issue.")
+                            elif 'memory' in error_msg or 'resource' in error_msg:
+                                print(f"💡 SUGGESTION: Resource exhaustion. Check system memory and concurrent processors.")
                     
                     # Release lock with failed status
                     release_processing_lock(cur, conn, user_id, event_id, processor_id, PROCESSING_STATUS['FAILED'])
@@ -1464,7 +1555,7 @@ def process_all_events_for_user(user_id: str):
         modal.Secret.from_name("supabase-secret"),
         modal.Secret.from_name("custom-secret")  # For VERCEL_URL
     ],
-    schedule=modal.Period(minutes=1),   # Changed from 60 to 1 minute for faster processing  
+    schedule=modal.Period(seconds=30),   # Increased frequency to 30 seconds to handle large backlog  
     timeout=2000   # FIXED: Increased from 45 to 2000 seconds (33+ minutes) to accommodate full processing cycle
 )
 def scheduled_processing():
@@ -1491,6 +1582,12 @@ def scheduled_processing():
             cleaned_count = cleanup_stuck_processors(conn, stuck_processors)
             print(f"🧹 Cleaned {cleaned_count} stuck processors before starting new cycle")
         
+        # === HEALTH MONITORING: Run health monitoring every 10 cycles (approx every 10 minutes) ===
+        import random
+        if random.randint(1, 10) == 1:  # Run roughly 10% of the time to avoid overwhelming logs
+            print("🔍 Running processor health monitoring...")
+            monitor_processor_health(conn)
+        
         # Count active processors (excluding the ones we just cleaned)
         cur.execute("""
             SELECT COUNT(DISTINCT processor_id) as active_processors
@@ -1500,7 +1597,7 @@ def scheduled_processing():
         active_count = cur.fetchone()[0]
         
         # More conservative limit to prevent Modal cancellations
-        MAX_CONCURRENT_PROCESSORS = 20  # Reduced from 50 to prevent resource conflicts
+        MAX_CONCURRENT_PROCESSORS = 50  # Increased from 20 to 50 to handle backlog
         
         if active_count >= MAX_CONCURRENT_PROCESSORS:
             print(f"⏸️  {active_count} processors already active (max: {MAX_CONCURRENT_PROCESSORS}), skipping this cycle")
@@ -1930,3 +2027,150 @@ def emergency_cleanup_stuck_processors():
             cur.close()
         if 'conn' in locals() and conn:
             conn.close()
+
+def monitor_processor_health(conn):
+    """
+    Monitor processor health and detect patterns of failures.
+    This helps identify systemic issues causing processors to get stuck.
+    """
+    try:
+        cur = conn.cursor()
+        
+        print("🔍 PROCESSOR HEALTH MONITORING:")
+        
+        # Check recent failure patterns
+        cur.execute("""
+            SELECT 
+                status,
+                COUNT(*) as count,
+                MIN(created_at) as earliest,
+                MAX(created_at) as latest
+            FROM processing_locks 
+            WHERE created_at > NOW() - INTERVAL '1 hour'
+            GROUP BY status
+            ORDER BY count DESC
+        """)
+        
+        status_counts = cur.fetchall()
+        print("📊 Processing status in last hour:")
+        for status, count, earliest, latest in status_counts:
+            print(f"  {status}: {count} events ({earliest} to {latest})")
+        
+        # Check for events stuck in processing for too long
+        cur.execute("""
+            SELECT 
+                user_id,
+                event_id,
+                processor_id,
+                status,
+                created_at,
+                expires_at,
+                NOW() - created_at as duration
+            FROM processing_locks 
+            WHERE status = 'in_progress' 
+            AND (NOW() - created_at) > INTERVAL '30 minutes'
+            ORDER BY created_at ASC
+            LIMIT 10
+        """)
+        
+        stuck_events = cur.fetchall()
+        if stuck_events:
+            print("⚠️ STUCK EVENTS (in progress > 30min):")
+            for user_id, event_id, processor_id, status, created_at, expires_at, duration in stuck_events:
+                print(f"  Event {event_id} for user {user_id[:8]}... stuck for {duration}")
+                print(f"    Processor: {processor_id}, Status: {status}")
+        else:
+            print("✅ No stuck events found")
+        
+        # Check for high failure rates by user
+        cur.execute("""
+            SELECT 
+                user_id,
+                COUNT(*) as total_events,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_events,
+                ROUND(100.0 * SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) / COUNT(*), 2) as failure_rate
+            FROM processing_locks 
+            WHERE created_at > NOW() - INTERVAL '2 hours'
+            GROUP BY user_id
+            HAVING COUNT(*) >= 10 -- Only show users with significant activity
+            AND SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 5 -- More than 5 failures
+            ORDER BY failure_rate DESC
+            LIMIT 5
+        """)
+        
+        high_failure_users = cur.fetchall()
+        if high_failure_users:
+            print("🚨 USERS WITH HIGH FAILURE RATES (last 2 hours):")
+            for user_id, total, failed, rate in high_failure_users:
+                print(f"  User {user_id[:8]}...: {failed}/{total} failed ({rate}%)")
+        else:
+            print("✅ No users with high failure rates")
+        
+        # Check recent error patterns from LLM traces
+        cur.execute("""
+            SELECT 
+                error_message,
+                COUNT(*) as occurrences,
+                MAX(created_at) as last_occurrence
+            FROM llm_traces 
+            WHERE status = 'failed' 
+            AND created_at > NOW() - INTERVAL '1 hour'
+            AND error_message IS NOT NULL
+            GROUP BY error_message
+            ORDER BY occurrences DESC
+            LIMIT 10
+        """)
+        
+        error_patterns = cur.fetchall()
+        if error_patterns:
+            print("🔍 COMMON ERROR PATTERNS (last hour):")
+            for error_msg, count, last_seen in error_patterns:
+                print(f"  {count}x: {error_msg[:100]}{'...' if len(error_msg) > 100 else ''}")
+                print(f"       Last seen: {last_seen}")
+        else:
+            print("✅ No common error patterns found")
+        
+        # Check system resource usage patterns
+        cur.execute("""
+            SELECT 
+                DATE_TRUNC('minute', created_at) as minute,
+                COUNT(*) as events_per_minute,
+                COUNT(DISTINCT processor_id) as active_processors
+            FROM processing_locks 
+            WHERE created_at > NOW() - INTERVAL '30 minutes'
+            GROUP BY DATE_TRUNC('minute', created_at)
+            ORDER BY minute DESC
+            LIMIT 10
+        """)
+        
+        load_patterns = cur.fetchall()
+        if load_patterns:
+            print("📈 PROCESSING LOAD PATTERNS (last 30 min):")
+            for minute, events, processors in load_patterns:
+                print(f"  {minute}: {events} events, {processors} processors")
+        
+        # Overall health summary
+        cur.execute("""
+            SELECT 
+                COUNT(*) as total_events_today,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_today,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_today,
+                COUNT(DISTINCT user_id) as active_users_today,
+                COUNT(DISTINCT processor_id) as processors_used_today
+            FROM processing_locks 
+            WHERE created_at > CURRENT_DATE
+        """)
+        
+        daily_stats = cur.fetchone()
+        if daily_stats:
+            total, completed, failed, users, processors = daily_stats
+            success_rate = round(100.0 * completed / total, 2) if total > 0 else 0
+            print(f"📊 DAILY SUMMARY:")
+            print(f"  Total events: {total}, Success rate: {success_rate}%")
+            print(f"  Completed: {completed}, Failed: {failed}")
+            print(f"  Active users: {users}, Processors used: {processors}")
+        
+        print("✅ Processor health monitoring completed")
+        
+    except Exception as e:
+        print(f"❌ Error in processor health monitoring: {e}")
