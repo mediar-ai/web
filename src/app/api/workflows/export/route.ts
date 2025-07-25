@@ -190,10 +190,10 @@ async function generateEnhancedExportWithLLM(
     targetWorkflow: {
       title: workflowTitle,
       id: targetWorkflow.id,
-      steps: targetWorkflow.steps,
-      inputs: targetWorkflow.inputs,
-      outputs: targetWorkflow.outputs,
-      businessLogic: targetWorkflow.business_logic
+      steps: steps,
+      inputs: inputs,
+      outputs: outputs,
+      businessLogic: (workflowDetails as any)?.business_logic || []
     },
     userContext: context ? {
       userRole: context.user_job_role,
@@ -362,14 +362,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
     }
 
+    // Extract workflow data from detailed_workflow_data if available
+    const workflowDetails = targetWorkflow.detailed_workflow_data || {};
+    const steps = (workflowDetails as any)?.steps || [];
+    const inputs = (workflowDetails as any)?.inputs || [];
+    const outputs = (workflowDetails as any)?.outputs || [];
+    
     console.log('✅ [EXPORT] Target workflow fetched successfully:', {
       requestId,
       workflowId: targetWorkflow.id,
       workflowTitle: targetWorkflow.title,
       hasSynthesisSession: !!targetWorkflow.synthesis_session_id,
-      hasSteps: !!targetWorkflow.steps?.length,
-      hasInputs: !!targetWorkflow.inputs?.length,
-      hasOutputs: !!targetWorkflow.outputs?.length,
+      hasSteps: !!steps?.length,
+      hasInputs: !!inputs?.length,
+      hasOutputs: !!outputs?.length,
       fetchTimeMs: workflowFetchTime
     });
 
