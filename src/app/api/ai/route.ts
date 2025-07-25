@@ -1,5 +1,5 @@
 import { createVertex } from '@ai-sdk/google-vertex';
-import { generateText, streamText } from 'ai';
+import { CoreMessage, generateText, streamText } from 'ai';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Simple password authentication - replace with your desired password
@@ -25,7 +25,7 @@ function authenticate(request: NextRequest): boolean {
   
   if (authHeader.startsWith('Basic ')) {
     const credentials = Buffer.from(authHeader.substring(6), 'base64').toString();
-    const [username, password] = credentials.split(':');
+    const [, password] = credentials.split(':');
     return password === API_PASSWORD;
   }
 
@@ -33,7 +33,7 @@ function authenticate(request: NextRequest): boolean {
 }
 
 // Helper function to process tools received from Tauri app
-function processMCPTools(toolsFromTauri?: Record<string, any>) {
+function processMCPTools(toolsFromTauri?: Record<string, unknown>) {
   if (!toolsFromTauri || Object.keys(toolsFromTauri).length === 0) {
     return {};
   }
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Prepare messages
-    const messages: any[] = [];
+    const messages: CoreMessage[] = [];
     
     if (systemPrompt) {
       messages.push({
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
 
     // Common AI SDK options
     const aiOptions = {
-      model: vertexModel as any,
+      model: vertexModel,
       messages,
       maxTokens,
       temperature,
@@ -152,7 +152,8 @@ export async function POST(request: NextRequest) {
             
             // Send tool calls if any
             try {
-              const finishResult = await result.text; // Wait for completion
+              // Wait for completion - tool calls in streaming are handled differently in AI SDK v5
+              await result.text;
               // Note: Tool calls in streaming are handled differently in AI SDK v5
               // They're included in the stream automatically
             } catch (toolError) {
@@ -191,13 +192,13 @@ export async function POST(request: NextRequest) {
       mcpToolsUsed: Object.keys(tools).length > 0 ? Object.keys(tools) : undefined
     }, { headers: corsHeaders });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('AI API Error:', error);
     
     return NextResponse.json(
       { 
         error: 'Failed to generate response',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500, headers: corsHeaders }
     );
