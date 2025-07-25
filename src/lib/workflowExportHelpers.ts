@@ -298,8 +298,8 @@ function buildVariableContext(
          const variables = (parsed?.arguments as Record<string, unknown>)?.variables as Record<string, unknown> || {};
         
         Object.keys(variables).forEach(varName => {
-          const varData = variables[varName];
-          if (varData?.type && varData?.default) {
+          const varData = variables[varName] as Record<string, unknown>;
+          if (varData && typeof varData === 'object' && varData.type && varData.default) {
             if (!variableContext[varName]) {
               variableContext[varName] = {
                 source: 'example_workflows',
@@ -308,8 +308,8 @@ function buildVariableContext(
               };
             }
             
-            if (!variableContext[varName].examples.includes(varData.default)) {
-              variableContext[varName].examples.push(varData.default);
+            if (!variableContext[varName].examples.includes(varData.default as string)) {
+              variableContext[varName].examples.push(varData.default as string);
             }
           }
         });
