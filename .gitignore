@@ -112,3 +112,4 @@ test-screenshot.*
 # Database dumps and backups
 *.sql.gz
 *.backup
+modal.logs
