@@ -1,5 +1,5 @@
 'use client';
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import {
     AlertDialog,
@@ -667,9 +667,9 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             <AlertDialog open={logic.isOrchestrating}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Full Synthesis in Progress</AlertDialogTitle>
+                        <AlertDialogTitle>5-Step Workflow Orchestration</AlertDialogTitle>
                         <AlertDialogDescription>
-                            The automated synthesis and export process is running. Please wait.
+                            Running automated workflow synthesis with all 5 steps in sequence.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="py-8">
@@ -721,11 +721,11 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                         ) : (
                                             <Zap className="h-4 w-4" />
                                         )}
-                                        Full Process
+                                        Run All 5 Steps
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    <p>Run the entire synthesis and export process automatically.</p>
+                                    <p>Automatically run all 5 workflow synthesis steps in sequence.</p>
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>

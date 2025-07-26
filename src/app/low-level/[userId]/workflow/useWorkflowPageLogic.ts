@@ -156,12 +156,14 @@ export function useWorkflowPageLogic(userId: string) {
   const timelineMappingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [timelineMappingBatch, setTimelineMappingBatch] = useState<{current: number, total: number} | null>(null);
   
-  // State for the new full synthesis process
+  // Orchestration state for the new full process
   const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [orchestrationStatus, setOrchestrationStatus] = useState("");
   const [orchestrationProgress, setOrchestrationProgress] = useState(0);
   const [orchestrationElapsedTime, setOrchestrationElapsedTime] = useState(0);
   const orchestrationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+
 
   // Time boundary state for filtering workflow synthesis data
   const [timeBoundary, setTimeBoundary] = useState<{startDate: Date | null; endDate: Date | null}>({
@@ -1212,15 +1214,19 @@ export function useWorkflowPageLogic(userId: string) {
       alert("Please select a time boundary first.");
       return;
     }
+    
     setIsOrchestrating(true);
-    setOrchestrationStatus("Initiating full synthesis process...");
+    setOrchestrationStatus("Starting 5-step workflow orchestration...");
     setOrchestrationProgress(0);
     setOrchestrationElapsedTime(0);
-    const orchestrationTimer = setInterval(() => setOrchestrationElapsedTime(prev => prev + 1), 1000);
+    
+    if (orchestrationTimerRef.current) {
+      clearInterval(orchestrationTimerRef.current);
+    }
+    orchestrationTimerRef.current = setInterval(() => setOrchestrationElapsedTime(prev => prev + 1), 1000);
 
     try {
-      // Step 1: Trigger the Modal job
-      const triggerResponse = await fetch('/api/workflows/trigger-full-synthesis', {
+      const response = await fetch('/api/workflows/orchestrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1232,50 +1238,82 @@ export function useWorkflowPageLogic(userId: string) {
         }),
       });
 
-      if (!triggerResponse.ok) {
-        throw new Error('Failed to trigger the synthesis job.');
+      if (!response.ok) {
+        throw new Error(`Failed to start orchestration: ${response.status} ${response.statusText}`);
       }
-      const { sessionId } = await triggerResponse.json();
 
-      // Step 2: Poll for status
-      const pollInterval = setInterval(async () => {
-        const statusResponse = await fetch(`/api/workflows/synthesis-status?sessionId=${sessionId}`);
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json();
-          setOrchestrationStatus(statusData.orchestration_status);
-          setOrchestrationProgress(statusData.orchestration_progress);
+      if (!response.body) throw new Error("Response body is null");
 
-          // Update UI with intermediate data
-          if (statusData.orchestration_data) {
-            const data = statusData.orchestration_data;
-            if (data.draftWorkflowNames) setDraftWorkflowNames(data.draftWorkflowNames);
-            if (data.workflowContext) {
-              setEditableContext(data.workflowContext);
-              setWorkflowContext(data.workflowContext);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.status) {
+              setOrchestrationStatus(data.status);
             }
-            if (data.identifiedWorkflowNames) setIdentifiedWorkflowNames(data.identifiedWorkflowNames);
-            if (data.synthesizedWorkflow) setWorkflows([data.synthesizedWorkflow]);
-            if (data.timelineAnnotations) setTimelineAnnotations(data.timelineAnnotations.workflow_mappings || []);
-          }
-
-          if (statusData.orchestration_progress === 100 || statusData.orchestration_progress < 0) {
-            clearInterval(pollInterval);
-            clearInterval(orchestrationTimer);
-            if (statusData.final_result_url) {
-              // Trigger download
-              window.open(statusData.final_result_url, '_blank');
+            if (typeof data.progress === 'number') {
+              setOrchestrationProgress(data.progress);
             }
-            setTimeout(() => setIsOrchestrating(false), 2000);
+            
+            // Update UI with intermediate data
+            if (data.data) {
+              if (data.data.draftWorkflowNames) {
+                setDraftWorkflowNames(data.data.draftWorkflowNames);
+              }
+              if (data.data.workflowContext) {
+                setEditableContext(data.data.workflowContext);
+                setWorkflowContext(data.data.workflowContext);
+              }
+              if (data.data.identifiedWorkflowNames) {
+                setIdentifiedWorkflowNames(data.data.identifiedWorkflowNames);
+              }
+              if (data.data.workflowBoundaries) {
+                setWorkflowBoundaries(data.data.workflowBoundaries);
+              }
+              if (data.data.synthesizedWorkflows) {
+                setWorkflows(data.data.synthesizedWorkflows);
+              }
+              if (data.data.timelineAnnotations) {
+                setTimelineAnnotations(data.data.timelineAnnotations);
+              }
+            }
+
+            // Check for completion or error
+            if (data.success) {
+              setSynthesisStep('done');
+              setTimeout(() => setIsOrchestrating(false), 2000);
+              break;
+            }
+            if (data.error) {
+              throw new Error(data.details || 'Orchestration failed');
+            }
+          } catch (parseError) {
+            console.warn('Failed to parse SSE data:', parseError);
           }
         }
-      }, 3000); // Poll every 3 seconds
+      }
 
     } catch (error) {
-      console.error('Error during full synthesis process:', error);
-      alert(`An error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setOrchestrationStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      clearInterval(orchestrationTimer);
+      console.error('Error during full orchestration:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setOrchestrationStatus(`Error: ${errorMessage}`);
+      alert(`Orchestration failed: ${errorMessage}`);
       setIsOrchestrating(false);
+    } finally {
+      if (orchestrationTimerRef.current) {
+        clearInterval(orchestrationTimerRef.current);
+        orchestrationTimerRef.current = null;
+      }
     }
   };
 
@@ -1289,11 +1327,9 @@ export function useWorkflowPageLogic(userId: string) {
     isFetchingEvents,
     isAnalyzingEvents,
     
-    // New orchestration state and function
+    // Orchestration state and function
     isOrchestrating,
     runFullProcess,
-
-    // Orchestration progress
     orchestrationStatus,
     orchestrationProgress,
     orchestrationElapsedTime,
