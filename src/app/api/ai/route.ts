@@ -309,7 +309,7 @@ function createStreamingResponse(
         }
 
         let fullText = '';
-        let functionCalls: any[] = [];
+        const functionCalls: any[] = [];
 
         // Process streaming chunks
         for await (const chunk of result.stream) {
