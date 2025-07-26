@@ -161,55 +161,7 @@ export async function POST(request: Request) {
 
     const dataToUpsert: UserActivityDataRow[] = [];
 
-    // 1. Process Screenshots
-    if (exportedData.screenshots && Array.isArray(exportedData.screenshots)) {
-      console.log(`Processing ${exportedData.screenshots.length} screenshots...`);
-      for (const ss of exportedData.screenshots) {
-        if (!ss.dataUrl || !ss.id || typeof ss.timestamp !== 'number') {
-            console.warn("Skipping screenshot with missing dataUrl, id, or timestamp:", ss);
-            continue;
-        }
-        const mimeTypeMatch = ss.dataUrl.match(/^data:(image\/[^;]+);base64,/);
-        if (!mimeTypeMatch || !mimeTypeMatch[1]) {
-            console.warn(`Invalid dataUrl format for screenshot ${ss.id}. Skipping.`);
-            continue;
-        }
-        const mimeType = mimeTypeMatch[1];
-        
-        // Convert base64 to Blob, which is compatible with Edge functions and Supabase upload.
-        const fetchRes = await fetch(ss.dataUrl);
-        const imageBlob = await fetchRes.blob();
-        
-        const fileExt = mimeType.split('/')[1] || 'bin';
-        const filePath = `${sessionId}/${ss.id}.${fileExt}`;
-
-        console.log(`Uploading screenshot: ${filePath} (Size: ${imageBlob.size} bytes)`);
-        const { error: uploadError } = await supabaseAdmin.storage
-            .from('exported-screenshots')
-            .upload(filePath, imageBlob, {
-              contentType: mimeType,
-              upsert: true,
-            });
-
-        if (uploadError) {
-          console.error(`Error uploading screenshot ${ss.id} for session ${sessionId}:`, uploadError.message);
-        } else {
-          console.log(`Successfully uploaded screenshot ${filePath}`);
-          // Extract metadata without dataUrl (which is no longer needed after upload)
-          const metadata = Object.fromEntries(
-            Object.entries(ss).filter(([key]) => key !== 'dataUrl')
-          );
-          dataToUpsert.push({
-            session_id: sessionId,
-            user_id: userId,
-            item_type: 'screenshot_metadata',
-            client_item_id: ss.id,
-            item_data: { storage_path: filePath, ...metadata },
-            client_timestamp: new Date(ss.timestamp).toISOString(),
-          });
-        }
-      }
-    }
+    // Screenshots are no longer processed for storage upload
 
     // 2. Process Workflow Steps
     if (exportedData.workflowSteps && Array.isArray(exportedData.workflowSteps)) {

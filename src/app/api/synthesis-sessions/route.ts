@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -25,18 +25,20 @@ export async function GET(req: NextRequest) {
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
 
-    if (error && error.code !== 'PGRST116') { // Ignore 'single row not found' error
+    if (error) {
       throw error;
     }
 
-    if (!data) {
+    if (!data || data.length === 0) {
       return NextResponse.json({ error: 'No synthesis session found for this user' }, { status: 404 });
     }
 
-    return NextResponse.json({ data });
+    // Return the most recent session
+    const session = data[0];
+
+    return NextResponse.json({ data: session });
 
   } catch (error) {
     console.error(`Error fetching synthesis session for user ${userId}:`, error);

@@ -1,62 +1,55 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 
-import { useState, useEffect, use, createRef, useCallback, useRef, useMemo, memo } from 'react';
-import { Button, buttonVariants } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from '@/components/ui/textarea';
-import { Paperclip, Send, PlusCircle, Trash2, RefreshCw, X, ChevronRight, ChevronDown, ChevronUp, Edit3, RotateCcw, Edit2, CheckCircle, AlertCircle } from "lucide-react"
-import { Input } from "@/components/ui/input"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { useUser } from '@/context/UserContext';
-import { Loader2 } from 'lucide-react';
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from '@/components/ui/textarea';
 import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from "@/components/ui/tooltip";
+import { AlertCircle, CheckCircle, ChevronDown, ChevronRight, ChevronUp, PlusCircle, RefreshCw, RotateCcw, Trash2, Zap } from "lucide-react";
+import { memo, use, useEffect, useMemo, useState } from 'react';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
-import type { CanvasContent, SynthesizedWorkflow, WorkflowStepAnalysis, FinalAnalysisData, SynthesisStep, WorkflowContext, WorkflowBoundary, WorkflowBoundaries, WorkflowDataObject, DatabaseWorkflow, SynthesisSession, Message, DetailedSynthesizedWorkflow } from './types';
-import { useWorkflowPageLogic } from './useWorkflowPageLogic';
-import {
-  EditableListItem,
-  EditableWorkflowList,
-  AiThinkingBubble,
-  AnalysisProgressBubble,
-  EditableWorkflowBoundaries,
-  EditableSynthesizedWorkflows,
+    AnalysisProgressBubble,
+    EditableSynthesizedWorkflows,
+    EditableWorkflowBoundaries,
+    EditableWorkflowList
 } from './components';
+import type { CanvasContent, SynthesisStep } from './types';
+import { useWorkflowPageLogic } from './useWorkflowPageLogic';
 
+import { FilteredStatsDisplay } from '@/components/FilteredStatsDisplay';
+import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
+import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
+import { WorkflowExportDropdown } from '@/components/WorkflowExportDropdown';
+import { EditableTimelineMappings } from '@/components/low-level/EditableTimelineMappings';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
-import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
-import { WorkflowExportDropdown } from '@/components/WorkflowExportDropdown';
-import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
-import { EditableTimelineMappings } from '@/components/low-level/EditableTimelineMappings';
-import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
-import { FilteredStatsDisplay } from '@/components/FilteredStatsDisplay';
+import { Separator } from '@/components/ui/separator';
 
 import { cn } from '@/lib/utils';
 
@@ -272,18 +265,18 @@ const StepperItem = memo(({
 
     const stepState = useMemo(() => {
         const completedStates: Record<StepId, SynthesisStep[]> = {
-  'define-context': ['context_editing', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
-  'select-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'],
-  'define-boundaries': ['synthesizing', 'done'],
-  'synthesize-workflows': ['done'],
-          'timeline-mapping': [], // Not implemented yet
+  'define-context': ['context_editing', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'],
+  'select-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'],
+  'define-boundaries': ['synthesizing', 'synthesis_complete', 'done'],
+  'synthesize-workflows': ['synthesis_complete', 'done'],
+          'timeline-mapping': ['done'],
 };
 
         const enabledStates = {
             'define-context': Boolean(!isFetchingEvents && timeBoundary.startDate && timeBoundary.endDate),
             'select-workflows': synthesisStep === 'context_editing',
             'define-boundaries': synthesisStep === 'workflow_editing' && identifiedWorkflowNames.length > 0,
-            'timeline-mapping': synthesisStep === 'done',
+            'timeline-mapping': synthesisStep === 'synthesis_complete',
         };
         
         // Active states should only be true when actual processing is happening (for spinning animation)
@@ -314,7 +307,7 @@ const StepperItem = memo(({
                 case 'define-boundaries':
                     return synthesisStep === 'defining_boundaries' || synthesisStep === 'boundaries_editing'; // Editable when processing or editing
                 case 'synthesize-workflows':
-                    return synthesisStep === 'done' && !isMappingTimeline; // Editable when done with synthesis AND not mapping timeline
+                    return synthesisStep === 'synthesis_complete' && !isMappingTimeline; // Editable when synthesis complete AND not mapping timeline
                 case 'timeline-mapping':
                     return synthesisStep === 'done'; // Editable when done with timeline mapping
                 default:
@@ -323,10 +316,10 @@ const StepperItem = memo(({
         };
 
         const showComponentStates = {
-            'define-context': ['context_editing', 'identifying', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
-            'select-workflows': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
-            'define-boundaries': ['boundaries_editing', 'synthesizing', 'done'].includes(synthesisStep),
-            'synthesize-workflows': synthesisStep === 'done',
+            'define-context': ['context_editing', 'identifying', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'].includes(synthesisStep),
+            'select-workflows': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'].includes(synthesisStep),
+            'define-boundaries': ['boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'].includes(synthesisStep),
+            'synthesize-workflows': ['synthesis_complete', 'done'].includes(synthesisStep),
             'timeline-mapping': timelineAnnotations !== null,
         };
 
@@ -350,7 +343,7 @@ const StepperItem = memo(({
         (id === 'define-context' && (synthesisStep === 'context_editing' || isAnalyzingEvents)) ||
         (id === 'select-workflows' && synthesisStep === 'workflow_editing') ||
         (id === 'define-boundaries' && synthesisStep === 'boundaries_editing') ||
-        (id === 'synthesize-workflows' && synthesisStep === 'synthesizing') ||
+        (id === 'synthesize-workflows' && (synthesisStep === 'synthesizing' || synthesisStep === 'synthesis_complete')) ||
         (id === 'timeline-mapping' && synthesisStep === 'done');
 
 
@@ -670,6 +663,26 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
 
     return (
         <div className="h-full bg-background flex flex-col relative">
+            {/* Orchestration Progress Modal */}
+            <AlertDialog open={logic.isOrchestrating}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Full Synthesis in Progress</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            The automated synthesis and export process is running. Please wait.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="py-8">
+                        <AnalysisProgressBubble 
+                            status={logic.orchestrationStatus} 
+                            progress={logic.orchestrationProgress} 
+                            elapsedTime={logic.orchestrationElapsedTime}
+                            batchInfo={null} 
+                        />
+                    </div>
+                </AlertDialogContent>
+            </AlertDialog>
+
             {/* Header */}
             <div className="border-b bg-muted/40 p-4">
                 <div className="max-w-6xl mx-auto flex items-center gap-4">
@@ -693,6 +706,30 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                     </div>
                     <h1 className="text-2xl font-bold flex-grow text-center">Workflow Synthesis</h1>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={logic.runFullProcess}
+                                        disabled={logic.isOrchestrating}
+                                        className="flex items-center gap-2"
+                                    >
+                                        {logic.isOrchestrating ? (
+                                            <RefreshCw className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Zap className="h-4 w-4" />
+                                        )}
+                                        Full Process
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>Run the entire synthesis and export process automatically.</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+
                         <TooltipProvider>
                             <Tooltip>
                                 <TooltipTrigger asChild>
@@ -745,6 +782,25 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
 
             {/* Main Content */}
             <div className="w-full max-w-4xl mx-auto p-8 space-y-6">
+                {/* Setup Instructions - Always Visible */}
+                <Card className="w-full border-black">
+                    <CardHeader>
+                        <h3 className="text-lg font-semibold">Setup Instructions</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Provide any additional context, requirements, or specific instructions for workflow synthesis (optional)
+                        </p>
+                    </CardHeader>
+                    <CardContent>
+                        <Textarea 
+                            value={logic.editableContext?.user_instructions || ''} 
+                            onChange={(e) => logic.handleContextChange('user_instructions', e.target.value)} 
+                            className="min-h-[120px]" 
+                            placeholder="Examples:&#10;• Focus on compliance and validation steps&#10;• This is for agent training - emphasize required checks&#10;• Include customer interaction points&#10;• Highlight data validation requirements&#10;• Note any specific business rules or exceptions"
+                            disabled={logic.isLoading}
+                        />
+                    </CardContent>
+                </Card>
+
                 <Card>
                     <CardContent>
                         <Collapsible open={mainWorkflowOpen} onOpenChange={setMainWorkflowOpen}>
@@ -759,27 +815,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                     mainWorkflowOpen ? "max-h-[5000px] opacity-100" : "max-h-0 opacity-50 overflow-hidden"
                                 )}>
                                     <div className="mt-4">
-                                        {/* Instructions Input Area - Before Synthesis Begins */}
-                                        <div className="mb-8">
-                                            <Card className="w-full border-black">
-                                                <CardHeader>
-                                                    <h3 className="text-lg font-semibold">Setup Instructions</h3>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        Provide any additional context, requirements, or specific instructions for workflow synthesis (optional)
-                                                    </p>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <Textarea 
-                                                        value={logic.editableContext?.user_instructions || ''} 
-                                                        onChange={(e) => logic.handleContextChange('user_instructions', e.target.value)} 
-                                                        className="min-h-[120px]" 
-                                                        placeholder="Examples:&#10;• Focus on compliance and validation steps&#10;• This is for agent training - emphasize required checks&#10;• Include customer interaction points&#10;• Highlight data validation requirements&#10;• Note any specific business rules or exceptions"
-                                                        disabled={logic.isLoading}
-                                                    />
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-                                        
                                         <Stepper 
                                           logic={logic} 
                                           userId={userId} 

@@ -1,18 +1,18 @@
 'use client';
 
-import React from 'react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Textarea } from '@/components/ui/textarea';
+import React from 'react';
 
-import { PlusCircle, Trash2, RefreshCw, X, Edit3, Edit2 } from 'lucide-react';
+import { Edit2, Edit3, PlusCircle, RefreshCw, Trash2, X } from 'lucide-react';
 
-import { WorkflowBoundaries, CanvasContent } from './types';
+import { CanvasContent, WorkflowBoundaries } from './types';
 
 // ----------------------------------------------------------------------------------
 // EditableListItem
@@ -796,9 +796,9 @@ export const EditableSynthesizedWorkflows = ({
                   <Accordion type="multiple" className="w-full space-y-2">
                     {workflow.steps.map((step, stepIndex) => (
                       <AccordionItem key={stepIndex} value={`step-${stepIndex}`} className="border rounded">
-                        <AccordionTrigger className="px-3 py-2">
-                          <div className="flex items-center justify-between w-full">
-                            <div className="text-left flex-1 mr-2">
+                        <div className="flex items-center justify-between px-3 py-2">
+                          <AccordionTrigger className="flex-1 mr-2">
+                            <div className="text-left flex-1">
                               <Label className="text-xs font-medium text-muted-foreground">Step {stepIndex + 1} Name</Label>
                               <Input
                                 value={step.step_name || ''}
@@ -810,19 +810,19 @@ export const EditableSynthesizedWorkflows = ({
                                 onClick={(e) => e.stopPropagation()}
                               />
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeStep(workflowIndex, stepIndex);
-                              }}
-                              className="h-6 w-6 p-0"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </AccordionTrigger>
+                          </AccordionTrigger>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeStep(workflowIndex, stepIndex);
+                            }}
+                            className="h-6 w-6 p-0 ml-2"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                         <AccordionContent className="px-3 pb-3">
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">

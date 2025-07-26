@@ -1,14 +1,16 @@
-import { NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import { TIMELINE_MAPPING_ANALYSIS_PROMPT } from '@/lib/prompts';
 import { TranscriptItem } from '@/lib/transcriptUtils';
+import { callVertexWithStructuredOutput } from '@/lib/vertexai';
+import { createClient } from '@supabase/supabase-js';
+import { NextRequest } from 'next/server';
 
 function toSSE(data: object): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
 }
 
 // Schema for single batch mapping results with ID-based workflow mapping
+// Note: Conditional validation (if/then) removed because Vertex AI doesn't support it
+// Validation is handled in application code instead
 const SINGLE_BATCH_MAPPING_SCHEMA = {
   type: "object",
   properties: {
@@ -39,10 +41,12 @@ const SINGLE_BATCH_MAPPING_SCHEMA = {
 interface EventMappingResult {
   raw_event_id: number;
   confidence_score: number;
+  // Required when confidence_score > 0.5
   workflow_template_id?: number;
   workflow_type_id?: number;
   workflow_instance_id?: number;
   workflow_step_id?: number;
+  // Optional
   workflow_substep_id?: number;
   inputs?: string;
   outputs?: string;
@@ -69,12 +73,13 @@ interface TimelineAnnotation {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId, model, targetUiEventIds, startDate, endDate }: { 
+  const { userId, model, targetUiEventIds, startDate, endDate, synthesis_session_id }: { 
     userId: string; 
     model: string; 
     targetUiEventIds?: string[];
     startDate?: string;
     endDate?: string;
+    synthesis_session_id?: string;
   } = await req.json();
 
   if (!userId || !model) {
@@ -207,6 +212,12 @@ export async function POST(req: NextRequest) {
           const { data, error } = await query.order('created_at', { ascending: false });
           uiTreeEvents = data;
           recentEventsError = error;
+          
+          // DEBUG: Log the actual count of UI tree events fetched
+          console.log(`🔍 DEBUG: UI tree events fetched: ${uiTreeEvents?.length || 0} events`);
+          if (startDate && endDate) {
+            console.log(`🔍 DEBUG: Time filtering applied: ${startDate} to ${endDate}`);
+          }
         }
 
         if (recentEventsError) {
@@ -249,9 +260,20 @@ export async function POST(req: NextRequest) {
           // Fix time window logic for DESC-ordered events
           // For DESC order: current event is newer, next event is older
           const endTime = new Date(uiTreeEvents[batchIndex].created_at);
-          const startTime = batchIndex + 1 < totalBatches 
+          let startTime = batchIndex + 1 < totalBatches 
             ? new Date(uiTreeEvents[batchIndex + 1].created_at)
             : new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago for last batch
+
+          // 🛡️ HANDLE DUPLICATE TIMESTAMPS: Add buffer when start and end times are identical
+          if (startTime.getTime() === endTime.getTime()) {
+            // When timestamps are identical, create a small time window:
+            // - Move startTime back by 1 second
+            // - Keep endTime as is (or add 1 second for safety)
+            startTime = new Date(startTime.getTime() - 1000); // 1 second before
+            console.log(`⚠️ Batch ${batchIndex + 1}: Identical timestamps detected, adjusted window to prevent 0-second range`);
+            console.log(`   📅 Original time: ${uiTreeEvents[batchIndex].created_at}`);
+            console.log(`   📅 Adjusted window: ${startTime.toISOString()} → ${endTime.toISOString()}`);
+          }
 
           console.log(`📦 Processing batch ${batchIndex + 1}: ${startTime.toISOString()} → ${endTime.toISOString()}`);
 
@@ -415,6 +437,28 @@ export async function POST(req: NextRequest) {
             );
             
             result = llmResponse as { event_mappings: EventMappingResult[] };
+            
+            // Validate and fix data consistency issues
+            result.event_mappings = result.event_mappings.map(mapping => {
+              // If confidence > 0.5 but missing required workflow IDs, reduce confidence
+              if (mapping.confidence_score > 0.5) {
+                const hasRequiredFields = mapping.workflow_template_id && 
+                                        mapping.workflow_type_id && 
+                                        mapping.workflow_instance_id && 
+                                        mapping.workflow_step_id;
+                
+                if (!hasRequiredFields) {
+                  console.warn(`⚠️ Event ${mapping.raw_event_id}: High confidence (${mapping.confidence_score}) but missing workflow IDs. Reducing confidence to 0.4.`);
+                  return {
+                    ...mapping,
+                    confidence_score: 0.4,
+                    unrelated_reason: "Could not identify specific workflow components"
+                  };
+                }
+              }
+              return mapping;
+            });
+            
             console.log(`✅ Successfully mapped batch ${batchIndex + 1}: ${result.event_mappings.length} events mapped`);
           } catch (llmError) {
             console.error(`❌ LLM call failed for batch ${batchIndex + 1}:`, llmError);
@@ -446,7 +490,10 @@ export async function POST(req: NextRequest) {
               workflow_substep_id: mapping.workflow_substep_id || null,
               inputs: mapping.inputs || null,
               outputs: mapping.outputs || null,
-              business_logics: mapping.business_logics || null
+              business_logics: mapping.business_logics || null,
+              // Session tracking for proper reset behavior
+              synthesis_session_id: synthesis_session_id || null,
+              annotation_status: 'draft' // Mark as draft during current session
             }));
 
             const { error: insertError } = await supabaseAdmin

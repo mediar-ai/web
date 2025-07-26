@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { useMemo, useState } from 'react';
 
 import { Search } from 'lucide-react';
 
 interface TimelineAnnotation {
-  // Common fields
+  // Core fields
   analysis_id: number;
   is_workflow_related: boolean;
   unrelated_reason: string | null;
@@ -15,16 +15,7 @@ interface TimelineAnnotation {
   model_used: string | null;
   created_at: string;
   
-  // Old system fields (legacy)
-  id?: number;
-  workflow_id?: number | null;
-  workflow_title?: string | null;
-  workflow_type_name?: string | null;
-  workflow_instance_name?: string | null;
-  business_logic?: string[] | null;
-  updated_at?: string;
-  
-  // New raw events system fields
+  // Raw events system fields
   raw_event_id?: number;
   user_id?: string;
   workflow_template_id?: number | null;
@@ -32,13 +23,15 @@ interface TimelineAnnotation {
   workflow_instance_id?: number | null;
   workflow_step_id?: number | null;
   workflow_substep_id?: number | null;
-  // Human-readable names
+  
+  // Human-readable names from workflow data
   template_name?: string;
   type_name?: string;
   instance_name?: string;
   step_name?: string;
   substep_name?: string;
   event_type?: string;
+  
   // Analysis information
   step_title?: string;
   user_intent?: string;
@@ -49,6 +42,7 @@ interface TimelineAnnotation {
   business_logics?: string | null;
   event_payload?: Record<string, unknown>;
   event_created_at?: string;
+  
   // Labeling data
   selected_labels?: string[];
   suggested_labels?: string[];
@@ -70,16 +64,16 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
     return annotations.filter(annotation => {
       const searchableFields = [
         annotation.analysis_id?.toString(),
-        annotation.workflow_title,
-        annotation.workflow_type_name,
-        annotation.workflow_instance_name,
+        annotation.template_name,
+        annotation.type_name,
+        annotation.instance_name,
         annotation.step_name,
         annotation.substep_name,
         annotation.unrelated_reason,
         annotation.model_used,
         ...(annotation.inputs || []),
         ...(annotation.outputs || []),
-        ...(annotation.business_logic || []),
+        ...(annotation.business_logics || []),
         // Include labeling data in search
         ...(annotation.selected_labels || []),
         ...(annotation.suggested_labels || []),
@@ -317,16 +311,11 @@ export function TimelineAnnotationsTable({ annotations }: TimelineAnnotationsTab
                        </div>
                      )}
                      
-                     {(annotation.business_logics || annotation.business_logic) && (
+                     {annotation.business_logics && (
                        <div>
                          <div className="text-gray-700 text-xs mb-1 font-medium">BUSINESS LOGIC:</div>
-                         <div className="text-xs p-2 bg-gray-100 rounded border text-gray-800" title={(annotation.business_logics || annotation.business_logic) as string}>
-                           {typeof (annotation.business_logics || annotation.business_logic) === 'string' ? 
-                             (annotation.business_logics || annotation.business_logic) :
-                             Array.isArray(annotation.business_logic) && annotation.business_logic.length > 0 ? 
-                               annotation.business_logic.join(', ') :
-                               'No business logic data'
-                           }
+                         <div className="text-xs p-2 bg-gray-100 rounded border text-gray-800" title={annotation.business_logics}>
+                           {annotation.business_logics || 'No business logic data'}
                          </div>
                        </div>
                      )}

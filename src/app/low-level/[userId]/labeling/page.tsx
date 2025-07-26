@@ -1,79 +1,77 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, use, createRef, RefObject, useRef } from 'react';
+import ScreenshotView from '@/components/low-level/ScreenshotView';
+import UITreeTimeline from '@/components/low-level/UITreeTimeline';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
-import { ArrowUpDown } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  getSortedRowModel,
-  SortingState,
-  ColumnSizingState,
-} from '@tanstack/react-table';
-import { useUser } from '@/context/UserContext';
-import type { LowLevelEvent } from '@/types';
-import { RefreshCw, ThumbsUp, ThumbsDown, AlertCircle } from 'lucide-react';
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from '@/components/ui/input';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog"
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import UITreeTimeline from '@/components/low-level/UITreeTimeline';
-import ScreenshotView from '@/components/low-level/ScreenshotView';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { DateRangePicker } from '@/components/ui/date-range-picker';
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useUser } from '@/context/UserContext';
+import type { LowLevelEvent } from '@/types';
+import {
+    ColumnDef,
+    ColumnSizingState,
+    flexRender,
+    getCoreRowModel,
+    getSortedRowModel,
+    SortingState,
+    useReactTable,
+} from '@tanstack/react-table';
+import { AlertCircle, ArrowUpDown, ChevronDown, ChevronUp, RefreshCw, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { createRef, RefObject, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DateRange } from 'react-day-picker';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { ChevronDown, ChevronUp } from 'lucide-react';
 
-import { FlattenedWorkflowAnalysis } from '@/types';
 import { AnalysisDisplay } from '@/components/workflow-analysis';
+import { FlattenedWorkflowAnalysis } from '@/types';
 
 // Use the flattened type for backward compatibility
 type WorkflowStepAnalysis = FlattenedWorkflowAnalysis;
@@ -801,12 +799,6 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
                     {!isScreenshotCollapsed && <ScreenshotView 
                       dataUrl={afterScreenshotDataUrl} 
                       onWheel={handleScreenshotWheelScroll}
-                      storageConfig={relevantScreenshotDiff ? {
-                        userId,
-                        sessionId: relevantScreenshotDiff.session_id,
-                        eventId: relevantScreenshotDiff.id,
-                        type: 'after'
-                      } : undefined}
                     />}
                     <Button 
                         variant="outline" 
