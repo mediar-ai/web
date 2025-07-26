@@ -1,7 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { CONTEXT_AWARE_STEP_LABEL_PROMPT } from '@/lib/prompts';
+import { CONTEXT_AWARE_STEP_LABEL_PROMPT, WORKFLOW_LABEL_SUGGESTION_SCHEMA } from '@/lib/prompts';
 import { callVertexWithStructuredOutput } from '@/lib/vertexai';
-import { WORKFLOW_LABEL_SUGGESTION_SCHEMA } from '@/lib/prompts';
+import { NextRequest, NextResponse } from 'next/server';
 
 
 
@@ -39,7 +38,10 @@ export async function POST(req: NextRequest) {
         promptText,
         {}, // Empty context since prompt already includes all needed data
         modelName,
-        WORKFLOW_LABEL_SUGGESTION_SCHEMA
+        WORKFLOW_LABEL_SUGGESTION_SCHEMA,
+        "application/json",
+        false,
+        { timeoutMs: 240000 } // 4 minutes (240s) to stay under 5min Vercel function limit
     );
 
     console.log('✅ Vertex AI label suggestion successful');
