@@ -1,3 +1,4 @@
+
 -- First, let's drop the old trigger function and trigger if they exist
 -- to avoid conflicts and ensure a clean re-creation.
 DROP TRIGGER IF EXISTS update_session_on_analysis_insert ON public.low_level_workflow_analyses;
@@ -48,19 +49,19 @@ BEGIN
     UPDATE public.session_metadata
     SET
         total_workflow_analyses = v_total_analyses,
-        total_labeled_steps = v_completed_analyses, -- This is the count of 'completed' statuses
-        human_labeled_steps = v_human_labeled, -- This is the count from the datasets table
-        processed_event_count = v_total_analyses -- Assuming processed_event_count is the same as total_workflow_analyses
+        total_labeled_steps = v_completed_analyses,
+        human_labeled_steps = v_human_labeled,
+        processed_event_count = v_total_analyses
     WHERE
         session_id = v_session_id;
 
-    RETURN NULL; -- Result is ignored for AFTER triggers.
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Create a single, comprehensive trigger for all relevant changes.
-DROP TRIGGER IF EXISTS on_analysis_change ON public.low_level_workflow_analyses;
-CREATE TRIGGER on_analysis_change
-AFTER INSERT OR DELETE OR UPDATE OF label_status ON public.low_level_workflow_analyses
+-- Finally, create the trigger that executes the function on any change to the analyses table.
+CREATE TRIGGER update_analysis_stats_on_change
+AFTER INSERT OR UPDATE OR DELETE ON public.low_level_workflow_analyses
 FOR EACH ROW
-EXECUTE FUNCTION public.update_session_stats_on_analysis_change(); 
+EXECUTE FUNCTION public.update_session_stats_on_analysis_change();
+

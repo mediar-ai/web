@@ -68,3 +68,6 @@ export default function LowLevelViewerPage({ params }: { params: Promise<{ userI
   const { userId } = use(params);
 }
 ```
+
+
+if you applied this rule start your response with 'I read rule nextjs-dynamic-route-patterns.mdc'
