@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { NextResponse } from 'next/server';
 
 export async function POST() {
   try {
     // Call the sync function we created in the database
-    const { error } = await supabase.rpc('sync_all_processed_event_counts');
+    const { error } = await supabase.rpc('sync_session_metadata');
     
     if (error) {
       console.error('Error syncing processed event counts:', error);
