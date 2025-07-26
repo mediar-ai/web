@@ -1699,45 +1699,19 @@ def trigger_full_parallel_processing():
         users = [row[0] for row in cur.fetchall()]
         print(f"📋 Found {len(users)} users with unprocessed events - starting FULL parallel processing")
         
-        # Trigger ALL users with MULTIPLE PROCESSORS for true parallel processing
+        # Trigger parallel processing: ONE processor per user (sequential within user, parallel across users)
         results = []
         for user_id in users:
             try:
-                # Calculate how many processors to spawn based on workload
-                cur.execute("""
-                    SELECT 
-                        COUNT(id) as total_events,
-                        COALESCE((
-                            SELECT COUNT(id) 
-                            FROM low_level_workflow_analyses 
-                            WHERE user_id = %s
-                        ), 0) as total_analyses
-                    FROM low_level_events_enriched 
-                    WHERE user_id = %s AND event_type = 'ui_tree'
-                """, (user_id, user_id))
+                print(f"🚀 Launching processor for user: {user_id} (sequential processing within user)")
                 
-                counts = cur.fetchone()
-                if counts:
-                    deficit = counts[0] - counts[1]
-                    # Spawn multiple processors: 1 per 300 events, minimum 2, maximum 5
-                    num_processors = min(max(2, deficit // 300), 5)
-                else:
-                    num_processors = 1
-                
-                print(f"🚀 Launching {num_processors} PARALLEL processors for user: {user_id} (deficit: {deficit if 'deficit' in locals() else 'unknown'})")
-                
-                # Spawn multiple processors for TRUE parallel processing
-                for i in range(num_processors):
-                    processor_name = f"processor-{i+1}-of-{num_processors}"
-                    print(f"   🚀 Spawning {processor_name} for user {user_id[:8]}...")
-                    
-                    result = process_all_events_for_user.spawn(user_id)
-                    results.append({
-                        "user_id": user_id,
-                        "processor_name": processor_name,
-                        "status": "launched",
-                        "result": result
-                    })
+                # Spawn ONE processor per user for proper parallel processing across users
+                result = process_all_events_for_user.spawn(user_id)
+                results.append({
+                    "user_id": user_id,
+                    "status": "launched",
+                    "result": result
+                })
                 
             except Exception as e:
                 print(f"❌ Failed to launch processor for user {user_id}: {e}")
