@@ -399,7 +399,10 @@ def trigger_labeling_for_all_users():
                 AND NOT EXISTS ( -- Not currently being processed by another labeler
                     SELECT 1 FROM processing_locks
                     WHERE event_id = analysis.id 
-                    AND user_id NOT LIKE '%coordinator%'  -- Fix: Filter out coordinator locks before UUID casting
+                    AND user_id NOT LIKE '%coordinator%'  -- Filter out coordinator locks
+                    AND user_id NOT LIKE 'global-scheduler%'  -- Filter out scheduler locks
+                    AND user_id NOT LIKE 'machine-%'  -- Filter out machine locks
+                    AND user_id ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'  -- Only valid UUIDs
                     AND user_id::uuid = analysis.user_id 
                     AND status = 'in_progress' 
                     AND expires_at > NOW()
@@ -409,11 +412,8 @@ def trigger_labeling_for_all_users():
         users_to_process = [row[0] for row in cur.fetchall()]
         print(f"📋 Found {len(users_to_process)} users with analyses to label.")
         
-        # Limit concurrent processing to avoid overwhelming the system
-        MAX_CONCURRENT_USERS = 10  # Process up to 10 users simultaneously
-        if len(users_to_process) > MAX_CONCURRENT_USERS:
-            print(f"⚠️ Limiting to {MAX_CONCURRENT_USERS} concurrent users (found {len(users_to_process)})")
-            users_to_process = users_to_process[:MAX_CONCURRENT_USERS]
+        # Process all users - no artificial limit
+        print(f"🚀 Processing all {len(users_to_process)} users found")
         
         # Create all remote calls WITHOUT waiting for them to start
         print(f"🚀 Preparing {len(users_to_process)} processors for parallel launch...")
