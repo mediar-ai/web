@@ -1,57 +1,57 @@
 'use client';
 
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { useState, useEffect, use, useCallback, useMemo } from "react";
-import type { LowLevelEvent } from "@/types";
-import { generateSimplifiedUiTreeString } from '@/lib/uiTreeUtils';
-import UITreeTimeline from "@/components/low-level/UITreeTimeline";
+import DiffView from "@/components/low-level/DiffView";
 import FormattedUITree from "@/components/low-level/FormattedUITree";
 import ScreenshotView from "@/components/low-level/ScreenshotView";
-import DiffView from "@/components/low-level/DiffView";
-import { useUser } from "@/context/UserContext";
-import { RefreshCw, Expand, Minimize2, PlusSquare, MinusSquare, ChevronsDown, ChevronsUp, Pencil } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import UITreeTimeline from "@/components/low-level/UITreeTimeline";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { WORKFLOW_STEP_ANALYSIS_V2_PROMPT } from "@/lib/prompts";
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
+    Card,
+    CardContent,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { diffLines } from 'diff';
-import { preprocessTree } from '@/lib/diff';
-import { FlattenedWorkflowAnalysis } from '@/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AnalysisDisplay } from '@/components/workflow-analysis';
+import { useUser } from "@/context/UserContext";
+import { preprocessTree } from '@/lib/diff';
+import { WORKFLOW_STEP_ANALYSIS_V2_PROMPT } from "@/lib/prompts";
+import { generateSimplifiedUiTreeString } from '@/lib/uiTreeUtils';
+import type { LowLevelEvent } from "@/types";
+import { FlattenedWorkflowAnalysis } from '@/types';
+import { diffLines } from 'diff';
+import { ChevronsDown, ChevronsUp, Expand, Minimize2, MinusSquare, Pencil, PlusSquare, RefreshCw } from "lucide-react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 interface GenericEvent {
   [key: string]: unknown;
@@ -921,13 +921,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                             )}
                           </div>
                           <ScreenshotView 
-                            dataUrl={beforeScreenshotDataUrl} 
-                            storageConfig={relevantScreenshotDiffPrevious ? {
-                              userId,
-                              sessionId: relevantScreenshotDiffPrevious.session_id,
-                              eventId: relevantScreenshotDiffPrevious.id,
-                              type: 'after'
-                            } : undefined}
+                            dataUrl={beforeScreenshotDataUrl}
                           />
                         </AccordionContent>
                       </AccordionItem>
@@ -950,13 +944,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                             )}
                           </div>
                           <ScreenshotView 
-                            dataUrl={beforeScreenshotDataUrlSameWindow} 
-                            storageConfig={relevantScreenshotDiffSameWindow ? {
-                              userId,
-                              sessionId: relevantScreenshotDiffSameWindow.session_id,
-                              eventId: relevantScreenshotDiffSameWindow.id,
-                              type: 'after'
-                            } : undefined}
+                            dataUrl={beforeScreenshotDataUrlSameWindow}
                           />
                         </AccordionContent>
                       </AccordionItem>
@@ -979,13 +967,7 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
                             )}
                           </div>
                           <ScreenshotView 
-                            dataUrl={afterScreenshotDataUrl} 
-                            storageConfig={relevantScreenshotDiff ? {
-                              userId,
-                              sessionId: relevantScreenshotDiff.session_id,
-                              eventId: relevantScreenshotDiff.id,
-                              type: 'after'
-                            } : undefined}
+                            dataUrl={afterScreenshotDataUrl}
                           />
                         </AccordionContent>
                       </AccordionItem>

@@ -76,7 +76,7 @@ export type FinalAnalysisData = {
     workflowContext?: WorkflowContext;
 };
 
-export type SynthesisStep = 'idle' | 'context_editing' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_editing' | 'synthesizing' | 'done' | 'refining';
+export type SynthesisStep = 'idle' | 'context_editing' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_editing' | 'synthesizing' | 'synthesis_complete' | 'done' | 'refining';
 
 export type WorkflowDataObject = {
     id: number;

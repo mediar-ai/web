@@ -66,29 +66,7 @@ export async function POST(request: Request) {
 
     await supabaseAdmin.from('users').upsert({ id: userId }, { onConflict: 'id' });
     
-    if (itemType === 'screenshot_metadata') {
-        // Type guard for screenshot metadata
-        if (typeof item.storage_path === 'string' && typeof item.metadata === 'object' && item.metadata !== null) {
-            const { error } = await supabaseAdmin.from('user_activity_data').upsert({
-                session_id: sessionId,
-                user_id: userId,
-                item_type: 'screenshot_metadata',
-                client_item_id: item.id,
-                item_data: { storage_path: item.storage_path, ...(item.metadata as Record<string, unknown>) },
-                client_timestamp: new Date(item.timestamp).toISOString(),
-                source: 'web',
-            }, {
-              onConflict: 'session_id, item_type, client_item_id',
-            });
-
-            if (error) {
-                console.error(`[API/STREAM] Error upserting screenshot metadata:`, error);
-                return NextResponse.json({ error: 'Failed to upsert screenshot metadata', details: error.message }, { status: 500 });
-            }
-        } else {
-            return NextResponse.json({ error: 'Invalid screenshot metadata item' }, { status: 400 });
-        }
-    } else {
+    {
         const { id, timestamp, ...item_data } = item;
         
         // Normalize any timestamp-like strings in the item data

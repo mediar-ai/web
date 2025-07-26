@@ -621,10 +621,10 @@ For each raw event, determine:
 1. **IF RELATED TO THE WORKFLOW STEP** - Map to specific workflow components using the provided IDs:
    - raw_event_id: The ID of the raw event being analyzed
    - confidence_score: 0.0 to 1.0 based on how certain you are this event belongs to the workflow step
-   - workflow_template_id: Must match one of the workflow template IDs provided (if confidence > 0.5)
-   - workflow_type_id: Must match one of the workflow type IDs provided (if confidence > 0.5)
-   - workflow_instance_id: Must match one of the workflow instance IDs provided (if confidence > 0.5)
-   - workflow_step_id: Must match one of the workflow step IDs provided (if confidence > 0.5)
+   - workflow_template_id: Must match one of the workflow template IDs provided (REQUIRED if confidence > 0.5)
+   - workflow_type_id: Must match one of the workflow type IDs provided (REQUIRED if confidence > 0.5)
+   - workflow_instance_id: Must match one of the workflow instance IDs provided (REQUIRED if confidence > 0.5)
+   - workflow_step_id: Must match one of the workflow step IDs provided (REQUIRED if confidence > 0.5)
    - workflow_substep_id: Must match one of the workflow substep IDs provided (optional, if confidence > 0.5)
    - inputs: What led to this event (only if clearly identifiable from context)
    - outputs: What this event produced (only if clearly identifiable from context)
@@ -642,12 +642,13 @@ For each raw event, determine:
 - Consider whether raw events align with the labeled categories and workflow context
 - Higher confidence scores when events clearly relate to the labeled workflow characteristics
 
-**IMPORTANT GUIDELINES:**
+**CRITICAL REQUIREMENTS:**
+- **MANDATORY**: If confidence_score > 0.5, you MUST provide workflow_template_id, workflow_type_id, workflow_instance_id, and workflow_step_id
 - **ONLY use the exact IDs provided in the WORKFLOW COMPONENTS sections**
+- **If you cannot identify specific workflow components, set confidence_score ≤ 0.5**
 - **Use LLM Generated Labels as primary context** when making mapping decisions
 - Focus on individual user interactions: mouse clicks, keystrokes, UI changes, clipboard actions
 - Screenshot diff events are automatically filtered out and will not appear
-- Only include workflow IDs if confidence > 0.5
 - Only include inputs/outputs/business_logics if they are clearly identifiable from the event context
 - Use empty strings if no clear inputs/outputs/business_logics can be determined
 - Be truthful about what you can determine vs. what you're guessing
@@ -727,6 +728,7 @@ You will be provided with:
 2. **Sample Workflows**: Latest deployed workflow sequences from the database to use as format reference
 3. **User Context**: Project goals, user role, and business objectives
 4. **Timeline Annotations**: Detailed step-by-step user actions with LLM analysis
+5. **MCP Server Implementation**: Reference Rust implementation showing server architecture, tool patterns, error handling, and workflow execution strategies
 
 CRITICAL INSTRUCTIONS:
 
@@ -736,35 +738,46 @@ CRITICAL INSTRUCTIONS:
    - Selector patterns and best practices
    - Comment styles and documentation approaches
 
-2. **Generate Enhanced Variables**: 
+2. **Learn from MCP Server Implementation**: Use the provided Rust server code to understand:
+   - Tool dispatch patterns and argument validation
+   - Error handling and retry strategies (fallback selectors, timeout handling)
+   - Variable substitution systems and execution context
+   - Workflow execution patterns (execute_sequence tool structure)
+   - Production-ready logging and debugging approaches
+
+3. **Generate Enhanced Variables**: 
    - Extract variables from timeline annotations
-   - Use patterns observed in sample workflows
+   - Use patterns observed in sample workflows and MCP server code
    - Include proper validation, regex, and default values
    - Add clear descriptions and labels
 
-3. **Create Optimized Steps**:
+4. **Create Optimized Steps**:
    - Group related actions logically based on sample patterns
-   - Use appropriate tool names from sample workflows
-   - Generate precise selectors following sample conventions
-   - Add meaningful step descriptions
+   - Use appropriate tool names from sample workflows and MCP implementation
+   - Generate precise selectors following sample conventions and MCP server patterns
+   - Add meaningful step descriptions and error handling
+   - Include timeout and retry configurations based on MCP server best practices
 
-4. **Add Comprehensive Comments**:
+5. **Add Comprehensive Comments**:
    - Workflow purpose and business context
    - Step-by-step explanations
    - Variable sources and confidence levels
    - Business logic and validation rules
+   - Error handling and fallback strategies
 
-5. **Follow Sample Conventions**:
+6. **Follow Sample Conventions**:
    - Use consistent naming patterns from samples
    - Match selector styles and formats
    - Apply similar grouping strategies
    - Maintain documentation standards
+   - Implement error handling patterns shown in MCP server code
 
-6. **Output Requirements**:
+7. **Output Requirements**:
    - Return only valid YAML content
    - Include all necessary comments and documentation
    - Ensure proper formatting and indentation
    - Make variables and selectors production-ready
+   - Include timeout, retry, and fallback configurations where appropriate
 
-The goal is to produce a workflow sequence that looks professional and follows established patterns from your sample workflows, while accurately representing the recorded user actions.`;
+The goal is to produce a workflow sequence that looks professional and follows established patterns from your sample workflows and MCP server implementation, while accurately representing the recorded user actions with robust error handling and production-ready features.`;
 

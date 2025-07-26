@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
@@ -103,6 +103,25 @@ export async function POST(req: NextRequest) {
     if (error) {
       console.error('Error updating workflow status:', error);
       return NextResponse.json({ error: 'Failed to update workflow status' }, { status: 500 });
+    }
+
+    // Update timeline annotations to saved status for this synthesis session
+    if (updatedWorkflows.length > 0 && updatedWorkflows[0].synthesis_session_id) {
+      const sessionId = updatedWorkflows[0].synthesis_session_id;
+      
+      const { error: annotationError } = await supabaseAdmin
+        .from('raw_timeline_event_annotations')
+        .update({ annotation_status: 'saved' })
+        .eq('synthesis_session_id', sessionId)
+        .eq('user_id', userId)
+        .eq('annotation_status', 'draft');
+
+      if (annotationError) {
+        console.error('Error updating timeline annotation status:', annotationError);
+        // Don't fail the whole operation, just log the error
+      } else {
+        console.log(`✅ Updated timeline annotations to saved status for session: ${sessionId}`);
+      }
     }
 
     console.log(`✅ Saved complete synthesis: ${updatedWorkflows.length} workflows with full process data (ID: ${savedSynthesisRecord.id})`);

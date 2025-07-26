@@ -1,49 +1,49 @@
 'use client';
 
 // This is the main admin dashboard page, accessible at /admin.
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { type UserSessionData } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
-import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDebouncedCallback } from 'use-debounce';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
-import { ChevronDown, ChevronRight, Pencil, Trash2, RefreshCw } from 'lucide-react';
-import { useAuth, SignIn, useOrganization } from '@clerk/nextjs';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { SignIn, useAuth, useOrganization } from '@clerk/nextjs';
+import { ChevronDown, ChevronRight, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
@@ -1164,12 +1164,13 @@ function AuthenticatedAdminPage({
                 let userType = 'N/A';
                 const hasWeb = sessionTypes.has('web');
                 const hasLowLevel = sessionTypes.has('low-level');
+                const hasMixed = sessionTypes.has('mixed');
 
-                if (hasWeb && hasLowLevel) {
+                if ((hasWeb && hasLowLevel) || (hasWeb && hasMixed) || (hasLowLevel && hasMixed)) {
                   userType = 'mixed';
                 } else if (hasWeb) {
                   userType = 'web';
-                } else if (hasLowLevel) {
+                } else if (hasLowLevel || hasMixed) {
                   userType = 'low-level';
                 }
 

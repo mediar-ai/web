@@ -72,45 +72,35 @@ export interface TimelineEventUnrelated {
 }
 
 // =============================================================================
-// Enhanced timeline event with workflow mapping data
+// Raw timeline event annotations (current system)
 // =============================================================================
 
-export interface TimelineEventAnnotation {
+export interface RawTimelineEventAnnotation {
   id: number;
-  timeline_event_id: number;
+  raw_event_id: number;
+  analysis_id: number;
   is_workflow_related: boolean;
-  workflow_id?: number | null;
-  workflow_type_name?: string | null;
-  workflow_instance_name?: string | null;
-  step_name?: string | null;
-  substep_name?: string | null;
-  inputs?: string[] | null;
-  outputs?: string[] | null;
-  business_logic?: string[] | null;
+  user_action?: string | null;
+  ui_element_interacted?: string | null;
+  content_change?: string | null;
+  timestamp_context?: string | null;
   unrelated_reason?: string | null;
   confidence_score?: number | null;
   model_used?: string | null;
   user_id: string;
   session_id?: string | null;
+  // Workflow ID columns
+  workflow_template_id?: number | null;
+  workflow_type_id?: number | null;
+  workflow_instance_id?: number | null;
+  workflow_step_id?: number | null;
+  workflow_substep_id?: number | null;
+  // Workflow context
+  inputs?: string | null;
+  outputs?: string | null;
+  business_logics?: string | null;
   created_at: string;
   updated_at: string;
-}
-
-export interface EnhancedTimelineEvent {
-  // Original timeline event data from low_level_events
-  id: number;
-  user_id: string;
-  timestamp: string;
-  event_type: string;
-  payload: Record<string, unknown>;
-  session_id?: string;
-  
-  // A single, comprehensive annotation object for this event
-  annotation: TimelineEventAnnotation | null;
-  
-  // Computed fields (can be derived from annotation)
-  is_workflow_related: boolean;
-  confidence_score?: number;
 }
 
 export interface TimelineEventWorkflowMappingWithDetails extends TimelineEventWorkflowMapping {
@@ -204,11 +194,10 @@ export interface FetchTimelineEventMappingsRequest {
 }
 
 export interface FetchTimelineEventMappingsResponse {
-  events: EnhancedTimelineEvent[];
+  annotations: RawTimelineEventAnnotation[];
   total_events: number;
   workflow_related_count: number;
   unrelated_count: number;
-  unmapped_count: number;
 }
 
 export interface SaveTimelineEventMappingsRequest {
