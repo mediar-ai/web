@@ -1,25 +1,20 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { useState, useEffect, createRef, useCallback, useRef, useMemo } from 'react';
 import { useUser } from '@/context/UserContext';
 import type { LowLevelEvent } from '@/types';
+import { createRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  Message,
   CanvasContent,
-  SynthesizedWorkflow,
-  WorkflowStepAnalysis,
-  FinalAnalysisData,
-  SynthesisStep,
-  WorkflowContext,
-  WorkflowBoundaries,
-  WorkflowDataObject,
   DatabaseWorkflow,
-  SynthesisSession,
-  LlmLabel,
   DetailedSynthesizedWorkflow,
+  FinalAnalysisData,
+  Message,
+  SynthesisSession,
+  SynthesisStep,
+  WorkflowBoundaries,
+  WorkflowContext
 } from './types';
-import type { EnhancedTimelineEvent } from '@/lib/timelineMappingTypes';
 
 type UserStats = {
   totalEvents: number;
@@ -131,6 +126,7 @@ export function useWorkflowPageLogic(userId: string) {
     user_goal_from_recordings: '',
     overall_project_goal: '',
     overall_project_description: '',
+    user_instructions: '',
   });
   const [editableContext, setEditableContext] = useState<WorkflowContext>({
     user_job_role: '',
@@ -138,6 +134,7 @@ export function useWorkflowPageLogic(userId: string) {
     user_goal_from_recordings: '',
     overall_project_goal: '',
     overall_project_description: '',
+    user_instructions: '',
   });
   const [isAnalyzingEvents, setIsAnalyzingEvents] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState("");
@@ -145,7 +142,7 @@ export function useWorkflowPageLogic(userId: string) {
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [isFetchingEvents, setIsFetchingEvents] = useState(true);
-  const [timelineEvents, setTimelineEvents] = useState<EnhancedTimelineEvent[]>([]);
+  const [timelineEvents, setTimelineEvents] = useState<Record<string, unknown>[]>([]);
   const [timelineMappingMode, setTimelineMappingMode] = useState(false);
   const [lowLevelEvents, setLowLevelEvents] = useState<LowLevelEvent[]>([]);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
@@ -159,6 +156,13 @@ export function useWorkflowPageLogic(userId: string) {
   const timelineMappingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [timelineMappingBatch, setTimelineMappingBatch] = useState<{current: number, total: number} | null>(null);
   
+  // State for the new full synthesis process
+  const [isOrchestrating, setIsOrchestrating] = useState(false);
+  const [orchestrationStatus, setOrchestrationStatus] = useState("");
+  const [orchestrationProgress, setOrchestrationProgress] = useState(0);
+  const [orchestrationElapsedTime, setOrchestrationElapsedTime] = useState(0);
+  const orchestrationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Time boundary state for filtering workflow synthesis data
   const [timeBoundary, setTimeBoundary] = useState<{startDate: Date | null; endDate: Date | null}>({
     startDate: null,
@@ -168,8 +172,8 @@ export function useWorkflowPageLogic(userId: string) {
   // Data is now fetched directly by backend APIs - frontend only handles stats and UI state
 
   const isLoading = useMemo(() => 
-    isFetchingEvents || isAnalyzingEvents || isMappingTimeline
-  , [isFetchingEvents, isAnalyzingEvents, isMappingTimeline]);
+    isFetchingEvents || isAnalyzingEvents || isMappingTimeline || isOrchestrating
+  , [isFetchingEvents, isAnalyzingEvents, isMappingTimeline, isOrchestrating]);
 
   // Refs for chat scroll containers
   const fullscreenChatRef = useRef<HTMLDivElement>(null);
@@ -343,13 +347,12 @@ export function useWorkflowPageLogic(userId: string) {
         const regularWorkflows = result.data
           .filter((d: DatabaseWorkflow) => d.title !== '__CONVERSATION__')
           .map((workflow: DatabaseWorkflow) => {
-            // Preserve the correct detailed_workflow_data structure for EditableTimelineMappings
+            // Transform to CanvasContent format for component compatibility
             if (workflow.detailed_workflow_data) {
               return {
                 id: workflow.id,
-                title: workflow.detailed_workflow_data.title || workflow.title,
-                detailed_workflow_data: workflow.detailed_workflow_data, // Keep nested structure
-                chat_history: workflow.chat_history || []
+                chat_history: workflow.chat_history || [],
+                ...workflow.detailed_workflow_data // Spread to top level for direct access
               };
             } else {
               // Handle case where detailed_workflow_data is null (shouldn't happen for new workflows)
@@ -358,7 +361,9 @@ export function useWorkflowPageLogic(userId: string) {
                 id: workflow.id,
                 title: workflow.title || 'Untitled Workflow',
                 description: 'Workflow data unavailable',
-                detailed_workflow_data: null,
+                steps: [],
+                workflow_types: [],
+                workflow_instances: [],
                 chat_history: workflow.chat_history || []
               };
             }
@@ -439,14 +444,27 @@ export function useWorkflowPageLogic(userId: string) {
       }
       processChunk(buffer);
 
-      const defaultContext: WorkflowContext = { user_job_role: '', project_name: '', user_goal_from_recordings: '', overall_project_goal: '', overall_project_description: '' };
-      setWorkflowContext(finalData.workflowContext || defaultContext);
-      setEditableContext(finalData.workflowContext || defaultContext);
+      const defaultContext: WorkflowContext = { 
+        user_job_role: '', 
+        project_name: '', 
+        user_goal_from_recordings: '', 
+        overall_project_goal: '', 
+        overall_project_description: '',
+        user_instructions: editableContext?.user_instructions || ''
+      };
+      const newContext = finalData.workflowContext || defaultContext;
+      // Preserve user_instructions from current editableContext
+      const preservedContext = {
+        ...newContext,
+        user_instructions: editableContext?.user_instructions || newContext.user_instructions || ''
+      };
+      setWorkflowContext(preservedContext);
+      setEditableContext(preservedContext);
       setDraftWorkflowNames(finalData.workflowNames || []);
       setSynthesisStep('context_editing');
 
       await saveSynthesisSession(
-        [], 'context_editing', [], finalData.workflowContext || defaultContext, null, finalData.workflowNames || []
+        [], 'context_editing', [], preservedContext, null, finalData.workflowNames || []
       );
 
     } catch (error) {
@@ -587,6 +605,9 @@ export function useWorkflowPageLogic(userId: string) {
       return;
     }
 
+    // Transition to done state when user clicks timeline mapping
+    setSynthesisStep('done');
+
     // Clear any existing draft event mapping before starting new mapping
     setTimelineAnnotations(null);
     setIsMappingTimeline(true);
@@ -603,17 +624,20 @@ export function useWorkflowPageLogic(userId: string) {
     console.log('Starting sequential batch timeline mapping for', workflows.length, 'workflows');
 
     try {
+      const requestBody = { 
+        userId: userId,
+        model: selectedModel,
+        synthesis_session_id: synthesisSessionId, // Link to current session
+        ...(timeBoundary.startDate && timeBoundary.endDate && {
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString()
+        })
+      };
+
       const response = await fetch('/api/analyze-raw-timeline-events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          userId: userId,
-          model: selectedModel,
-          ...(timeBoundary.startDate && timeBoundary.endDate && {
-            startDate: timeBoundary.startDate.toISOString(),
-            endDate: timeBoundary.endDate.toISOString()
-          })
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -766,15 +790,15 @@ export function useWorkflowPageLogic(userId: string) {
       // Re-fetch from database to ensure we have detailed_workflow_data for timeline mapping
       await fetchCompleteWorkflows();
       
-      setSynthesisStep('done');
+      setSynthesisStep('synthesis_complete');
       const synthesizedMessage: Message = {
         id: `${Date.now()}`, 
         sender: 'ai', 
-        text: `Successfully synthesized ${savedWorkflows.length} workflows! You can now review and edit them on the canvas.`
+        text: `Successfully synthesized ${savedWorkflows.length} workflows! You can now review and edit them on the canvas, then proceed to timeline mapping.`
       };
       const finalMessages = [...updatedMessages.slice(0, -1), synthesizedMessage];
       setMessages(finalMessages);
-      await saveSynthesisSession(finalMessages, 'done', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
+      await saveSynthesisSession(finalMessages, 'synthesis_complete', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
 
     } catch (error) {
       console.error("Error during workflow synthesis:", error);
@@ -796,7 +820,32 @@ export function useWorkflowPageLogic(userId: string) {
       if (response.ok) {
         const result = await response.json();
         if (result.data && Array.isArray(result.data)) {
-                  setWorkflows(result.data);
+          // Transform database records to CanvasContent format
+          const transformedWorkflows = result.data
+            .filter((d: DatabaseWorkflow) => d.title !== '__CONVERSATION__')
+            .map((workflow: DatabaseWorkflow) => {
+              if (workflow.detailed_workflow_data) {
+                // Spread detailed_workflow_data to top level for component access
+                return {
+                  id: workflow.id,
+                  chat_history: workflow.chat_history || [],
+                  ...workflow.detailed_workflow_data // Extract steps, workflow_types, etc. to top level
+                };
+              } else {
+                // Handle case where detailed_workflow_data is null
+                console.warn('Workflow missing detailed_workflow_data:', workflow.id);
+                return {
+                  id: workflow.id,
+                  title: workflow.title || 'Untitled Workflow',
+                  description: 'Workflow data unavailable',
+                  steps: [],
+                  workflow_types: [],
+                  workflow_instances: [],
+                  chat_history: workflow.chat_history || []
+                };
+              }
+            });
+          setWorkflows(transformedWorkflows);
         }
       } else {
         console.error('Failed to fetch complete workflows:', response.status);
@@ -837,7 +886,11 @@ export function useWorkflowPageLogic(userId: string) {
 
   useEffect(() => {
     if (workflowContext) {
-      setEditableContext(workflowContext);
+      // Preserve user_instructions from current editableContext when workflowContext updates
+      setEditableContext(prevEditableContext => ({
+        ...workflowContext,
+        user_instructions: prevEditableContext?.user_instructions || workflowContext.user_instructions || ''
+      }));
     }
   }, [workflowContext]);
 
@@ -971,6 +1024,17 @@ export function useWorkflowPageLogic(userId: string) {
     if (synthesisSessionId) {
       try {
         await fetch(`/api/synthesis-sessions/${synthesisSessionId}`, { method: 'DELETE' });
+        
+        // Also clean up draft timeline annotations for this session
+        await fetch('/api/timeline-event-mappings/cleanup-drafts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            userId, 
+            synthesis_session_id: synthesisSessionId 
+          })
+        });
+        
         await saveSynthesisSession(initialMessages, 'idle', [], emptyContext, null, []);
       } catch (error) {
         console.error('Error resetting conversation:', error);
@@ -1090,19 +1154,35 @@ export function useWorkflowPageLogic(userId: string) {
     proceedToSynthesis(workflowBoundaries);
   };
 
-  // Load existing timeline annotations on page load
+  // Load existing timeline annotations for current session
   useEffect(() => {
     const loadExistingTimelineAnnotations = async () => {
       try {
-        console.log('Loading existing timeline annotations...');
-        const response = await fetch(`/api/timeline-event-mappings?user_id=${userId}&raw_events=true&include_unrelated=true`);
+        console.log('Loading timeline annotations for current session...');
+        
+        // Build query params for session-aware loading
+        const params = new URLSearchParams({
+          user_id: userId,
+          raw_events: 'true',
+          include_unrelated: 'true',
+        });
+        
+        // If we have a synthesis session, only load annotations for that session
+        if (synthesisSessionId) {
+          params.append('synthesis_session_id', synthesisSessionId);
+        } else {
+          // Otherwise only load draft annotations (current session work)
+          params.append('include_saved', 'false');
+        }
+        
+        const response = await fetch(`/api/timeline-event-mappings?${params.toString()}`);
         if (response.ok) {
           const data = await response.json();
           if (data.annotations && data.annotations.length > 0) {
             setTimelineAnnotations(data.annotations);
-            console.log('Loaded existing timeline annotations:', data.annotations.length);
+            console.log('Loaded timeline annotations for current session:', data.annotations.length);
           } else {
-            console.log('ℹ️ No existing timeline annotations found');
+            console.log('ℹ️ No timeline annotations found for current session');
             setTimelineAnnotations([]);
           }
         } else {
@@ -1118,7 +1198,7 @@ export function useWorkflowPageLogic(userId: string) {
     if (userId) {
       loadExistingTimelineAnnotations();
     }
-  }, [userId]);
+  }, [userId, synthesisSessionId]); // Re-load when session changes
 
   // Load existing synthesis session on page load
   useEffect(() => {
@@ -1126,6 +1206,78 @@ export function useWorkflowPageLogic(userId: string) {
     setUserId(userId);
     setIsFetchingEvents(false);
   }, [userId, setUserId]);
+
+  const runFullProcess = async () => {
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert("Please select a time boundary first.");
+      return;
+    }
+    setIsOrchestrating(true);
+    setOrchestrationStatus("Initiating full synthesis process...");
+    setOrchestrationProgress(0);
+    setOrchestrationElapsedTime(0);
+    const orchestrationTimer = setInterval(() => setOrchestrationElapsedTime(prev => prev + 1), 1000);
+
+    try {
+      // Step 1: Trigger the Modal job
+      const triggerResponse = await fetch('/api/workflows/trigger-full-synthesis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          model: selectedModel,
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString(),
+          userInstructions: editableContext?.user_instructions || '',
+        }),
+      });
+
+      if (!triggerResponse.ok) {
+        throw new Error('Failed to trigger the synthesis job.');
+      }
+      const { sessionId } = await triggerResponse.json();
+
+      // Step 2: Poll for status
+      const pollInterval = setInterval(async () => {
+        const statusResponse = await fetch(`/api/workflows/synthesis-status?sessionId=${sessionId}`);
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json();
+          setOrchestrationStatus(statusData.orchestration_status);
+          setOrchestrationProgress(statusData.orchestration_progress);
+
+          // Update UI with intermediate data
+          if (statusData.orchestration_data) {
+            const data = statusData.orchestration_data;
+            if (data.draftWorkflowNames) setDraftWorkflowNames(data.draftWorkflowNames);
+            if (data.workflowContext) {
+              setEditableContext(data.workflowContext);
+              setWorkflowContext(data.workflowContext);
+            }
+            if (data.identifiedWorkflowNames) setIdentifiedWorkflowNames(data.identifiedWorkflowNames);
+            if (data.synthesizedWorkflow) setWorkflows([data.synthesizedWorkflow]);
+            if (data.timelineAnnotations) setTimelineAnnotations(data.timelineAnnotations.workflow_mappings || []);
+          }
+
+          if (statusData.orchestration_progress === 100 || statusData.orchestration_progress < 0) {
+            clearInterval(pollInterval);
+            clearInterval(orchestrationTimer);
+            if (statusData.final_result_url) {
+              // Trigger download
+              window.open(statusData.final_result_url, '_blank');
+            }
+            setTimeout(() => setIsOrchestrating(false), 2000);
+          }
+        }
+      }, 3000); // Poll every 3 seconds
+
+    } catch (error) {
+      console.error('Error during full synthesis process:', error);
+      alert(`An error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setOrchestrationStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      clearInterval(orchestrationTimer);
+      setIsOrchestrating(false);
+    }
+  };
 
   return {
     // Core State
@@ -1137,6 +1289,15 @@ export function useWorkflowPageLogic(userId: string) {
     isFetchingEvents,
     isAnalyzingEvents,
     
+    // New orchestration state and function
+    isOrchestrating,
+    runFullProcess,
+
+    // Orchestration progress
+    orchestrationStatus,
+    orchestrationProgress,
+    orchestrationElapsedTime,
+
     // Data & Context
     workflowContext,
     editableContext,

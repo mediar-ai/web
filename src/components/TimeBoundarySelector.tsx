@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
+import { dateStringToLocal, dateToLocalString, getTimezoneDisplay } from '@/lib/timezoneUtils';
 import { cn } from '@/lib/utils';
-import { getTimezoneDisplay, dateToLocalString, dateStringToLocal } from '@/lib/timezoneUtils';
+import { useEffect, useState } from 'react';
 
 interface TimeBoundary {
   startDate: Date | null;
@@ -107,27 +107,22 @@ export function TimeBoundarySelector({
   const handleQuickOptionSelect = (optionIndex: number) => {
     const option = QUICK_OPTIONS[optionIndex];
     
-    // If we have user data range, calculate from their latest data point
-    // Otherwise, fall back to current time
-    let endDate: Date;
-    let startDate: Date;
+    // Always use current time as the end date for quick options
+    // This ensures 24-hour selection means "last 24 hours from now"
+    const endDate: Date = new Date();
+    let startDate: Date = new Date(endDate.getTime() - option.minutes * 60 * 1000);
     
+    // If we have user data range, ensure we don't go before the user's earliest data
     if (userDataRange) {
-      endDate = new Date(userDataRange.latestTimestamp);
-      startDate = new Date(endDate.getTime() - option.minutes * 60 * 1000);
-      
-      // Ensure we don't go before the user's earliest data
       const earliestDate = new Date(userDataRange.earliestTimestamp);
       if (startDate < earliestDate) {
         startDate = earliestDate;
+        console.log(`🕐 Quick option: ${option.label} adjusted to user's earliest data: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+      } else {
+        console.log(`🕐 Quick option: ${option.label} from current time: ${startDate.toISOString()} to ${endDate.toISOString()}`);
       }
-      
-      console.log(`🕐 Quick option: ${option.label} from user's data range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
     } else {
-      // Fallback to current time if no user data range available
-      endDate = new Date();
-      startDate = new Date(endDate.getTime() - option.minutes * 60 * 1000);
-      console.log(`🕐 Quick option: ${option.label} from current time (fallback): ${startDate.toISOString()} to ${endDate.toISOString()}`);
+      console.log(`🕐 Quick option: ${option.label} from current time: ${startDate.toISOString()} to ${endDate.toISOString()}`);
     }
     
     setSelectedQuickOption(optionIndex);
