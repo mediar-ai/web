@@ -15,6 +15,9 @@ const eslintConfig = [
     'next/typescript'
   ),
   {
+    ignores: ['src/tests/**/*'],
+  },
+  {
     rules: {
       // Custom rules can be added here
       'prefer-const': 'error',
