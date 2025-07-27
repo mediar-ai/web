@@ -134,4 +134,140 @@ export const formatTimelineTime = (date: Date | string, includeDate = false): st
   const timezone = getTimezoneShort();
   
   return `${timeString} ${timezone}`;
+};
+
+/**
+ * Enhanced picker utility functions
+ */
+
+/**
+ * Convert Date to UTC datetime-local format for UTC mode
+ * @param date - Date to convert
+ * @returns String in YYYY-MM-DDTHH:MM format representing UTC time
+ */
+export const dateToUTCString = (date: Date): string => {
+  return date.toISOString().slice(0, 16);
+};
+
+/**
+ * Parse datetime-local input as UTC time
+ * @param dateString - String from datetime-local input
+ * @returns Date object interpreting the input as UTC time
+ */
+export const dateStringToUTC = (dateString: string): Date => {
+  return new Date(dateString + 'Z'); // Add Z to interpret as UTC
+};
+
+/**
+ * Convert between local and UTC based on timezone mode
+ * @param date - Date to convert
+ * @param fromTimezone - Source timezone mode
+ * @param toTimezone - Target timezone mode
+ * @returns Converted date
+ */
+export const convertTimezone = (
+  date: Date, 
+  fromTimezone: 'local' | 'utc', 
+  toTimezone: 'local' | 'utc'
+): Date => {
+  if (fromTimezone === toTimezone) {
+    return date;
+  }
+
+  if (fromTimezone === 'local' && toTimezone === 'utc') {
+    // Convert local time to UTC
+    return new Date(date.getTime() + (date.getTimezoneOffset() * 60000));
+  } else {
+    // Convert UTC to local time
+    return new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+  }
+};
+
+/**
+ * Format date range for display with timezone indicator
+ * @param startDate - Start date
+ * @param endDate - End date
+ * @param timezone - Timezone mode
+ * @param includeTime - Whether to include time in display
+ * @returns Formatted date range string
+ */
+export const formatDateRangeDisplay = (
+  startDate: Date | null,
+  endDate: Date | null,
+  timezone: 'local' | 'utc' = 'local',
+  includeTime: boolean = true
+): string => {
+  if (!startDate) {
+    return 'No date selected';
+  }
+
+  const timezoneSuffix = timezone === 'utc' ? ' UTC' : ` ${getTimezoneShort()}`;
+
+  if (!endDate) {
+    return startDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      ...(includeTime && {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      })
+    }) + timezoneSuffix;
+  }
+
+  const startFormatted = startDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    ...(includeTime && {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  });
+
+  const endFormatted = endDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    ...(includeTime && {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  });
+
+  return `${startFormatted} - ${endFormatted}${timezoneSuffix}`;
+};
+
+/**
+ * Get current date boundaries for quick options
+ * @returns Object with common date boundaries
+ */
+export const getDateBoundaries = () => {
+  const now = new Date();
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+  
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+  startOfWeek.setHours(0, 0, 0, 0);
+  
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  return {
+    now,
+    startOfDay,
+    endOfDay,
+    startOfWeek,
+    startOfMonth,
+    yesterday: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+    lastWeek: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+    lastMonth: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  };
 }; 
