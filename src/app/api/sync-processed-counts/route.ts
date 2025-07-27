@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 
 export async function POST() {
   try {
-    // Call the sync function we created in the database
-    const { error } = await supabase.rpc('sync_session_metadata');
+    // Call the safe sync function that doesn't use DELETE without WHERE
+    const { error } = await supabase.rpc('safe_sync_session_metadata');
     
     if (error) {
       console.error('Error syncing processed event counts:', error);
