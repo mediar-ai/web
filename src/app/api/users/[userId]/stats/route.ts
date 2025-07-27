@@ -20,45 +20,33 @@ export async function GET(
     console.log(`[api/users/${userId}/stats] Fetching user stats`);
 
     const url = new URL(req.url);
-    const timeBoundary = url.searchParams.get('timeBoundary');
+    const startDate = url.searchParams.get('startDate');
+    const endDate = url.searchParams.get('endDate');
 
-    if (timeBoundary && timeBoundary !== 'all-time') {
-      // For time-filtered stats, use existing filtered logic
-      const fromTimestamp = new Date();
-      switch (timeBoundary) {
-        case '10-minutes':
-          fromTimestamp.setMinutes(fromTimestamp.getMinutes() - 10);
-          break;
-        case '60-minutes':
-          fromTimestamp.setHours(fromTimestamp.getHours() - 1);
-          break;
-        case '24-hours':
-          fromTimestamp.setDate(fromTimestamp.getDate() - 1);
-          break;
-        default:
-          throw new Error(`Invalid time boundary: ${timeBoundary}`);
-      }
-
-      console.log(`[api/users/${userId}/stats] Using time boundary: ${timeBoundary} (from ${fromTimestamp.toISOString()})`);
+    if (startDate && endDate) {
+      // For time-filtered stats, use direct startDate/endDate filtering (same as other working APIs)
+      console.log(`[api/users/${userId}/stats] Time filtering: ${startDate} to ${endDate}`);
       
-      // Get filtered events count
+      // Get filtered events count (use created_at for low_level_events)
       const { count: eventsCount, error: eventsError } = await supabaseAdmin
         .from('low_level_events')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
-        .gte('created_at', fromTimestamp.toISOString());
+        .gte('created_at', startDate)
+        .lte('created_at', endDate);
 
       if (eventsError) {
         console.error(`Error counting filtered events for user ${userId}:`, eventsError);
         throw eventsError;
       }
 
-      // Get filtered analyses count
+      // Get filtered analyses count (use client_timestamp for analyses)
       const { count: analysesCount, error: analysesError } = await supabaseAdmin
         .from('low_level_workflow_analyses')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
-        .gte('created_at', fromTimestamp.toISOString());
+        .gte('client_timestamp', startDate)
+        .lte('client_timestamp', endDate);
 
       if (analysesError) {
         console.error(`Error counting filtered analyses for user ${userId}:`, analysesError);
@@ -73,7 +61,8 @@ export async function GET(
         .from('low_level_workflow_analyses')
         .select('id')
         .eq('user_id', userId)
-        .gte('created_at', fromTimestamp.toISOString());
+        .gte('client_timestamp', startDate)
+        .lte('client_timestamp', endDate);
 
       if (userAnalysesError) {
         annotationsError = userAnalysesError;
