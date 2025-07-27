@@ -1,17 +1,18 @@
 'use client';
 
-import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog";
-import { Download, RefreshCw, Calendar } from 'lucide-react';
+import { EnhancedDateTimePicker } from '@/components/ui/enhanced-datetime-picker';
 import type { LoadMoreModalProps } from '@/types/shared-data-management';
+import { Calendar, Download, RefreshCw } from 'lucide-react';
+import React from 'react';
 
 interface TimeBoundary {
   startDate: Date | null;
@@ -35,17 +36,6 @@ interface LoadMoreModalExtendedProps extends LoadMoreModalProps {
   chunkSize?: number;
   pageTitle?: string;
 }
-
-// Helper function to convert UTC Date to datetime-local format (displaying UTC time)
-const dateToUTCString = (date: Date): string => {
-  return date.toISOString().slice(0, 16);
-};
-
-// Helper function to interpret datetime-local input as UTC time
-const dateStringToUTC = (dateString: string): Date => {
-  // Treat the input as UTC by appending 'Z'
-  return new Date(dateString + ':00.000Z');
-};
 
 export const LoadMoreModal: React.FC<LoadMoreModalExtendedProps> = ({
   isOpen,
@@ -136,33 +126,19 @@ export const LoadMoreModal: React.FC<LoadMoreModalExtendedProps> = ({
                   </p>
                 </div>
                 
-                {/* Simple date inputs since TimeBoundarySelector might not be available */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Start Date (UTC)</label>
-                    <input 
-                      type="datetime-local"
-                      value={timeBoundary.startDate ? dateToUTCString(timeBoundary.startDate) : ''}
-                      onChange={(e) => onTimeBoundaryChange({
-                        ...timeBoundary,
-                        startDate: e.target.value ? dateStringToUTC(e.target.value) : null
-                      })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">End Date (UTC)</label>
-                    <input 
-                      type="datetime-local"
-                      value={timeBoundary.endDate ? dateToUTCString(timeBoundary.endDate) : ''}
-                      onChange={(e) => onTimeBoundaryChange({
-                        ...timeBoundary,
-                        endDate: e.target.value ? dateStringToUTC(e.target.value) : null
-                      })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                </div>
+                <EnhancedDateTimePicker
+                  startDate={timeBoundary.startDate}
+                  endDate={timeBoundary.endDate}
+                  onDateTimeChange={(startDate, endDate) => {
+                    onTimeBoundaryChange({ startDate, endDate });
+                  }}
+                  mode="range"
+                  showTime={true}
+                  timezone="utc"
+                  placeholder="Select time range (UTC)"
+                  compact={true}
+                  className="w-full"
+                />
                 
                 <div className="flex justify-end">
                   <Button 
