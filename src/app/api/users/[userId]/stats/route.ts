@@ -1,75 +1,79 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY!;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+});
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
-  const { userId } = await params;
-  const { searchParams } = new URL(req.url);
-  const startDate = searchParams.get('startDate');
-  const endDate = searchParams.get('endDate');
-
-  if (!userId) {
-    return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-  }
-
   try {
-    // If time range is provided, fetch filtered stats directly from tables
-    if (startDate && endDate) {
-      const startDateTime = new Date(startDate);
-      const endDateTime = new Date(endDate);
+    const { userId } = await params;
+    console.log(`[api/users/${userId}/stats] Fetching user stats`);
 
-      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-        return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
+    const url = new URL(req.url);
+    const timeBoundary = url.searchParams.get('timeBoundary');
+
+    if (timeBoundary && timeBoundary !== 'all-time') {
+      // For time-filtered stats, use existing filtered logic
+      const fromTimestamp = new Date();
+      switch (timeBoundary) {
+        case '10-minutes':
+          fromTimestamp.setMinutes(fromTimestamp.getMinutes() - 10);
+          break;
+        case '60-minutes':
+          fromTimestamp.setHours(fromTimestamp.getHours() - 1);
+          break;
+        case '24-hours':
+          fromTimestamp.setDate(fromTimestamp.getDate() - 1);
+          break;
+        default:
+          throw new Error(`Invalid time boundary: ${timeBoundary}`);
       }
 
-      // Fetch filtered raw events count
+      console.log(`[api/users/${userId}/stats] Using time boundary: ${timeBoundary} (from ${fromTimestamp.toISOString()})`);
+      
+      // Get filtered events count
       const { count: eventsCount, error: eventsError } = await supabaseAdmin
         .from('low_level_events')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
-        .gte('created_at', startDateTime.toISOString())
-        .lte('created_at', endDateTime.toISOString());
+        .gte('created_at', fromTimestamp.toISOString());
 
       if (eventsError) {
-        console.error(`Error counting events for user ${userId}:`, eventsError);
+        console.error(`Error counting filtered events for user ${userId}:`, eventsError);
         throw eventsError;
       }
 
-      // Fetch filtered analyses count
+      // Get filtered analyses count
       const { count: analysesCount, error: analysesError } = await supabaseAdmin
         .from('low_level_workflow_analyses')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
-        .gte('client_timestamp', startDateTime.toISOString())
-        .lte('client_timestamp', endDateTime.toISOString());
+        .gte('created_at', fromTimestamp.toISOString());
 
       if (analysesError) {
-        console.error(`Error counting analyses for user ${userId}:`, analysesError);
+        console.error(`Error counting filtered analyses for user ${userId}:`, analysesError);
         throw analysesError;
       }
 
-      // Fetch filtered annotations count from correct table (low_level_workflow_labeling)
-      // First get analysis IDs for the user in the date range
+      // Get filtered annotations count
+      let annotationsCount = 0;
+      let annotationsError = null;
+
       const { data: userAnalyses, error: userAnalysesError } = await supabaseAdmin
         .from('low_level_workflow_analyses')
         .select('id')
         .eq('user_id', userId)
-        .gte('client_timestamp', startDateTime.toISOString())
-        .lte('client_timestamp', endDateTime.toISOString());
-
-      let annotationsCount = 0;
-      let annotationsError = null;
+        .gte('created_at', fromTimestamp.toISOString());
 
       if (userAnalysesError) {
         annotationsError = userAnalysesError;
@@ -103,29 +107,24 @@ export async function GET(
       return NextResponse.json(filteredStats);
     }
 
-    // Default behavior - fetch all-time stats directly from tables (more accurate than session metadata)
+    // Default behavior - get all-time stats from session metadata (matches admin dashboard)
+    console.log(`[api/users/${userId}/stats] Fetching all-time stats from session metadata`);
     
-    // Get total events count
-    const { count: totalEvents, error: eventsError } = await supabaseAdmin
-      .from('low_level_events')
-      .select('*', { count: 'exact', head: true })
+    // Get session metadata for user - this contains the correct processed counts
+    const { data: sessionData, error: sessionError } = await supabaseAdmin
+      .from('session_metadata')
+      .select('event_count, processed_event_count, total_ui_steps')
       .eq('user_id', userId);
 
-    if (eventsError) {
-      console.error(`Error counting events for user ${userId}:`, eventsError);
-      throw eventsError;
+    if (sessionError) {
+      console.error(`Error fetching session metadata for user ${userId}:`, sessionError);
+      throw sessionError;
     }
 
-    // Get total analyses count
-    const { count: totalAnalyses, error: analysesError } = await supabaseAdmin
-      .from('low_level_workflow_analyses')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
-
-    if (analysesError) {
-      console.error(`Error counting analyses for user ${userId}:`, analysesError);
-      throw analysesError;
-    }
+    // Aggregate the session data (same way as admin dashboard)
+    const totalEvents = sessionData?.reduce((sum, session) => sum + (session.event_count || 0), 0) || 0;
+    const totalProcessedEvents = sessionData?.reduce((sum, session) => sum + (session.processed_event_count || 0), 0) || 0;
+    const totalUiSteps = sessionData?.reduce((sum, session) => sum + (session.total_ui_steps || 0), 0) || 0;
 
     // Get total annotations count from correct table
     const { data: allUserAnalyses, error: allUserAnalysesError } = await supabaseAdmin
@@ -152,15 +151,16 @@ export async function GET(
     }
 
     const stats = {
-      totalEvents: totalEvents || 0,
-      totalAnalyses: totalAnalyses || 0,
+      totalEvents: totalEvents,
+      totalAnalyses: totalProcessedEvents, // processed_event_count = workflow analyses completed
       totalAnnotations: totalAnnotations,
-      stepsProcessed: totalAnalyses || 0, // For backward compatibility
-      totalSteps: totalEvents || 0, // For backward compatibility  
+      stepsProcessed: totalProcessedEvents, // FIXED: Now shows processed events (workflow analyses)
+      totalSteps: totalUiSteps, // FIXED: Now shows UI steps, not all events
       labelingTotal: totalAnnotations, // For backward compatibility
       llmGeneratedLabeled: totalAnnotations, // For backward compatibility (assuming most are LLM generated)
     };
 
+    console.log(`[api/users/${userId}/stats] Returning stats:`, stats);
     return NextResponse.json(stats);
   } catch (error) {
     console.error('An error occurred fetching user stats:', error);
