@@ -495,7 +495,7 @@ def trigger_labeling_for_all_users():
 @app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
     schedule=modal.Period(minutes=1),  # Changed from 90 to 1 minute for faster processing
-    timeout=45  # Reduced from 600 to 45 seconds to prevent overlaps
+    timeout=90  # Increased from 45 to 90 seconds to prevent scheduling conflicts
 )
 def scheduled_labeling_processing():
     """Periodically triggers the labeling process for all users every 90 minutes."""
