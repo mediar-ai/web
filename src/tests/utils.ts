@@ -1,4 +1,11 @@
-import { StreamChunk, TestConfig, TestResult } from './types';
+import {
+  MCPToolsCollection,
+  OpenAIStreamChunk,
+  OpenAITool,
+  StreamChunk,
+  TestConfig,
+  TestResult,
+} from './types';
 
 export const DEFAULT_TEST_CONFIG: TestConfig = {
   apiBaseUrl: 'http://localhost:3000/api',
@@ -6,10 +13,122 @@ export const DEFAULT_TEST_CONFIG: TestConfig = {
   timeout: 30000, // 30 seconds
 };
 
-// Mock function execution for testing
-export async function executeMockTool(toolCall: StreamChunk): Promise<any> {
-  const { toolName, args } = toolCall;
+// Convert MCP tools to OpenAI format
+export function convertMCPToolsToOpenAI(
+  mcpTools: MCPToolsCollection
+): OpenAITool[] {
+  const openAITools: OpenAITool[] = [];
 
+  for (const [toolName, mcpTool] of Object.entries(mcpTools)) {
+    openAITools.push({
+      type: 'function',
+      function: {
+        name: toolName,
+        description: mcpTool.description,
+        parameters: {
+          type: mcpTool.inputSchema.jsonSchema.type,
+          properties: mcpTool.inputSchema.jsonSchema.properties,
+          required: mcpTool.inputSchema.jsonSchema.required || [],
+        },
+      },
+    });
+  }
+
+  return openAITools;
+}
+
+// Parse OpenAI streaming response format
+export function parseOpenAIStreamingResponse(
+  body: string
+): OpenAIStreamChunk[] {
+  const chunks: OpenAIStreamChunk[] = [];
+  const lines = body.split('\n');
+
+  for (const line of lines) {
+    if (line.trim() && line.startsWith('data: ')) {
+      const data = line.slice(6);
+      if (data === '[DONE]') {
+        continue;
+      }
+
+      try {
+        const parsed = JSON.parse(data) as OpenAIStreamChunk;
+        chunks.push(parsed);
+      } catch (e) {
+        TestLogger.debug('Failed to parse OpenAI stream chunk', {
+          line,
+          error: e,
+        });
+      }
+    }
+  }
+
+  return chunks;
+}
+
+// Convert OpenAI chunks to legacy format for compatibility
+export function convertOpenAIChunksToLegacy(
+  openAIChunks: OpenAIStreamChunk[]
+): StreamChunk[] {
+  const legacyChunks: StreamChunk[] = [];
+
+  for (const chunk of openAIChunks) {
+    const choice = chunk.choices[0];
+    if (!choice) continue;
+
+    // Handle role assignment (start)
+    if (choice.delta.role === 'assistant') {
+      legacyChunks.push({ type: 'start' });
+    }
+
+    // Handle text content
+    if (choice.delta.content) {
+      legacyChunks.push({
+        type: 'textDelta',
+        textDelta: choice.delta.content,
+      });
+    }
+
+    // Handle tool calls
+    if (choice.delta.tool_calls) {
+      for (const toolCall of choice.delta.tool_calls) {
+        legacyChunks.push({
+          type: 'toolCall',
+          toolCallId: toolCall.id,
+          toolName: toolCall.function.name,
+          args: JSON.parse(toolCall.function.arguments),
+        });
+      }
+    }
+
+    // Handle finish
+    if (choice.finish_reason) {
+      legacyChunks.push({
+        type: 'finish',
+        finishReason: choice.finish_reason,
+        usage: chunk.usage
+          ? { totalTokens: chunk.usage.total_tokens }
+          : undefined,
+      });
+    }
+
+    // Handle errors
+    if (chunk.error) {
+      legacyChunks.push({
+        type: 'error',
+        error: chunk.error.message,
+      });
+    }
+  }
+
+  return legacyChunks;
+}
+
+// Mock function execution for testing
+export async function executeMockTool(
+  toolName: string,
+  args: any = {}
+): Promise<any> {
   console.log(`🔧 Executing mock tool: ${toolName} with args:`, args);
 
   // Mock implementations for testing
@@ -185,19 +304,24 @@ export async function executeToolWorkflow(
     // Execute all tool calls
     const toolResults = [];
     for (const toolCall of analysis.toolCalls) {
-      const result = await executeMockTool(toolCall);
+      if (!toolCall.toolName) {
+        console.warn('⚠️ Tool call missing toolName:', toolCall);
+        continue;
+      }
+
+      const result = await executeMockTool(toolCall.toolName, toolCall.args);
       toolResults.push({
-        toolCallId: toolCall.toolCallId,
+        toolCallId: toolCall.toolCallId || `call_${Date.now()}`,
         toolName: toolCall.toolName,
         args: toolCall.args, // ✅ Include the original args for proper Gemini pairing
         result: result,
       });
     }
 
-    // Step 4: Make continuation request with tool results
+    // Step 4: Make continuation request with tool results (using internal field)
     const continuationRequest = {
       ...initialRequest,
-      toolResults: toolResults,
+      _toolResults: toolResults,
     };
 
     console.log(
@@ -366,8 +490,12 @@ export async function makeHTTPRequest(
 }
 
 export function parseStreamingResponse(body: string): StreamChunk[] {
-  const chunks: StreamChunk[] = [];
   const lines = body.split('\n');
+
+  // Try to parse as OpenAI format first, then fall back to legacy
+  const openAIChunks: OpenAIStreamChunk[] = [];
+  const legacyChunks: StreamChunk[] = [];
+  let isOpenAIFormat = false;
 
   for (const line of lines) {
     if (line.trim() && line.startsWith('data: ')) {
@@ -377,15 +505,28 @@ export function parseStreamingResponse(body: string): StreamChunk[] {
       }
 
       try {
-        const parsed = JSON.parse(data) as StreamChunk;
-        chunks.push(parsed);
+        const parsed = JSON.parse(data);
+
+        // Check if it's OpenAI format
+        if (parsed.object === 'chat.completion.chunk' && parsed.choices) {
+          isOpenAIFormat = true;
+          openAIChunks.push(parsed as OpenAIStreamChunk);
+        } else {
+          // Legacy format
+          legacyChunks.push(parsed as StreamChunk);
+        }
       } catch (e) {
         TestLogger.debug('Failed to parse stream chunk', { line, error: e });
       }
     }
   }
 
-  return chunks;
+  // If we detected OpenAI format, convert to legacy format for compatibility
+  if (isOpenAIFormat) {
+    return convertOpenAIChunksToLegacy(openAIChunks);
+  }
+
+  return legacyChunks;
 }
 
 export function analyzeStreamChunks(chunks: StreamChunk[]): {

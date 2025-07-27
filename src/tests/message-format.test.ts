@@ -135,7 +135,7 @@ interface TestResult {
   duration?: number;
 }
 
-export class MessageFormatTests {
+class MessageFormatTests {
   async runAllTests(): Promise<boolean> {
     TestLogger.info('💬 Starting Message Format Unit Tests');
 
