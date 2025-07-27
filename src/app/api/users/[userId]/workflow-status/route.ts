@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -19,35 +19,29 @@ export async function GET(
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    // A single, efficient query to count processed and pending UI tree events.
-    // This is the most reliable method, replacing the previous complex fallbacks.
+    // Use timestamp matching logic (same as sequential processor) for accurate counts.
+    // This eliminates the discrepancy between admin dashboard and processing reality.
 
-    // First, get the total count of UI tree events for this user.
-    const { count: totalUiTrees, error: totalError } = await supabaseAdmin
-      .from('low_level_events_enriched')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('event_type', 'ui_tree');
+    // Get unprocessed count using sequential processor's timestamp matching logic
+    const { data: unprocessedCount, error: unprocessedError } = await supabaseAdmin
+      .rpc('count_unprocessed_events_by_timestamp', { p_user_id: userId });
 
-    if (totalError) {
-      console.error('[workflow-status] Error fetching total UI tree count:', totalError);
-      throw totalError;
+    if (unprocessedError) {
+      console.error('[workflow-status] Error fetching unprocessed count:', unprocessedError);
+      throw unprocessedError;
     }
 
-    // Next, get the count of analyses, which represents the processed events.
-    const { count: processedCount, error: processedError } = await supabaseAdmin
-      .from('low_level_workflow_analyses')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
+    // Get processed count using timestamp matching logic
+    const { data: processedCount, error: processedError } = await supabaseAdmin
+      .rpc('count_processed_events_by_timestamp', { p_user_id: userId });
 
     if (processedError) {
       console.error('[workflow-status] Error fetching processed count:', processedError);
       throw processedError;
     }
 
-    const finalTotal = totalUiTrees || 0;
     const finalProcessed = processedCount || 0;
-    const pendingCount = finalTotal > finalProcessed ? finalTotal - finalProcessed : 0;
+    const pendingCount = unprocessedCount || 0;
 
     return NextResponse.json({
       processedCount: finalProcessed,
