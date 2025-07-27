@@ -42,7 +42,7 @@ interface MockRequest {
   headers: { get: (name: string) => string | null };
 }
 
-export class AuthenticationTests {
+class AuthenticationTests {
   async runAllTests(): Promise<boolean> {
     TestLogger.info('🔐 Starting Authentication Unit Tests');
 

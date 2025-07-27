@@ -1,4 +1,4 @@
-import { MCPToolsCollection } from '../types';
+import { MCPToolsCollection, OpenAITool } from '../types';
 
 export const MOCK_MCP_TOOLS: MCPToolsCollection = {
   get_current_time: {
@@ -323,3 +323,211 @@ export const COMPLEX_MCP_TOOLS: MCPToolsCollection = {
     },
   },
 };
+
+// OpenAI-compatible tool definitions for testing
+export const OPENAI_TOOLS: OpenAITool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_current_time',
+      description: 'Gets the current date and time',
+      parameters: {
+        type: 'object',
+        properties: {
+          timezone: {
+            type: 'string',
+            description: 'Timezone to use (e.g., "UTC", "America/New_York")',
+          },
+          format: {
+            type: 'string',
+            description: 'Time format (e.g., "ISO", "readable")',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'take_screenshot',
+      description: 'Takes a screenshot of the desktop or specific element',
+      parameters: {
+        type: 'object',
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'Element selector or "desktop" for full screenshot',
+          },
+          filename: {
+            type: 'string',
+            description: 'Optional filename for the screenshot',
+          },
+        },
+        required: ['selector'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'calculate',
+      description: 'Performs basic mathematical calculations',
+      parameters: {
+        type: 'object',
+        properties: {
+          expression: {
+            type: 'string',
+            description:
+              'Mathematical expression to evaluate (e.g., "2 + 3 * 4")',
+          },
+        },
+        required: ['expression'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_weather',
+      description: 'Gets weather information for a location',
+      parameters: {
+        type: 'object',
+        properties: {
+          location: {
+            type: 'string',
+            description: 'City name or coordinates',
+          },
+          units: {
+            type: 'string',
+            description: 'Temperature units (celsius, fahrenheit)',
+          },
+        },
+        required: ['location'],
+      },
+    },
+  },
+];
+
+export const MINIMAL_OPENAI_TOOLS: OpenAITool[] = [
+  OPENAI_TOOLS[0], // get_current_time
+  OPENAI_TOOLS[2], // calculate
+];
+
+export const COMPLEX_OPENAI_TOOLS: OpenAITool[] = [
+  ...OPENAI_TOOLS,
+  {
+    type: 'function',
+    function: {
+      name: 'get_applications',
+      description: 'Gets a list of currently running applications',
+      parameters: {
+        type: 'object',
+        properties: {
+          include_tree: {
+            type: 'boolean',
+            description: 'Whether to include UI tree for each application',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'open_application',
+      description: 'Opens or activates an application by name',
+      parameters: {
+        type: 'object',
+        properties: {
+          app_name: {
+            type: 'string',
+            description:
+              'Name of the application to open (e.g., "Cursor", "Chrome", "VSCode")',
+          },
+        },
+        required: ['app_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_window_tree',
+      description: 'Gets the UI tree structure of a window or application',
+      parameters: {
+        type: 'object',
+        properties: {
+          pid: {
+            type: 'number',
+            description: 'Process ID of the target application (optional)',
+          },
+          title: {
+            type: 'string',
+            description: 'Window title filter (optional)',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_focused_window_tree',
+      description: 'Gets the UI tree for the currently focused window',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'click_element',
+      description: 'Clicks a UI element using a selector',
+      parameters: {
+        type: 'object',
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'UI element selector (e.g., role:Button|name:Submit)',
+          },
+          timeout_ms: {
+            type: 'number',
+            description: 'Timeout in milliseconds',
+          },
+        },
+        required: ['selector'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'type_into_element',
+      description: 'Types text into a UI element like an input field',
+      parameters: {
+        type: 'object',
+        properties: {
+          selector: {
+            type: 'string',
+            description: 'UI element selector for the input field',
+          },
+          text_to_type: {
+            type: 'string',
+            description: 'Text to type into the element',
+          },
+          clear_before_typing: {
+            type: 'boolean',
+            description: 'Whether to clear the element before typing',
+          },
+          timeout_ms: {
+            type: 'number',
+            description: 'Timeout in milliseconds',
+          },
+        },
+        required: ['selector', 'text_to_type'],
+      },
+    },
+  },
+];

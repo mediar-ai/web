@@ -284,7 +284,7 @@ class FrontendIntegrationTests {
       const requiredEventTypes = ['start', 'toolCall', 'finish'];
       const receivedTypes = events.map(e => e.type);
       const missingTypes = requiredEventTypes.filter(
-        type => !receivedTypes.includes(type)
+        (type: string) => !receivedTypes.includes(type as any)
       );
 
       if (missingTypes.length > 0) {
