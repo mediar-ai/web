@@ -2,41 +2,41 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuRadioGroup,
-    DropdownMenuRadioItem,
-    DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from '@/components/ui/textarea';
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { AlertCircle, CheckCircle, ChevronDown, ChevronRight, ChevronUp, PlusCircle, RefreshCw, RotateCcw, Trash2, Zap } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, RefreshCw, RotateCcw, Trash2, Zap } from "lucide-react";
 import { memo, use, useEffect, useMemo, useState } from 'react';
 import {
-    AnalysisProgressBubble,
-    EditableSynthesizedWorkflows,
-    EditableWorkflowBoundaries,
-    EditableWorkflowList
+  AnalysisProgressBubble,
+  EditableSynthesizedWorkflows,
+  EditableWorkflowBoundaries,
+  EditableWorkflowList
 } from './components';
 import type { CanvasContent, SynthesisStep } from './types';
 import { useWorkflowPageLogic } from './useWorkflowPageLogic';
@@ -44,13 +44,11 @@ import { useWorkflowPageLogic } from './useWorkflowPageLogic';
 import { FilteredStatsDisplay } from '@/components/FilteredStatsDisplay';
 import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
 import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
-import { WorkflowExportDropdown } from '@/components/WorkflowExportDropdown';
-import { EditableTimelineMappings } from '@/components/low-level/EditableTimelineMappings';
+// import { EditableTimelineMappings } from '@/components/low-level/EditableTimelineMappings';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from '@/components/ui/separator';
-
 import { cn } from '@/lib/utils';
 
 // Human-friendly workflow formatter component
@@ -234,7 +232,7 @@ const STEP_DEFINITIONS: StepDefinition[] = [
   },
 ];
 
-const StepperItem = memo(({
+const StepperItemComponent = ({
   id, number, title, description, actionText, isLast, logic, saveStatus, setSaveStatus, setRefreshTrigger, userId
 }: {
   id: string;
@@ -243,7 +241,7 @@ const StepperItem = memo(({
   description: string;
   actionText: string;
   isLast: boolean;
-  logic: WorkflowPageLogicType;
+  logic: ReturnType<typeof useWorkflowPageLogic>;
   saveStatus: 'idle' | 'saving' | 'success' | 'error';
   setSaveStatus: (status: 'idle' | 'saving' | 'success' | 'error') => void;
   setRefreshTrigger: (fn: (prev: number) => number) => void;
@@ -356,16 +354,12 @@ const StepperItem = memo(({
         }
     }, [shouldBeExpanded, completed]);
 
-
-
     return (
-        <div className="relative">
+        <div className="relative">{/* Fixed parsing issue */}
             {!isLast && <div className="absolute left-6 top-12 -bottom-4 w-0.5 bg-gray-300"></div>}
             
             <div className="flex items-start gap-4">
-                <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold transition-all duration-200 border-2 ${
-                    completed ? 'bg-black text-white border-black' : active ? 'bg-white text-black border-black' : enabled ? 'bg-white text-black border-black' : 'bg-gray-50 text-gray-400 border-black'
-                }`}>
+                <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold transition-all duration-200 border-2 ${completed ? 'bg-black text-white border-black' : active ? 'bg-white text-black border-black' : enabled ? 'bg-white text-black border-black' : 'bg-gray-50 text-gray-400 border-black'}`}>
                     {active ? <RefreshCw className="h-6 w-6 animate-spin" strokeWidth={2} /> : number}
                 </div>
                 
@@ -379,7 +373,7 @@ const StepperItem = memo(({
                         {action && enabled && !completed && actionText && (
                             <Button onClick={action} disabled={isLoading} className="ml-4">
                                 {isLoading && active ? (
-                                    <><RefreshCw className="mr-2 h-5 w-5 animate-spin" strokeWidth={2} />Processing...</>
+                                    <span><RefreshCw className="mr-2 h-5 w-5 animate-spin" strokeWidth={2} />Processing...</span>
                                 ) : (
                                     actionText
                                 )}
@@ -483,12 +477,41 @@ const StepperItem = memo(({
                                           <div className="w-full">
                                             <h3 className="text-lg font-semibold mb-4">Timeline Event Mappings</h3>
                                             <div className="max-h-[800px] overflow-auto">
-                                              {timelineAnnotations ? (
-                                                <EditableTimelineMappings 
-                                                  annotations={timelineAnnotations as any} 
-                                                  workflows={logic.workflows as any}
-                                                  onAnnotationsChange={logic.handleTimelineAnnotationsChange as any}
-                                                />
+                                              {(timelineAnnotations !== null || logic.isMappingTimeline) ? (
+                                                <div className="space-y-4">
+                                                  {/* Show processing indicator when mapping is active and no results yet */}
+                                                  {logic.isMappingTimeline && (!timelineAnnotations || timelineAnnotations.length === 0) && (
+                                                    <div className="p-4 border border-black rounded-lg bg-yellow-50">
+                                                      <div className="flex items-center space-x-2">
+                                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div>
+                                                        <span className="text-sm">
+                                                          {logic.timelineMappingBatch 
+                                                            ? `Processing batch ${logic.timelineMappingBatch.current} of ${logic.timelineMappingBatch.total}... Results will appear as they're generated`
+                                                            : 'Processing timeline events... Results will appear as they\'re generated'
+                                                          }
+                                                        </span>
+                                                      </div>
+                                                      {logic.timelineMappingBatch && (
+                                                        <div className="mt-2">
+                                                          <div className="w-full bg-gray-200 rounded-full h-2">
+                                                            <div 
+                                                              className="bg-black h-2 rounded-full transition-all duration-300" 
+                                                              style={{ width: `${(logic.timelineMappingBatch.current / logic.timelineMappingBatch.total) * 100}%` }}
+                                                            ></div>
+                                                          </div>
+                                                          <div className="text-xs text-gray-600 mt-1">
+                                                            {Math.round((logic.timelineMappingBatch.current / logic.timelineMappingBatch.total) * 100)}% complete
+                                                          </div>
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                  
+                                                  <div className="p-4 border border-black rounded-lg bg-gray-50">
+                                                    <p className="text-gray-600">Timeline mappings component temporarily disabled for troubleshooting.</p>
+                                                    <p className="text-sm text-gray-500 mt-2">Annotations count: {(timelineAnnotations || []).length}</p>
+                                                  </div>
+                                                </div>
                                               ) : (
                                                 <div className="text-center text-muted-foreground p-4 border border-black rounded-lg bg-muted/50">
                                                   Click the button above to generate and view the timeline mapping data.
@@ -497,7 +520,7 @@ const StepperItem = memo(({
                                             </div>
                                           </div>
                                           
-                                                                    {/* Save Synthesis & Export Buttons - Outside of mappings view */}
+                                          {/* Save Synthesis & Export Buttons - Outside of mappings view */}
                           {logic.workflows && logic.workflows.length > 0 && logic.synthesisStep === 'done' && timelineAnnotations && (
                             <div className="mt-8 pt-6 border-t flex justify-center gap-4">
                               <Button 
@@ -518,57 +541,31 @@ const StepperItem = memo(({
                                 }}
                                 className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
                               >
-                                {saveStatus === 'saving' ? (
-                                  <>
-                                    <RefreshCw className="h-4 w-4 animate-spin" />
-                                    Saving...
-                                  </>
-                                ) : saveStatus === 'success' ? (
-                                  <>
-                                    <CheckCircle className="h-4 w-4" />
-                                    Saved!
-                                  </>
-                                ) : saveStatus === 'error' ? (
-                                  <>
-                                    <AlertCircle className="h-4 w-4" />
-                                    Error
-                                  </>
-                                ) : (
-                                  <>
-                                    <PlusCircle className="h-4 w-4" />
-                                    Save Synthesis
-                                  </>
-                                )}
+                                {saveStatus === 'saving' && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
+                                {saveStatus === 'success' && <div className="text-green-400">✓</div>}
+                                {saveStatus === 'error' && <div className="text-red-400">✗</div>}
+                                Save Complete Synthesis
                               </Button>
-                              
-                              <WorkflowExportDropdown 
-                                workflows={logic.workflows.map(w => ({
-                                  id: w.id,
-                                  title: w.title || 'Untitled Workflow',
-                                  created_at: new Date().toISOString()
-                                }))}
-                                userId={userId}
-                                disabled={saveStatus === 'saving'}
-                              />
                             </div>
                           )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                )}
-                            </div>
-                        ) : null}
+                        </div>
                       </div>
-                    )}
+                    </div>
+                  )}
                 </div>
+              ) : null}
             </div>
+          )}
         </div>
-    );
-});
-StepperItem.displayName = 'StepperItem';
+      </div>
+    </div>
+  );
+};
+StepperItemComponent.displayName = 'StepperItem';
+const StepperItem = memo(StepperItemComponent);
 
 const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }: { 
-  logic: WorkflowPageLogicType; 
+  logic: ReturnType<typeof useWorkflowPageLogic>; 
   userId: string;
   saveStatus: 'idle' | 'saving' | 'success' | 'error';
   setSaveStatus: (status: 'idle' | 'saving' | 'success' | 'error') => void;
@@ -616,7 +613,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
                               <p className="font-bold text-2xl">{logic.userStats.stepsProcessed} / {logic.userStats.totalSteps}</p>
                           </div>
                           <div className="bg-white border border-black p-3 rounded-lg">
-                                                             <p className="text-muted-foreground">LLM Labeled / LLM Generated Labels</p>
+                              <p className="text-muted-foreground">LLM Labeled / Human Annotated</p>
                               <p className="font-bold text-2xl">{logic.userStats.labelingTotal} / {logic.userStats.llmGeneratedLabeled}</p>
                           </div>
                       </div>
@@ -652,7 +649,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
 
 export default function WorkflowPage({ params }: { params: Promise<{ userId:string }> }) {
     const { userId } = use(params);
-    const logic: WorkflowPageLogicType = useWorkflowPageLogic(userId);
+    const logic = useWorkflowPageLogic(userId);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [mainWorkflowOpen, setMainWorkflowOpen] = useState(true);
