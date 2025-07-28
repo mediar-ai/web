@@ -1,124 +1,131 @@
-// Type aliases extracted from page.tsx for shared use across workflow module.
-// Keeping them verbatim to avoid any behavioural changes.
-
-export type Message = {
-    id: string;
-    sender: 'user' | 'ai' | 'ai-thinking';
-    text: string;
-};
-
 export interface WorkflowContext {
-    user_job_role: string;
-    project_name: string;
-    user_goal_from_recordings: string;
-    overall_project_goal: string;
-    overall_project_description: string;
-    user_instructions?: string;
+  user_job_role: string;
+  project_name: string;
+  user_goal_from_recordings: string;
+  overall_project_goal: string;
+  overall_project_description: string;
+  user_instructions: string;
 }
 
-export interface WorkflowBoundary {
-    trigger: string;
-    terminator: string;
+export interface Message {
+  id: string;
+  sender: 'user' | 'ai';
+  text: string;
+  isStep?: boolean;
+  stepType?: string;
+  workflowId?: number;
+  isLoading?: boolean;
+}
+
+export interface CanvasContent {
+  id: number;
+  title: string;
+  description: string;
+  steps: {
+    title: string;
+    description: string;
+    step_name?: string;
+    substeps?: {
+      substep_name: string;
+      inputs: string[];
+      outputs: string[];
+      business_logic: string[];
+    }[];
+  }[];
+  workflow_types: {
+    name: string;
+    description: string;
+    type_name?: string;
+    type_description?: string;
+    conditions?: Record<string, unknown>;
+  }[];
+  workflow_instances: {
+    name: string;
+    description: string;
+    instance_name?: string;
+    instance_data?: Record<string, unknown>;
+  }[];
+  chat_history?: Message[];
+}
+
+export interface DatabaseWorkflow {
+  id: number;
+  user_id: string;
+  title: string;
+  chat_history?: Message[];
+  detailed_workflow_data?: CanvasContent;
+  created_at?: string;
 }
 
 export interface WorkflowBoundaries {
-    [key: string]: WorkflowBoundary;
+  [key: string]: {
+    start_event_id: number | null;
+    end_event_id: number | null;
+    description: string;
+    trigger?: string;
+    terminator?: string;
+  };
 }
 
-// Represents the full, detailed workflow object returned by the new synthesis process
+export type SynthesisStep = 'idle' | 'context_defined' | 'context_editing' | 'identifying' | 'workflows_selected' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_defined' | 'boundaries_editing' | 'synthesizing' | 'synthesis_complete' | 'done';
+
+export interface SynthesisSession {
+  synthesis_session_id: string;
+  user_id: string;
+  workflow_context: WorkflowContext;
+  created_at: string;
+  updated_at: string;
+  messages: Message[];
+  synthesis_step: SynthesisStep;
+  identified_workflow_names?: string[];
+  workflow_boundaries?: WorkflowBoundaries;
+  synthesized_workflows?: DetailedSynthesizedWorkflow[];
+  final_analysis?: FinalAnalysisData;
+}
+
 export interface DetailedSynthesizedWorkflow {
+  id: number;
+  title: string;
+  description: string;
+  steps: {
     title: string;
     description: string;
-    workflow_types: Array<{
-        type_name: string;
-        type_description: string;
-        conditions: Record<string, unknown>;
-    }>;
-    workflow_instances: Array<{
-        instance_name: string;
-        instance_data: Record<string, unknown>;
-    }>;
-    steps: Array<{
-        step_name: string;
-        substeps: Array<{
-            substep_name: string;
-            inputs: string[];
-            outputs: string[];
-            business_logic: string[];
-        }>;
-    }>;
+  }[];
+  workflow_types: {
+    name: string;
+    description: string;
+  }[];
+  workflow_instances: {
+    name: string;
+    description: string;
+  }[];
+  chat_history: Message[];
 }
 
-// Kept for backwards compatibility if needed, but new synthesis should use the detailed version
-export interface SynthesizedWorkflow {
-    title: string;
-    inputs: string[];
-    outputs: string[];
-    steps: string[];
-    businessLogic: string[];
+export interface FinalAnalysisData {
+  summary: string;
+  next_steps: string;
 }
 
-export type CanvasContent = DetailedSynthesizedWorkflow & {
-    id: number;
-    chat_history: Message[];
-    // Note: The old fields like 'inputs', 'outputs', 'businessLogic' at the top level are deprecated
-    // in favor of the new nested structure within steps and substeps.
-    // They can be kept for a transitional period if necessary.
-};
-
-import { FlattenedWorkflowAnalysis } from '@/types';
-
-// Use the new flattened type that handles both legacy and JSONB data
-export type WorkflowStepAnalysis = FlattenedWorkflowAnalysis;
-
-export type FinalAnalysisData = {
-    workflowNames?: string[];
-    workflowContext?: WorkflowContext;
-};
-
-export type SynthesisStep = 'idle' | 'context_editing' | 'identifying' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_editing' | 'synthesizing' | 'synthesis_complete' | 'done' | 'refining';
-
-export type WorkflowDataObject = {
-    id: number;
-    title: string;
-    chat_history: {
-        messages: Message[];
-        synthesis_step: SynthesisStep;
-        identified_workflow_names: string[];
-        workflow_context: WorkflowContext;
-        workflow_boundaries?: WorkflowBoundaries;
-    };
-};
-
-export type DatabaseWorkflow = {
-    id: number;
-    user_id: string;
-    title: string | null;
-    created_at: string;
-    chat_history: Message[];
-    workflow_context: Record<string, unknown> | null;
-    synthesis_session_id: number | null;
-    detailed_workflow_data: DetailedSynthesizedWorkflow | null;
-};
-
-export type SynthesisSession = {
-    id: number;
-    user_id: string;
-    session_state: {
-        messages: Message[];
-        synthesis_step: SynthesisStep;
-        identified_workflow_names: string[];
-        draft_workflow_names?: string[];
-        workflow_context: WorkflowContext;
-        workflow_boundaries?: WorkflowBoundaries;
-    };
-};
-
-export type LlmLabel = {
-  id: number;
-  created_at: string;
+export interface RawEventAnalysis {
+  analysis_id: number;
   user_id: string;
-  low_level_workflow_analysis_id: number;
-  suggested_labels: string[] | null;
-  selected_labels: string[] | null;
-}; 
+  raw_event_id: number;
+  step_title: string;
+  user_intent: string;
+  step_summary: string;
+  events_that_happened: string;
+  how_content_changed: string;
+  results_if_any: string;
+  what_was_clicked: string;
+  what_was_typed: string;
+  window_title: string;
+  created_at: string;
+  event_payload?: Record<string, unknown>;
+  event_created_at?: string;
+}
+
+export interface LlmLabel {
+  id: number;
+  label_name: string;
+} 
