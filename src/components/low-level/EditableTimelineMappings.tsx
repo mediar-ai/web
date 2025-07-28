@@ -118,8 +118,10 @@ interface WorkflowComponents {
 
 interface EditableTimelineMappingsProps {
   annotations: TimelineAnnotation[];
-  workflows: CanvasContent[];
+  workflows: WorkflowInHierarchy[];
   onAnnotationsChange: (annotations: TimelineAnnotation[]) => void;
+  isProcessing?: boolean; // Add optional processing state
+  processingBatch?: { current: number; total: number } | null; // Add batch info
 }
 
 // Custom types for workflow hierarchy view
@@ -231,6 +233,8 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
   annotations,
   workflows,
   onAnnotationsChange,
+  isProcessing = false,
+  processingBatch = null,
 }) => {
   // Local state management with debounced updates (same pattern as synthesis)
   const [localAnnotations, setLocalAnnotations] = useState<TimelineAnnotation[]>(annotations);
@@ -649,14 +653,81 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
       {/* Mappings List */}
       {viewMode === 'events' ? (
         <div className="space-y-3">
-          {analysisGroups.length === 0 ? (
-            <Card className="p-8 text-center text-muted-foreground">
+          {/* Show processing state when no annotations yet but processing is active */}
+          {isProcessing && annotations.length === 0 ? (
+            <div className="space-y-4">
+              <Card className="p-8 text-center border border-black rounded-lg bg-blue-50">
+                <div className="space-y-3">
+                  <div className="animate-spin rounded-full h-8 w-8 mx-auto border-b-2 border-black"></div>
+                  <p className="text-gray-700 font-medium">Processing Timeline Events</p>
+                  <p className="text-sm text-gray-600">
+                    {processingBatch 
+                      ? `Analyzing batch ${processingBatch.current} of ${processingBatch.total}...`
+                      : 'Analyzing events and mapping to workflows...'
+                    }
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Results will appear here as batches complete
+                  </p>
+                </div>
+              </Card>
+              
+              {/* Show batch progress if available */}
+              {processingBatch && (
+                <Card className="p-4 border border-black rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Batch Progress</span>
+                    <span className="text-xs text-gray-600">
+                      {Math.round((processingBatch.current / processingBatch.total) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-black h-2 rounded-full transition-all duration-300" 
+                      style={{ width: `${(processingBatch.current / processingBatch.total) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>Processing batch {processingBatch.current}</span>
+                    <span>{processingBatch.total} total batches</span>
+                  </div>
+                </Card>
+              )}
+            </div>
+          ) : analysisGroups.length === 0 ? (
+            <Card className="p-8 text-center text-muted-foreground border border-black rounded-lg">
               <AlertCircle className="h-8 w-8 mx-auto mb-2" />
               <p>No timeline mappings found matching your criteria.</p>
+              {isProcessing && (
+                <p className="text-sm text-gray-500 mt-2">
+                  Processing is still active - results may appear soon
+                </p>
+              )}
             </Card>
           ) : (
-                         analysisGroups.map((group) => (
-                             <Card key={group.analysis_id} className="p-4 border border-black rounded-lg bg-white">
+            <>
+              {/* Show active processing indicator above results when processing and have results */}
+              {isProcessing && annotations.length > 0 && (
+                <Card className="p-3 border border-black rounded-lg bg-green-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-pulse w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm text-green-700">
+                        Processing active - new results will appear below
+                      </span>
+                    </div>
+                    {processingBatch && (
+                      <span className="text-xs text-green-600">
+                        Batch {processingBatch.current}/{processingBatch.total}
+                      </span>
+                    )}
+                  </div>
+                </Card>
+              )}
+              
+              {/* Existing analysis groups rendering */}
+              {analysisGroups.map((group) => (
+                 <Card key={group.analysis_id} className="p-4 border border-black rounded-lg bg-white">
                  {/* Analysis Header */}
                  <div className="border-b border-gray-200 pb-4 mb-4">
                    <div className="flex items-center justify-between mb-3">
@@ -1090,9 +1161,10 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                       </CardContent>
                     </Card>
                   );
-                                 })}
+                })}
+                 </div>
                  
-                 <Button
+                                 <Button
                    variant="outline"
                    size="sm"
                    className="mt-2"
@@ -1101,7 +1173,6 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                    <PlusCircle className="h-4 w-4 mr-2" />
                    Add Event
                  </Button>
-                 </div>
                </Card>
             ))
           )}
