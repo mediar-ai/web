@@ -1,39 +1,41 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { 
-  Edit2, 
-  CheckCircle, 
-  XCircle, 
-  AlertCircle,
-  Search,
-  Trash2,
-  PlusCircle,
-  ChevronDown,
-  ChevronUp
-} from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  AlertCircle,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Edit2,
+  PlusCircle,
+  Search,
+  Trash2,
+  XCircle
+} from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { TimelineAnnotation } from './types';
 
 // Types - using the structure from timeline-event-mappings API
+/*
 interface TimelineAnnotation {
   user_id: string;
   raw_event_id: number;
@@ -72,6 +74,7 @@ interface TimelineAnnotation {
   selected_labels?: string[];
   suggested_labels?: string[];
 }
+*/
 
 // WorkflowComponent interface removed as it's not used
 
@@ -118,7 +121,7 @@ interface WorkflowComponents {
 
 interface EditableTimelineMappingsProps {
   annotations: TimelineAnnotation[];
-  workflows: WorkflowInHierarchy[];
+  workflows: CanvasContent[]
   onAnnotationsChange: (annotations: TimelineAnnotation[]) => void;
   isProcessing?: boolean; // Add optional processing state
   processingBatch?: { current: number; total: number } | null; // Add batch info
@@ -435,7 +438,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
   const handleAnnotationChange = (
     annotation: TimelineAnnotation,
     field: keyof TimelineAnnotation,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     value: any
   ) => {
     const updated = [...localAnnotations];
@@ -1162,19 +1165,20 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                     </Card>
                   );
                 })}
-                 </div>
-                 
-                                 <Button
-                   variant="outline"
-                   size="sm"
-                   className="mt-2"
-                   onClick={() => setAddEventModalState({ isOpen: true, workflow: null, step: null, substep: null })}
-                 >
-                   <PlusCircle className="h-4 w-4 mr-2" />
-                   Add Event
-                 </Button>
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => setAddEventModalState({ isOpen: true, workflow: null, step: null, substep: null })}
+                >
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Add Event
+                </Button>
                </Card>
-            ))
+            ))}
+            </>
           )}
         </div>
       ) : (
