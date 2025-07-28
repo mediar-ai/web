@@ -257,6 +257,19 @@ export async function POST(req: NextRequest) {
             data: { currentBatch: batchIndex + 1, totalBatches, totalMappings }
           }));
 
+          // Send initial table setup signal for first batch
+          if (batchIndex === 0) {
+            controller.enqueue(toSSE({ 
+              status: 'Initializing results table...',
+              progress: Math.round(currentProgress),
+              data: { 
+                initializeTable: true,
+                totalBatches,
+                annotations: [] // Initialize empty table
+              }
+            }));
+          }
+
           // Fix time window logic for DESC-ordered events
           // For DESC order: current event is newer, next event is older
           const endTime = new Date(uiTreeEvents[batchIndex].created_at);
@@ -507,7 +520,15 @@ export async function POST(req: NextRequest) {
               console.error(`❌ Sample annotation:`, JSON.stringify(annotationsToInsert[0], null, 2));
               controller.enqueue(toSSE({ 
                 status: `❌ Batch ${batchIndex + 1}: Failed to save results - ${insertError.message || insertError.code}`, 
-                progress: Math.round(currentProgress)
+                progress: Math.round(currentProgress),
+                data: { 
+                  annotations: [], // Always send annotations array (empty for failed batches)
+                  currentBatch: batchIndex + 1, 
+                  totalBatches, 
+                  totalMappings,
+                  batchHasResults: false,
+                  batchStatus: 'error'
+                }
               }));
               continue;
             }
@@ -521,16 +542,27 @@ export async function POST(req: NextRequest) {
               status: `✅ Batch ${batchIndex + 1}: Saved ${result.event_mappings.length} annotations`, 
               progress: Math.round(currentProgress),
               data: { 
-                annotations: annotationsToInsert,
+                annotations: annotationsToInsert, // Always send annotations array
                 currentBatch: batchIndex + 1, 
                 totalBatches, 
-                totalMappings 
+                totalMappings,
+                batchHasResults: true,
+                batchStatus: 'completed'
               }
             }));
           } else {
+            // Always send batch completion status, even for empty batches
             controller.enqueue(toSSE({ 
               status: `⚠️ Batch ${batchIndex + 1}: No mappings generated`, 
-              progress: Math.round(currentProgress)
+              progress: Math.round(currentProgress),
+              data: { 
+                annotations: [], // Always send empty annotations array for empty batches
+                currentBatch: batchIndex + 1, 
+                totalBatches, 
+                totalMappings,
+                batchHasResults: false,
+                batchStatus: 'empty'
+              }
             }));
           }
 
