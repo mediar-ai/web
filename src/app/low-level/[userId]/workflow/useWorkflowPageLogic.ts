@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import type { TimelineAnnotation } from '@/components/low-level/types';
+
 import { useUser } from '@/context/UserContext';
 import type { Session, UserSessionData } from '@/lib/db';
 import type { LowLevelEvent } from '@/types';
@@ -293,24 +293,22 @@ export function useWorkflowPageLogic(userId: string) {
         const result = await response.json();
         const session: SynthesisSession = result.data;
 
-        if (session && session.session_state) {
-          const { session_state } = session;
-          
-          const loadedMessages = Array.isArray(session_state.messages) ? session_state.messages : [];
+        if (session) {
+          const loadedMessages = Array.isArray(session.messages) ? session.messages : [];
           if (loadedMessages.length > 0) setMessages(loadedMessages);
           
-          setSynthesisStep(session_state.synthesis_step || 'idle');
-          setIdentifiedWorkflowNames(session_state.identified_workflow_names || []);
-          setDraftWorkflowNames(session_state.draft_workflow_names || []);
-          setSynthesisSessionId(session.id.toString());
+          setSynthesisStep(session.synthesis_step || 'idle');
+          setIdentifiedWorkflowNames(session.identified_workflow_names || []);
+          setDraftWorkflowNames(session.identified_workflow_names || []); // Using identified_workflow_names since draft_workflow_names doesn't exist in interface
+          setSynthesisSessionId(session.synthesis_session_id);
 
-          if (session_state.workflow_context) {
-            setWorkflowContext(session_state.workflow_context);
-            setEditableContext(session_state.workflow_context);
+          if (session.workflow_context) {
+            setWorkflowContext(session.workflow_context);
+            setEditableContext(session.workflow_context);
           }
           
-          if (session_state.workflow_boundaries) {
-            setWorkflowBoundaries(session_state.workflow_boundaries);
+          if (session.workflow_boundaries) {
+            setWorkflowBoundaries(session.workflow_boundaries);
           }
         }
       } else if (response.status !== 404) {
@@ -409,9 +407,9 @@ export function useWorkflowPageLogic(userId: string) {
             // Transform to CanvasContent format for component compatibility
             if (workflow.detailed_workflow_data) {
               return {
-                id: workflow.id,
-                chat_history: workflow.chat_history || [],
-                ...workflow.detailed_workflow_data // Spread to top level for direct access
+                ...workflow.detailed_workflow_data, // Spread to top level for direct access
+                id: workflow.id, // Override with database workflow ID
+                chat_history: workflow.chat_history || []
               };
             } else {
               // Handle case where detailed_workflow_data is null (shouldn't happen for new workflows)
@@ -469,7 +467,10 @@ export function useWorkflowPageLogic(userId: string) {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      const finalData: FinalAnalysisData = {};
+      const finalData: FinalAnalysisData = {
+        summary: '',
+        next_steps: ''
+      };
 
       const processChunk = (chunk: string) => {
         const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
@@ -629,6 +630,9 @@ export function useWorkflowPageLogic(userId: string) {
       if (boundariesResponse.workflows) {
         boundariesResponse.workflows.forEach((workflow: { workflow_name: string; trigger: string; terminator: string }) => {
           transformedBoundaries[workflow.workflow_name] = {
+            start_event_id: null,
+            end_event_id: null,
+            description: '',
             trigger: workflow.trigger,
             terminator: workflow.terminator
           };
@@ -900,9 +904,9 @@ export function useWorkflowPageLogic(userId: string) {
               if (workflow.detailed_workflow_data) {
                 // Spread detailed_workflow_data to top level for component access
                 return {
-                  id: workflow.id,
-                  chat_history: workflow.chat_history || [],
-                  ...workflow.detailed_workflow_data // Extract steps, workflow_types, etc. to top level
+                  ...workflow.detailed_workflow_data, // Extract steps, workflow_types, etc. to top level
+                  id: workflow.id, // Override with database workflow ID
+                  chat_history: workflow.chat_history || []
                 };
               } else {
                 // Handle case where detailed_workflow_data is null
@@ -1087,7 +1091,7 @@ export function useWorkflowPageLogic(userId: string) {
     setSynthesisStep('idle');
     setIdentifiedWorkflowNames([]);
     setDraftWorkflowNames([]);
-    const emptyContext: WorkflowContext = { user_job_role: '', project_name: '', user_goal_from_recordings: '', overall_project_goal: '', overall_project_description: '' };
+    const emptyContext: WorkflowContext = { user_job_role: '', project_name: '', user_goal_from_recordings: '', overall_project_goal: '', overall_project_description: '', user_instructions: '' };
     setWorkflowContext(emptyContext);
     setEditableContext(emptyContext);
     setWorkflowBoundaries({});
@@ -1159,7 +1163,7 @@ export function useWorkflowPageLogic(userId: string) {
       setSynthesisStep('idle');
       setIdentifiedWorkflowNames([]);
       setDraftWorkflowNames([]);
-      const emptyContext: WorkflowContext = { user_job_role: '', project_name: '', user_goal_from_recordings: '', overall_project_goal: '', overall_project_description: '' };
+      const emptyContext: WorkflowContext = { user_job_role: '', project_name: '', user_goal_from_recordings: '', overall_project_goal: '', overall_project_description: '', user_instructions: '' };
       setWorkflowContext(emptyContext);
       setEditableContext(emptyContext);
       setWorkflowBoundaries({});
