@@ -9,7 +9,7 @@ export interface WorkflowContext {
 
 export interface Message {
   id: string;
-  sender: 'user' | 'ai';
+  sender: 'user' | 'ai' | 'ai-thinking';
   text: string;
   isStep?: boolean;
   stepType?: string;
@@ -105,6 +105,8 @@ export interface DetailedSynthesizedWorkflow {
 export interface FinalAnalysisData {
   summary: string;
   next_steps: string;
+  workflowNames?: string[];
+  workflowContext?: WorkflowContext;
 }
 
 export interface RawEventAnalysis {

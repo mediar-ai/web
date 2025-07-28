@@ -1,16 +1,16 @@
 export interface TimelineAnnotation {
-  user_id: string;
+  user_id?: string;
   raw_event_id: number;
   analysis_id: number;
   confidence_score: number;
   is_workflow_related: boolean;
-  model_used: string;
-  unrelated_reason: string | null;
-  workflow_id: number | null;
-  workflow_type_id: number | null;
-  workflow_instance_id: number | null;
-  workflow_step_id: number | null;
-  workflow_substep_id: number | null;
+  model_used?: string;
+  unrelated_reason?: string | null;
+  workflow_id?: number | null;
+  workflow_type_id?: number | null;
+  workflow_instance_id?: number | null;
+  workflow_step_id?: number | null;
+  workflow_substep_id?: number | null;
   template_name?: string;
   type_name?: string;
   instance_name?: string;
