@@ -653,15 +653,12 @@ export async function POST(request: NextRequest) {
       messages,
       model = 'gemini-2.5-flash',
       tools, // OpenAI format instead of mcpTools
-      tool_choice, // OpenAI format
       max_tokens = 1000, // OpenAI format (underscore)
       maxTokens = 1000, // Keep backwards compatibility
       maxOutputTokens = 1000, // Keep Vertex AI compatibility
       temperature = 0.7,
-      stream = true, // OpenAI format
       // Internal fields for continuation (hidden from OpenAI compatibility)
       _toolResults, // Prefix with _ to indicate internal
-      _mcpTools, // Legacy support
     } = body;
 
     // Use max_tokens if provided (OpenAI standard), otherwise fall back to alternatives

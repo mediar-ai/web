@@ -44,7 +44,7 @@ import { useWorkflowPageLogic } from './useWorkflowPageLogic';
 import { FilteredStatsDisplay } from '@/components/FilteredStatsDisplay';
 import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
 import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
-// import { EditableTimelineMappings } from '@/components/low-level/EditableTimelineMappings';
+import { EditableTimelineMappings } from '@/components/low-level/EditableTimelineMappings';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -507,10 +507,15 @@ const StepperItemComponent = ({
                                                     </div>
                                                   )}
                                                   
-                                                  <div className="p-4 border border-black rounded-lg bg-gray-50">
-                                                    <p className="text-gray-600">Timeline mappings component temporarily disabled for troubleshooting.</p>
-                                                    <p className="text-sm text-gray-500 mt-2">Annotations count: {(timelineAnnotations || []).length}</p>
-                                                  </div>
+                                                  <EditableTimelineMappings
+                                                    annotations={timelineAnnotations || []}
+                                                    workflows={logic.workflows}
+                                                    onAnnotationsChange={() => {
+                                                      console.log("Annotations changed");
+                                                    }}
+                                                    isProcessing={logic.isMappingTimeline}
+                                                    processingBatch={logic.timelineMappingBatch}
+                                                  />
                                                 </div>
                                               ) : (
                                                 <div className="text-center text-muted-foreground p-4 border border-black rounded-lg bg-muted/50">
