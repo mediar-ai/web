@@ -233,7 +233,7 @@ export const EditableWorkflowBoundaries = ({
       </div>
 
       <div className="space-y-6">
-        {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
+        { }
         {Object.entries(boundaries).map(([workflowName, _]) => (
           <Card key={workflowName} className="p-4">
             <h4 className="font-medium mb-3">{workflowName}</h4>
@@ -350,7 +350,7 @@ export const EditableSynthesizedWorkflows = ({
   const handleWorkflowInstanceChange = (
     workflowIndex: number,
     instanceIndex: number,
-    field: 'instance_name',
+    field: 'name' | 'description' | 'instance_name',
     value: string
   ) => {
     const updated = [...localWorkflows];
@@ -375,7 +375,7 @@ export const EditableSynthesizedWorkflows = ({
   const handleStepChange = (
     workflowIndex: number,
     stepIndex: number,
-    field: 'step_name',
+    field: 'title' | 'description' | 'step_name',
     value: string
   ) => {
     const updated = [...localWorkflows];
@@ -465,7 +465,7 @@ export const EditableSynthesizedWorkflows = ({
   // Add/Remove functions for workflow types
   const addWorkflowType = (workflowIndex: number) => {
     const updated = [...localWorkflows];
-    const newType = { type_name: '', type_description: '', conditions: {} };
+    const newType = { name: '', description: '', type_name: '', type_description: '', conditions: {} };
     updated[workflowIndex] = {
       ...updated[workflowIndex],
       workflow_types: [...(updated[workflowIndex].workflow_types || []), newType],
@@ -491,7 +491,7 @@ export const EditableSynthesizedWorkflows = ({
   // Add/Remove functions for workflow instances
   const addWorkflowInstance = (workflowIndex: number) => {
     const updated = [...localWorkflows];
-    const newInstance = { instance_name: '', instance_data: {} };
+    const newInstance = { name: '', description: '', instance_name: '', instance_data: {} };
     updated[workflowIndex] = {
       ...updated[workflowIndex],
       workflow_instances: [...(updated[workflowIndex].workflow_instances || []), newInstance],
@@ -517,7 +517,7 @@ export const EditableSynthesizedWorkflows = ({
   // Add/Remove functions for steps
   const addStep = (workflowIndex: number) => {
     const updated = [...localWorkflows];
-    const newStep = { step_name: '', substeps: [] };
+    const newStep = { title: '', description: '', step_name: '', substeps: [] };
     updated[workflowIndex] = {
       ...updated[workflowIndex],
       steps: [...(updated[workflowIndex].steps || []), newStep],
