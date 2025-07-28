@@ -2,20 +2,22 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { useUser } from '@/context/UserContext';
+import type { Session, UserSessionData } from '@/lib/db';
 import type { LowLevelEvent } from '@/types';
 import { createRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  CanvasContent,
-  DatabaseWorkflow,
-  DetailedSynthesizedWorkflow,
-  FinalAnalysisData,
-  Message,
-  SynthesisSession,
-  SynthesisStep,
-  WorkflowBoundaries,
-  WorkflowContext
+    CanvasContent,
+    DatabaseWorkflow,
+    DetailedSynthesizedWorkflow,
+    FinalAnalysisData,
+    Message,
+    SynthesisSession,
+    SynthesisStep,
+    WorkflowBoundaries,
+    WorkflowContext
 } from './types';
 
+// Updated to match admin dashboard stats format using session metadata
 type UserStats = {
   totalEvents: number;
   stepsProcessed: number;
@@ -296,12 +298,36 @@ export function useWorkflowPageLogic(userId: string) {
     const fetchUserStats = async () => {
       if (!userId) return;
       try {
-        const response = await fetch(`/api/users/${userId}/stats`);
+        // Use same session data source as admin dashboard
+        const response = await fetch(`/api/sessions`);
         if (response.ok) {
-          const stats = await response.json();
-          setUserStats(stats);
+          const allSessionData: Record<string, UserSessionData> = await response.json();
+          
+          // Find this user's data
+          const userData = Object.entries(allSessionData).find(([sessionUserId]) => sessionUserId === userId)?.[1];
+          
+          if (userData) {
+            // Calculate stats same way as admin dashboard
+            const totalEvents = userData.sessions.reduce((sum: number, s: Session) => sum + (s.eventCount || 0), 0);
+            const totalProcessedEvents = userData.sessions.reduce((sum: number, s: Session) => sum + (s.processed_event_count || 0), 0);
+            const totalUiSteps = userData.sessions.reduce((sum: number, s: Session) => sum + (s.total_ui_steps || 0), 0);
+            const totalLlmLabeledSteps = userData.sessions.reduce((sum: number, s: Session) => sum + (s.llm_labeled_steps || 0), 0);
+            const totalHumanAnnotatedSteps = userData.sessions.reduce((sum: number, s: Session) => sum + (s.human_annotated_steps || 0), 0);
+
+            const stats: UserStats = {
+              totalEvents: totalEvents,
+              stepsProcessed: totalProcessedEvents, // processed events = workflow analyses completed
+              totalSteps: totalUiSteps, // UI steps, not all events
+              labelingTotal: totalLlmLabeledSteps, // LLM labeled steps from session metadata
+              llmGeneratedLabeled: totalHumanAnnotatedSteps, // Human annotated steps
+            };
+            
+            setUserStats(stats);
+          } else {
+            console.warn(`User ${userId} not found in session data`);
+          }
         } else {
-          console.error("Failed to fetch user stats");
+          console.error("Failed to fetch session data");
         }
       } catch (error) {
         console.error("Error fetching user stats:", error);
@@ -610,8 +636,8 @@ export function useWorkflowPageLogic(userId: string) {
     // Transition to done state when user clicks timeline mapping
     setSynthesisStep('done');
 
-    // Clear any existing draft event mapping before starting new mapping
-    setTimelineAnnotations(null);
+    // Initialize empty array instead of null to show table immediately
+    setTimelineAnnotations([]);
     setIsMappingTimeline(true);
     setTimelineMappingStatus("Initializing timeline mapping...");
     setTimelineMappingProgress(0);
@@ -662,6 +688,11 @@ export function useWorkflowPageLogic(userId: string) {
               throw new Error(parsed.details || parsed.error);
             }
             
+            // Handle initial table setup
+            if (parsed.data?.initializeTable) {
+              setTimelineAnnotations([]);
+            }
+            
             // Handle batch information for better progress tracking
             if (parsed.data?.currentBatch && parsed.data?.totalBatches) {
               const batchInfo = { current: parsed.data.currentBatch, total: parsed.data.totalBatches };
@@ -681,10 +712,19 @@ export function useWorkflowPageLogic(userId: string) {
               if (typeof parsed.progress === 'number') setTimelineMappingProgress(parsed.progress);
             }
             
-            if (parsed.data?.annotations) {
-              allAnnotations.push(...parsed.data.annotations);
-              // Update UI with incremental results
-              setTimelineAnnotations([...allAnnotations]);
+            // Always process annotations array (even if empty) to ensure UI updates
+            if (parsed.data && 'annotations' in parsed.data) {
+              const newAnnotations = parsed.data.annotations || [];
+              if (newAnnotations.length > 0) {
+                allAnnotations.push(...newAnnotations);
+                // Update UI with incremental results
+                setTimelineAnnotations([...allAnnotations]);
+                console.log(`📊 Updated UI with ${newAnnotations.length} new annotations. Total: ${allAnnotations.length}`);
+              } else {
+                // Even for empty batches, update the UI to show the processing is active
+                setTimelineAnnotations([...allAnnotations]);
+                console.log(`📊 Processed empty batch. Total annotations: ${allAnnotations.length}`);
+              }
             }
           } catch (parseError) {
             if (parseError instanceof Error && parseError.message !== '') {
