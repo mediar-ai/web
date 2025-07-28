@@ -38,12 +38,14 @@ export function FilteredStatsDisplay({
       setError(null);
 
       try {
+        // Create a new API endpoint for filtered session metadata stats
         const params = new URLSearchParams({
           startDate: timeBoundary.startDate.toISOString(),
-          endDate: timeBoundary.endDate.toISOString()
+          endDate: timeBoundary.endDate.toISOString(),
+          userId: userId
         });
 
-        const response = await fetch(`/api/users/${userId}/stats?${params}`);
+        const response = await fetch(`/api/sessions/filtered-stats?${params}`);
         
         if (!response.ok) {
           throw new Error(`Failed to fetch filtered stats: ${response.statusText}`);
