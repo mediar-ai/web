@@ -62,9 +62,8 @@ export async function POST(request: NextRequest) {
         if (recentPayloadHash === payloadHash) {
           console.log(`[INGEST] 🚫 Duplicate detected for session ${session_id} - payload hash: ${payloadHash.substring(0, 8)}...`);
           return NextResponse.json({ 
-            success: true, 
-            deduplicated: true,
-            message: 'Duplicate event suppressed'
+            message: "Duplicate event suppressed",
+            dbInsertSuccess: false
           });
         }
       }
@@ -93,7 +92,10 @@ export async function POST(request: NextRequest) {
 
     console.log(`[INGEST] ✅ Successfully saved raw event for session ${session_id}`);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      message: "Event ingested successfully",
+      dbInsertSuccess: true 
+    });
   } catch (error) {
     console.error('[INGEST] Error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
