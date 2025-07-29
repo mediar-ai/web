@@ -30,7 +30,7 @@ function convertUIMessagesToModel(messages: any[]): any[] {
 }
 
 function convertMessagesToVertexAI(messages: any[]): any[] {
-  return messages.slice(0, -1).map(msg => {
+  return messages.map(msg => {
     // Handle different message types
     if (msg.role === 'user') {
       return {
@@ -45,7 +45,19 @@ function convertMessagesToVertexAI(messages: any[]): any[] {
         parts.push({ text: msg.content });
       }
 
-      // Add function calls if present
+      // Add function calls if present (OpenAI format)
+      if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+        for (const toolCall of msg.tool_calls) {
+          parts.push({
+            functionCall: {
+              name: toolCall.function.name,
+              args: JSON.parse(toolCall.function.arguments || '{}'),
+            },
+          });
+        }
+      }
+
+      // Legacy support for functionCalls format
       if (msg.functionCalls && Array.isArray(msg.functionCalls)) {
         for (const functionCall of msg.functionCalls) {
           parts.push({
@@ -61,8 +73,38 @@ function convertMessagesToVertexAI(messages: any[]): any[] {
         role: 'model',
         parts: parts.length > 0 ? parts : [{ text: msg.content || '' }],
       };
+    } else if (msg.role === 'tool') {
+      // Handle OpenAI tool messages - need to map tool_call_id to function name
+      // Find the corresponding function name from the assistant message
+      let functionName = msg.tool_call_id || '';
+
+      // Look backward through messages to find the assistant message with tool_calls
+      for (let i = messages.indexOf(msg) - 1; i >= 0; i--) {
+        const prevMsg = messages[i];
+        if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
+          const toolCall = prevMsg.tool_calls.find(
+            (tc: any) => tc.id === msg.tool_call_id
+          );
+          if (toolCall) {
+            functionName = toolCall.function.name;
+            break;
+          }
+        }
+      }
+
+      return {
+        role: 'function',
+        parts: [
+          {
+            functionResponse: {
+              name: functionName, // Use actual function name, not tool_call_id
+              response: { result: msg.content || '' },
+            },
+          },
+        ],
+      };
     } else if (msg.role === 'function') {
-      // Handle function responses
+      // Handle legacy function responses
       return {
         role: 'function',
         parts: msg.functionResponses
@@ -77,8 +119,9 @@ function convertMessagesToVertexAI(messages: any[]): any[] {
     }
 
     // Default fallback
+    const vertexRole = ['user', 'system'].includes(msg.role) ? 'user' : 'model';
     return {
-      role: msg.role === 'user' ? 'user' : 'model',
+      role: vertexRole,
       parts: [{ text: msg.content || '' }],
     };
   });
@@ -150,8 +193,10 @@ class MessageFormatTests {
       () => this.testVertexAIConversion(),
       () => this.testFunctionCallMessages(),
       () => this.testFunctionResponseMessages(),
+      () => this.testToolMessages(),
       () => this.testMixedMessageFormats(),
       () => this.testEdgeCases(),
+      () => this.testComplexToolConversation(),
     ];
 
     const results: TestResult[] = [];
@@ -482,8 +527,8 @@ class MessageFormatTests {
 
     const converted = convertMessagesToVertexAI(modelMessages);
 
-    // Should convert all but the last message (per the slice logic)
-    const expectedCount = modelMessages.length - 1;
+    // Should convert ALL messages (new behavior includes complete conversation history)
+    const expectedCount = modelMessages.length;
     const hasCorrectCount = converted.length === expectedCount;
 
     const hasCorrectStructure = converted.every(
@@ -505,6 +550,7 @@ class MessageFormatTests {
         originalCount: modelMessages.length,
         convertedCount: converted.length,
         expectedCount,
+        hasCorrectCount,
         hasCorrectStructure,
         hasTextParts,
         sample: converted[0],
@@ -590,6 +636,190 @@ class MessageFormatTests {
         correctResponseCount,
         hasResponseData,
         converted: converted[0],
+      },
+      duration: Date.now() - startTime,
+    };
+  }
+
+  async testToolMessages(): Promise<TestResult> {
+    const startTime = Date.now();
+
+    // Test OpenAI-style tool messages with tool_calls and tool responses
+    const toolMessages = [
+      { role: 'user', content: 'What is the weather in NYC?' },
+      {
+        role: 'assistant',
+        content: 'I will check the weather for you.',
+        tool_calls: [
+          {
+            id: 'call_123',
+            type: 'function',
+            function: {
+              name: 'get_weather',
+              arguments: JSON.stringify({ location: 'New York City' }),
+            },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_123',
+        content: JSON.stringify({ temperature: 72, conditions: 'sunny' }),
+      },
+      {
+        role: 'assistant',
+        content: 'The weather in NYC is 72°F and sunny.',
+      },
+    ];
+
+    const converted = convertMessagesToVertexAI(toolMessages);
+
+    // Should convert all 4 messages
+    const hasCorrectCount = converted.length === 4;
+
+    // Check assistant message with tool call
+    const assistantMessage = converted[1];
+    const hasToolCall = assistantMessage.parts.some(
+      (part: any) => part.functionCall
+    );
+    const toolCallCorrect =
+      assistantMessage.parts.find((part: any) => part.functionCall)
+        ?.functionCall?.name === 'get_weather';
+
+    // Check tool response message - should use function name, not tool_call_id
+    const toolMessage = converted[2];
+    const hasToolResponse =
+      toolMessage.role === 'function' &&
+      toolMessage.parts.some((part: any) => part.functionResponse);
+    const toolResponseCorrect =
+      toolMessage.parts[0]?.functionResponse?.name === 'get_weather'; // Should be function name, not call_123
+
+    const success =
+      hasCorrectCount &&
+      hasToolCall &&
+      toolCallCorrect &&
+      hasToolResponse &&
+      toolResponseCorrect;
+
+    return {
+      success,
+      message: success
+        ? 'OpenAI tool messages converted correctly'
+        : 'Tool message conversion failed',
+      details: {
+        messageCount: converted.length,
+        hasCorrectCount,
+        hasToolCall,
+        toolCallCorrect,
+        hasToolResponse,
+        toolResponseCorrect,
+        expectedFunctionName: 'get_weather',
+        actualFunctionName: toolMessage.parts[0]?.functionResponse?.name,
+        assistantMessage: assistantMessage,
+        toolMessage: toolMessage,
+      },
+      duration: Date.now() - startTime,
+    };
+  }
+
+  async testComplexToolConversation(): Promise<TestResult> {
+    const startTime = Date.now();
+
+    // Reproduce the exact scenario that's causing the VertexAI error
+    const complexConversation = [
+      { role: 'user', content: 'did not scroll' },
+      {
+        role: 'assistant',
+        content:
+          'It seems I misunderstood and only focused the terms area instead of scrolling it. My apologies. Let me try to scroll down the terms and conditions so you can agree.\n\nIt seems that the element I was trying to scroll was not found. This could mean the element changed, or the selector is incorrect for scrolling. I need to re-examine the current UI to identify the correct element to scroll.\n',
+        tool_calls: [
+          {
+            id: 'call_1753822896319_3h74wvbl3',
+            type: 'function',
+            function: {
+              name: 'scroll_element',
+              arguments: JSON.stringify({ selector: 'terms-area' }),
+            },
+          },
+          {
+            id: 'call_1753822898721_ak1yff9iy',
+            type: 'function',
+            function: {
+              name: 'get_focused_window_tree',
+              arguments: JSON.stringify({}),
+            },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_1753822896319_3h74wvbl3',
+        content: '{"error":"MCP error -32602: Element not found"}',
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_1753822898721_ak1yff9iy',
+        content:
+          '[{"type":"text","text":"{\\"action\\":\\"get_focused_window_tree\\",\\"status\\":\\"success\\"}"}]',
+      },
+    ];
+
+    const converted = convertMessagesToVertexAI(complexConversation);
+
+    console.log('🔍 Debug - Complex conversation conversion:');
+    console.log('Original messages:', complexConversation.length);
+    console.log('Converted messages:', converted.length);
+
+    // Check the assistant message with multiple tool calls
+    const assistantMessage = converted[1];
+    console.log('Assistant message parts:', assistantMessage.parts.length);
+    console.log(
+      'Function calls found:',
+      assistantMessage.parts.filter((p: any) => p.functionCall).length
+    );
+
+    // Check both tool response messages
+    const toolMessage1 = converted[2];
+    const toolMessage2 = converted[3];
+    console.log(
+      'Tool response 1 function name:',
+      toolMessage1.parts[0]?.functionResponse?.name
+    );
+    console.log(
+      'Tool response 2 function name:',
+      toolMessage2.parts[0]?.functionResponse?.name
+    );
+
+    // Validate the structure
+    const hasCorrectCount = converted.length === 4;
+    const hasTwoToolCalls =
+      assistantMessage.parts.filter((p: any) => p.functionCall).length === 2;
+    const firstToolResponseCorrect =
+      toolMessage1.parts[0]?.functionResponse?.name === 'scroll_element';
+    const secondToolResponseCorrect =
+      toolMessage2.parts[0]?.functionResponse?.name ===
+      'get_focused_window_tree';
+
+    const success =
+      hasCorrectCount &&
+      hasTwoToolCalls &&
+      firstToolResponseCorrect &&
+      secondToolResponseCorrect;
+
+    return {
+      success,
+      message: success
+        ? 'Complex tool conversation converted correctly'
+        : 'Complex tool conversation conversion failed',
+      details: {
+        messageCount: converted.length,
+        hasCorrectCount,
+        hasTwoToolCalls,
+        firstToolResponseCorrect,
+        secondToolResponseCorrect,
+        assistantMessage: assistantMessage,
+        toolMessage1: toolMessage1,
+        toolMessage2: toolMessage2,
       },
       duration: Date.now() - startTime,
     };
