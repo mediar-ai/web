@@ -41,6 +41,7 @@ export class MCPIntegrationTester {
       () => this.testHealthCheck(),
       () => this.testBasicToolCalling(),
       () => this.testOpenAIToolCalling(),
+      () => this.testOpenAIToolMessageFormat(), // New test for OpenAI tool message format
       () => this.testComplexToolInteraction(),
       () => this.testMultiStepWorkflow(),
       () => this.testFrontendUXIntegration(),
@@ -1145,8 +1146,9 @@ export class MCPIntegrationTester {
   }
 
   /**
-   * Test tool continuation flow like frontend implements
-   * Simulates the exact tool execution and continuation flow from App.tsx
+   * Test tool continuation flow using OpenAI-compliant tool messages
+   * Simulates the exact tool execution and continuation flow with role: "tool" messages
+   * Tests the new format that replaces the legacy _toolResults field
    */
   async testToolContinuationFlow(): Promise<TestResult> {
     TestLogger.info('🔄 Testing Tool Continuation Flow (Frontend UX)');
@@ -1180,8 +1182,8 @@ export class MCPIntegrationTester {
       // Step 2: Execute tools and prepare continuation (simulate frontend)
       const toolResults = [];
       for (const toolCall of toolCalls1) {
-        if (!toolCall.toolName) {
-          console.warn('⚠️ Tool call missing toolName:', toolCall);
+        if (!toolCall.toolName || typeof toolCall.toolName !== 'string') {
+          console.warn('⚠️ Tool call missing or invalid toolName:', toolCall);
           continue;
         }
 
@@ -1194,11 +1196,29 @@ export class MCPIntegrationTester {
         });
       }
 
-      // Step 3: Send continuation request (simulate frontend sending tool results)
+      // Step 3: Send continuation request using OpenAI tool message format
       const continuationMessages = [
         { role: 'user', content: 'Get applications and open Cursor' },
-        { role: 'assistant', content: '' }, // Empty assistant message being continued
-        { role: 'user', content: 'Get applications and open Cursor' }, // Continuation message
+        // Assistant message with tool calls
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: toolCalls1.map((toolCall, index) => ({
+            id: toolCall.toolCallId || `call_${Date.now()}_${index}`,
+            type: 'function' as const,
+            function: {
+              name: toolCall.toolName || 'unknown',
+              arguments: JSON.stringify(toolCall.args || {}),
+            },
+          })),
+        },
+        // Tool messages with results
+        ...toolResults.map(toolResult => ({
+          role: 'tool' as const,
+          content: `Tool result: ${JSON.stringify(toolResult.result)}`,
+          tool_call_id: toolResult.toolCallId,
+        })),
+        { role: 'user', content: 'Continue with the next steps' }, // Follow-up user message
       ];
 
       const continuationRequest = {
@@ -1206,8 +1226,7 @@ export class MCPIntegrationTester {
         model: 'gemini-2.5-flash',
         max_tokens: 1000,
         temperature: 0.7,
-        mcpTools: MINIMAL_MCP_TOOLS, // Assuming MINIMAL_MCP_TOOLS is available or replace with mock
-        toolResults: toolResults,
+        tools: MINIMAL_OPENAI_TOOLS, // Use OpenAI format instead of mcpTools
       };
 
       const response2 = await this.makeAIRequest(continuationRequest);
@@ -1317,10 +1336,106 @@ export class MCPIntegrationTester {
     );
   }
 
-  /**
-   * Test complex UX scenario: Multi-app workflow
-   * Simulates a realistic user interaction like "Open Cursor, type code, then take screenshot"
-   */
+  async testOpenAIToolMessageFormat(): Promise<TestResult> {
+    const startTime = Date.now();
+
+    // Test OpenAI-compliant tool message conversation flow
+    const initialRequest: AIRequestBody = {
+      messages: [
+        { role: 'user', content: 'Take a screenshot and get current time' },
+      ],
+      model: 'gemini-2.5-flash',
+      max_tokens: 500,
+      temperature: 0.7,
+      tools: MINIMAL_OPENAI_TOOLS,
+    };
+
+    try {
+      // Step 1: Initial request that should trigger tool calls
+      const response1 = await this.makeAIRequest(initialRequest);
+      const chunks1 = parseStreamingResponse(response1.body);
+      const analysis1 = analyzeStreamChunks(chunks1);
+
+      if (analysis1.toolCalls.length === 0) {
+        return createTestResult(
+          false,
+          'No tool calls triggered in OpenAI format test',
+          { chunks: chunks1.length },
+          'Expected tool calls but got none',
+          startTime
+        );
+      }
+
+      // Step 2: Create continuation request with tool messages (OpenAI format)
+      const toolMessages = analysis1.toolCalls
+        .map((toolCall, index) => [
+          // Assistant message with tool call
+          {
+            role: 'assistant' as const,
+            content: null,
+            tool_calls: [
+              {
+                id: toolCall.toolCallId || `call_${Date.now()}_${index}`,
+                type: 'function' as const,
+                function: {
+                  name: toolCall.toolName || 'unknown',
+                  arguments: JSON.stringify(toolCall.args || {}),
+                },
+              },
+            ],
+          },
+          // Tool message with result
+          {
+            role: 'tool' as const,
+            content: `Mock result for ${toolCall.toolName}: success`,
+            tool_call_id: toolCall.toolCallId || `call_${Date.now()}_${index}`,
+          },
+        ])
+        .flat();
+
+      const continuationRequest: AIRequestBody = {
+        messages: [
+          { role: 'user', content: 'Take a screenshot and get current time' },
+          ...toolMessages,
+          { role: 'user', content: 'Now describe what you found' },
+        ],
+        model: 'gemini-2.5-flash',
+        max_tokens: 500,
+        temperature: 0.7,
+      };
+
+      // Step 3: Send continuation request
+      const response2 = await this.makeAIRequest(continuationRequest);
+      const chunks2 = parseStreamingResponse(response2.body);
+      const analysis2 = analyzeStreamChunks(chunks2);
+
+      // Validate the response
+      const hasTextResponse = analysis2.textDeltas.length > 0;
+      const responseText = analysis2.textDeltas.join('');
+
+      return createTestResult(
+        response2.ok && hasTextResponse && responseText.length > 10,
+        'OpenAI tool message format test completed successfully',
+        {
+          initialToolCalls: analysis1.toolCalls.length,
+          toolMessages: toolMessages.length,
+          finalResponse: responseText.substring(0, 100),
+          responseLength: responseText.length,
+        },
+        undefined,
+        startTime
+      );
+    } catch (error: any) {
+      return createTestResult(
+        false,
+        'OpenAI tool message format test failed',
+        { error: error.message },
+        error.message,
+        startTime
+      );
+    }
+  }
+
   async testComplexUserWorkflow(): Promise<TestResult> {
     TestLogger.info('🎭 Testing Complex User Workflow (Realistic UX)');
     const startTime = Date.now();
@@ -1385,8 +1500,11 @@ export class MCPIntegrationTester {
         if (analysis.toolCalls.length > 0) {
           const toolResults = [];
           for (const toolCall of analysis.toolCalls) {
-            if (!toolCall.toolName) {
-              console.warn('⚠️ Tool call missing toolName:', toolCall);
+            if (!toolCall.toolName || typeof toolCall.toolName !== 'string') {
+              console.warn(
+                '⚠️ Tool call missing or invalid toolName:',
+                toolCall
+              );
               continue;
             }
 
@@ -1825,7 +1943,7 @@ export class MCPIntegrationTester {
       );
 
       return createTestResult(
-        Boolean(toolResult.ok && toolResult.body && toolResult.body.length > 0),
+        !!(toolResult.ok && toolResult.body && toolResult.body.length > 0),
         toolResult.ok
           ? 'Tool execution workflow completed'
           : 'Tool execution failed',

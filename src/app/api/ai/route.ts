@@ -1,6 +1,121 @@
 import { VertexAI } from '@google-cloud/vertexai';
 import { NextRequest, NextResponse } from 'next/server';
 
+// =================================================================
+// TYPE DEFINITIONS TO REPLACE 'any' TYPES
+// =================================================================
+
+import { FunctionDeclaration, SchemaType } from '@google-cloud/vertexai';
+
+// OpenAI-compatible message types (supporting legacy formats)
+export interface OpenAIMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'model' | 'function';
+  content?: string;
+  tool_calls?: OpenAIToolCall[];
+  tool_call_id?: string;
+  parts?: MessagePart[];
+  // Legacy function calling support
+  functionCalls?: LegacyFunctionCall[];
+  functionResponses?: LegacyFunctionResponse[];
+}
+
+export interface MessagePart {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: {
+    url: string;
+  };
+}
+
+export interface OpenAIToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface LegacyFunctionCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+// VertexAI-compatible message types
+export interface VertexAIMessage {
+  role: 'user' | 'model' | 'function';
+  parts: (TextPart | FunctionCallPart | FunctionResponsePart)[];
+}
+
+export interface TextPart {
+  text: string;
+}
+
+export interface FunctionCallPart {
+  functionCall: {
+    name: string;
+    args: Record<string, unknown>;
+  };
+}
+
+export interface FunctionResponsePart {
+  functionResponse: {
+    name: string;
+    response: Record<string, unknown>;
+  };
+}
+
+// JSON Schema types compatible with VertexAI
+export interface VertexAISchema {
+  type: SchemaType;
+  properties?: Record<string, VertexAISchema>;
+  items?: VertexAISchema;
+  required?: string[];
+  description?: string;
+  enum?: string[];
+  format?: string;
+}
+
+// Tool definition types
+export interface OpenAITool {
+  type: 'function';
+  function: {
+    name: string;
+    description?: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface MCPTool {
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+  parameters?: Record<string, unknown>;
+}
+
+export type ToolFormat = OpenAITool[] | Record<string, MCPTool>;
+
+// VertexAI function call (from response)
+export interface VertexAIFunctionCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+// Function response types for message history
+export interface LegacyFunctionResponse {
+  name: string;
+  response: Record<string, unknown>;
+}
+
+export interface LegacyFunctionMessage {
+  role: 'function';
+  functionResponses?: LegacyFunctionResponse[];
+  content?: string;
+}
+
+// =================================================================
+// END TYPE DEFINITIONS
+// =================================================================
+
 /*
 
 Project context: 
@@ -199,7 +314,9 @@ const corsHeaders = {
 };
 
 // Clean JSON Schema for Vertex AI compatibility
-function cleanSchemaForVertexAI(schema: any): any {
+function cleanSchemaForVertexAI(
+  schema: Record<string, unknown> | unknown
+): Record<string, unknown> {
   if (!schema || typeof schema !== 'object') {
     return {
       type: 'object',
@@ -207,44 +324,49 @@ function cleanSchemaForVertexAI(schema: any): any {
     };
   }
 
+  const schemaObj = schema as Record<string, unknown>;
+
   // Create clean schema with only Vertex AI supported fields
-  const cleanSchema: any = {
-    type: schema.type || 'object',
+  const cleanSchema: Record<string, unknown> = {
+    type: (schemaObj.type as string) || 'object',
   };
 
   // Add properties if they exist
-  if (schema.properties && typeof schema.properties === 'object') {
-    cleanSchema.properties = {};
+  if (schemaObj.properties && typeof schemaObj.properties === 'object') {
+    cleanSchema.properties = {} as Record<string, unknown>;
+    const properties = cleanSchema.properties as Record<string, unknown>;
 
     // Recursively clean each property
-    for (const [propName, propSchema] of Object.entries(schema.properties)) {
-      cleanSchema.properties[propName] = cleanSchemaForVertexAI(propSchema);
+    for (const [propName, propSchema] of Object.entries(
+      schemaObj.properties as Record<string, unknown>
+    )) {
+      properties[propName] = cleanSchemaForVertexAI(propSchema);
     }
   }
 
   // Add required array if it exists
-  if (Array.isArray(schema.required)) {
-    cleanSchema.required = schema.required;
+  if (Array.isArray(schemaObj.required)) {
+    cleanSchema.required = schemaObj.required;
   }
 
   // Add description if it exists
-  if (schema.description) {
-    cleanSchema.description = schema.description;
+  if (typeof schemaObj.description === 'string') {
+    cleanSchema.description = schemaObj.description;
   }
 
   // Add enum if it exists
-  if (Array.isArray(schema.enum)) {
-    cleanSchema.enum = schema.enum;
+  if (Array.isArray(schemaObj.enum)) {
+    cleanSchema.enum = schemaObj.enum;
   }
 
   // Add format if it exists (for string types)
-  if (schema.format) {
-    cleanSchema.format = schema.format;
+  if (typeof schemaObj.format === 'string') {
+    cleanSchema.format = schemaObj.format;
   }
 
   // Add items for array types
-  if (schema.type === 'array' && schema.items) {
-    cleanSchema.items = cleanSchemaForVertexAI(schema.items);
+  if (schemaObj.type === 'array' && schemaObj.items) {
+    cleanSchema.items = cleanSchemaForVertexAI(schemaObj.items);
   }
 
   // Remove all unsupported fields (they're just not added)
@@ -254,12 +376,14 @@ function cleanSchemaForVertexAI(schema: any): any {
 }
 
 // Convert tools format (OpenAI or MCP) to Vertex AI function declarations
-function convertToolsToVertexAI(tools: any) {
+function convertToolsToVertexAI(
+  tools: ToolFormat | undefined
+): FunctionDeclaration[] {
   if (!tools) {
     return [];
   }
 
-  const functionDeclarations = [];
+  const functionDeclarations: FunctionDeclaration[] = [];
 
   // Handle OpenAI tools format (array of tool objects)
   if (Array.isArray(tools)) {
@@ -273,7 +397,7 @@ function convertToolsToVertexAI(tools: any) {
           description:
             tool.function.description ||
             `Execute ${tool.function.name} function`,
-          parameters: cleanedSchema,
+          parameters: cleanedSchema as any, // Type assertion needed for VertexAI compatibility
         });
       }
     }
@@ -282,17 +406,15 @@ function convertToolsToVertexAI(tools: any) {
   else if (typeof tools === 'object') {
     for (const [toolName, mcpTool] of Object.entries(tools)) {
       if (typeof mcpTool === 'object' && mcpTool !== null) {
-        const tool = mcpTool as any;
-
         // Clean the input schema to remove Vertex AI incompatible fields
         const cleanedSchema = cleanSchemaForVertexAI(
-          tool.inputSchema || tool.parameters || {}
+          mcpTool.inputSchema || mcpTool.parameters || {}
         );
 
         functionDeclarations.push({
           name: toolName,
-          description: tool.description || `Execute ${toolName} tool`,
-          parameters: cleanedSchema,
+          description: mcpTool.description || `Execute ${toolName} tool`,
+          parameters: cleanedSchema as any, // Type assertion needed for VertexAI compatibility
         });
       }
     }
@@ -327,9 +449,8 @@ function authenticate(request: NextRequest): boolean {
 function createStreamingResponse(
   vertexAI: VertexAI,
   model: string,
-  messages: any[],
-  functionDeclarations: any[],
-  toolResults?: any[],
+  messages: OpenAIMessage[],
+  functionDeclarations: FunctionDeclaration[],
   temperature: number = 0.7,
   maxTokens: number = 1000
 ) {
@@ -378,18 +499,30 @@ function createStreamingResponse(
           // Handle different message types
           if (msg.role === 'user') {
             return {
-              role: 'user',
-              parts: [{ text: msg.content }],
+              role: 'user' as const,
+              parts: [{ text: msg.content || '' }],
             };
           } else if (msg.role === 'model' || msg.role === 'assistant') {
-            const parts = [];
+            const parts: (TextPart | FunctionCallPart)[] = [];
 
             // Add text content if present
             if (msg.content) {
               parts.push({ text: msg.content });
             }
 
-            // Add function calls if present
+            // Add function calls if present (OpenAI format)
+            if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+              for (const toolCall of msg.tool_calls) {
+                parts.push({
+                  functionCall: {
+                    name: toolCall.function.name,
+                    args: JSON.parse(toolCall.function.arguments || '{}'),
+                  },
+                });
+              }
+            }
+
+            // Legacy support for functionCalls format
             if (msg.functionCalls && Array.isArray(msg.functionCalls)) {
               for (const functionCall of msg.functionCalls) {
                 parts.push({
@@ -402,15 +535,28 @@ function createStreamingResponse(
             }
 
             return {
-              role: 'model',
+              role: 'model' as const,
               parts: parts.length > 0 ? parts : [{ text: msg.content || '' }],
             };
-          } else if (msg.role === 'function') {
-            // Handle function responses
+          } else if (msg.role === 'tool') {
+            // Handle OpenAI tool messages
             return {
-              role: 'function',
+              role: 'function' as const,
+              parts: [
+                {
+                  functionResponse: {
+                    name: msg.tool_call_id || '', // Use tool_call_id as function name for Vertex AI
+                    response: { result: msg.content || '' },
+                  },
+                },
+              ],
+            };
+          } else if (msg.role === 'function') {
+            // Handle legacy function responses
+            return {
+              role: 'function' as const,
               parts: msg.functionResponses
-                ? msg.functionResponses.map((fr: any) => ({
+                ? msg.functionResponses.map((fr: LegacyFunctionResponse) => ({
                     functionResponse: {
                       name: fr.name,
                       response: fr.response,
@@ -420,65 +566,56 @@ function createStreamingResponse(
             };
           }
 
-          // Default fallback
+          // Default fallback - handle all role types explicitly
+          const vertexRole = ['user', 'system'].includes(msg.role)
+            ? ('user' as const)
+            : ('model' as const);
           return {
-            role: msg.role === 'user' ? 'user' : 'model',
+            role: vertexRole,
             parts: [{ text: msg.content || '' }],
           };
         });
 
         const lastMessage = messages[messages.length - 1];
 
-        // Start chat session
+        // Start chat session - use type assertion for VertexAI compatibility
         const chat = generativeModel.startChat({
-          history: chatHistory,
+          history: chatHistory as any,
         });
 
         let result;
 
-        // If we have tool results, continue with function responses
-        if (toolResults && toolResults.length > 0) {
-          // For continuation with tool results, we need to add the function calls to the chat history
-          // and then send the function responses as a new message
+        // Check if last message is a tool message (indicates continuation)
+        if (lastMessage.role === 'tool') {
+          // Find the corresponding assistant message with tool calls
+          const assistantMessage = messages[messages.length - 2];
+          if (assistantMessage && assistantMessage.tool_calls) {
+            // Create function response parts for continuation
+            const functionResponseParts = [
+              {
+                functionResponse: {
+                  name: lastMessage.tool_call_id || '',
+                  response: { result: lastMessage.content || '' },
+                },
+              },
+            ];
 
-          // First, add the function calls to chat history
-          const functionCallParts = toolResults.map(toolResult => ({
-            functionCall: {
-              name: toolResult.toolName,
-              args: toolResult.args || {},
-            },
-          }));
-
-          // Add the function calls as a model message to the history
-          const functionCallMessage = {
-            role: 'model' as const,
-            parts: functionCallParts,
-          };
-
-          // Create a new chat with the updated history
-          const updatedHistory = [...chatHistory, functionCallMessage];
-          const updatedChat = generativeModel.startChat({
-            history: updatedHistory,
-          });
-
-          // Create function response parts
-          const functionResponseParts = toolResults.map(toolResult => ({
-            functionResponse: {
-              name: toolResult.toolName,
-              response: { result: JSON.stringify(toolResult.result) },
-            },
-          }));
-
-          // Now send the function responses
-          result = await updatedChat.sendMessageStream(functionResponseParts);
+            // Send the function responses to continue the conversation
+            result = await chat.sendMessageStream(functionResponseParts as any);
+          } else {
+            // Fallback: treat as regular user message
+            result = await chat.sendMessageStream(
+              lastMessage.content || 'Continue'
+            );
+          }
         } else {
           // Normal user message
-          const userMessage = lastMessage.content;
+          const userMessage = lastMessage.content || '';
           result = await chat.sendMessageStream(userMessage);
         }
 
         let fullText = '';
-        const functionCalls: any[] = [];
+        const functionCalls: VertexAIFunctionCall[] = [];
 
         // Process streaming chunks
         for await (const chunk of result.stream) {
@@ -519,7 +656,10 @@ function createStreamingResponse(
           if (functionCallParts.length > 0) {
             for (const part of functionCallParts) {
               if (part.functionCall) {
-                functionCalls.push(part.functionCall);
+                functionCalls.push({
+                  name: part.functionCall.name,
+                  args: part.functionCall.args as Record<string, unknown>,
+                });
 
                 // Send function call in OpenAI format
                 const toolCallId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -557,10 +697,7 @@ function createStreamingResponse(
         }
 
         // Send final chunk with finish_reason
-        const finishReason =
-          functionCalls.length > 0 && (!toolResults || toolResults.length === 0)
-            ? 'tool_calls'
-            : 'stop';
+        const finishReason = functionCalls.length > 0 ? 'tool_calls' : 'stop';
 
         const finalChunk = {
           id: chatId,
@@ -628,6 +765,79 @@ function createStreamingResponse(
   });
 }
 
+// Validate tool call sequences to prevent VertexAI errors
+function validateToolCallSequence(messages: OpenAIMessage[]): string | null {
+  for (let i = 0; i < messages.length - 1; i++) {
+    const currentMsg = messages[i];
+    const nextMsg = messages[i + 1];
+
+    // Check if assistant message has tool calls
+    if (
+      currentMsg.role === 'assistant' &&
+      currentMsg.tool_calls &&
+      currentMsg.tool_calls.length > 0
+    ) {
+      // The next message should be a tool response, not another user message
+      if (nextMsg.role === 'user') {
+        return `Assistant made ${currentMsg.tool_calls.length} tool call(s) but got user message instead of tool response. Tool calls must be followed by tool responses.`;
+      }
+
+      // If next message is tool response, validate it
+      if (nextMsg.role === 'tool') {
+        if (!nextMsg.tool_call_id) {
+          return `Tool response message missing required 'tool_call_id' field.`;
+        }
+
+        // Check if tool_call_id matches any of the tool calls
+        const matchingToolCall = currentMsg.tool_calls.find(
+          tc => tc.id === nextMsg.tool_call_id
+        );
+        if (!matchingToolCall) {
+          return `Tool response has tool_call_id '${nextMsg.tool_call_id}' but no matching tool call found.`;
+        }
+      }
+    }
+
+    // Check for orphaned tool responses
+    if (currentMsg.role === 'tool') {
+      // Look backwards to find the assistant message with tool calls
+      let foundMatchingToolCall = false;
+      for (let j = i - 1; j >= 0; j--) {
+        const prevMsg = messages[j];
+        if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
+          const matchingCall = prevMsg.tool_calls.find(
+            tc => tc.id === currentMsg.tool_call_id
+          );
+          if (matchingCall) {
+            foundMatchingToolCall = true;
+            break;
+          }
+        }
+        // Stop looking if we hit another user message
+        if (prevMsg.role === 'user') break;
+      }
+
+      if (!foundMatchingToolCall) {
+        return `Tool response with tool_call_id '${currentMsg.tool_call_id}' has no matching tool call in conversation history.`;
+      }
+    }
+  }
+
+  // Check if conversation ends with unresolved tool calls
+  if (messages.length > 0) {
+    const lastMsg = messages[messages.length - 1];
+    if (
+      lastMsg.role === 'assistant' &&
+      lastMsg.tool_calls &&
+      lastMsg.tool_calls.length > 0
+    ) {
+      return `Conversation ends with ${lastMsg.tool_calls.length} unresolved tool call(s). Expected tool responses but got end of conversation.`;
+    }
+  }
+
+  return null;
+}
+
 // OPTIONS endpoint for CORS preflight requests
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -652,24 +862,15 @@ export async function POST(request: NextRequest) {
     const {
       messages,
       model = 'gemini-2.5-flash',
-      tools, // OpenAI format instead of mcpTools
-      max_tokens = 1000, // OpenAI format (underscore)
-      maxTokens = 1000, // Keep backwards compatibility
-      maxOutputTokens = 1000, // Keep Vertex AI compatibility
+      tools,
+      max_tokens = 1000,
+      maxTokens = 1000,
+      maxOutputTokens = 1000,
       temperature = 0.7,
-      // Internal fields for continuation (hidden from OpenAI compatibility)
-      _toolResults, // Prefix with _ to indicate internal
     } = body;
 
     // Use max_tokens if provided (OpenAI standard), otherwise fall back to alternatives
     const finalMaxTokens = max_tokens || maxOutputTokens || maxTokens;
-
-    console.log('🚀 === NEW AI CHAT REQUEST ===');
-    console.log('📝 Chat request received:', {
-      messageCount: messages ? messages.length : 0,
-      model,
-      isToolContinuation: !!_toolResults,
-    });
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json(
@@ -681,27 +882,63 @@ export async function POST(request: NextRequest) {
     }
 
     // Convert UI messages to model messages format
-    const modelMessages = messages.map((msg: any) => {
-      // Handle both old format (content) and new format (parts)
-      if (msg.parts && Array.isArray(msg.parts)) {
-        // Convert parts array to content string for model
-        const textParts = msg.parts
-          .filter((part: any) => part.type === 'text')
-          .map((part: any) => part.text)
-          .join('\n');
-        return {
+    const modelMessages: OpenAIMessage[] = messages.map(
+      (msg: OpenAIMessage) => {
+        // Handle both old format (content) and new format (parts)
+        if (msg.parts && Array.isArray(msg.parts)) {
+          // Convert parts array to content string for model
+          const textParts = msg.parts
+            .filter((part: MessagePart) => part.type === 'text')
+            .map((part: MessagePart) => part.text)
+            .join('\n');
+
+          const result: any = {
+            role: msg.role,
+            content: textParts || msg.content || '',
+          };
+
+          // Only include tool_calls and tool_call_id if they have actual values
+          if (msg.tool_calls) {
+            result.tool_calls = msg.tool_calls;
+          }
+          if (msg.tool_call_id) {
+            result.tool_call_id = msg.tool_call_id;
+          }
+
+          return result;
+        }
+
+        const result: any = {
           role: msg.role,
-          content: textParts || msg.content || '',
+          content: msg.content || '',
         };
+
+        // Only include tool_calls and tool_call_id if they have actual values
+        if (msg.tool_calls) {
+          result.tool_calls = msg.tool_calls;
+        }
+        if (msg.tool_call_id) {
+          result.tool_call_id = msg.tool_call_id;
+        }
+
+        return result;
       }
+    );
 
-      return {
-        role: msg.role,
-        content: msg.content || '',
-      };
-    });
+    console.log('📨 Chat history:', modelMessages);
 
-    console.log('📨 Converted messages for model:', modelMessages.length);
+    // Validate tool call sequences
+    const validationError = validateToolCallSequence(modelMessages);
+    if (validationError) {
+      return NextResponse.json(
+        {
+          error: `Invalid message sequence: ${validationError}`,
+          details:
+            'Tool calls must be followed by corresponding tool responses before the next user message.',
+        },
+        { status: 400, headers: corsHeaders }
+      );
+    }
 
     // Initialize Vertex AI
     let vertexAI: VertexAI;
@@ -729,7 +966,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Convert tools to Vertex AI format if provided
-    let functionDeclarations: any[] = [];
+    let functionDeclarations: FunctionDeclaration[] = [];
     if (
       tools &&
       (Array.isArray(tools) ? tools.length > 0 : Object.keys(tools).length > 0)
@@ -737,59 +974,27 @@ export async function POST(request: NextRequest) {
       functionDeclarations = convertToolsToVertexAI(tools);
     }
 
-    // Add system message to encourage tool usage when tools are available
-    let enhancedMessages = modelMessages;
-    if (
-      functionDeclarations.length > 0 &&
-      (!_toolResults || _toolResults.length === 0)
-    ) {
-      const toolNames = functionDeclarations.map(f => f.name);
-      // System prompt to guide behavior
-      const systemMessage = {
-        role: 'system',
-        content: `You are an AI assistant with access to powerful tools for automating desktop workflows and UI interactions. You have access to these tools: ${toolNames.join(', ')}.
-
-**Multi-Step Tool Usage Guidelines:**
-- Break complex tasks into logical steps
-- Use tools sequentially when needed (e.g., first get applications, then interact with specific windows)
-- Always get current UI state before making UI interactions
-- For app automation: first get applications → open/focus app → get window tree → perform actions
-- For text input: first validate the target element exists and is visible
-- Explain your reasoning and next steps clearly
-
-**Examples of Multi-Step Workflows:**
-1. "Open Cursor and type text" → get_applications() → open_application() → get_window_tree() → type_into_element()
-2. "Take screenshot then analyze UI" → take_screenshot() → get_window_tree() → analyze elements
-3. "Find and click button" → get_window_tree() → validate element → click_element()
-
-For screenshot requests, use "desktop" as the selector for full desktop screenshots.`,
-      };
-
-      // Add system message at the beginning
-      enhancedMessages = [systemMessage, ...modelMessages];
-    }
-
     // Create and return streaming response
     return createStreamingResponse(
       vertexAI,
       model,
-      enhancedMessages,
+      modelMessages,
       functionDeclarations,
-      _toolResults, // Pass tool results for continuation
       temperature,
       finalMaxTokens
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Error;
     console.error('\n🚨 === AI CHAT REQUEST FAILED ===');
-    console.error('❌ Error type:', error?.constructor?.name || 'Unknown');
-    console.error('❌ Error message:', error?.message || String(error));
-    console.error('❌ Stack trace:', error?.stack);
+    console.error('❌ Error type:', err?.constructor?.name || 'Unknown');
+    console.error('❌ Error message:', err?.message || String(error));
+    console.error('❌ Stack trace:', err?.stack);
 
     return NextResponse.json(
       {
         error: 'Failed to generate response',
-        details: error?.message || String(error),
-        errorType: error?.constructor?.name || 'Unknown',
+        details: err?.message || String(error),
+        errorType: err?.constructor?.name || 'Unknown',
         timestamp: new Date().toISOString(),
       },
       { status: 500, headers: corsHeaders }

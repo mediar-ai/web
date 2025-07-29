@@ -49,8 +49,18 @@ export interface MCPToolsCollection {
 // OpenAI-compatible request format
 export interface AIRequestBody {
   messages: Array<{
-    role: 'user' | 'assistant' | 'system';
-    content: string;
+    role: 'user' | 'assistant' | 'system' | 'tool'; // ✅ Added 'tool' role
+    content: string | null;
+    tool_calls?: Array<{
+      // ✅ For assistant messages with tool calls
+      id: string;
+      type: 'function';
+      function: {
+        name: string;
+        arguments: string;
+      };
+    }>;
+    tool_call_id?: string; // ✅ For tool messages - references the tool call
   }>;
   model?: string;
   max_tokens?: number; // OpenAI format
