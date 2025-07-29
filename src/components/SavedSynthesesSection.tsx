@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { TimelineAnnotationsTable } from '@/components/TimelineAnnotationsTable';
 import { cn } from '@/lib/utils';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface SavedSynthesis {
   id: number;
