@@ -24,7 +24,7 @@ const isProtectedApiRoute = createRouteMatcher([
   '/api/analyze-raw-timeline-events(.*)',
   '/api/users/(.*)',
   '/api/sessions/(.*)',
-  '/api/timeline-event-mappings/(?!bulk)(.*)',
+  '/api/timeline-event-mappings(.*)',
   '/api/save-dataset-entry(.*)',
   '/api/fetch-analyses-by-timestamps(.*)',
   '/api/fetch-combined-analyses-v2(.*)',
