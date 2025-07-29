@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
+import { use, useEffect } from 'react';
 
 export default function LowLevelUserPage({ params }: { params: Promise<{ userId: string }> }) {
   const router = useRouter();
@@ -9,7 +9,7 @@ export default function LowLevelUserPage({ params }: { params: Promise<{ userId:
 
   useEffect(() => {
     if (userId) {
-      router.replace(`/low-level/${userId}/summary`);
+      router.replace(`/low-level/${userId}/raw-low-level-events`);
           }
   }, [userId, router]);
 

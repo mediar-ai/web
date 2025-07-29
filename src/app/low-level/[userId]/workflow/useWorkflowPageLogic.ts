@@ -143,8 +143,9 @@ export function useWorkflowPageLogic(userId: string) {
   const [itemRefs, setItemRefs] = useState<Record<string, React.RefObject<HTMLTextAreaElement | null>[]>>({});
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [synthesisStep, setSynthesisStep] = useState<SynthesisStep>('idle');
-  const [draftWorkflowNames, setDraftWorkflowNames] = useState<string[]>([]);
+  const [workflowNames, setWorkflowNames] = useState<string[]>([]);
   const [identifiedWorkflowNames, setIdentifiedWorkflowNames] = useState<string[]>([]);
+  const [draftWorkflowNames, setDraftWorkflowNames] = useState<string[]>([]);
   const [workflowBoundaries, setWorkflowBoundaries] = useState<WorkflowBoundaries>({});
   const [collapsedSections, setCollapsedSections] = useState({
     inputs: true,
@@ -298,8 +299,7 @@ export function useWorkflowPageLogic(userId: string) {
           if (loadedMessages.length > 0) setMessages(loadedMessages);
           
           setSynthesisStep(session.synthesis_step || 'idle');
-          setIdentifiedWorkflowNames(session.identified_workflow_names || []);
-          setDraftWorkflowNames(session.identified_workflow_names || []); // Using identified_workflow_names since draft_workflow_names doesn't exist in interface
+          setWorkflowNames(session.identified_workflow_names || []);
           setSynthesisSessionId(session.synthesis_session_id);
 
           if (session.workflow_context) {
@@ -520,7 +520,7 @@ export function useWorkflowPageLogic(userId: string) {
       };
       setWorkflowContext(preservedContext);
       setEditableContext(preservedContext);
-      setDraftWorkflowNames(finalData.workflowNames || []);
+      setWorkflowNames(finalData.workflowNames || []);
       setSynthesisStep('context_editing');
 
       await saveSynthesisSession(
@@ -563,7 +563,7 @@ export function useWorkflowPageLogic(userId: string) {
           model: selectedModel,
           userId: userId,
           workflow_context: editableContext,
-          draft_workflow_names: draftWorkflowNames,
+          draft_workflow_names: workflowNames,
           ...(timeBoundary.startDate && timeBoundary.endDate && {
             startDate: timeBoundary.startDate.toISOString(),
             endDate: timeBoundary.endDate.toISOString()
@@ -576,7 +576,7 @@ export function useWorkflowPageLogic(userId: string) {
       }
 
       const result = await response.json();
-      setIdentifiedWorkflowNames(result.refined_workflow_names || []);
+      setWorkflowNames(result.refined_workflow_names || []);
       setSynthesisStep('workflow_editing');
 
       await saveSynthesisSession(
@@ -585,7 +585,7 @@ export function useWorkflowPageLogic(userId: string) {
         result.refined_workflow_names || [],
         workflowContext,
         workflowBoundaries,
-        draftWorkflowNames
+        workflowNames
       );
     } catch (error) {
       console.error('Error refining workflows:', error);
@@ -599,7 +599,7 @@ export function useWorkflowPageLogic(userId: string) {
     const thinkingId = `ai-thinking-${Date.now()}`;
     const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
     setMessages(updatedMessages);
-    await saveSynthesisSession(updatedMessages, 'defining_boundaries', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
+    await saveSynthesisSession(updatedMessages, 'defining_boundaries', approvedWorkflows, workflowContext, workflowBoundaries, workflowNames);
 
     try {
       const response = await fetch('/api/define-workflow-boundaries', {
@@ -653,12 +653,12 @@ export function useWorkflowPageLogic(userId: string) {
         id: `${Date.now()}`, sender: 'ai', text: "I've defined boundaries for your workflows. Please review and approve them above."
       };
       setMessages(prev => [...prev.slice(0, -1), boundariesMessage]);
-      await saveSynthesisSession(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, transformedBoundaries, draftWorkflowNames);
+      await saveSynthesisSession(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, transformedBoundaries, workflowNames);
 
     } catch (error) {
       console.error("Error defining workflow boundaries:", error);
       setMessages(prev => [...prev.slice(0, -1), { id: `error-${Date.now()}`, sender: 'ai', text: "Sorry, an error occurred while defining boundaries." }]);
-      await saveSynthesisSession(messages, 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
+      await saveSynthesisSession(messages, 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries, workflowNames);
     }
   };
 
@@ -821,7 +821,7 @@ export function useWorkflowPageLogic(userId: string) {
     const thinkingId = `ai-thinking-${Date.now()}`;
     const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
     setMessages(updatedMessages);
-    await saveSynthesisSession(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
+    await saveSynthesisSession(updatedMessages, 'synthesizing', workflowNames, workflowContext, approvedBoundaries, workflowNames);
 
     try {
       // STEP 1: Call the original /api/synthesize-workflow endpoint
@@ -831,7 +831,7 @@ export function useWorkflowPageLogic(userId: string) {
         body: JSON.stringify({
           model: selectedModel,
           context: {
-            workflows: identifiedWorkflowNames.map(name => ({
+            workflows: workflowNames.map(name => ({
               name: name,
               trigger: approvedBoundaries[name]?.trigger || '',
               terminator: approvedBoundaries[name]?.terminator || '',
@@ -1120,7 +1120,8 @@ export function useWorkflowPageLogic(userId: string) {
       await saveSynthesisSession(initialMessages, 'idle', [], emptyContext, null, []);
     }
     
-    setSynthesisSessionId(null);
+    // FIX: Don't clear session ID after creating new session - let saveSynthesisSession set it
+    // setSynthesisSessionId(null);
     await fetchCompleteWorkflows();
     setIsAiThinking(false);
   };
@@ -1412,8 +1413,7 @@ export function useWorkflowPageLogic(userId: string) {
     // Data & Context
     workflowContext,
     editableContext,
-    identifiedWorkflowNames,
-    draftWorkflowNames,
+    workflowNames,
     workflowBoundaries,
     timelineAnnotations,
     userStats,
@@ -1433,8 +1433,7 @@ export function useWorkflowPageLogic(userId: string) {
     // Setters & Handlers
     setWorkflows,
     setSynthesisStep,
-    setIdentifiedWorkflowNames,
-    setDraftWorkflowNames,
+    setWorkflowNames,
     setWorkflowBoundaries,
     handleContextChange,
     handleWorkflowsChange,

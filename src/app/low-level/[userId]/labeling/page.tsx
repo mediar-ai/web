@@ -110,7 +110,7 @@ type WorkflowLabelData = {
 type ProcessingMode = 'unprocessed' | 'all' | 'range';
 
 interface GenericEvent {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   [key: string]: any;
 }
 
@@ -796,14 +796,25 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
         ) : (
             <>
                 <div className="relative">
-                    {!isScreenshotCollapsed && <ScreenshotView 
-                      dataUrl={afterScreenshotDataUrl} 
-                      onWheel={handleScreenshotWheelScroll}
-                    />}
+                    <div className="max-w-full overflow-hidden min-h-[60px]">
+                        {!isScreenshotCollapsed && afterScreenshotDataUrl && (
+                            <div className="w-full">
+                                <ScreenshotView 
+                                  dataUrl={afterScreenshotDataUrl} 
+                                  onWheel={handleScreenshotWheelScroll}
+                                />
+                            </div>
+                        )}
+                        {!isScreenshotCollapsed && !afterScreenshotDataUrl && (
+                            <div className="w-full h-[200px] flex items-center justify-center border border-dashed border-gray-300 rounded-lg">
+                                <p className="text-muted-foreground">No screenshot available</p>
+                            </div>
+                        )}
+                    </div>
                     <Button 
                         variant="outline" 
                         size="icon" 
-                        className="absolute top-2 right-2 h-8 w-8 rounded-full bg-background shadow-lg"
+                        className="absolute top-2 right-2 h-8 w-8 rounded-full bg-background shadow-lg z-20"
                         onClick={() => setIsScreenshotCollapsed(!isScreenshotCollapsed)}
                     >
                         {isScreenshotCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}

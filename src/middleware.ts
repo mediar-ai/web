@@ -11,7 +11,12 @@ const isDeploymentRoute = createRouteMatcher([
 const isPublicApiRoute = createRouteMatcher([
   '/api/ingest(.*)',
   '/api/stream(.*)',
-  '/api/capture(.*)'
+  '/api/capture(.*)',
+  '/api/initiate-workflow-analysis(.*)',
+  '/api/refine-workflow-list(.*)',
+  '/api/define-workflow-boundaries(.*)',
+  '/api/synthesize-workflow(.*)',
+  '/api/timeline-event-mappings/bulk(.*)'
 ]);
 
 const isProtectedApiRoute = createRouteMatcher([
@@ -19,17 +24,14 @@ const isProtectedApiRoute = createRouteMatcher([
   '/api/analyze-raw-timeline-events(.*)',
   '/api/users/(.*)',
   '/api/sessions/(.*)',
-  '/api/timeline-event-mappings(.*)',
+  '/api/timeline-event-mappings/(?!bulk)(.*)',
   '/api/save-dataset-entry(.*)',
   '/api/fetch-analyses-by-timestamps(.*)',
   '/api/fetch-combined-analyses-v2(.*)',
   '/api/generate-events(.*)',
-  '/api/initiate-workflow-analysis(.*)',
   '/api/mcp/(.*)',
   '/api/remote-workflows/(.*)',
   '/api/edit-workflow(.*)',
-  '/api/define-workflow-boundaries(.*)',
-  '/api/synthesize-workflow(.*)',
   '/api/workflows/(.*)'
 ]);
 
