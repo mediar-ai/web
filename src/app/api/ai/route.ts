@@ -494,8 +494,8 @@ function createStreamingResponse(
 
         const generativeModel = vertexAI.getGenerativeModel(modelConfig);
 
-        // Convert messages to Vertex AI format
-        const chatHistory = messages.slice(0, -1).map(msg => {
+        // Convert ALL messages to Vertex AI format (don't exclude the last one)
+        const allMessages = messages.map(msg => {
           // Handle different message types
           if (msg.role === 'user') {
             return {
@@ -539,13 +539,30 @@ function createStreamingResponse(
               parts: parts.length > 0 ? parts : [{ text: msg.content || '' }],
             };
           } else if (msg.role === 'tool') {
-            // Handle OpenAI tool messages
+            // Handle OpenAI tool messages - need to map tool_call_id to function name
+            // Find the corresponding function name from the assistant message
+            let functionName = msg.tool_call_id || '';
+
+            // Look backward through messages to find the assistant message with tool_calls
+            for (let i = messages.indexOf(msg) - 1; i >= 0; i--) {
+              const prevMsg = messages[i];
+              if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
+                const toolCall = prevMsg.tool_calls.find(
+                  tc => tc.id === msg.tool_call_id
+                );
+                if (toolCall) {
+                  functionName = toolCall.function.name;
+                  break;
+                }
+              }
+            }
+
             return {
               role: 'function' as const,
               parts: [
                 {
                   functionResponse: {
-                    name: msg.tool_call_id || '', // Use tool_call_id as function name for Vertex AI
+                    name: functionName, // Use actual function name, not tool_call_id
                     response: { result: msg.content || '' },
                   },
                 },
@@ -578,40 +595,61 @@ function createStreamingResponse(
 
         const lastMessage = messages[messages.length - 1];
 
-        // Start chat session - use type assertion for VertexAI compatibility
-        const chat = generativeModel.startChat({
-          history: chatHistory as any,
-        });
-
+        // Determine if we need to send a new message or just generate from the complete history
         let result;
 
-        // Check if last message is a tool message (indicates continuation)
-        if (lastMessage.role === 'tool') {
-          // Find the corresponding assistant message with tool calls
-          const assistantMessage = messages[messages.length - 2];
-          if (assistantMessage && assistantMessage.tool_calls) {
-            // Create function response parts for continuation
-            const functionResponseParts = [
-              {
-                functionResponse: {
-                  name: lastMessage.tool_call_id || '',
-                  response: { result: lastMessage.content || '' },
-                },
-              },
-            ];
+        if (lastMessage.role === 'user') {
+          // If the last message is from the user, send the conversation history excluding the last message
+          // and then send the user's message to continue the conversation
+          const chatHistory = allMessages.slice(0, -1);
+          const chat = generativeModel.startChat({
+            history: chatHistory as any,
+          });
 
-            // Send the function responses to continue the conversation
-            result = await chat.sendMessageStream(functionResponseParts as any);
-          } else {
-            // Fallback: treat as regular user message
-            result = await chat.sendMessageStream(
-              lastMessage.content || 'Continue'
-            );
-          }
-        } else {
-          // Normal user message
           const userMessage = lastMessage.content || '';
           result = await chat.sendMessageStream(userMessage);
+        } else {
+          // If the last message is not from the user (e.g., tool response, assistant message),
+          // we need to be careful about function responses
+
+          // Find the last non-function message to end the history appropriately
+          let historyEndIndex = allMessages.length;
+          for (let i = allMessages.length - 1; i >= 0; i--) {
+            if (allMessages[i].role === 'function') {
+              historyEndIndex = i;
+            } else {
+              break;
+            }
+          }
+
+          // Use history up to (but not including) any trailing function responses
+          const chatHistory = allMessages.slice(0, historyEndIndex);
+          const chat = generativeModel.startChat({
+            history: chatHistory as any,
+          });
+
+          // If we have trailing function responses, include them in the continuation message
+          const trailingFunctionResponses = allMessages.slice(historyEndIndex);
+          let continuationMessage =
+            'Continue the conversation based on the provided context.';
+
+          if (trailingFunctionResponses.length > 0) {
+            // Include the function responses as part of the user message
+            const functionResults = trailingFunctionResponses
+              .map(msg => {
+                const functionResponse = msg.parts?.[0] as any;
+                if (functionResponse?.functionResponse) {
+                  return `Function ${functionResponse.functionResponse.name} returned: ${JSON.stringify(functionResponse.functionResponse.response)}`;
+                }
+                return '';
+              })
+              .filter(Boolean)
+              .join('\n');
+
+            continuationMessage = `Please continue based on these function results:\n${functionResults}\n\nProvide your response based on these results.`;
+          }
+
+          result = await chat.sendMessageStream(continuationMessage);
         }
 
         let fullText = '';
