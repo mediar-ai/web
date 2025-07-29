@@ -1,21 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import {
-  WorkflowWithSettings,
-  Execution,
-  LiveExecutionStatus,
-  WorkflowOverview,
-} from '@/lib/workflow-types';
-import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
+import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase';
+import {
+    Execution,
+    LiveExecutionStatus,
+    WorkflowOverview,
+    WorkflowWithSettings,
+} from '@/lib/workflow-types';
+import { SignIn, useAuth, useOrganization } from '@clerk/nextjs';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { useAuth, SignIn, useOrganization } from '@clerk/nextjs';
 import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Floating Delta Component
 const FloatingDelta = ({ value }: { value: number }) => {
@@ -56,7 +56,7 @@ export default function WorkflowsPage() {
   // Show loading while Clerk is initializing
   if (!isLoaded) {
     return (
-      <div className="container mx-auto py-4">
+      <div className="container mx-auto max-w-7xl py-4">
         <div>Loading...</div>
       </div>
     );
@@ -65,7 +65,7 @@ export default function WorkflowsPage() {
   // Show sign-in if not authenticated
   if (!userId) {
     return (
-      <div className="container mx-auto py-4 flex justify-center">
+      <div className="container mx-auto max-w-7xl py-4 flex justify-center">
         <SignIn />
       </div>
     );
@@ -431,7 +431,7 @@ function AuthenticatedWorkflowsPage({
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto max-w-7xl p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
