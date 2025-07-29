@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, use } from 'react';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Pencil, Clipboard, Check, RefreshCw, ArrowLeft } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { usePathname, useRouter } from 'next/navigation';
-import { UserProvider, useUser } from '@/context/UserContext';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useAuth, SignIn } from '@clerk/nextjs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { UserProvider, useUser } from '@/context/UserContext';
+import { SignIn, useAuth } from '@clerk/nextjs';
+import { ArrowLeft, Check, Clipboard, Pencil, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import React, { use, useCallback, useEffect, useState } from 'react';
 
 const UserLayoutContent = ({
   children,
@@ -55,7 +55,7 @@ const UserLayoutContent = ({
 
   if (!isLoaded) {
     return (
-      <div className="container mx-auto py-4">
+      <div className="container mx-auto max-w-7xl py-4">
         <div>Loading...</div>
       </div>
     );
@@ -63,7 +63,7 @@ const UserLayoutContent = ({
 
   if (!authUserId) {
     return (
-      <div className="container mx-auto py-4 flex justify-center">
+      <div className="container mx-auto max-w-7xl py-4 flex justify-center">
         <SignIn />
       </div>
     );
@@ -113,7 +113,7 @@ const UserLayoutContent = ({
 
   return (
     <div className="flex flex-col h-screen">
-      <div className="sticky top-0 z-10 bg-background container mx-auto gap-2 py-5 border-b">
+      <div className="sticky top-0 z-10 bg-background container mx-auto max-w-7xl gap-2 py-5 border-b">
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="icon" onClick={() => router.push('/admin')}>
@@ -174,12 +174,13 @@ const UserLayoutContent = ({
               <TabsTrigger value="ui-trees">UI Trees</TabsTrigger>
               <TabsTrigger value="steps">Steps</TabsTrigger>
               <TabsTrigger value="labeling">Labeling</TabsTrigger>
+              <TabsTrigger value="search">Search</TabsTrigger>
               <TabsTrigger value="workflow">Workflow</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
       </div>
-      <main className="container mx-auto flex-grow flex flex-col">{children}</main>
+      <main className="container mx-auto max-w-7xl flex-grow flex flex-col">{children}</main>
     </div>
   );
 }

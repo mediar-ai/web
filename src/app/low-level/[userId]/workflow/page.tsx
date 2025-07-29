@@ -249,7 +249,7 @@ const StepperItemComponent = ({
 }) => {
     const { 
       synthesisStep, isFetchingEvents, isAnalyzingEvents, runInitialAnalysis, isLoading, 
-      refineAndIdentifyWorkflows, identifiedWorkflowNames, processAllWorkflows, 
+      refineAndIdentifyWorkflows, workflowNames, processAllWorkflows, 
       workflowBoundaries, proceedToSynthesis, generateAndSaveTimelineMapping, workflows,
       isMappingTimeline, timelineAnnotations, timeBoundary
     } = logic;
@@ -257,7 +257,7 @@ const StepperItemComponent = ({
     const actionMap: Record<string, (() => void) | undefined> = {
         'define-context': runInitialAnalysis,
         'select-workflows': refineAndIdentifyWorkflows,
-        'define-boundaries': () => processAllWorkflows(identifiedWorkflowNames),
+        'define-boundaries': () => processAllWorkflows(workflowNames),
         'timeline-mapping': () => generateAndSaveTimelineMapping(),
     };
 
@@ -273,7 +273,7 @@ const StepperItemComponent = ({
         const enabledStates = {
             'define-context': Boolean(!isFetchingEvents && timeBoundary.startDate && timeBoundary.endDate),
             'select-workflows': synthesisStep === 'context_editing',
-            'define-boundaries': synthesisStep === 'workflow_editing' && identifiedWorkflowNames.length > 0,
+            'define-boundaries': synthesisStep === 'workflow_editing' && workflowNames.length > 0,
             'timeline-mapping': synthesisStep === 'synthesis_complete',
         };
         
@@ -331,7 +331,7 @@ const StepperItemComponent = ({
             enabled: enabledStates[id as keyof typeof enabledStates] ?? false,
             showComponent: showComponentStates[id as keyof typeof showComponentStates] ?? false,
         };
-    }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, identifiedWorkflowNames, isMappingTimeline, timelineAnnotations, timeBoundary]);
+    }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, workflowNames, isMappingTimeline, timelineAnnotations, timeBoundary]);
     
     const { completed, active, editable, enabled, showComponent } = stepState;
     const action = actionMap[id];
@@ -418,7 +418,7 @@ const StepperItemComponent = ({
                                 
                                 {id === 'select-workflows' && (
                                     <div className={completed ? 'opacity-60 pointer-events-none' : ''}>
-                                        <EditableWorkflowList workflows={logic.identifiedWorkflowNames} onWorkflowsChange={logic.setIdentifiedWorkflowNames} />
+                                        <EditableWorkflowList workflows={logic.workflowNames} onWorkflowsChange={logic.setWorkflowNames} />
                                     </div>
                                 )}
                                 
@@ -783,7 +783,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             </div>
 
             {/* Main Content */}
-            <div className="w-full max-w-4xl mx-auto p-8 space-y-6">
+            <div className="w-full max-w-6xl mx-auto p-8 space-y-6">
                 {/* Setup Instructions - Always Visible */}
                 <Card className="w-full border-black">
                     <CardHeader>
