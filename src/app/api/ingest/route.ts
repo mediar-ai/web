@@ -11,10 +11,21 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-// Helper function to create consistent hash regardless of JSON key order
-function createConsistentHash(obj: Record<string, unknown>): string {
+// Helper function to extract UI tree from payload structure
+function extractUITree(payload: any): string | null {
+  // Try different payload structures
+  if (payload?.payload?.event?.screen?.ui_tree) {
+    return payload.payload.event.screen.ui_tree;
+  } else if (payload?.event?.screen?.ui_tree) {
+    return payload.event.screen.ui_tree;
+  }
+  return null;
+}
+
+// Helper function to create UI tree duplicate hash
+function createUITreeHash(uiTree: string, clientTimestamp: string, userId: string, sessionId: string): string {
   return createHash('md5')
-    .update(JSON.stringify(obj, Object.keys(obj).sort()))
+    .update(`${userId}:${sessionId}:${clientTimestamp}:${uiTree}`)
     .digest('hex');
 }
 
@@ -27,54 +38,74 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'session_id and payload with a type are required' }, { status: 400 });
     }
 
-    console.log(`[INGEST] Processing event for session ${session_id}`);
+    console.log(`[INGEST] Processing event for session ${session_id}, type: ${payload.type}`);
 
-    // 🛡️ LIGHTWEIGHT DUPLICATE PREVENTION
-    // Generate consistent hash regardless of JSON property order
-    const payloadHash = createConsistentHash(body);
+    // 🛡️ TARGETED UI TREE DUPLICATE PREVENTION
+    // Only apply duplicate detection to UI tree events (meaningful_event)
+    if (payload.type === 'meaningful_event') {
+      const uiTree = extractUITree(payload);
+      const clientTimestamp = payload.timestamp;
 
-    console.log(`[INGEST] Request hash: ${payloadHash.substring(0, 8)}...`);
-
-    // Check for identical events in the last 30 seconds based on SERVER TIME
-    // Using created_at which defaults to now() for recent event detection
-    const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
-    
-    const { data: recentEvents, error: checkError } = await supabaseAdmin
-      .from('low_level_events')
-      .select('id, payload')
-      .eq('user_id', user_id)
-      .eq('session_id', session_id)
-      .gte('created_at', thirtySecondsAgo)  // Server time comparison
-      .limit(5); // Only check last 5 events for performance
-
-    if (checkError) {
-      console.warn('[INGEST] Deduplication check failed, proceeding with insert:', checkError);
-    } else if (recentEvents && recentEvents.length > 0) {
-      console.log(`[INGEST] Checking ${recentEvents.length} recent events for duplicates...`);
-      
-      // Check if any recent event has identical payload
-      for (const recentEvent of recentEvents) {
-        // Generate consistent hash for stored payload
-        const recentPayloadHash = createConsistentHash(recentEvent.payload);
+      if (uiTree && clientTimestamp) {
+        // Create targeted hash: UI tree + client timestamp + context
+        const uiTreeHash = createUITreeHash(uiTree, clientTimestamp, user_id, session_id);
         
-        console.log(`[INGEST] Comparing with event ${recentEvent.id}, hash: ${recentPayloadHash.substring(0, 8)}...`);
+        console.log(`[INGEST] UI tree event - hash: ${uiTreeHash.substring(0, 8)}..., timestamp: ${clientTimestamp}`);
+
+        // Check for identical UI tree + timestamp combinations in recent events
+        // Use a shorter 10-second window for UI tree duplicates since we're matching exact timestamps
+        const tenSecondsAgo = new Date(Date.now() - 10000).toISOString();
         
-        if (recentPayloadHash === payloadHash) {
-          console.log(`[INGEST] 🚫 Duplicate detected for session ${session_id} - payload hash: ${payloadHash.substring(0, 8)}...`);
-          return NextResponse.json({ 
-            message: "Duplicate event suppressed",
-            dbInsertSuccess: false
-          });
+        const { data: recentEvents, error: checkError } = await supabaseAdmin
+          .from('low_level_events')
+          .select('id, payload')
+          .eq('user_id', user_id)
+          .eq('session_id', session_id)
+          .gte('created_at', tenSecondsAgo)
+          .limit(10); // Check more events since we're being more specific
+
+        if (checkError) {
+          console.warn('[INGEST] UI tree deduplication check failed, proceeding with insert:', checkError);
+        } else if (recentEvents && recentEvents.length > 0) {
+          console.log(`[INGEST] Checking ${recentEvents.length} recent events for UI tree duplicates...`);
+          
+          // Check if any recent event has identical UI tree + timestamp
+          for (const recentEvent of recentEvents) {
+            const recentPayload = recentEvent.payload as any;
+            
+            // Only compare with other UI tree events
+            if (recentPayload?.type === 'meaningful_event') {
+              const recentUITree = extractUITree(recentPayload);
+              const recentClientTimestamp = recentPayload?.timestamp;
+              
+              if (recentUITree && recentClientTimestamp) {
+                const recentUITreeHash = createUITreeHash(recentUITree, recentClientTimestamp, user_id, session_id);
+                
+                console.log(`[INGEST] Comparing UI tree with event ${recentEvent.id}, hash: ${recentUITreeHash.substring(0, 8)}...`);
+                
+                if (recentUITreeHash === uiTreeHash) {
+                  console.log(`[INGEST] 🚫 UI tree duplicate detected for session ${session_id} - UI tree + timestamp hash: ${uiTreeHash.substring(0, 8)}...`);
+                  return NextResponse.json({ 
+                    message: "Duplicate UI tree event suppressed (identical UI tree + client timestamp)",
+                    dbInsertSuccess: false
+                  });
+                }
+              }
+            }
+          }
+          
+          console.log(`[INGEST] No UI tree duplicates found among ${recentEvents.length} recent events`);
+        } else {
+          console.log(`[INGEST] No recent events found for UI tree deduplication check`);
         }
+      } else {
+        console.log(`[INGEST] UI tree event missing ui_tree or timestamp - skipping duplicate check`);
       }
-      
-      console.log(`[INGEST] No duplicates found among ${recentEvents.length} recent events`);
     } else {
-      console.log(`[INGEST] No recent events found for deduplication check`);
+      console.log(`[INGEST] Non-UI tree event (${payload.type}) - no duplicate detection applied`);
     }
 
     // No duplicates found, proceed with normal insert
-    // Let created_at default to now() for proper server-time based deduplication
     const { error } = await supabaseAdmin
       .from('low_level_events')
       .insert({
@@ -82,7 +113,7 @@ export async function POST(request: NextRequest) {
         user_id,
         payload: body,  // Store entire request body including client timestamp
         source: 'windows_app'
-        // created_at will default to now() - perfect for deduplication timing
+        // created_at will default to now() for proper server-time based queries
       });
 
     if (error) {
@@ -90,14 +121,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save event' }, { status: 500 });
     }
 
-    console.log(`[INGEST] ✅ Successfully saved raw event for session ${session_id}`);
+    console.log(`[INGEST] ✅ Successfully saved ${payload.type} event for session ${session_id}`);
+    return NextResponse.json({ message: 'Event ingested successfully', dbInsertSuccess: true });
 
-    return NextResponse.json({ 
-      message: "Event ingested successfully",
-      dbInsertSuccess: true 
-    });
   } catch (error) {
-    console.error('[INGEST] Error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('[INGEST] Error processing request:', error);
+    return NextResponse.json({ error: 'Failed to process event' }, { status: 500 });
   }
 }
