@@ -10,8 +10,8 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-// Helper function to extract clean values from UI tree JSON
-function extractCleanValues(uiTreeString: string) {
+// Helper function to extract clean values from UI tree JSON and find keyword matches
+function extractCleanValues(uiTreeString: string, keyword?: string) {
   try {
     const uiTree = JSON.parse(uiTreeString);
     
@@ -20,15 +20,37 @@ function extractCleanValues(uiTreeString: string) {
       formFields: [] as string[],
       buttons: [] as string[],
       links: [] as string[],
-      allValues: [] as string[]
+      allValues: [] as string[],
+      keywordMatches: [] as Array<{
+        text: string;
+        type: string;
+        context: string;
+      }>
     };
     
-    function traverse(node: any) {
+    function traverse(node: any, depth = 0) {
       if (!node || typeof node !== 'object') return;
       
       const attrs = node.attributes || {};
       const role = attrs.role;
       const name = attrs.name;
+      
+      // Function to check if text contains keyword and create match
+      const checkForKeyword = (text: string, type: string) => {
+        if (keyword && text.toLowerCase().includes(keyword.toLowerCase())) {
+          // Get some context around the match
+          const index = text.toLowerCase().indexOf(keyword.toLowerCase());
+          const start = Math.max(0, index - 20);
+          const end = Math.min(text.length, index + keyword.length + 20);
+          const context = text.substring(start, end);
+          
+          cleanValues.keywordMatches.push({
+            text: text,
+            type: type,
+            context: context
+          });
+        }
+      };
       
       // Categorize by role
       if (name && typeof name === 'string' && name.trim()) {
@@ -38,28 +60,46 @@ function extractCleanValues(uiTreeString: string) {
         switch (role) {
           case 'Text':
             cleanValues.textContent.push(cleanName);
+            checkForKeyword(cleanName, 'Text');
             break;
           case 'Button':
             cleanValues.buttons.push(cleanName);
+            checkForKeyword(cleanName, 'Button');
             break;
           case 'Edit':
           case 'ComboBox':
             cleanValues.formFields.push(cleanName);
+            checkForKeyword(cleanName, 'Form Field');
             break;
           case 'Hyperlink':
             cleanValues.links.push(cleanName);
+            checkForKeyword(cleanName, 'Link');
+            break;
+          default:
+            // Check other elements too
+            checkForKeyword(cleanName, role || 'UI Element');
             break;
         }
       }
       
       // Also extract other meaningful attributes
       if (attrs.value && typeof attrs.value === 'string' && attrs.value.trim()) {
-        cleanValues.allValues.push(attrs.value.trim());
+        const value = attrs.value.trim();
+        cleanValues.allValues.push(value);
+        checkForKeyword(value, 'Value');
       }
+      
+      // Check other text attributes
+      ['title', 'description', 'help'].forEach(attr => {
+        if (attrs[attr] && typeof attrs[attr] === 'string' && attrs[attr].trim()) {
+          const text = attrs[attr].trim();
+          checkForKeyword(text, attr);
+        }
+      });
       
       // Recursively process children
       if (node.children && Array.isArray(node.children)) {
-        node.children.forEach(traverse);
+        node.children.forEach((child: any) => traverse(child, depth + 1));
       }
     }
     
@@ -178,8 +218,8 @@ export async function GET(request: NextRequest) {
         continue; // Skip events without UI tree data
       }
       
-      // Extract clean values
-      const cleanValues = extractCleanValues(uiTreeString);
+      // Extract clean values and find keyword matches
+      const cleanValues = extractCleanValues(uiTreeString, keyword);
       
       if (!cleanValues) {
         continue; // Skip events that can't be parsed
@@ -200,6 +240,7 @@ export async function GET(request: NextRequest) {
           eventId: event.id,
           timestamp: event.created_at,
           appName: event.app_name,
+          keywordMatches: cleanValues.keywordMatches,
           cleanValues: {
             textContent: cleanValues.textContent,
             formFields: cleanValues.formFields,
@@ -212,7 +253,8 @@ export async function GET(request: NextRequest) {
             totalFormFields: cleanValues.formFields.length,
             totalButtons: cleanValues.buttons.length,
             totalLinks: cleanValues.links.length,
-            totalUniqueValues: new Set(cleanValues.allValues).size
+            totalUniqueValues: new Set(cleanValues.allValues).size,
+            keywordMatchesCount: cleanValues.keywordMatches.length
           }
         });
       }
