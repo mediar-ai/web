@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { ActivityItem } from '@/types';
+import { useEffect, useState } from 'react';
 
 export default function WebSessionClient({ sessionId }: { sessionId: string }) {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
@@ -32,7 +32,7 @@ export default function WebSessionClient({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto max-w-7xl py-8">
       <h1 className="text-2xl font-bold mb-4">Web Recorder Session: {sessionId}</h1>
       <div className="space-y-2">
         {activity.map(item => (
