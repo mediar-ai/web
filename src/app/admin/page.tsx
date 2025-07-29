@@ -147,7 +147,7 @@ export default function AdminPage() {
   // Show loading while Clerk is initializing
   if (!isLoaded) {
     return (
-      <div className="container mx-auto py-4">
+      <div className="container mx-auto max-w-7xl py-4">
         <div>Loading...</div>
       </div>
     );
@@ -156,7 +156,7 @@ export default function AdminPage() {
   // Show sign-in if not authenticated
   if (!userId) {
     return (
-      <div className="container mx-auto py-4 flex justify-center">
+      <div className="container mx-auto max-w-7xl py-4 flex justify-center">
         <SignIn />
       </div>
     );
@@ -683,7 +683,7 @@ function AuthenticatedAdminPage({
 
   if (loading) {
     return (
-      <div className="container mx-auto py-4">
+      <div className="container mx-auto max-w-7xl py-4">
         <h1 className="text-xl font-bold mb-3">Admin - All Users</h1>
         <div>Loading sessions...</div>
       </div>
