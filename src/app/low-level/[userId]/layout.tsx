@@ -180,7 +180,7 @@ const UserLayoutContent = ({
           </Tabs>
         </div>
       </div>
-      <main className="container mx-auto max-w-7xl flex-grow flex flex-col">{children}</main>
+      <main className="container mx-auto max-w-7xl flex-grow flex flex-col overflow-auto">{children}</main>
     </div>
   );
 }
