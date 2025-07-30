@@ -97,7 +97,7 @@ def continuous_sync_processor():
     import time
     import requests
     
-    base_url = "https://browser-workflow-capture-app.vercel.app"
+    base_url = "https://app.mediar.ai"
     iteration = 0
     
     print("🚀 Starting continuous sync processor...")
@@ -147,7 +147,7 @@ async def backup_sync_and_metadata_processor():
     
     # Task 1: Backup Sync (always run this)
     try:
-        base_url = "https://browser-workflow-capture-app.vercel.app"
+        base_url = "https://app.mediar.ai"
         
         async with aiohttp.ClientSession() as session:
             async with session.post(f"{base_url}/api/sync-processed-counts") as response:
