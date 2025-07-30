@@ -16,7 +16,8 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/refine-workflow-list(.*)',
   '/api/define-workflow-boundaries(.*)',
   '/api/synthesize-workflow(.*)',
-  '/api/timeline-event-mappings/bulk(.*)'
+  '/api/timeline-event-mappings/bulk(.*)',
+  '/api/workflows/orchestrate(.*)'
 ]);
 
 const isProtectedApiRoute = createRouteMatcher([
