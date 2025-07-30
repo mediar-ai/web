@@ -924,7 +924,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             </div>
         </div>
       <div className="border rounded-lg overflow-x-auto">
-          <Table style={{ minWidth: 1200 }}>
+          <Table>
           <TableHeader>
                 {table.getHeaderGroups().map(headerGroup => (
                   <TableRow key={headerGroup.id}>
