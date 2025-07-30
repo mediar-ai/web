@@ -381,7 +381,15 @@ const StepperItemComponent = ({
                         )}
                         
                         {(showComponent || (completed && !active)) && (
-                            <Button variant="ghost" size="sm" onClick={() => setIsCollapsed(!isCollapsed)} className="ml-2">
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => setIsCollapsed(!isCollapsed)} 
+                                className="ml-2 border-black hover:bg-gray-100 px-3 py-2 flex items-center gap-2"
+                            >
+                                <span className="text-xs font-medium">
+                                    {isCollapsed ? 'Show' : 'Hide'}
+                                </span>
                                 {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
                             </Button>
                         )}
@@ -582,7 +590,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
   const showStatsCard = !isFetchingEvents;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="w-full mx-auto">
       {/* Stats Card - shown when in idle state */}
       {showStatsCard && (
         <div className="mb-6">
@@ -628,7 +636,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
       )}
 
       {/* Always show the stepper */}
-      <div className="max-w-4xl mx-auto py-6">
+      <div className="w-full mx-auto py-6">
         <div className="space-y-8">
           {STEP_DEFINITIONS.map((step, index) => (
             <StepperItem
@@ -807,9 +815,14 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                     <CardContent>
                         <Collapsible open={mainWorkflowOpen} onOpenChange={setMainWorkflowOpen}>
                             <div className="mb-4 text-left">
-                                <CollapsibleTrigger className="w-full flex items-center justify-between hover:bg-gray-50 p-2 rounded">
+                                <CollapsibleTrigger className="w-full flex items-center justify-between p-4 rounded-lg border border-black border-dashed bg-white hover:bg-gray-50 transition-colors duration-200 cursor-pointer group">
                                     <h3 className="text-lg font-semibold">Workflow Synthesis</h3>
-                                    {mainWorkflowOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                                            {mainWorkflowOpen ? 'Collapse' : 'Expand'}
+                                        </span>
+                                        {mainWorkflowOpen ? <ChevronDown className="h-5 w-5 text-black" /> : <ChevronRight className="h-5 w-5 text-black" />}
+                                    </div>
                                 </CollapsibleTrigger>
                                 
                                 <CollapsibleContent className={cn(
