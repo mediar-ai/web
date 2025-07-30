@@ -171,11 +171,25 @@
 
 html {
   scroll-padding-top: 5rem; /* Adjust this value as needed */
+  /* Prevent layout jumping from scrollbar appearance/disappearance */
+  scrollbar-gutter: stable;
 }
 
 body {
   @apply bg-background text-foreground;
   font-feature-settings: "rlig" 1, "calt" 1;
+  /* Ensure stable scrollbar space globally */
+  scrollbar-gutter: stable;
+  /* Use overlay scrollbars where supported to minimize layout impact */
+  overflow: overlay;
+}
+
+/* Fallback for browsers that don't support overlay scrollbars */
+@supports not (overflow: overlay) {
+  body {
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
 }
 
 /* Black Border Design System */
@@ -203,6 +217,17 @@ body {
   /* Hover state for black-bordered interactive elements */
   .border-black-hover {
     @apply hover:border-black transition-colors;
+  }
+
+  /* Layout stability utilities */
+  .stable-container {
+    @apply w-full max-w-7xl mx-auto;
+    /* Prevent width jumping by maintaining consistent container behavior */
+    box-sizing: border-box;
+  }
+  
+  .stable-scrollbar {
+    scrollbar-gutter: stable;
   }
 }
 
