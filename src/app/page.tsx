@@ -1,64 +1,62 @@
 'use client';
 
-import { Suspense, useMemo } from 'react';
-import Link from 'next/link';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  BufferedFrame,
-  Event,
-  ActivityItem,
-  Workflow,
-  RunningAnalysis,
-  DataProvider,
-} from '../types';
-import {
-  loadFrontendLogs,
-  saveWorkflowSteps,
-  saveEvents,
-  saveFrontendLogs,
-  saveActivityItems,
-  saveCompletedAnalyses,
-  clearPersistedData,
-  saveScreenshot,
-  getSessions,
-} from '../lib/db';
-import { LocalDataProvider, RemoteDataProvider } from '../lib/dataProviders';
-import EventsTabContent from '../components/tabs/EventsTabContent';
-import ActivityTabContent from '../components/tabs/ActivityTabContent';
-import SettingsTabContent from '../components/tabs/SettingsTabContent';
-import DebugTabContent from '../components/tabs/DebugTabContent';
-import WorkflowTabContent from '../components/tabs/WorkflowTabContent';
-import PageHeaderControls from '../components/capture/PageHeaderControls';
-import ErrorNotification from '../components/capture/ErrorNotification';
-import ExportStatusDialog from '../components/capture/ExportStatusDialog';
-import { useAutoDetection } from '../hooks/useAutoDetection';
-import { useFrameAnalysisDispatcher } from '../hooks/useFrameAnalysisDispatcher';
-import { useEventGenerator } from '../hooks/useEventGenerator';
+import LiveAnalysesPanel from '@/components/capture/LiveAnalysesPanel';
+import PipView from '@/components/capture/PipView';
 import ScreenshotPreviewPane from '@/components/capture/ScreenshotPreviewPane';
 import TimelineSlider from '@/components/capture/TimelineSlider';
-import LiveAnalysesPanel from '@/components/capture/LiveAnalysesPanel';
-import ScrollHint from '@/components/onboarding/ScrollHint';
-import PipView from '@/components/capture/PipView';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Settings, Bug, Pencil, RefreshCw } from 'lucide-react';
-import ReactDOM from 'react-dom/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import VideoPreviewArea from '@/components/capture/VideoPreviewArea';
-import { ThemeSwitcher } from '@/components/ThemeSwitcher';
-import { useViewingMode } from '@/hooks/useViewingMode';
-import { Alert } from '@/components/ui/alert';
-import { User } from 'lucide-react';
-import { TEXT_EXTRACTION_PROMPT, EVENTS_PROMPT } from '@/lib/prompts';
-import { uploadScreenshot } from '@/lib/screenshotUploader';
-import { Input } from '@/components/ui/input';
+import ScrollHint from '@/components/onboarding/ScrollHint';
 import LowLevelLogsTabContent from '@/components/tabs/LowLevelLogsTabContent';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useViewingMode } from '@/hooks/useViewingMode';
+import { EVENTS_PROMPT, TEXT_EXTRACTION_PROMPT } from '@/lib/prompts';
+import { uploadScreenshot } from '@/lib/screenshotUploader';
+import { Bug, MoreHorizontal, Pencil, RefreshCw, Settings, User } from 'lucide-react';
+import Link from 'next/link';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom/client';
+import ErrorNotification from '../components/capture/ErrorNotification';
+import ExportStatusDialog from '../components/capture/ExportStatusDialog';
+import PageHeaderControls from '../components/capture/PageHeaderControls';
+import ActivityTabContent from '../components/tabs/ActivityTabContent';
+import DebugTabContent from '../components/tabs/DebugTabContent';
+import EventsTabContent from '../components/tabs/EventsTabContent';
+import SettingsTabContent from '../components/tabs/SettingsTabContent';
+import WorkflowTabContent from '../components/tabs/WorkflowTabContent';
+import { useAutoDetection } from '../hooks/useAutoDetection';
+import { useEventGenerator } from '../hooks/useEventGenerator';
+import { useFrameAnalysisDispatcher } from '../hooks/useFrameAnalysisDispatcher';
+import { LocalDataProvider, RemoteDataProvider } from '../lib/dataProviders';
+import {
+    clearPersistedData,
+    getSessions,
+    loadFrontendLogs,
+    saveActivityItems,
+    saveCompletedAnalyses,
+    saveEvents,
+    saveFrontendLogs,
+    saveScreenshot,
+    saveWorkflowSteps,
+} from '../lib/db';
+import type {
+    ActivityItem,
+    BufferedFrame,
+    DataProvider,
+    Event,
+    RunningAnalysis,
+    Workflow,
+} from '../types';
 
 function HomeComponent() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash'; // 🔥 Updated to stable Vertex AI model name
@@ -1115,7 +1113,7 @@ function HomeComponent() {
   };
 
   return (
-    <div className='bg-background container mx-auto px-4 py-2 flex flex-col items-center min-h-screen antialiased max-w-7xl'>
+    <div className='bg-background stable-container px-4 py-2 flex flex-col items-center min-h-screen antialiased'>
       <ExportStatusDialog exportInProgress={false} />
 
       {viewingMode.type === 'local' ? (
@@ -1139,7 +1137,7 @@ function HomeComponent() {
           reconnectRequired={reconnectRequired}
         />
       ) : (
-        <Alert className="w-full max-w-7xl mt-4 flex items-center justify-between">
+        <Alert className="w-full mt-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <User className="h-4 w-4" />
             <div className="text-sm">
@@ -1203,7 +1201,7 @@ function HomeComponent() {
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
 
-      <Card className="w-full max-w-7xl mt-4 hidden">
+              <Card className="w-full mt-4 hidden">
         <CardHeader>
           <CardTitle>Live Preview</CardTitle>
         </CardHeader>
@@ -1219,7 +1217,7 @@ function HomeComponent() {
       <canvas ref={monitoringCanvasRef} style={{ display: 'none' }} />
 
       <div 
-        className="w-full max-w-7xl mt-4 space-y-4"
+        className="w-full mt-4 space-y-4"
         onMouseEnter={() => setIsHoveringScrollableArea(true)}
         onMouseLeave={() => setIsHoveringScrollableArea(false)}
       >
@@ -1250,7 +1248,7 @@ function HomeComponent() {
         )}
       </div>
 
-      <div className="w-full max-w-7xl grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="w-full grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="lg:col-span-2 flex flex-col gap-4">
           <Tabs defaultValue='recent' className='w-full -mt-2' value={selectedMoreOption || selectedMainTab} onValueChange={(value) => {
             if (value === 'settings' || value === 'debug' || value === 'low-level') {
@@ -1379,7 +1377,7 @@ function HomeComponent() {
       
       {/* Temporarily always show LLM traces for debugging */}
       {true && (
-        <div className="w-full max-w-7xl mt-4">
+        <div className="w-full mt-4">
           <div>
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-semibold">LLM traces {allAnalyses.length > 0 && `(${allAnalyses.length})`}</h2>
