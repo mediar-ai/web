@@ -74,6 +74,7 @@ export interface WorkflowStepAnalysisWithJSONB {
   session_id: string;
   client_timestamp: string;
   created_at: string;
+  source_ui_tree_event_id?: number | null;
   
   // Legacy columns (for backward compatibility)
   workflow?: string;
@@ -96,6 +97,7 @@ export interface FlattenedWorkflowAnalysis {
   session_id: string;
   client_timestamp: string;
   created_at: string;
+  source_ui_tree_event_id?: number | null;
   
   // Flattened access (prioritizes JSONB over legacy columns)
   workflow: string;
