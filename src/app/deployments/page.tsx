@@ -56,7 +56,7 @@ export default function WorkflowsPage() {
   // Show loading while Clerk is initializing
   if (!isLoaded) {
     return (
-      <div className="container mx-auto max-w-7xl py-4">
+      <div className="stable-container py-4">
         <div>Loading...</div>
       </div>
     );
@@ -65,7 +65,7 @@ export default function WorkflowsPage() {
   // Show sign-in if not authenticated
   if (!userId) {
     return (
-      <div className="container mx-auto max-w-7xl py-4 flex justify-center">
+      <div className="stable-container py-4 flex justify-center">
         <SignIn />
       </div>
     );
@@ -431,7 +431,7 @@ function AuthenticatedWorkflowsPage({
   }
 
   return (
-    <div className="container mx-auto max-w-7xl p-6 space-y-6">
+    <div className="stable-container p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
