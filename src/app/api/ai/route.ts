@@ -805,72 +805,58 @@ function createStreamingResponse(
 
 // Validate tool call sequences to prevent VertexAI errors
 function validateToolCallSequence(messages: OpenAIMessage[]): string | null {
-  for (let i = 0; i < messages.length - 1; i++) {
-    const currentMsg = messages[i];
-    const nextMsg = messages[i + 1];
+  // Track unresolved tool calls throughout the conversation
+  const unresolvedToolCalls = new Map<
+    string,
+    { messageIndex: number; toolCall: any }
+  >();
 
-    // Check if assistant message has tool calls
+  for (let i = 0; i < messages.length; i++) {
+    const currentMsg = messages[i];
+
+    // When we encounter an assistant message with tool calls, add them to unresolved
     if (
       currentMsg.role === 'assistant' &&
       currentMsg.tool_calls &&
       currentMsg.tool_calls.length > 0
     ) {
-      // The next message should be a tool response, not another user message
-      if (nextMsg.role === 'user') {
-        return `Assistant made ${currentMsg.tool_calls.length} tool call(s) but got user message instead of tool response. Tool calls must be followed by tool responses.`;
-      }
-
-      // If next message is tool response, validate it
-      if (nextMsg.role === 'tool') {
-        if (!nextMsg.tool_call_id) {
-          return `Tool response message missing required 'tool_call_id' field.`;
-        }
-
-        // Check if tool_call_id matches any of the tool calls
-        const matchingToolCall = currentMsg.tool_calls.find(
-          tc => tc.id === nextMsg.tool_call_id
-        );
-        if (!matchingToolCall) {
-          return `Tool response has tool_call_id '${nextMsg.tool_call_id}' but no matching tool call found.`;
-        }
+      for (const toolCall of currentMsg.tool_calls) {
+        unresolvedToolCalls.set(toolCall.id, { messageIndex: i, toolCall });
       }
     }
 
-    // Check for orphaned tool responses
+    // When we encounter a tool response, remove it from unresolved
     if (currentMsg.role === 'tool') {
-      // Look backwards to find the assistant message with tool calls
-      let foundMatchingToolCall = false;
-      for (let j = i - 1; j >= 0; j--) {
-        const prevMsg = messages[j];
-        if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
-          const matchingCall = prevMsg.tool_calls.find(
-            tc => tc.id === currentMsg.tool_call_id
-          );
-          if (matchingCall) {
-            foundMatchingToolCall = true;
-            break;
-          }
-        }
-        // Stop looking if we hit another user message
-        if (prevMsg.role === 'user') break;
+      if (!currentMsg.tool_call_id) {
+        return `Tool response message missing required 'tool_call_id' field.`;
       }
 
-      if (!foundMatchingToolCall) {
-        return `Tool response with tool_call_id '${currentMsg.tool_call_id}' has no matching tool call in conversation history.`;
+      if (!unresolvedToolCalls.has(currentMsg.tool_call_id)) {
+        return `Tool response has tool_call_id '${currentMsg.tool_call_id}' but no matching tool call found in conversation history.`;
       }
+
+      unresolvedToolCalls.delete(currentMsg.tool_call_id);
+    }
+
+    // When we encounter a user message, check if there are unresolved tool calls
+    if (currentMsg.role === 'user' && unresolvedToolCalls.size > 0) {
+      const unresolvedIds = Array.from(unresolvedToolCalls.keys());
+      const unresolvedFunctions = Array.from(unresolvedToolCalls.values()).map(
+        item => item.toolCall.function.name
+      );
+
+      return `Found ${unresolvedToolCalls.size} unresolved tool call(s) before user message: [${unresolvedIds.join(', ')}]. Functions: [${unresolvedFunctions.join(', ')}]. All tool calls must have corresponding tool responses before the conversation can continue.`;
     }
   }
 
   // Check if conversation ends with unresolved tool calls
-  if (messages.length > 0) {
-    const lastMsg = messages[messages.length - 1];
-    if (
-      lastMsg.role === 'assistant' &&
-      lastMsg.tool_calls &&
-      lastMsg.tool_calls.length > 0
-    ) {
-      return `Conversation ends with ${lastMsg.tool_calls.length} unresolved tool call(s). Expected tool responses but got end of conversation.`;
-    }
+  if (unresolvedToolCalls.size > 0) {
+    const unresolvedIds = Array.from(unresolvedToolCalls.keys());
+    const unresolvedFunctions = Array.from(unresolvedToolCalls.values()).map(
+      item => item.toolCall.function.name
+    );
+
+    return `Conversation ends with ${unresolvedToolCalls.size} unresolved tool call(s): [${unresolvedIds.join(', ')}]. Functions: [${unresolvedFunctions.join(', ')}]. All tool calls must have corresponding tool responses.`;
   }
 
   return null;
