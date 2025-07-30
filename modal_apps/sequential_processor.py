@@ -37,14 +37,16 @@ INCLUDE_SCREENSHOTS_IN_CONTEXT = False
 # - Added coordinator conflict detection in scheduled_processing
 # --- END CANCELLATION NOTES ---
 
-# Database connection configuration
-DB_CONFIG = {
-    'host': 'aws-0-us-west-1.pooler.supabase.com',
-    'port': 5432,
-    'database': 'postgres',
-    'user': 'postgres.eshwntsgsputksqamckh',
-    'password': '***REMOVED***'
-}
+# Database connection configuration using environment variables
+def get_db_config():
+    """Get database configuration from environment variables (Modal secrets)"""
+    return {
+        'host': os.environ['SUPABASE_HOST'],
+        'port': 5432,
+        'database': 'postgres',
+        'user': os.environ['SUPABASE_USER'],
+        'password': os.environ['SUPABASE_PASSWORD']
+    }
 
 # Edge case function removed - no longer needed after duplicate cleanup
 
@@ -130,7 +132,7 @@ def get_database_connection():
     """Get a database connection with proper error handling and optimized settings"""
     try:
         # Optimize connection for concurrent usage
-        config = DB_CONFIG.copy()
+        config = get_db_config()
         config.update({
             'connect_timeout': 10,      # Fail fast if connection takes too long
             'application_name': 'sequential_processor',

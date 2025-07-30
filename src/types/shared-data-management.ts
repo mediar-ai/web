@@ -10,6 +10,7 @@ export interface WorkflowStepAnalysis {
   created_at: string;
   llm_structured_output: Record<string, unknown>;
   window_title?: string;
+  source_ui_tree_event_id?: number | null;
 }
 
 // Dataset entry interface for annotations

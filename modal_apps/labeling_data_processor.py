@@ -23,14 +23,16 @@ app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
 # - Added coordinator conflict detection in scheduled_labeling_processing
 # --- END CANCELLATION NOTES ---
 
-# Database connection configuration
-DB_CONFIG = {
-    'host': 'aws-0-us-west-1.pooler.supabase.com',
-    'port': 5432,
-    'database': 'postgres',
-    'user': 'postgres.eshwntsgsputksqamckh',
-    'password': '***REMOVED***'
-}
+# Database connection configuration using environment variables
+def get_db_config():
+    """Get database configuration from environment variables (Modal secrets)"""
+    return {
+        'host': os.environ['SUPABASE_HOST'],
+        'port': 5432,
+        'database': 'postgres',
+        'user': os.environ['SUPABASE_USER'],
+        'password': os.environ['SUPABASE_PASSWORD']
+    }
 
 # --- Utility Functions (Adapted from sequential_processor.py) ---
 
@@ -68,7 +70,7 @@ def cleanup_expired_labeling_locks(cur, conn):
 def get_database_connection():
     """Gets a new database connection."""
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = psycopg2.connect(**get_db_config())
         conn.autocommit = False
         return conn
     except Exception as e:

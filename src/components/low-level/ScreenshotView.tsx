@@ -30,7 +30,7 @@ const ScreenshotView: React.FC<ScreenshotViewProps> = ({
         alt="Workflow Step Screenshot" 
         width={1920}
         height={1080}
-        className="max-h-full max-w-none" 
+        className="max-h-full max-w-full" 
         style={{ objectFit: 'contain' }}
         onError={() => {
           console.error('[ScreenshotView] Image failed to load:', dataUrl);
