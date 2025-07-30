@@ -55,7 +55,7 @@ const UserLayoutContent = ({
 
   if (!isLoaded) {
     return (
-      <div className="container mx-auto max-w-7xl py-4">
+      <div className="stable-container py-4">
         <div>Loading...</div>
       </div>
     );
@@ -63,7 +63,7 @@ const UserLayoutContent = ({
 
   if (!authUserId) {
     return (
-      <div className="container mx-auto max-w-7xl py-4 flex justify-center">
+      <div className="stable-container py-4 flex justify-center">
         <SignIn />
       </div>
     );
@@ -113,7 +113,7 @@ const UserLayoutContent = ({
 
   return (
     <div className="flex flex-col h-screen">
-      <div className="sticky top-0 z-10 bg-background container mx-auto max-w-7xl gap-2 py-5 border-b">
+      <div className="sticky top-0 z-10 bg-background stable-container py-5 border-b">
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="icon" onClick={() => router.push('/admin')}>
@@ -180,7 +180,7 @@ const UserLayoutContent = ({
           </Tabs>
         </div>
       </div>
-      <main className="container mx-auto max-w-7xl flex-grow flex flex-col overflow-auto">{children}</main>
+      <main className="stable-container flex-grow flex flex-col stable-scrollbar overflow-auto">{children}</main>
     </div>
   );
 }
