@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 interface DetailedSynthesizedWorkflow {
   title: string;
@@ -172,16 +172,29 @@ export async function GET(req: NextRequest) {
   
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get('userId');
+  const synthesisSessionId = searchParams.get('synthesis_session_id');
 
   if (!userId) {
     return NextResponse.json({ error: 'Missing userId parameter' }, { status: 400 });
   }
 
   try {
-    const { data, error } = await supabase
+    // Start with base query
+    let query = supabase
       .from('low_level_workflows')
       .select('*')
       .eq('user_id', userId);
+
+    // Apply synthesis session filter if provided
+    if (synthesisSessionId) {
+      // Convert string to number for proper comparison with bigint column
+      const sessionIdNumber = parseInt(synthesisSessionId, 10);
+      if (!isNaN(sessionIdNumber)) {
+        query = query.eq('synthesis_session_id', sessionIdNumber);
+      }
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
