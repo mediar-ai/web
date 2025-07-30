@@ -1,78 +1,93 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { Function_ } from 'modal';
+import { NextRequest } from 'next/server';
 
-function toSSE(data: object): Uint8Array {
-  return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
-}
-
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const { userId, model, startDate, endDate, userInstructions } = await req.json();
-
-    if (!userId || !model) {
-      return NextResponse.json({ error: 'Missing required parameters: userId and model' }, { status: 400 });
+    const { userId, model, startDate, endDate, userInstructions } = await request.json();
+    
+    console.log('🚀 Starting 5-step workflow orchestration via Modal for user:', userId);
+    
+    // Validate required parameters
+    if (!userId || !model || !startDate || !endDate) {
+      return new Response(JSON.stringify({ error: 'Missing required parameters' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
-    console.log('🚀 Starting 5-step workflow orchestration via Modal for user:', userId);
-
+    // Set up SSE response
+    const encoder = new TextEncoder();
+    const toSSE = (data: any) => encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+    
     const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          controller.enqueue(toSSE({ status: 'Starting 5-step workflow orchestration via Modal...', progress: 0, step: 0 }));
+      start(controller) {
+        (async () => {
+          try {
+            // Initial progress update
+            controller.enqueue(toSSE({ status: 'Starting 5-step workflow orchestration via Modal...', progress: 0, step: 0 }));
+            
+            // Use Modal TypeScript SDK to call function by name (NO hardcoded URLs!)
+            console.log('🔍 Looking up Modal function: workflow-synthesis-orchestrator::orchestrate_workflow_synthesis');
+            controller.enqueue(toSSE({ status: 'Looking up Modal function...', progress: 5, step: 0 }));
+            
+            // Get the workflow orchestration function by name using Modal JS SDK
+            const workflowFn = await Function_.lookup("workflow-synthesis-orchestrator", "orchestrate_workflow_synthesis");
+            
+            console.log('✅ Found Modal function, calling with parameters');
+            controller.enqueue(toSSE({ status: 'Calling Modal function...', progress: 10, step: 0 }));
+            
+            const modalPayload = {
+              user_id: userId,
+              model,
+              start_date: startDate,
+              end_date: endDate,
+              user_instructions: userInstructions || ""
+            };
 
-          // Call Modal function for orchestration (with 3-hour timeout instead of Vercel's 10-minute limit)
-          console.log('Modal parameters ready:', { userId, model, startDate, endDate, userInstructions });
-          controller.enqueue(toSSE({ status: 'Delegating to Modal for long-running orchestration...', progress: 5, step: 0 }));
-          
-          // Call Modal function directly using the deployed function
-          const modalUrl = 'https://mediar-ai--workflow-synthesis-orchestrator-orchestrate-workflow-synthesis.modal.run';
-          
-          const modalPayload = {
-            user_id: userId,
-            model,
-            start_date: startDate,
-            end_date: endDate,
-            user_instructions: userInstructions || ''
-          };
+            console.log('📋 Calling Modal workflow orchestration with payload:', modalPayload);
+            controller.enqueue(toSSE({ status: 'Delegating to Modal for long-running orchestration...', progress: 15, step: 0 }));
+            
+            // Call the function directly using Modal TypeScript SDK
+            const result = await workflowFn.remote([], modalPayload);
+            
+            console.log('✅ Modal function completed successfully');
+            
+            // Process the result
+            if (result && typeof result === 'object' && 'success' in result) {
+              if (result.success) {
+                controller.enqueue(toSSE({ 
+                  status: 'Modal workflow orchestration completed successfully!', 
+                  progress: 100, 
+                  step: 5,
+                  result: result 
+                }));
+              } else {
+                controller.enqueue(toSSE({ 
+                  error: 'Modal execution failed', 
+                  details: result.error || 'Unknown error from Modal', 
+                  progress: -1 
+                }));
+              }
+            } else {
+              controller.enqueue(toSSE({ 
+                status: 'Modal workflow orchestration completed!', 
+                progress: 100, 
+                step: 5,
+                result: result 
+              }));
+            }
 
-          const modalResponse = await fetch(modalUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(modalPayload),
-            signal: AbortSignal.timeout(600000) // 10 minute timeout for Vercel
-          });
-
-          if (!modalResponse.ok) {
-            throw new Error(`Modal function failed: ${modalResponse.status} ${modalResponse.statusText}`);
-          }
-
-          const modalResult = await modalResponse.json();
-
-          if (modalResult.success) {
-            const finalData = modalResult.final_data || {};
+          } catch (error) {
+            console.error('❌ Modal orchestration error:', error);
             controller.enqueue(toSSE({ 
-              status: 'All 5 steps completed successfully via Modal!', 
-              progress: 100, 
-              step: 5,
-              data: finalData,
-              success: true
+              error: 'Modal function call failed', 
+              details: error instanceof Error ? error.message : 'Unknown error', 
+              progress: -1 
             }));
-          } else {
-            throw new Error(modalResult.error || 'Modal orchestration failed');
+          } finally {
+            controller.close();
           }
-
-          console.log('ℹ️ Modal orchestration endpoint ready for deployment');
-
-        } catch (error) {
-          console.error('❌ Orchestration failed:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Unknown orchestration error';
-          controller.enqueue(toSSE({ 
-            error: 'Orchestration failed', 
-            details: errorMessage,
-            progress: -1
-          }));
-        } finally {
-          controller.close();
-        }
+        })();
       }
     });
 
@@ -85,8 +100,13 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Failed to start orchestration:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: 'Failed to start orchestration', details: errorMessage }, { status: 500 });
+    console.error('❌ Request processing error:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Request processing failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 } 
