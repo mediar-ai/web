@@ -191,14 +191,16 @@ secrets = [
     modal.Secret.from_name("custom-secret"),
 ]
 
-# Database connection configuration (matching sequential_processor.py)
-DB_CONFIG = {
-    "host": "aws-0-us-west-1.pooler.supabase.com",
-    "port": 5432,
-    "database": "postgres",
-    "user": "postgres.eshwntsgsputksqamckh",
-    "password": "dS64xX6mU3E4Sbyc",
-}
+# Database connection configuration using environment variables
+def get_db_config():
+    """Get database configuration from environment variables (Modal secrets)"""
+    return {
+        'host': os.environ['SUPABASE_HOST'],
+        'port': 5432,
+        'database': 'postgres',
+        'user': os.environ['SUPABASE_USER'],
+        'password': os.environ['SUPABASE_PASSWORD']
+    }
 
 # Configuration for auto-cancellation
 CONSECUTIVE_FAILURE_THRESHOLD = 3  # Number of identical failures
@@ -353,7 +355,7 @@ def get_database_connection():
     """Get a database connection with proper error handling and optimized settings"""
     try:
         # Optimize connection for concurrent usage
-        config = DB_CONFIG.copy()
+        config = get_db_config()
         config.update(
             {
                 "connect_timeout": 10,  # Fail fast if connection takes too long
@@ -1839,8 +1841,9 @@ def health_check() -> Dict[str, Any]:
         # Test 1: Environment and configuration
         try:
             # Check if we have database configuration
-            if DB_CONFIG and all(
-                k in DB_CONFIG for k in ["host", "database", "user", "password"]
+            db_config = get_db_config()
+            if db_config and all(
+                k in db_config for k in ["host", "database", "user", "password"]
             ):
                 health_data["checks"]["configuration"] = {
                     "status": "pass",
@@ -1964,9 +1967,10 @@ if __name__ == "__main__":
     print("  • PostgreSQL: Direct database access via psycopg2")
     print("  • Windows VM: Auto-restart capability via ngrok")
     print("\n🔧 Database Configuration:")
-    print(f"  • Host: {DB_CONFIG['host']}")
-    print(f"  • Database: {DB_CONFIG['database']}")
-    print(f"  • User: {DB_CONFIG['user']}")
+    db_config = get_db_config()
+    print(f"  • Host: {db_config['host']}")
+    print(f"  • Database: {db_config['database']}")
+    print(f"  • User: {db_config['user']}")
     print("  • Connection pooling: Optimized for performance")
     print("\n🔄 Auto-Restart Features:")
     print("  • Automatic MCP server health monitoring")

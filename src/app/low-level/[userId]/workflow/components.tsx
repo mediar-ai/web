@@ -796,32 +796,35 @@ export const EditableSynthesizedWorkflows = ({
                   <Accordion type="multiple" className="w-full space-y-2">
                     {workflow.steps.map((step, stepIndex) => (
                       <AccordionItem key={stepIndex} value={`step-${stepIndex}`} className="border rounded">
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <AccordionTrigger className="flex-1 mr-2">
-                            <div className="text-left flex-1">
-                              <Label className="text-xs font-medium text-muted-foreground">Step {stepIndex + 1} Name</Label>
-                              <Input
-                                value={step.step_name || ''}
-                                onChange={(e) => {
+                        <div className="px-3 py-2 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground">Step {stepIndex + 1} Name</Label>
+                            <div className="flex items-center gap-1">
+                              <AccordionTrigger className="flex items-center gap-2 px-3 py-1 border border-black rounded hover:bg-gray-50 text-xs font-medium">
+                                <span>Details</span>
+                              </AccordionTrigger>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
                                   e.stopPropagation();
-                                  handleStepChange(workflowIndex, stepIndex, 'step_name', e.target.value);
+                                  removeStep(workflowIndex, stepIndex);
                                 }}
-                                className="mt-1 text-sm"
-                                onClick={(e) => e.stopPropagation()}
-                              />
+                                className="h-6 w-6 p-0"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
                             </div>
-                          </AccordionTrigger>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
+                          </div>
+                          <Input
+                            value={step.step_name || ''}
+                            onChange={(e) => {
                               e.stopPropagation();
-                              removeStep(workflowIndex, stepIndex);
+                              handleStepChange(workflowIndex, stepIndex, 'step_name', e.target.value);
                             }}
-                            className="h-6 w-6 p-0 ml-2"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                            className="text-sm w-full min-w-[300px]"
+                            onClick={(e) => e.stopPropagation()}
+                          />
                         </div>
                         <AccordionContent className="px-3 pb-3">
                           <div className="space-y-3">
@@ -856,7 +859,7 @@ export const EditableSynthesizedWorkflows = ({
                                     <Input
                                       value={substep.substep_name || ''}
                                       onChange={(e) => handleSubstepChange(workflowIndex, stepIndex, substepIndex, 'substep_name', e.target.value)}
-                                      className="mt-1 text-sm"
+                                      className="mt-1 text-sm w-full min-w-[300px]"
                                     />
                                   </div>
                                   
@@ -873,20 +876,20 @@ export const EditableSynthesizedWorkflows = ({
                                         <PlusCircle className="h-3 w-3" />
                                       </Button>
                                     </div>
-                                    <div className="space-y-1 mt-1">
+                                    <div className="space-y-2 mt-1">
                                       {(substep.inputs || []).map((input, inputIndex) => (
-                                        <div key={inputIndex} className="flex items-center gap-1">
+                                        <div key={inputIndex} className="flex items-start gap-2">
                                           <Textarea
                                             value={input || ''}
                                             onChange={(e) => handleArrayFieldChange(workflowIndex, stepIndex, substepIndex, 'inputs', inputIndex, e.target.value)}
-                                            className="text-xs flex-1"
-                                            rows={1}
+                                            className="text-xs flex-1 min-w-0 resize-none"
+                                            rows={2}
                                           />
                                           <Button
                                             variant="outline"
                                             size="sm"
                                             onClick={() => removeArrayItem(workflowIndex, stepIndex, substepIndex, 'inputs', inputIndex)}
-                                            className="h-6 w-6 p-0"
+                                            className="h-7 w-7 p-0 flex-shrink-0"
                                           >
                                             <Trash2 className="h-3 w-3" />
                                           </Button>
@@ -908,20 +911,20 @@ export const EditableSynthesizedWorkflows = ({
                                         <PlusCircle className="h-3 w-3" />
                                       </Button>
                                     </div>
-                                    <div className="space-y-1 mt-1">
+                                    <div className="space-y-2 mt-1">
                                       {(substep.outputs || []).map((output, outputIndex) => (
-                                        <div key={outputIndex} className="flex items-center gap-1">
+                                        <div key={outputIndex} className="flex items-start gap-2">
                                           <Textarea
                                             value={output || ''}
                                             onChange={(e) => handleArrayFieldChange(workflowIndex, stepIndex, substepIndex, 'outputs', outputIndex, e.target.value)}
-                                            className="text-xs flex-1"
-                                            rows={1}
+                                            className="text-xs flex-1 min-w-0 resize-none"
+                                            rows={2}
                                           />
                                           <Button
                                             variant="outline"
                                             size="sm"
                                             onClick={() => removeArrayItem(workflowIndex, stepIndex, substepIndex, 'outputs', outputIndex)}
-                                            className="h-6 w-6 p-0"
+                                            className="h-7 w-7 p-0 flex-shrink-0"
                                           >
                                             <Trash2 className="h-3 w-3" />
                                           </Button>
@@ -943,20 +946,20 @@ export const EditableSynthesizedWorkflows = ({
                                         <PlusCircle className="h-3 w-3" />
                                       </Button>
                                     </div>
-                                    <div className="space-y-1 mt-1">
+                                    <div className="space-y-2 mt-1">
                                       {(substep.business_logic || []).map((logic, logicIndex) => (
-                                        <div key={logicIndex} className="flex items-center gap-1">
+                                        <div key={logicIndex} className="flex items-start gap-2">
                                           <Textarea
                                             value={logic || ''}
                                             onChange={(e) => handleArrayFieldChange(workflowIndex, stepIndex, substepIndex, 'business_logic', logicIndex, e.target.value)}
-                                            className="text-xs flex-1"
-                                            rows={1}
+                                            className="text-xs flex-1 min-w-0 resize-none"
+                                            rows={2}
                                           />
                                           <Button
                                             variant="outline"
                                             size="sm"
                                             onClick={() => removeArrayItem(workflowIndex, stepIndex, substepIndex, 'business_logic', logicIndex)}
-                                            className="h-6 w-6 p-0"
+                                            className="h-7 w-7 p-0 flex-shrink-0"
                                           >
                                             <Trash2 className="h-3 w-3" />
                                           </Button>

@@ -16,19 +16,21 @@ image = modal.Image.debian_slim().pip_install([
     "psycopg2-binary"
 ])
 
-# Database connection configuration
-DB_CONFIG = {
-    'host': 'aws-0-us-west-1.pooler.supabase.com',
-    'port': 5432,
-    'database': 'postgres',
-    'user': 'postgres.eshwntsgsputksqamckh',
-    'password': 'dS64xX6mU3E4Sbyc'
-}
+# Database connection configuration using environment variables
+def get_db_config():
+    """Get database configuration from environment variables (Modal secrets)"""
+    return {
+        'host': os.environ['SUPABASE_HOST'],
+        'port': 5432,
+        'database': 'postgres',
+        'user': os.environ['SUPABASE_USER'],
+        'password': os.environ['SUPABASE_PASSWORD']
+    }
 
 def get_database_connection():
     """Gets a new database connection for metadata processing."""
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = psycopg2.connect(**get_db_config())
         conn.autocommit = False
         return conn
     except Exception as e:
@@ -77,6 +79,7 @@ def extract_screenshot_timestamp(payload: Dict[str, Any]) -> Optional[datetime]:
 
 @app.function(
     image=image,
+    secrets=[modal.Secret.from_name("supabase-secret")],
     min_containers=1,  # Updated from keep_warm
     max_containers=1,  # Updated from allow_concurrent_inputs
     timeout=30
@@ -94,7 +97,7 @@ def continuous_sync_processor():
     import time
     import requests
     
-    base_url = "https://browser-workflow-capture-app.vercel.app"
+    base_url = "https://app.mediar.ai"
     iteration = 0
     
     print("🚀 Starting continuous sync processor...")
@@ -123,6 +126,7 @@ def continuous_sync_processor():
 
 @app.function(
     image=image,
+    secrets=[modal.Secret.from_name("supabase-secret")],
     schedule=modal.Period(seconds=2),  # Every 2 seconds - attempt if container available
     timeout=90,  # 90 seconds max per run (increased for database load)
     retries=0,  # No retries to prevent queueing
@@ -143,7 +147,7 @@ async def backup_sync_and_metadata_processor():
     
     # Task 1: Backup Sync (always run this)
     try:
-        base_url = "https://browser-workflow-capture-app.vercel.app"
+        base_url = "https://app.mediar.ai"
         
         async with aiohttp.ClientSession() as session:
             async with session.post(f"{base_url}/api/sync-processed-counts") as response:
@@ -224,6 +228,7 @@ async def backup_sync_and_metadata_processor():
 
 @app.function(
     image=image,
+    secrets=[modal.Secret.from_name("supabase-secret")],
     timeout=300  # 5 minutes
 )
 async def test_sync():

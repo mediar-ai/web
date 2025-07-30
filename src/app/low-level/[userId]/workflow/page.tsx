@@ -249,7 +249,7 @@ const StepperItemComponent = ({
 }) => {
     const { 
       synthesisStep, isFetchingEvents, isAnalyzingEvents, runInitialAnalysis, isLoading, 
-      refineAndIdentifyWorkflows, identifiedWorkflowNames, processAllWorkflows, 
+      refineAndIdentifyWorkflows, workflowNames, processAllWorkflows, 
       workflowBoundaries, proceedToSynthesis, generateAndSaveTimelineMapping, workflows,
       isMappingTimeline, timelineAnnotations, timeBoundary
     } = logic;
@@ -257,7 +257,7 @@ const StepperItemComponent = ({
     const actionMap: Record<string, (() => void) | undefined> = {
         'define-context': runInitialAnalysis,
         'select-workflows': refineAndIdentifyWorkflows,
-        'define-boundaries': () => processAllWorkflows(identifiedWorkflowNames),
+        'define-boundaries': () => processAllWorkflows(workflowNames),
         'timeline-mapping': () => generateAndSaveTimelineMapping(),
     };
 
@@ -273,7 +273,7 @@ const StepperItemComponent = ({
         const enabledStates = {
             'define-context': Boolean(!isFetchingEvents && timeBoundary.startDate && timeBoundary.endDate),
             'select-workflows': synthesisStep === 'context_editing',
-            'define-boundaries': synthesisStep === 'workflow_editing' && identifiedWorkflowNames.length > 0,
+            'define-boundaries': synthesisStep === 'workflow_editing' && workflowNames.length > 0,
             'timeline-mapping': synthesisStep === 'synthesis_complete',
         };
         
@@ -331,7 +331,7 @@ const StepperItemComponent = ({
             enabled: enabledStates[id as keyof typeof enabledStates] ?? false,
             showComponent: showComponentStates[id as keyof typeof showComponentStates] ?? false,
         };
-    }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, identifiedWorkflowNames, isMappingTimeline, timelineAnnotations, timeBoundary]);
+    }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, workflowNames, isMappingTimeline, timelineAnnotations, timeBoundary]);
     
     const { completed, active, editable, enabled, showComponent } = stepState;
     const action = actionMap[id];
@@ -381,7 +381,15 @@ const StepperItemComponent = ({
                         )}
                         
                         {(showComponent || (completed && !active)) && (
-                            <Button variant="ghost" size="sm" onClick={() => setIsCollapsed(!isCollapsed)} className="ml-2">
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => setIsCollapsed(!isCollapsed)} 
+                                className="ml-2 border-black hover:bg-gray-100 px-3 py-2 flex items-center gap-2"
+                            >
+                                <span className="text-xs font-medium">
+                                    {isCollapsed ? 'Show' : 'Hide'}
+                                </span>
                                 {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
                             </Button>
                         )}
@@ -418,7 +426,7 @@ const StepperItemComponent = ({
                                 
                                 {id === 'select-workflows' && (
                                     <div className={completed ? 'opacity-60 pointer-events-none' : ''}>
-                                        <EditableWorkflowList workflows={logic.identifiedWorkflowNames} onWorkflowsChange={logic.setIdentifiedWorkflowNames} />
+                                        <EditableWorkflowList workflows={logic.workflowNames} onWorkflowsChange={logic.setWorkflowNames} />
                                     </div>
                                 )}
                                 
@@ -582,7 +590,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
   const showStatsCard = !isFetchingEvents;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="w-full mx-auto">
       {/* Stats Card - shown when in idle state */}
       {showStatsCard && (
         <div className="mb-6">
@@ -628,7 +636,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
       )}
 
       {/* Always show the stepper */}
-      <div className="max-w-4xl mx-auto py-6">
+      <div className="w-full mx-auto py-6">
         <div className="space-y-8">
           {STEP_DEFINITIONS.map((step, index) => (
             <StepperItem
@@ -783,7 +791,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             </div>
 
             {/* Main Content */}
-            <div className="w-full max-w-4xl mx-auto p-8 space-y-6">
+            <div className="w-full max-w-6xl mx-auto p-8 space-y-6">
                 {/* Setup Instructions - Always Visible */}
                 <Card className="w-full border-black">
                     <CardHeader>
@@ -807,9 +815,14 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                     <CardContent>
                         <Collapsible open={mainWorkflowOpen} onOpenChange={setMainWorkflowOpen}>
                             <div className="mb-4 text-left">
-                                <CollapsibleTrigger className="w-full flex items-center justify-between hover:bg-gray-50 p-2 rounded">
+                                <CollapsibleTrigger className="w-full flex items-center justify-between p-4 rounded-lg border border-black border-dashed bg-white hover:bg-gray-50 transition-colors duration-200 cursor-pointer group">
                                     <h3 className="text-lg font-semibold">Workflow Synthesis</h3>
-                                    {mainWorkflowOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                                            {mainWorkflowOpen ? 'Collapse' : 'Expand'}
+                                        </span>
+                                        {mainWorkflowOpen ? <ChevronDown className="h-5 w-5 text-black" /> : <ChevronRight className="h-5 w-5 text-black" />}
+                                    </div>
                                 </CollapsibleTrigger>
                                 
                                 <CollapsibleContent className={cn(
