@@ -252,10 +252,10 @@ function AuthenticatedWorkflowsPage({
     let pollTimer: NodeJS.Timeout | null = null;
     
     if (pollingInterval && pollingInterval > 0) {
-      console.log(`📊 [POLLING] Starting enhanced polling every ${pollingInterval}ms`);
+      console.log(`[STATS] [POLLING] Starting enhanced polling every ${pollingInterval}ms`);
       
       const doPoll = () => {
-        console.log('📊 [POLLING] Refreshing data...');
+        console.log('[STATS] [POLLING] Refreshing data...');
         fetchLiveExecutions();
         fetchExecutions(false);
         fetchWorkflows(false);
@@ -271,7 +271,7 @@ function AuthenticatedWorkflowsPage({
     return () => {
       if (pollTimer) {
         clearInterval(pollTimer);
-        console.log('📊 [POLLING] Stopped polling');
+        console.log('[STATS] [POLLING] Stopped polling');
       }
     };
   }, [pollingInterval, fetchLiveExecutions, fetchExecutions, fetchWorkflows]);
@@ -287,7 +287,7 @@ function AuthenticatedWorkflowsPage({
     const setupRealtimeSubscription = async () => {
       try {
         connectionAttempts++;
-        console.log(`📡 [SUBSCRIPTION] Attempt ${connectionAttempts}/${MAX_RETRY_ATTEMPTS} - Setting up realtime subscription...`);
+        console.log(`[NETWORK] [SUBSCRIPTION] Attempt ${connectionAttempts}/${MAX_RETRY_ATTEMPTS} - Setting up realtime subscription...`);
 
         // Clean up existing channel
         if (channel) {
@@ -308,7 +308,7 @@ function AuthenticatedWorkflowsPage({
             schema: 'public',
             table: 'workflow_executions'
           }, (payload: { eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
-            console.log('📡 [REALTIME] workflow_executions change:', payload);
+            console.log('[NETWORK] [REALTIME] workflow_executions change:', payload);
             
             if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
               // Force refresh execution data to get latest changes
@@ -326,12 +326,12 @@ function AuthenticatedWorkflowsPage({
             schema: 'public',
             table: 'deployed_workflows'
           }, (payload: { eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
-            console.log('📡 [REALTIME] deployed_workflows change:', payload);
+            console.log('[NETWORK] [REALTIME] deployed_workflows change:', payload);
             // Refetch workflows when they change
             fetchWorkflows();
           })
           .subscribe(async (status: string, err?: Error) => {
-            console.log('📡 [SUBSCRIPTION] Status change:', {
+            console.log('[NETWORK] [SUBSCRIPTION] Status change:', {
               status,
               error: err,
               timestamp: new Date().toISOString(),
@@ -339,7 +339,7 @@ function AuthenticatedWorkflowsPage({
             });
             
             if (status === 'SUBSCRIBED') {
-              console.log('📡 [SUBSCRIPTION] ✅ Successfully connected to realtime');
+              console.log('[NETWORK] [SUBSCRIPTION] [SUCCESS] Successfully connected to realtime');
               setRealtimeConnected(true);
               connectionAttempts = 0; // Reset counter on success
               
@@ -350,16 +350,16 @@ function AuthenticatedWorkflowsPage({
               }
               
             } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-              console.log(`📡 [SUBSCRIPTION] ⚠️ Connection failed: ${status}`);
+              console.log(`[NETWORK] [SUBSCRIPTION] [WARN] Connection failed: ${status}`);
               
               // If we have retry attempts left, try again
               if (connectionAttempts < MAX_RETRY_ATTEMPTS) {
-                console.log(`📡 [SUBSCRIPTION] 🔄 Retrying in ${RETRY_DELAY}ms...`);
+                console.log(`[NETWORK] [SUBSCRIPTION] 🔄 Retrying in ${RETRY_DELAY}ms...`);
                 retryTimeout = setTimeout(() => {
                   setupRealtimeSubscription();
                 }, RETRY_DELAY);
               } else {
-                console.log('📡 [SUBSCRIPTION] ❌ Max retry attempts reached, falling back to polling');
+                console.log('[NETWORK] [SUBSCRIPTION] [ERROR] Max retry attempts reached, falling back to polling');
                 setRealtimeConnected(false);
                 // Fall back to polling every 10 seconds
                 setPollingInterval(10000);
@@ -368,7 +368,7 @@ function AuthenticatedWorkflowsPage({
           });
 
       } catch (error) {
-        console.error('📡 [SUBSCRIPTION] Setup error:', error);
+        console.error('[NETWORK] [SUBSCRIPTION] Setup error:', error);
         
         // Retry if we haven't exceeded max attempts
         if (connectionAttempts < MAX_RETRY_ATTEMPTS) {
@@ -376,7 +376,7 @@ function AuthenticatedWorkflowsPage({
             setupRealtimeSubscription();
           }, RETRY_DELAY);
         } else {
-          console.log('📡 [SUBSCRIPTION] Falling back to polling mode');
+          console.log('[NETWORK] [SUBSCRIPTION] Falling back to polling mode');
           setRealtimeConnected(false);
           setPollingInterval(10000);
         }
@@ -395,7 +395,7 @@ function AuthenticatedWorkflowsPage({
         supabase.removeChannel(channel);
       }
     };
-  }, [fetchLiveExecutions, fetchWorkflows]);
+  }, [fetchLiveExecutions, fetchWorkflows, fetchExecutions]);
 
   useEffect(() => {
     previousWorkflows.current = workflows;
