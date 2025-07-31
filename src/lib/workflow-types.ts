@@ -3,7 +3,6 @@ export type InputParameter = {
   type: string;
   description: string;
   required: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default?: any;
   // For conditional parameters
   controls?: Record<string, Record<string, InputParameter>>;
@@ -38,8 +37,7 @@ export interface Workflow {
   status: 'draft' | 'pending' | 'deployed' | 'paused' | 'failed' | 'inactive';
   workflow_type: 'execution' | 'settings';
   parent_workflow_id?: number | null;
-  display_order: number;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    display_order: number;
   automation_sequence: any; // Keeping as 'any' for now
   input_parameters: Record<string, InputParameter>;
   expected_outputs: Record<string, unknown>;
