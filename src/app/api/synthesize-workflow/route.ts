@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { callVertexWithStructuredOutput } from '@/lib/vertexai';
-import { WORKFLOW_SYNTHESIS_PROMPT } from '@/lib/prompts';
-import { WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/prompts';
+import { WORKFLOW_SYNTHESIS_PROMPT, WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/prompts';
 import { buildComprehensiveContext, TranscriptItem } from '@/lib/transcriptUtils';
+import { callVertexWithStructuredOutput } from '@/lib/vertexai';
+import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 interface WorkflowSynthesisInput {
   name: string;
@@ -45,12 +44,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing userId in context' }, { status: 400 });
     }
 
-    console.log(`👤 [${debugSessionId}] USER ID: ${context.userId}`);
-    if (startDate && endDate) {
-      console.log(`🕐 [${debugSessionId}] TIME BOUNDARIES: ${startDate} to ${endDate}`);
-    } else {
-      console.log(`🕐 [${debugSessionId}] TIME BOUNDARIES: No time filtering (processing all data)`);
+    // 🔧 NEW: Require explicit timeframe selection
+    if (!startDate || !endDate) {
+      console.log(`❌ [${debugSessionId}] MISSING TIMEFRAME: startDate=${!!startDate}, endDate=${!!endDate}`);
+      return NextResponse.json({ 
+        error: 'Timeframe selection is required. Please specify both startDate and endDate for workflow synthesis.',
+        details: 'Select a time period using the timeframe selector before synthesizing workflows.'
+      }, { status: 400 });
     }
+
+    console.log(`👤 [${debugSessionId}] USER ID: ${context.userId}`);
+    console.log(`🕐 [${debugSessionId}] TIME BOUNDARIES: ${startDate} to ${endDate}`);
     console.log(`📝 [${debugSessionId}] USER INSTRUCTIONS: ${context.userInstructions ? 'YES - ' + context.userInstructions.length + ' chars' : 'NO'}`);
     console.log(`🏢 [${debugSessionId}] WORKFLOW CONTEXT:`, JSON.stringify(context.workflowContext, null, 2));
     console.log(`📋 [${debugSessionId}] WORKFLOWS COUNT: ${context.workflows ? context.workflows.length : 'N/A'}`);
@@ -75,13 +79,11 @@ export async function POST(req: NextRequest) {
       .select('id, client_timestamp, window_title, llm_structured_output')
       .eq('user_id', context.userId);
 
-    // Apply time filtering if boundaries are provided
-    if (startDate && endDate) {
-      query = query
-        .gte('client_timestamp', startDate)
-        .lte('client_timestamp', endDate);
-      console.log(`🕐 [${debugSessionId}] TIME FILTERING: Applied to analyses query from ${startDate} to ${endDate}`);
-    }
+    // Apply time filtering (now required)
+    query = query
+      .gte('client_timestamp', startDate)
+      .lte('client_timestamp', endDate);
+    console.log(`🕐 [${debugSessionId}] TIME FILTERING: Applied to analyses query from ${startDate} to ${endDate}`);
 
     const { data: analysesData, error: analysesError } = await query
       .order('client_timestamp', { ascending: false })
@@ -161,13 +163,11 @@ export async function POST(req: NextRequest) {
         .select('session_id, role, content, created_at, type, item_id')
         .eq('user_id', context.userId);
 
-      // Apply same time filtering as analyses
-      if (startDate && endDate) {
-        transcriptQuery = transcriptQuery
-          .gte('created_at', startDate)
-          .lte('created_at', endDate);
-        console.log(`🕐 [${debugSessionId}] TIME FILTERING: Applied to transcripts query from ${startDate} to ${endDate}`);
-      }
+      // Apply same time filtering as analyses (now required)
+      transcriptQuery = transcriptQuery
+        .gte('created_at', startDate)
+        .lte('created_at', endDate);
+      console.log(`🕐 [${debugSessionId}] TIME FILTERING: Applied to transcripts query from ${startDate} to ${endDate}`);
 
       const { data: transcripts, error: transcriptError } = await transcriptQuery.order('created_at', { ascending: true })
         .limit(500); // Limit transcripts to prevent overwhelming context
@@ -636,4 +636,4 @@ EVENTS: ${JSON.stringify(processedSingleEvents, null, 2)}`;
 
     return NextResponse.json(degradedResponse, { status: 500 });
   }
-} 
+}

@@ -37,7 +37,7 @@ export interface Workflow {
   status: 'draft' | 'pending' | 'deployed' | 'paused' | 'failed' | 'inactive';
   workflow_type: 'execution' | 'settings';
   parent_workflow_id?: number | null;
-    display_order: number;
+  display_order: number;
   automation_sequence: any; // Keeping as 'any' for now
   input_parameters: Record<string, InputParameter>;
   expected_outputs: Record<string, unknown>;

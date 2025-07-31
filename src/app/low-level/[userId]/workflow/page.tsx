@@ -44,6 +44,7 @@ import { useWorkflowPageLogic } from './useWorkflowPageLogic';
 import { FilteredStatsDisplay } from '@/components/FilteredStatsDisplay';
 import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
 import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
+import { WorkflowExportDropdown } from '@/components/WorkflowExportDropdown';
 import { EditableTimelineMappings } from '@/components/low-level/EditableTimelineMappings';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
@@ -272,8 +273,8 @@ const StepperItemComponent = ({
 
         const enabledStates = {
             'define-context': Boolean(!isFetchingEvents && timeBoundary.startDate && timeBoundary.endDate),
-            'select-workflows': synthesisStep === 'context_editing',
-            'define-boundaries': synthesisStep === 'workflow_editing' && workflowNames.length > 0,
+            'select-workflows': synthesisStep === 'context_editing' && timeBoundary.startDate && timeBoundary.endDate,
+            'define-boundaries': synthesisStep === 'workflow_editing' && workflowNames.length > 0 && timeBoundary.startDate && timeBoundary.endDate,
             'timeline-mapping': synthesisStep === 'synthesis_complete',
         };
         
@@ -436,7 +437,11 @@ const StepperItemComponent = ({
                                         {['boundaries_editing', 'synthesizing'].includes(synthesisStep) && (
                                             <CardFooter className="flex justify-between mt-6">
                                               <Button onClick={logic.goBackToWorkflowEditing} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>Back</Button>
-                                              <Button onClick={logic.confirmBoundaries} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>
+                                              <Button 
+                                                onClick={logic.confirmBoundaries} 
+                                                disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing' || !logic.timeBoundary.startDate || !logic.timeBoundary.endDate}
+                                                title={!logic.timeBoundary.startDate || !logic.timeBoundary.endDate ? 'Please select a timeframe before synthesizing workflows' : undefined}
+                                              >
                                                 {logic.synthesisStep === 'synthesizing' ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Synthesizing...</> : 'Confirm Boundaries & Synthesize'}
                                               </Button>
                                             </CardFooter>
@@ -559,6 +564,16 @@ const StepperItemComponent = ({
                                 {saveStatus === 'error' && <div className="text-red-400">✗</div>}
                                 Save Complete Synthesis
                               </Button>
+                              
+                              <WorkflowExportDropdown 
+                                workflows={logic.workflows.map(w => ({
+                                  id: w.id,
+                                  title: w.title,
+                                  created_at: new Date().toISOString() // Use current date as fallback
+                                }))} 
+                                userId={userId}
+                                disabled={saveStatus === 'saving'}
+                              />
                             </div>
                           )}
                         </div>
@@ -596,11 +611,18 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
         <div className="mb-6">
               {/* Time Boundary Selection */}
               <div className="mb-6">
+                <div className="mb-2">
+                  <label className="text-sm font-medium text-gray-700">
+                    Timeframe Selection <span className="text-red-500">*</span>
+                    <span className="text-xs text-gray-500 ml-2">(Required for timeline annotations)</span>
+                  </label>
+                </div>
                 <TimeBoundarySelector
                   selectedBoundary={logic.timeBoundary}
                   onBoundaryChange={logic.setTimeBoundary}
                   disabled={logic.isLoading}
                   userId={userId}
+                  required={true}
                 />
               </div>
               
@@ -841,6 +863,68 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                                 </CollapsibleContent>
                             </div>
                         </Collapsible>
+                    </CardContent>
+                </Card>
+                
+                {/* Timeline Annotations Section */}
+                <Card className="w-full border-black">
+                    <CardHeader>
+                        <h3 className="text-lg font-semibold">Timeline Annotations</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Process user events to create timeline annotations for workflow mapping
+                        </p>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            <Button 
+                                onClick={logic.generateAndSaveTimelineMapping}
+                                disabled={logic.isMappingTimeline || !logic.timeBoundary.startDate || !logic.timeBoundary.endDate}
+                                className="w-full"
+                            >
+                                {logic.isMappingTimeline ? (
+                                    <>
+                                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                        Processing Timeline Annotations...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Zap className="h-4 w-4 mr-2" />
+                                        Tune Timeline Annotations
+                                    </>
+                                )}
+                            </Button>
+                            
+                            {/* Progress display */}
+                            {logic.isMappingTimeline && (
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                        <span>{logic.timelineMappingStatus}</span>
+                                        <span>{Math.round(logic.timelineMappingProgress)}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                        <div 
+                                            className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                                            style={{ width: `${logic.timelineMappingProgress}%` }}
+                                        />
+                                    </div>
+                                    {logic.timelineMappingBatch && (
+                                        <div className="text-xs text-gray-600">
+                                            Batch {logic.timelineMappingBatch.current} of {logic.timelineMappingBatch.total}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
+                            {/* Timeline annotations display */}
+                            {logic.timelineAnnotations && logic.timelineAnnotations.length > 0 && (
+                                <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+                                    <h4 className="text-sm font-medium mb-2">Timeline Annotations Created</h4>
+                                    <p className="text-sm text-gray-600">
+                                        {logic.timelineAnnotations.length} timeline annotations have been processed.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
                 
