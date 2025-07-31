@@ -426,7 +426,7 @@ arguments:
               <Alert className="border-black bg-gray-50">
                 <AlertTriangle className="h-4 w-4 text-black" />
                 <AlertDescription className="text-black">
-                  <div className="font-medium">⚠️ Production Impact Warning</div>
+                  <div className="font-medium">[WARN] Production Impact Warning</div>
                   <p className="text-sm mt-1">
                     Activating immediately will switch all new workflow executions to use this version. 
                     Existing running executions will continue with their current version.
@@ -437,7 +437,7 @@ arguments:
               <Alert className="border-black bg-white">
                 <CheckCircle className="h-4 w-4 text-black" />
                 <AlertDescription className="text-black">
-                  <div className="font-medium">✅ Safe Upload Mode</div>
+                  <div className="font-medium">[SUCCESS] Safe Upload Mode</div>
                   <p className="text-sm mt-1">
                     Version will be created but not activated. You can test and activate it later when ready.
                   </p>

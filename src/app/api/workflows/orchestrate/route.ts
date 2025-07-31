@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
             // Get the workflow orchestration function by name using Modal JS SDK
             const workflowFn = await Function_.lookup("workflow-synthesis-orchestrator", "orchestrate_workflow_synthesis");
             
-            console.log('✅ Found Modal function, calling with parameters');
+            console.log('[SUCCESS] Found Modal function, calling with parameters');
             controller.enqueue(toSSE({ status: 'Calling Modal function...', progress: 10, step: 0 }));
             
             const modalPayload = {
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
             // Call the function directly using Modal TypeScript SDK
             const result = await workflowFn.remote([], modalPayload);
             
-            console.log('✅ Modal function completed successfully');
+            console.log('[SUCCESS] Modal function completed successfully');
             
             // Process the result
             if (result && typeof result === 'object' && 'success' in result) {
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
             }
 
           } catch (error) {
-            console.error('❌ Modal orchestration error:', error);
+            console.error('[ERROR] Modal orchestration error:', error);
             controller.enqueue(toSSE({ 
               error: 'Modal function call failed', 
               details: error instanceof Error ? error.message : 'Unknown error', 
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Request processing error:', error);
+    console.error('[ERROR] Request processing error:', error);
     return new Response(JSON.stringify({ 
       error: 'Request processing failed',
       details: error instanceof Error ? error.message : 'Unknown error'

@@ -190,7 +190,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
       const hasIncludeResults = endpoint.queryParams.find(p => p.name === 'include_results');
       if (hasIncludeResults) {
         examples.push({
-          label: '⚡ Performance optimized',
+          label: '[PERF] Performance optimized',
           url: `${fullBasePath}?include_results=false&limit=20`,
           description: 'Fast response for dashboards (exclude heavy data)'
         });
@@ -488,11 +488,11 @@ export default function RemoteWorkflowsAPIDocsPage() {
                 }
               };
             } else {
-              console.warn(`⚠️ Failed to fetch schema for workflow ${workflow.id}:`, schemaData.error);
+              console.warn(`[WARN] Failed to fetch schema for workflow ${workflow.id}:`, schemaData.error);
               return null;
             }
           } catch (error) {
-            console.warn(`⚠️ Error fetching schema for workflow ${workflow.id}:`, error);
+            console.warn(`[WARN] Error fetching schema for workflow ${workflow.id}:`, error);
             return null;
           }
         });
@@ -506,11 +506,11 @@ export default function RemoteWorkflowsAPIDocsPage() {
           }
         });
 
-        console.log(`✅ Successfully loaded ${Object.keys(schemas).length} workflow schemas`);
+        console.log(`[SUCCESS] Successfully loaded ${Object.keys(schemas).length} workflow schemas`);
         setWorkflowSchemas(schemas);
         setSchemaError(null);
       } catch (error) {
-        console.error('❌ Failed to fetch workflow schemas:', error);
+        console.error('[ERROR] Failed to fetch workflow schemas:', error);
         setSchemaError(error instanceof Error ? error.message : 'Unknown error');
       } finally {
         setLoadingSchemas(false);
@@ -526,7 +526,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
       try {
         setLoadingResponses(true);
         console.log('🔄 Fetching cached API responses for documentation...');
-        console.log('✅ Filtering for successful responses only (status 200) for documentation examples');
+        console.log('[SUCCESS] Filtering for successful responses only (status 200) for documentation examples');
         
         const responses: Record<string, string> = {};
 
@@ -544,7 +544,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
              }
              return null;
            } catch (error) {
-             console.warn(`⚠️ Could not fetch cached response for ${endpoint}:`, error);
+             console.warn(`[WARN] Could not fetch cached response for ${endpoint}:`, error);
              return null;
            }
          };
@@ -553,21 +553,21 @@ export default function RemoteWorkflowsAPIDocsPage() {
         const executionDetailsResponse = await getCachedResponse('/api/remote-workflows/executions/[executionId]', 'GET');
         if (executionDetailsResponse) {
           responses['get-execution-details'] = JSON.stringify(executionDetailsResponse, null, 2);
-          console.log('✅ Fetched cached execution details response');
+          console.log('[SUCCESS] Fetched cached execution details response');
         }
 
         // Fetch cached list executions response
         const listExecutionsResponse = await getCachedResponse('/api/remote-workflows/executions', 'GET');
         if (listExecutionsResponse) {
           responses['list-executions'] = JSON.stringify(listExecutionsResponse, null, 2);
-          console.log('✅ Fetched cached list executions response');
+          console.log('[SUCCESS] Fetched cached list executions response');
         }
 
         // Fetch cached list workflows response
         const listWorkflowsResponse = await getCachedResponse('/api/remote-workflows/list', 'GET');
         if (listWorkflowsResponse) {
           responses['list-workflows'] = JSON.stringify(listWorkflowsResponse, null, 2);
-          console.log('✅ Fetched cached list workflows response');
+          console.log('[SUCCESS] Fetched cached list workflows response');
         }
 
         // Fetch cached get workflow details response and apply to all workflow detail endpoints
@@ -580,7 +580,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
             responses[`get-workflow-details-${workflowId}`] = detailsResponseString;
           });
           
-          console.log(`✅ Fetched cached get workflow details response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
+          console.log(`[SUCCESS] Fetched cached get workflow details response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
         }
 
                  // Fetch cached execute-sync response and apply to all workflow execute-sync endpoints
@@ -593,14 +593,14 @@ export default function RemoteWorkflowsAPIDocsPage() {
              responses[`execute-sync-workflow-${workflowId}`] = executeSyncResponseString;
            });
            
-           console.log(`✅ Fetched cached execute-sync response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
+           console.log(`[SUCCESS] Fetched cached execute-sync response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
          }
 
         // Fetch cached live execution status response
         const liveExecutionStatusResponse = await getCachedResponse('/api/remote-workflows/executions/live', 'GET');
         if (liveExecutionStatusResponse) {
           responses['live-execution-status'] = JSON.stringify(liveExecutionStatusResponse, null, 2);
-          console.log('✅ Fetched cached live execution status response');
+          console.log('[SUCCESS] Fetched cached live execution status response');
         }
 
         // If no cached responses available, fall back to live API calls for critical endpoints
@@ -619,11 +619,11 @@ export default function RemoteWorkflowsAPIDocsPage() {
               
               if (detailsData.success) {
                 responses['get-execution-details'] = JSON.stringify(detailsData, null, 2);
-                console.log('✅ Fetched live execution details response (fallback)');
+                console.log('[SUCCESS] Fetched live execution details response (fallback)');
               }
             }
           } catch (error) {
-            console.warn('⚠️ Could not fetch live execution details:', error);
+            console.warn('[WARN] Could not fetch live execution details:', error);
           }
 
           // Fallback: Fetch live list executions
@@ -633,17 +633,17 @@ export default function RemoteWorkflowsAPIDocsPage() {
             
             if (listData.success) {
               responses['list-executions'] = JSON.stringify(listData, null, 2);
-              console.log('✅ Fetched live executions list response (fallback)');
+              console.log('[SUCCESS] Fetched live executions list response (fallback)');
             }
           } catch (error) {
-            console.warn('⚠️ Could not fetch executions list:', error);
+            console.warn('[WARN] Could not fetch executions list:', error);
           }
         }
 
-        console.log(`✅ Successfully loaded ${Object.keys(responses).length} API responses (${Object.keys(responses).length > 0 ? 'cached + fallback' : 'fallback only'})`);
+        console.log(`[SUCCESS] Successfully loaded ${Object.keys(responses).length} API responses (${Object.keys(responses).length > 0 ? 'cached + fallback' : 'fallback only'})`);
         setDynamicResponses(responses);
       } catch (error) {
-        console.error('❌ Failed to fetch dynamic responses:', error);
+        console.error('[ERROR] Failed to fetch dynamic responses:', error);
       } finally {
         setLoadingResponses(false);
       }
@@ -789,7 +789,7 @@ export default function RemoteWorkflowsAPIDocsPage() {
         "total_steps": 15
       }
     },
-    "formatted_output": "✅ Successfully found 1 insurance quote:\\n\\n💰 Best Plan Pro: $45.67/month for $500,000 coverage",
+    "formatted_output": "[SUCCESS] Successfully found 1 insurance quote:\\n\\n[MONEY] Best Plan Pro: $45.67/month for $500,000 coverage",
     "summary": {
       "execution_successful": true,
       "workflow_completed": true,
@@ -967,7 +967,7 @@ graph TB
         { name: 'status', type: 'string', optional: true, description: 'Filter by execution status' },
         { name: 'limit', type: 'number', optional: true, description: 'Results per page (default: 20)' },
         { name: 'offset', type: 'number', optional: true, description: 'Pagination offset (default: 0)' },
-        { name: 'include_results', type: 'boolean', optional: true, description: 'Controls output detail level and response speed. FALSE (default): ⚡ Fast concise response (~50ms) with formatted_output only - optimized for real-time dashboards and user displays. TRUE: 🐌 Slower detailed response (~200ms+) including execution_params and full results - only use when debugging or needing complete execution data. For performance-critical apps, always use FALSE.' }
+        { name: 'include_results', type: 'boolean', optional: true, description: 'Controls output detail level and response speed. FALSE (default): [PERF] Fast concise response (~50ms) with formatted_output only - optimized for real-time dashboards and user displays. TRUE: [SLOW] Slower detailed response (~200ms+) including execution_params and full results - only use when debugging or needing complete execution data. For performance-critical apps, always use FALSE.' }
       ],
       response: `{
   "success": true,
@@ -1079,7 +1079,7 @@ graph TB
         "workflow_completed": false
       }
     },
-    "formatted_output": "❌ Workflow execution failed!\\n\\n📊 Error Summary...",
+    "formatted_output": "[ERROR] Workflow execution failed!\\n\\n[STATS] Error Summary...",
     "raw_data": {
       "raw_logs": "Starting workflow execution...",
       "raw_mcp_response": {...},
@@ -1287,7 +1287,7 @@ graph TB
           
           {schemaError && (
             <div className="mb-4 p-3 bg-gray-100 border border-black rounded-lg">
-              <p className="text-gray-800 text-sm">⚠️ Could not load dynamic schemas: {schemaError}. Showing static examples.</p>
+              <p className="text-gray-800 text-sm">[WARN] Could not load dynamic schemas: {schemaError}. Showing static examples.</p>
             </div>
           )}
 

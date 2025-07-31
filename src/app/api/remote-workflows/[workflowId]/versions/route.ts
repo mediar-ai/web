@@ -74,7 +74,7 @@ export async function GET(
     return NextResponse.json(response);
 
   } catch (error) {
-    console.error('❌ Error listing workflow versions:', error);
+    console.error('[ERROR] Error listing workflow versions:', error);
     
     return NextResponse.json(
       {
@@ -136,7 +136,7 @@ export async function POST(
       if (detectedFormat === 'yaml') {
         yamlContent = automation_sequence;
         sequence_format = 'yaml';
-        // 🔧 FIX: Convert YAML to JSON for automation_sequence column (NOT NULL constraint)
+        // [FIX] FIX: Convert YAML to JSON for automation_sequence column (NOT NULL constraint)
         try {
           jsonbContent = yaml.load(automation_sequence);
         } catch (error) {
@@ -203,7 +203,7 @@ export async function POST(
     // Generate next version number if not provided
     let newVersionNumber = version_number;
     if (!newVersionNumber) {
-      // 🔧 FIX: Auto-increment from LATEST version in DB, not active version
+      // [FIX] FIX: Auto-increment from LATEST version in DB, not active version
       // This prevents version collisions when multiple uploads happen before activation
       const { data: latestVersion, error: latestVersionError } = await supabase
         .from('deployed_workflow_versions')
@@ -216,9 +216,9 @@ export async function POST(
       let baseVersion = workflow.version; // fallback to active version
       if (latestVersion && !latestVersionError) {
         baseVersion = latestVersion.version_number;
-        console.log(`🔧 Using latest DB version ${baseVersion} instead of active ${workflow.version} for increment`);
+        console.log(`[FIX] Using latest DB version ${baseVersion} instead of active ${workflow.version} for increment`);
       } else {
-        console.log(`⚠️ No versions found in DB, using active version ${baseVersion} for increment`);
+        console.log(`[WARN] No versions found in DB, using active version ${baseVersion} for increment`);
       }
       
       const { data: incrementResult, error: incrementError } = await supabase
@@ -229,7 +229,7 @@ export async function POST(
       }
       
       newVersionNumber = incrementResult;
-      console.log(`✅ Generated version number: ${newVersionNumber} (incremented from ${baseVersion})`);
+      console.log(`[SUCCESS] Generated version number: ${newVersionNumber} (incremented from ${baseVersion})`);
     }
 
     // Check if version already exists
@@ -316,7 +316,7 @@ export async function POST(
     return NextResponse.json(response, { status: 201 });
 
   } catch (error) {
-    console.error('❌ Error creating workflow version:', error);
+    console.error('[ERROR] Error creating workflow version:', error);
     
     return NextResponse.json(
       {

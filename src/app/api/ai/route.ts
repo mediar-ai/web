@@ -212,9 +212,9 @@ arguments:
 │ Tool: click_element                     │
 │ Selector: role:button|name:Login        │
 │                                         │
-│ Result: ✅ Button clicked successfully   │
+│ Result: [SUCCESS] Button clicked successfully   │
 │                                         │
-│ [ ✅ Accept ] [ ❌ Reject ]              │
+│ [ [SUCCESS] Accept ] [ [ERROR] Reject ]              │
 └─────────────────────────────────────────┘
 ```
 
@@ -224,7 +224,7 @@ When user clicks "Reject":
 
 ```
 ┌─────────────────────────────────────────┐
-│ ❌ Step Correction Needed                │
+│ [ERROR] Step Correction Needed                │
 ├─────────────────────────────────────────┤
 │ Step 2: Click Login Button failed       │
 │                                         │
@@ -235,7 +235,7 @@ When user clicks "Reject":
 │ │ instead of "Login"                  │ │
 │ └─────────────────────────────────────┘ │
 │                                         │
-│ [ 🔧 Apply Correction ] [ ⏭️ Skip ]     │
+│ [ [FIX] Apply Correction ] [ ⏭️ Skip ]     │
 └─────────────────────────────────────────┘
 ```
 
@@ -762,7 +762,7 @@ function createStreamingResponse(
         // Send completion marker (OpenAI standard)
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
       } catch (error) {
-        console.error('❌ Streaming error:', error);
+        console.error('[ERROR] Streaming error:', error);
 
         // Send error in OpenAI format
         const errorChunk = {
@@ -1010,9 +1010,9 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     const err = error as Error;
     console.error('\n🚨 === AI CHAT REQUEST FAILED ===');
-    console.error('❌ Error type:', err?.constructor?.name || 'Unknown');
-    console.error('❌ Error message:', err?.message || String(error));
-    console.error('❌ Stack trace:', err?.stack);
+    console.error('[ERROR] Error type:', err?.constructor?.name || 'Unknown');
+    console.error('[ERROR] Error message:', err?.message || String(error));
+    console.error('[ERROR] Stack trace:', err?.stack);
 
     return NextResponse.json(
       {

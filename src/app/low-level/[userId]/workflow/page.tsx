@@ -227,9 +227,9 @@ const STEP_DEFINITIONS: StepDefinition[] = [
   },
   {
     id: 'timeline-mapping',
-    title: 'Create Timeline Mapping',
-    actionText: 'Generate Timeline Map',
-    description: 'Analyze and map all low-level events to their corresponding workflow steps for full traceability.',
+    title: 'Create Timeline Annotations',
+    actionText: 'Generate Timeline Annotations',
+    description: 'Analyze and annotate all low-level events to their corresponding workflow steps for full traceability.',
   },
 ];
 
@@ -264,11 +264,11 @@ const StepperItemComponent = ({
 
     const stepState = useMemo(() => {
         const completedStates: Record<StepId, SynthesisStep[]> = {
-  'define-context': ['context_editing', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'],
-  'select-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'],
-  'define-boundaries': ['synthesizing', 'synthesis_complete', 'done'],
-  'synthesize-workflows': ['synthesis_complete', 'done'],
-          'timeline-mapping': ['done'],
+  'define-context': ['context_editing', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done', 'timeline_complete'],
+  'select-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done', 'timeline_complete'],
+  'define-boundaries': ['synthesizing', 'synthesis_complete', 'done', 'timeline_complete'],
+  'synthesize-workflows': ['synthesis_complete', 'done', 'timeline_complete'],
+          'timeline-mapping': ['timeline_complete'],
 };
 
         const enabledStates = {
@@ -308,7 +308,7 @@ const StepperItemComponent = ({
                 case 'synthesize-workflows':
                     return synthesisStep === 'synthesis_complete' && !isMappingTimeline; // Editable when synthesis complete AND not mapping timeline
                 case 'timeline-mapping':
-                    return synthesisStep === 'done'; // Editable when done with timeline mapping
+                    return synthesisStep === 'done' || synthesisStep === 'timeline_complete'; // Editable during and after completion
                 default:
                     return false;
             }
@@ -336,24 +336,37 @@ const StepperItemComponent = ({
     
     const { completed, active, editable, enabled, showComponent } = stepState;
     const action = actionMap[id];
-    const [isCollapsed, setIsCollapsed] = useState(true);
+    
+    // Storage key for step expansion state persistence
+    const STEP_STORAGE_KEY = useMemo(() => `workflow-step-expansion-${userId}-${id}`, [userId, id]);
+    
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+        try {
+            const stored = localStorage.getItem(STEP_STORAGE_KEY);
+            return stored !== null ? JSON.parse(stored) : true;
+        } catch {
+            return true;
+        }
+    });
 
     const shouldBeExpanded = 
         (id === 'define-context' && (synthesisStep === 'context_editing' || isAnalyzingEvents)) ||
         (id === 'select-workflows' && synthesisStep === 'workflow_editing') ||
         (id === 'define-boundaries' && synthesisStep === 'boundaries_editing') ||
-        (id === 'synthesize-workflows' && (synthesisStep === 'synthesizing' || synthesisStep === 'synthesis_complete')) ||
-        (id === 'timeline-mapping' && synthesisStep === 'done');
+        (id === 'synthesize-workflows' && synthesisStep === 'synthesizing') ||
+        (id === 'timeline-mapping' && (synthesisStep === 'synthesis_complete' || synthesisStep === 'done' || synthesisStep === 'timeline_complete'));
 
 
-
+    // Force state sync with expansion logic
     useEffect(() => {
-        if (shouldBeExpanded) {
+        if (shouldBeExpanded && isCollapsed) {
             setIsCollapsed(false);
-        } else if (completed) {
+            localStorage.setItem(STEP_STORAGE_KEY, JSON.stringify(false));
+        } else if (!shouldBeExpanded && !isCollapsed) {
             setIsCollapsed(true);
+            localStorage.setItem(STEP_STORAGE_KEY, JSON.stringify(true));
         }
-    }, [shouldBeExpanded, completed]);
+    }, [shouldBeExpanded, isCollapsed, STEP_STORAGE_KEY]);
 
     return (
         <div className="relative">{/* Fixed parsing issue */}
@@ -385,7 +398,11 @@ const StepperItemComponent = ({
                             <Button 
                                 variant="outline" 
                                 size="sm" 
-                                onClick={() => setIsCollapsed(!isCollapsed)} 
+                                onClick={() => {
+                                    const newCollapsed = !isCollapsed;
+                                    setIsCollapsed(newCollapsed);
+                                    localStorage.setItem(STEP_STORAGE_KEY, JSON.stringify(newCollapsed));
+                                }} 
                                 className="ml-2 border-black hover:bg-gray-100 px-3 py-2 flex items-center gap-2"
                             >
                                 <span className="text-xs font-medium">
@@ -488,7 +505,7 @@ const StepperItemComponent = ({
                                       <div className="pt-4 flex-grow w-full">
                                         <div className="space-y-4">
                                           <div className="w-full">
-                                            <h3 className="text-lg font-semibold mb-4">Timeline Event Mappings</h3>
+                                            <h3 className="text-lg font-semibold mb-4">Timeline Event Annotations</h3>
                                             <div className="max-h-[800px] overflow-auto">
                                               {(timelineAnnotations !== null || logic.isMappingTimeline) ? (
                                                 <div className="space-y-4">
@@ -499,7 +516,9 @@ const StepperItemComponent = ({
                                                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div>
                                                         <span className="text-sm">
                                                           {logic.timelineMappingBatch 
-                                                            ? `Processing batch ${logic.timelineMappingBatch.current} of ${logic.timelineMappingBatch.total}... Results will appear as they're generated`
+                                                            ? logic.timelineMappingBatch.mode === 'parallel'
+                                                              ? `Processing ${logic.timelineMappingBatch.total} batches in parallel... ${logic.timelineMappingBatch.current} completed`
+                                                              : `Processing batch ${logic.timelineMappingBatch.current} of ${logic.timelineMappingBatch.total}... Results will appear as they're generated`
                                                             : 'Processing timeline events... Results will appear as they\'re generated'
                                                           }
                                                         </span>
@@ -513,7 +532,30 @@ const StepperItemComponent = ({
                                                             ></div>
                                                           </div>
                                                           <div className="text-xs text-gray-600 mt-1">
-                                                            {Math.round((logic.timelineMappingBatch.current / logic.timelineMappingBatch.total) * 100)}% complete
+                                                            {logic.timelineMappingBatch.mode === 'parallel'
+                                                              ? `${logic.timelineMappingBatch.current}/${logic.timelineMappingBatch.total} batches completed`
+                                                              : `${Math.round((logic.timelineMappingBatch.current / logic.timelineMappingBatch.total) * 100)}% complete`
+                                                            }
+                                                          </div>
+                                                        </div>
+                                                      )}
+
+                                                      {/* Batch Status List */}
+                                                      {logic.batchList.length > 0 && (
+                                                        <div className="mt-4 p-3 border border-black rounded-lg">
+                                                          <div className="text-sm font-medium mb-2">Batch Status:</div>
+                                                          <div className="text-xs space-y-1 max-h-40 overflow-y-auto">
+                                                            {logic.batchList.map(batch => (
+                                                              <div key={batch.id} className="flex justify-between items-center py-1">
+                                                                <span className="flex-1">Batch {batch.id}</span>
+                                                                <span className="flex-1 text-center">{batch.status}</span>
+                                                                <div className="flex-1 text-right text-xs">
+                                                                  {batch.eventCount !== undefined && `${batch.eventCount} events`}
+                                                                  {batch.mappingCount !== undefined && ` → ${batch.mappingCount} mapped`}
+                                                                  {batch.processingTime && ` (${batch.processingTime}ms)`}
+                                                                </div>
+                                                              </div>
+                                                            ))}
                                                           </div>
                                                         </div>
                                                       )}
@@ -523,16 +565,14 @@ const StepperItemComponent = ({
                                                   <EditableTimelineMappings
                                                     annotations={timelineAnnotations || []}
                                                     workflows={logic.workflows}
-                                                    onAnnotationsChange={() => {
-                                                      console.log("Annotations changed");
-                                                    }}
+                                                    onAnnotationsChange={logic.handleTimelineAnnotationsChange}
                                                     isProcessing={logic.isMappingTimeline}
                                                     processingBatch={logic.timelineMappingBatch}
                                                   />
                                                 </div>
                                               ) : (
                                                 <div className="text-center text-muted-foreground p-4 border border-black rounded-lg bg-muted/50">
-                                                  Click the button above to generate and view the timeline mapping data.
+                                                  Click the button above to generate and view the timeline annotation data.
                                                 </div>
                                               )}
                                             </div>
@@ -620,6 +660,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
                 <TimeBoundarySelector
                   selectedBoundary={logic.timeBoundary}
                   onBoundaryChange={logic.setTimeBoundary}
+                  onClear={logic.clearTimeBoundary}
                   disabled={logic.isLoading}
                   userId={userId}
                   required={true}

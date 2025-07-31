@@ -83,10 +83,10 @@ Please respond with a JSON object in this exact format:
         
         try {
           const updatedWorkflow = JSON.parse(cleanedText);
-          console.log('✅ Vertex AI workflow edit successful');
+          console.log('[SUCCESS] Vertex AI workflow edit successful');
         return NextResponse.json({ updatedWorkflow });
         } catch (parseError) {
-          console.error('❌ Failed to parse Vertex AI response as JSON:', parseError);
+          console.error('[ERROR] Failed to parse Vertex AI response as JSON:', parseError);
           console.log('🔍 Cleaned text:', cleanedText.substring(0, 300));
           return NextResponse.json({ 
             error: 'Invalid JSON response from Vertex AI',

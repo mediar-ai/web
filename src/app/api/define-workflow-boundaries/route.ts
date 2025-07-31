@@ -177,7 +177,7 @@ ${JSON.stringify(analyses, null, 2)}`;
         WORKFLOW_BOUNDARIES_SCHEMA
     );
 
-    console.log('✅ Vertex AI workflow boundaries successful');
+    console.log('[SUCCESS] Vertex AI workflow boundaries successful');
     return NextResponse.json(result);
 
   } catch (error) {

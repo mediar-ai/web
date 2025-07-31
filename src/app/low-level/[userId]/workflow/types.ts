@@ -67,7 +67,7 @@ export interface WorkflowBoundaries {
   };
 }
 
-export type SynthesisStep = 'idle' | 'context_defined' | 'context_editing' | 'identifying' | 'workflows_selected' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_defined' | 'boundaries_editing' | 'synthesizing' | 'synthesis_complete' | 'done';
+export type SynthesisStep = 'idle' | 'context_defined' | 'context_editing' | 'identifying' | 'workflows_selected' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_defined' | 'boundaries_editing' | 'synthesizing' | 'synthesis_complete' | 'done' | 'timeline_complete';
 
 export interface SynthesisSession {
   id: number;

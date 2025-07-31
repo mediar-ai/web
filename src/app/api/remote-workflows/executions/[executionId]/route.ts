@@ -82,7 +82,7 @@ export async function GET(
   try {
     const { executionId } = await params;
     const executionIdNum = parseInt(executionId);
-    console.log(`⚡ Unified execution details for ${executionIdNum}...`);
+    console.log(`[PERF] Unified execution details for ${executionIdNum}...`);
     
     // Get URL parameters for controlling response detail level
     const { searchParams } = new URL(request.url);
@@ -105,7 +105,7 @@ export async function GET(
       .single();
 
     if (error || !execution) {
-      console.error('❌ Error fetching execution:', error);
+      console.error('[ERROR] Error fetching execution:', error);
       
       const errorResponse = {
         success: false,
@@ -293,7 +293,7 @@ export async function GET(
     return NextResponse.json(response);
     
   } catch (error) {
-    console.error('❌ Error getting execution details:', error);
+    console.error('[ERROR] Error getting execution details:', error);
     
     const errorResponse = {
       success: false,

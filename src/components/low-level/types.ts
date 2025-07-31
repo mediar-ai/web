@@ -1,4 +1,5 @@
 export interface TimelineAnnotation {
+  id?: number; // Primary key from database
   user_id?: string;
   raw_event_id: number;
   analysis_id: number;

@@ -537,9 +537,9 @@ export function SavedSynthesesSection({ userId, refreshTrigger }: SavedSyntheses
                               <span className="text-xs font-mono">✓</span>
                             </div>
                             <div className="flex-grow">
-                              <h3 className="text-lg font-semibold">5. Create Timeline Mapping</h3>
+                              <h3 className="text-lg font-semibold">5. Create Timeline Annotations</h3>
                               <p className="text-sm text-muted-foreground">
-                                Analyze and map all low-level events to their corresponding workflow steps for full traceability.
+                                Analyze and annotate all low-level events to their corresponding workflow steps for full traceability.
                               </p>
                             </div>
                           </div>

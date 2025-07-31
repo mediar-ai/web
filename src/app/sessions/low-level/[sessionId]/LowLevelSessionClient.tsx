@@ -89,7 +89,7 @@ export default function LowLevelSessionClient({ sessionId }: { sessionId: string
         </div>
         {events.length >= 1000 && (
           <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded">
-            ⚠️ Only showing most recent 1000 events
+            [WARN] Only showing most recent 1000 events
           </div>
         )}
       </div>

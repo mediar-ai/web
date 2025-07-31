@@ -144,14 +144,14 @@ export async function POST(req: NextRequest) {
           const { data: transcripts, error: transcriptError } = await transcriptQuery;
 
           if (transcriptError) {
-            console.warn('❌ Error fetching transcripts:', transcriptError);
+            console.warn('[ERROR] Error fetching transcripts:', transcriptError);
           } else {
             transcriptsData = transcripts || [];
-            console.log(`✅ Loaded ${transcriptsData.length} transcript items for analysis`);
+            console.log(`[SUCCESS] Loaded ${transcriptsData.length} transcript items for analysis`);
             
             if (transcriptsData.length > 0) {
-              console.log(`📊 Transcript session: ${transcriptsData[0]?.session_id}`);
-              console.log(`📊 Transcript time range: ${transcriptsData[0]?.created_at} to ${transcriptsData[transcriptsData.length - 1]?.created_at}`);
+              console.log(`[STATS] Transcript session: ${transcriptsData[0]?.session_id}`);
+              console.log(`[STATS] Transcript time range: ${transcriptsData[0]?.created_at} to ${transcriptsData[transcriptsData.length - 1]?.created_at}`);
             }
           }
         } catch (error) {

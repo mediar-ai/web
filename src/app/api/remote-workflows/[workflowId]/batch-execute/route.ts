@@ -19,7 +19,7 @@ const getArrayFields = async (workflowId: number, supabase: ReturnType<typeof cr
       .single();
 
     if (workflowError || !workflow) {
-      console.warn(`⚠️ Could not fetch workflow ${workflowId} for schema analysis:`, workflowError?.message);
+      console.warn(`[WARN] Could not fetch workflow ${workflowId} for schema analysis:`, workflowError?.message);
       return arrayFields;
     }
 
@@ -49,7 +49,7 @@ const getArrayFields = async (workflowId: number, supabase: ReturnType<typeof cr
       findArrayFields(variables);
     }
   } catch (error) {
-    console.warn('⚠️ Error analyzing workflow schema for array fields:', error);
+    console.warn('[WARN] Error analyzing workflow schema for array fields:', error);
   }
   
   return arrayFields;
@@ -269,9 +269,9 @@ export async function POST(
     } = body;
 
     console.log('🚀 BATCH EXECUTE: Starting batch execution');
-    console.log('📦 BATCH EXECUTE: Request body:', JSON.stringify(body, null, 2));
+    console.log('[BATCH] BATCH EXECUTE: Request body:', JSON.stringify(body, null, 2));
     console.log('🔢 BATCH EXECUTE: Dynamic parameters:', dynamic_parameters);
-    console.log('📊 BATCH EXECUTE: Parameter count:', Object.keys(dynamic_parameters).length);
+    console.log('[STATS] BATCH EXECUTE: Parameter count:', Object.keys(dynamic_parameters).length);
     console.log('🎯 BATCH EXECUTE: Requested machine ID:', machine_id || 'default (1)');
     console.log('📋 BATCH EXECUTE: Requested version:', version_number || 'active version');
 
@@ -338,7 +338,7 @@ export async function POST(
       .single();
 
     if (machineError || !machine) {
-      console.error(`❌ Failed to find machine ${assigned_machine_id}:`, machineError);
+      console.error(`[ERROR] Failed to find machine ${assigned_machine_id}:`, machineError);
       return NextResponse.json(
         { 
           success: false,
@@ -351,7 +351,7 @@ export async function POST(
 
     // Validate machine is available for execution
     if (machine.status !== 'active') {
-      console.error(`❌ Machine ${assigned_machine_id} is not active: ${machine.status}`);
+      console.error(`[ERROR] Machine ${assigned_machine_id} is not active: ${machine.status}`);
       return NextResponse.json(
         { 
           success: false,
@@ -364,11 +364,11 @@ export async function POST(
     }
 
     if (machine.health_status === 'unhealthy') {
-      console.warn(`⚠️ Machine ${assigned_machine_id} is unhealthy but proceeding with execution`);
+      console.warn(`[WARN] Machine ${assigned_machine_id} is unhealthy but proceeding with execution`);
     }
 
     const mcp_endpoint = machine.mcp_endpoint;
-    console.log(`✅ Assigned batch to machine ID ${assigned_machine_id} (${machine.name}): ${assignment_reason}`);
+    console.log(`[SUCCESS] Assigned batch to machine ID ${assigned_machine_id} (${machine.name}): ${assignment_reason}`);
     console.log(`🔗 Machine endpoint: ${mcp_endpoint}`);
 
     const batch_id = `batch-${uuidv4()}`;
@@ -399,7 +399,7 @@ export async function POST(
       });
     }
 
-    console.log('💾 BATCH EXECUTE: Inserting jobs into database...');
+    console.log('[DB] BATCH EXECUTE: Inserting jobs into database...');
     console.log('📝 BATCH EXECUTE: Jobs to insert:', jobsToInsert.length);
     
     // Insert all jobs in a single query
@@ -409,11 +409,11 @@ export async function POST(
       .select('id');
 
     if (error) {
-      console.error('❌ BATCH EXECUTE: Database insertion error:', error);
+      console.error('[ERROR] BATCH EXECUTE: Database insertion error:', error);
       throw error;
     }
 
-    console.log('✅ BATCH EXECUTE: Successfully inserted jobs');
+    console.log('[SUCCESS] BATCH EXECUTE: Successfully inserted jobs');
     console.log('🎯 BATCH EXECUTE: Execution IDs:', insertedJobs.map(j => j.id));
 
     return NextResponse.json({
@@ -424,7 +424,7 @@ export async function POST(
     });
 
   } catch (error) {
-    console.error('❌ Error creating batch workflow execution:', error);
+    console.error('[ERROR] Error creating batch workflow execution:', error);
     return NextResponse.json(
       {
         success: false,

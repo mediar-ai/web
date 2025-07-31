@@ -5,7 +5,7 @@ import type { WorkflowRecord, WorkflowVariable, MCPTool, JSONSchemaProperty, Aut
  * Reuses the same schema analysis logic as the existing API endpoints
  */
 export async function generateToolFromWorkflow(workflow: WorkflowRecord): Promise<MCPTool> {
-  console.log(`🔧 [MCP] Generating MCP tool for workflow: ${workflow.name} (ID: ${workflow.id})`);
+  console.log(`[FIX] [MCP] Generating MCP tool for workflow: ${workflow.name} (ID: ${workflow.id})`);
 
   try {
     // Use the same schema analysis logic as your existing /schema endpoint
@@ -46,11 +46,11 @@ export async function generateToolFromWorkflow(workflow: WorkflowRecord): Promis
       }
     };
 
-    console.log(`🔧 [MCP] Generated MCP tool: ${toolName}`);
+    console.log(`[FIX] [MCP] Generated MCP tool: ${toolName}`);
     return tool;
 
   } catch (error) {
-    console.error(`🔧 [MCP] Error generating tool for workflow ${workflow.id}:`, error);
+    console.error(`[FIX] [MCP] Error generating tool for workflow ${workflow.id}:`, error);
     throw new Error(`Failed to generate tool for workflow ${workflow.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

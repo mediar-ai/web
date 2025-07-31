@@ -181,7 +181,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(responseData);
     
   } catch (error) {
-    console.error('❌ Error listing executions:', error);
+    console.error('[ERROR] Error listing executions:', error);
     
     return NextResponse.json(
       {

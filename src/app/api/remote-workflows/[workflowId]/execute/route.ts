@@ -175,8 +175,8 @@ export async function POST(
     const include_cache = body.include_cache === true; // New cache parameter
     const version_number = body.version_number; // Optional version to execute
 
-    console.log('✅ Extracted execution_params:', execution_params);
-    console.log(`🔧 Cache enabled: ${include_cache}`);
+    console.log('[SUCCESS] Extracted execution_params:', execution_params);
+    console.log(`[FIX] Cache enabled: ${include_cache}`);
     console.log(`🔍 Full detailed response requested: ${full_detailed_response}`);
     console.log(`📋 Version requested: ${version_number || 'active version'}`);
 
@@ -231,7 +231,7 @@ export async function POST(
           validationResult = validateParameters(execution_params, schema);
           
           if (!validationResult.isValid) {
-            console.log('❌ Parameter validation failed:', validationResult.errors);
+            console.log('[ERROR] Parameter validation failed:', validationResult.errors);
             return NextResponse.json(
               {
                 success: false,
@@ -250,17 +250,17 @@ export async function POST(
           }
           
           if (validationResult.warnings.length > 0) {
-            console.log('⚠️ Parameter validation warnings:', validationResult.warnings);
+            console.log('[WARN] Parameter validation warnings:', validationResult.warnings);
           }
           
-          console.log('✅ Parameter validation passed');
+          console.log('[SUCCESS] Parameter validation passed');
         }
       } catch (validationError) {
-        console.warn('⚠️ Parameter validation failed due to error:', validationError);
+        console.warn('[WARN] Parameter validation failed due to error:', validationError);
         // Continue execution even if validation fails - don't block workflow execution
       }
     } else {
-      console.log('⚠️ No automation sequence found for validation - proceeding without parameter validation');
+      console.log('[WARN] No automation sequence found for validation - proceeding without parameter validation');
     }
 
     // 🎯 Simple machine assignment: Default to machine ID 1 (Primary Windows VM)
@@ -277,7 +277,7 @@ export async function POST(
       .single();
 
     if (machineError || !machine) {
-      console.error(`❌ Failed to find machine ${assigned_machine_id}:`, machineError);
+      console.error(`[ERROR] Failed to find machine ${assigned_machine_id}:`, machineError);
       return NextResponse.json(
         { error: `Machine ${assigned_machine_id} not found in remote_machines table` },
         { status: 500 }
@@ -285,7 +285,7 @@ export async function POST(
     }
 
     const mcp_endpoint = machine.mcp_endpoint;
-    console.log(`✅ Assigned to machine ID ${assigned_machine_id}: ${assignment_reason}`);
+    console.log(`[SUCCESS] Assigned to machine ID ${assigned_machine_id}: ${assignment_reason}`);
     console.log(`🔗 Machine endpoint: ${mcp_endpoint}`);
 
     // ✨ NEW: Check cache first if requested
@@ -338,7 +338,7 @@ export async function POST(
               throw executionError;
             }
 
-            console.log(`✅ Created background execution ${execution.id} for cache refresh`);
+            console.log(`[SUCCESS] Created background execution ${execution.id} for cache refresh`);
             
             // Return cached results with background execution info (using new cache response structure)
             const cachedExecution = cacheData.execution;
@@ -383,7 +383,7 @@ export async function POST(
           }
         }
       } catch (cacheError) {
-        console.warn('⚠️ Cache lookup failed, proceeding with normal execution:', cacheError);
+        console.warn('[WARN] Cache lookup failed, proceeding with normal execution:', cacheError);
         // Continue with normal execution if cache fails
       }
 
@@ -420,7 +420,7 @@ export async function POST(
       throw executionError;
     }
 
-    console.log(`✅ Created execution ${execution.id} for workflow "${workflow.name}" - will be processed by Modal scheduler`);
+    console.log(`[SUCCESS] Created execution ${execution.id} for workflow "${workflow.name}" - will be processed by Modal scheduler`);
     
     // Return immediate response - Modal will process this asynchronously
     const response = { 
@@ -453,7 +453,7 @@ export async function POST(
     return NextResponse.json(response, { status: 200 });
 
   } catch (error) {
-    console.error('❌ Error executing workflow:', error);
+    console.error('[ERROR] Error executing workflow:', error);
     
     return NextResponse.json(
       {

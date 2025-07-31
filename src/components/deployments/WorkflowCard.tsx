@@ -108,7 +108,7 @@ export function WorkflowCard({
       const data = await response.json();
       
       if (data.success && data.execution?.execution_params) {
-        console.log(`✅ Fetched execution details for ${executionId}, status: ${data.execution.status}`);
+        console.log(`[SUCCESS] Fetched execution details for ${executionId}, status: ${data.execution.status}`);
         return data.execution.execution_params;
       } else {
         console.log(`ℹ️ No execution parameters available for execution ${executionId}`);
@@ -126,7 +126,7 @@ export function WorkflowCard({
     // First check if this execution is still in a pending state that makes sense for cache lookup
     const currentExecution = liveExecutions.find(exec => exec.id === executionId);
     if (!currentExecution || !['queued', 'running'].includes(currentExecution.status)) {
-      console.log(`⚠️ Skipping cache lookup for execution ${executionId}: not in pending state (current status: ${currentExecution?.status || 'not found'})`);
+      console.log(`[WARN] Skipping cache lookup for execution ${executionId}: not in pending state (current status: ${currentExecution?.status || 'not found'})`);
       return;
     }
 
@@ -173,10 +173,10 @@ export function WorkflowCard({
           execution_duration_seconds: data.execution?.execution_duration_seconds,
           cached: true
         }));
-        console.log(`✅ Cache hit found for execution ${executionId} from execution ${data.cache_info?.source_execution_id}`);
+        console.log(`[SUCCESS] Cache hit found for execution ${executionId} from execution ${data.cache_info?.source_execution_id}`);
       } else {
         console.log(`ℹ️ No cache available for execution ${executionId} parameters`);
-        // 🔧 FIX: Mark cache miss as checked to prevent infinite retries
+        // [FIX] FIX: Mark cache miss as checked to prevent infinite retries
         setExecutionCacheResults(prev => new Map(prev).set(executionId, {
           cached: false,
           status: 'completed' // Indicates we checked but no cache available
@@ -185,7 +185,7 @@ export function WorkflowCard({
     } catch (error) {
       // Log the error but don't throw - this is a non-critical enhancement feature
       console.warn(`Cache lookup failed for execution ${executionId}:`, error);
-      // 🔧 FIX: Mark failed lookups as checked to prevent infinite retries
+      // [FIX] FIX: Mark failed lookups as checked to prevent infinite retries
       setExecutionCacheResults(prev => new Map(prev).set(executionId, {
         cached: false,
         status: 'failed',
@@ -708,15 +708,15 @@ export function WorkflowCard({
                                       if (execution.error_message) return execution.error_message;
                                       if (execution.formatted_output) {
                                         const lines = execution.formatted_output.split('\n');
-                                            const hasCompletedMessage = lines.some((line: string) => line.includes('✅ Workflow execution completed!'));
-                                            const hasNoQuotesFound = lines.some((line: string) => line.includes('❌ No Eligible Quotes Found') || line.includes('No Eligible Quotes Found'));
+                                            const hasCompletedMessage = lines.some((line: string) => line.includes('[SUCCESS] Workflow execution completed!'));
+                                            const hasNoQuotesFound = lines.some((line: string) => line.includes('[ERROR] No Eligible Quotes Found') || line.includes('No Eligible Quotes Found'));
                                         if (hasCompletedMessage && hasNoQuotesFound) {
                                               const successfulStepsLine = lines.find((line: string) => line.includes('Successful Steps:'));
                                           if (successfulStepsLine && successfulStepsLine.includes('Successful Steps: 0')) return 'Workflow failed - No steps completed successfully';
                                           else if (hasNoQuotesFound) return 'Workflow incomplete - No quotes found';
                                         }
-                                            const errorLine = lines.find((line: string) => line.includes('❌') || line.includes('Message:') || line.includes('Error:') || line.includes('Failed:') || line.includes('failed!'));
-                                        if (errorLine) return errorLine.replace(/^\s*Message:\s*/, '').replace(/^\s*Error:\s*/, '').replace(/^❌\s*/, '').trim();
+                                            const errorLine = lines.find((line: string) => line.includes('[ERROR]') || line.includes('Message:') || line.includes('Error:') || line.includes('Failed:') || line.includes('failed!'));
+                                        if (errorLine) return errorLine.replace(/^\s*Message:\s*/, '').replace(/^\s*Error:\s*/, '').replace(/^[ERROR]\s*/, '').trim();
                                             return lines.find((line: string) => line.trim() && !line.includes('===') && !line.includes('---')) || 'Workflow execution failed';
                                       }
                                       return 'Workflow execution failed';

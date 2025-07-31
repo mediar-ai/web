@@ -569,7 +569,7 @@ function AuthenticatedAdminPage({
     startPolling();
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    console.log('[Admin] ✅ Intelligent polling enabled - updates every 2s when active, 30s when hidden');
+    console.log('[Admin] [SUCCESS] Intelligent polling enabled - updates every 2s when active, 30s when hidden');
 
     return () => {
       clearTimeout(pollingInterval);

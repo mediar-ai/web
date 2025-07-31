@@ -88,7 +88,7 @@ export async function DELETE(
       process.env.SUPABASE_SERVICE_KEY!
     );
     
-    // 🛡️ PROTECTION: Check for active processing before deletion
+    // [PROTECTION] PROTECTION: Check for active processing before deletion
     console.log(`[API/DELETE] Checking for active processing for user: ${userId}`);
     const { data: activeLocks, error: lockError } = await supabaseAdmin
       .from('processing_locks')
@@ -148,7 +148,7 @@ export async function DELETE(
     // The order matters to respect foreign key constraints if they exist.
     console.log(`[API/DELETE] Deleting database records for user: ${userId}`);
 
-    // 🧹 Clean up any expired/completed processing locks first
+    // [CLEAN] Clean up any expired/completed processing locks first
     await supabaseAdmin
       .from('processing_locks')
       .delete()
