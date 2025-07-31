@@ -189,6 +189,7 @@ export function useWorkflowPageLogic(userId: string) {
   const [timelineMappingElapsedTime, setTimelineMappingElapsedTime] = useState(0);
   const timelineMappingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [timelineMappingBatch, setTimelineMappingBatch] = useState<{current: number, total: number} | null>(null);
+  const [batchList, setBatchList] = useState<any[]>([]); // State to hold batch list for UI
   
   // Orchestration state for the new full process
   const [isOrchestrating, setIsOrchestrating] = useState(false);
@@ -401,6 +402,12 @@ export function useWorkflowPageLogic(userId: string) {
   // Now fetchCompleteWorkflows() handles fetching with proper session filtering
 
   const runInitialAnalysis = async () => {
+    // 🔧 NEW: Require timeframe selection for workflow analysis initiation
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before initiating workflow analysis. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
+
     setIsAnalyzingEvents(true);
     setAnalysisStatus("Analyzing context and drafting workflows...");
     setAnalysisProgress(0);
@@ -415,10 +422,8 @@ export function useWorkflowPageLogic(userId: string) {
         body: JSON.stringify({ 
           userId: userId,
           model: selectedModel,
-          ...(timeBoundary.startDate && timeBoundary.endDate && {
-            startDate: timeBoundary.startDate.toISOString(),
-            endDate: timeBoundary.endDate.toISOString()
-          })
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString()
         }),
       });
 
@@ -517,6 +522,12 @@ export function useWorkflowPageLogic(userId: string) {
   };
   
   const refineAndIdentifyWorkflows = async () => {
+    // 🔧 NEW: Require timeframe selection for workflow refinement
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before refining workflow lists. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
+
     setSynthesisStep('identifying');
 
     try {
@@ -528,10 +539,8 @@ export function useWorkflowPageLogic(userId: string) {
           userId: userId,
           workflow_context: editableContext,
           draft_workflow_names: workflowNames,
-          ...(timeBoundary.startDate && timeBoundary.endDate && {
-            startDate: timeBoundary.startDate.toISOString(),
-            endDate: timeBoundary.endDate.toISOString()
-          })
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString()
         }),
       });
 
@@ -559,6 +568,12 @@ export function useWorkflowPageLogic(userId: string) {
   };
 
   const processAllWorkflows = async (approvedWorkflows: string[]) => {
+    // 🔧 NEW: Require timeframe selection for boundary definition
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before defining workflow boundaries. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
+
     setSynthesisStep('defining_boundaries');
     const thinkingId = `ai-thinking-${Date.now()}`;
     const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
@@ -577,10 +592,8 @@ export function useWorkflowPageLogic(userId: string) {
             userContext: workflowContext,
             userInstructions: workflowContext?.user_instructions,
           },
-          ...(timeBoundary.startDate && timeBoundary.endDate && {
-            startDate: timeBoundary.startDate.toISOString(),
-            endDate: timeBoundary.endDate.toISOString()
-          })
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString()
         })
       });
 
@@ -632,16 +645,32 @@ export function useWorkflowPageLogic(userId: string) {
       return;
     }
 
-    // Transition to done state when user clicks timeline mapping
-    setSynthesisStep('done');
+    // 🔧 NEW: Require timeframe selection
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before processing timeline annotations. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
 
-    // Initialize empty array instead of null to show table immediately
-    setTimelineAnnotations([]);
-    setIsMappingTimeline(true);
+    // 🔧 FIX: Ensure clean UI state IMMEDIATELY and prevent race conditions
+    setTimelineAnnotations([]); // Clear UI state first
+    setIsMappingTimeline(true);  // Set mapping flag to prevent useEffect interference
+    setSynthesisStep('done');
+    
+    // 🔧 FIX: Persist synthesis step to database to prevent state loss on page refresh
+    await saveSynthesisSession(
+      messages, 
+      'done', 
+      workflowNames, 
+      workflowContext, 
+      workflowBoundaries, 
+      workflowNames
+    );
+    
     setTimelineMappingStatus("Initializing timeline mapping...");
     setTimelineMappingProgress(0);
     setTimelineMappingElapsedTime(0);
     setTimelineMappingBatch(null);
+    setBatchList([]); // Reset batch list for new mapping
     
     // Start timer for elapsed time tracking
     timelineMappingTimerRef.current = setInterval(() => 
@@ -687,9 +716,24 @@ export function useWorkflowPageLogic(userId: string) {
               throw new Error(parsed.details || parsed.error);
             }
             
-            // Handle initial table setup
-            if (parsed.data?.initializeTable) {
-              setTimelineAnnotations([]);
+            // Handle batch list initialization
+            if (parsed.type === 'batch_init' && parsed.data?.batches) {
+              setBatchList(parsed.data.batches);
+            }
+            
+            // Handle individual batch status updates
+            if (parsed.type === 'batch_update' && parsed.data?.batchIndex) {
+              setBatchList(prev => prev.map(batch => 
+                batch.id === parsed.data.batchIndex 
+                  ? { 
+                      ...batch, 
+                      status: parsed.data.batchStatus || batch.status,
+                      processingTime: parsed.data.processingTimeMs,
+                      eventCount: parsed.data.eventCount,
+                      mappingCount: parsed.data.mappingCount
+                    }
+                  : batch
+              ));
             }
             
             // Handle batch information for better progress tracking
@@ -716,7 +760,7 @@ export function useWorkflowPageLogic(userId: string) {
               const newAnnotations = parsed.data.annotations || [];
               if (newAnnotations.length > 0) {
                 allAnnotations.push(...newAnnotations);
-                // Update UI with incremental results
+                // 🔧 FIX: Always use fresh array reference to ensure React re-renders
                 setTimelineAnnotations([...allAnnotations]);
                 console.log(`📊 Updated UI with ${newAnnotations.length} new annotations. Total: ${allAnnotations.length}`);
               } else {
@@ -830,6 +874,12 @@ export function useWorkflowPageLogic(userId: string) {
   }, [userId, synthesisSessionId]);
 
   const proceedToSynthesis = async (approvedBoundaries: WorkflowBoundaries) => {
+    // 🔧 NEW: Require timeframe selection for synthesis
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before synthesizing workflows. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
+
     setSynthesisStep('synthesizing');
     const thinkingId = `ai-thinking-${Date.now()}`;
     const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
@@ -856,11 +906,9 @@ export function useWorkflowPageLogic(userId: string) {
             workflowContext: workflowContext,
             userInstructions: workflowContext?.user_instructions,
           },
-          // Add time boundaries if they exist
-          ...(timeBoundary.startDate && timeBoundary.endDate && {
-            startDate: timeBoundary.startDate.toISOString(),
-            endDate: timeBoundary.endDate.toISOString()
-          })
+          // Add time boundaries (now required)
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString()
         }),
       });
 
@@ -1217,6 +1265,12 @@ export function useWorkflowPageLogic(userId: string) {
   // Load existing timeline annotations for current session
   useEffect(() => {
     const loadExistingTimelineAnnotations = async () => {
+      // 🔧 FIX: DON'T load annotations while mapping is in progress to prevent race conditions
+      if (isMappingTimeline) {
+        console.log('⏸️ Skipping annotation load - mapping in progress');
+        return;
+      }
+      
       try {
         console.log('Loading timeline annotations for current session...');
         
@@ -1240,7 +1294,7 @@ export function useWorkflowPageLogic(userId: string) {
           const data = await response.json();
           if (data.annotations && data.annotations.length > 0) {
             setTimelineAnnotations(data.annotations);
-            console.log('Loaded timeline annotations for current session:', data.annotations.length);
+            console.log('✅ Loaded timeline annotations for current session:', data.annotations.length);
           } else {
             console.log('ℹ️ No timeline annotations found for current session');
             setTimelineAnnotations([]);
@@ -1255,10 +1309,10 @@ export function useWorkflowPageLogic(userId: string) {
       }
     };
     
-    if (userId) {
+    if (userId && !isMappingTimeline) { // 🔧 FIX: Added isMappingTimeline check
       loadExistingTimelineAnnotations();
     }
-  }, [userId, synthesisSessionId]); // Re-load when session changes
+  }, [userId, synthesisSessionId, isMappingTimeline]); // 🔧 FIX: Added isMappingTimeline dependency
 
   // Load existing synthesis session on page load
   useEffect(() => {
@@ -1437,6 +1491,7 @@ export function useWorkflowPageLogic(userId: string) {
     timelineMappingBatch,
     timelineMappingMode,
     setTimelineMappingMode,
+    batchList, // Added batchList to the return object
     
     // Time boundary state
     timeBoundary,
