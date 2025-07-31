@@ -2,41 +2,41 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChevronDown, ChevronRight, ChevronUp, RefreshCw, RotateCcw, Trash2, Zap } from "lucide-react";
 import { memo, use, useEffect, useMemo, useState } from 'react';
 import {
-  AnalysisProgressBubble,
-  EditableSynthesizedWorkflows,
-  EditableWorkflowBoundaries,
-  EditableWorkflowList
+    AnalysisProgressBubble,
+    EditableSynthesizedWorkflows,
+    EditableWorkflowBoundaries,
+    EditableWorkflowList
 } from './components';
 import type { CanvasContent, SynthesisStep } from './types';
 import { useWorkflowPageLogic } from './useWorkflowPageLogic';
@@ -359,14 +359,20 @@ const StepperItemComponent = ({
 
     // Force state sync with expansion logic
     useEffect(() => {
-        if (shouldBeExpanded && isCollapsed) {
+        const isWorkflowComplete = synthesisStep === 'done' || synthesisStep === 'timeline_complete';
+        
+        // Only auto-expand during workflow progression, not after completion
+        if (shouldBeExpanded && isCollapsed && !isWorkflowComplete) {
             setIsCollapsed(false);
             localStorage.setItem(STEP_STORAGE_KEY, JSON.stringify(false));
-        } else if (!shouldBeExpanded && !isCollapsed) {
+        } 
+        // Only auto-collapse during workflow progression, not after completion
+        else if (!shouldBeExpanded && !isCollapsed && !isWorkflowComplete) {
             setIsCollapsed(true);
             localStorage.setItem(STEP_STORAGE_KEY, JSON.stringify(true));
         }
-    }, [shouldBeExpanded, isCollapsed, STEP_STORAGE_KEY]);
+        // If workflow is complete, let user control all expansion/collapse
+    }, [shouldBeExpanded, isCollapsed, STEP_STORAGE_KEY, synthesisStep]);
 
     return (
         <div className="relative">{/* Fixed parsing issue */}
@@ -907,67 +913,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                     </CardContent>
                 </Card>
                 
-                {/* Timeline Annotations Section */}
-                <Card className="w-full border-black">
-                    <CardHeader>
-                        <h3 className="text-lg font-semibold">Timeline Annotations</h3>
-                        <p className="text-sm text-muted-foreground">
-                            Process user events to create timeline annotations for workflow mapping
-                        </p>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            <Button 
-                                onClick={logic.generateAndSaveTimelineMapping}
-                                disabled={logic.isMappingTimeline || !logic.timeBoundary.startDate || !logic.timeBoundary.endDate}
-                                className="w-full"
-                            >
-                                {logic.isMappingTimeline ? (
-                                    <>
-                                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                        Processing Timeline Annotations...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Zap className="h-4 w-4 mr-2" />
-                                        Tune Timeline Annotations
-                                    </>
-                                )}
-                            </Button>
-                            
-                            {/* Progress display */}
-                            {logic.isMappingTimeline && (
-                                <div className="space-y-2">
-                                    <div className="flex justify-between text-sm">
-                                        <span>{logic.timelineMappingStatus}</span>
-                                        <span>{Math.round(logic.timelineMappingProgress)}%</span>
-                                    </div>
-                                    <div className="w-full bg-gray-200 rounded-full h-2">
-                                        <div 
-                                            className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                                            style={{ width: `${logic.timelineMappingProgress}%` }}
-                                        />
-                                    </div>
-                                    {logic.timelineMappingBatch && (
-                                        <div className="text-xs text-gray-600">
-                                            Batch {logic.timelineMappingBatch.current} of {logic.timelineMappingBatch.total}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            
-                            {/* Timeline annotations display */}
-                            {logic.timelineAnnotations && logic.timelineAnnotations.length > 0 && (
-                                <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
-                                    <h4 className="text-sm font-medium mb-2">Timeline Annotations Created</h4>
-                                    <p className="text-sm text-gray-600">
-                                        {logic.timelineAnnotations.length} timeline annotations have been processed.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
+
                 
                 {/* Saved Syntheses Section */}
                 <SavedSynthesesSection userId={userId} refreshTrigger={refreshTrigger} />
