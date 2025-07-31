@@ -20,7 +20,8 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/workflows/orchestrate(.*)',
   '/api/analyze-raw-timeline-events(.*)',
   '/api/sync-processed-counts(.*)',
-  '/api/process-workflow-step(.*)'
+  '/api/process-workflow-step(.*)',
+  '/api/remote-workflows(.*)'
 ]);
 
 const isProtectedApiRoute = createRouteMatcher([
@@ -33,7 +34,6 @@ const isProtectedApiRoute = createRouteMatcher([
   '/api/fetch-combined-analyses-v2(.*)',
   '/api/generate-events(.*)',
   '/api/mcp/(.*)',
-  '/api/remote-workflows/(.*)',
   '/api/edit-workflow(.*)',
   '/api/workflows/(.*)'
 ]);
