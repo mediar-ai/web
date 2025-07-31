@@ -17,12 +17,14 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/define-workflow-boundaries(.*)',
   '/api/synthesize-workflow(.*)',
   '/api/timeline-event-mappings/bulk(.*)',
-  '/api/workflows/orchestrate(.*)'
+  '/api/workflows/orchestrate(.*)',
+  '/api/analyze-raw-timeline-events(.*)',
+  '/api/sync-processed-counts(.*)',
+  '/api/process-workflow-step(.*)'
 ]);
 
 const isProtectedApiRoute = createRouteMatcher([
   '/api/workflows/export(.*)',
-  '/api/analyze-raw-timeline-events(.*)',
   '/api/users/(.*)',
   '/api/sessions/(.*)',
   '/api/timeline-event-mappings(.*)',
