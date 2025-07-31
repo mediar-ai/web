@@ -127,7 +127,7 @@ export function FilteredStatsDisplay({
           <p className="text-muted-foreground">Annotations</p>
           <p className="font-bold text-2xl">{filteredStats.totalAnnotations.toLocaleString()}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Timeline mappings created
+            Timeline annotations created
           </p>
         </div>
       </div>

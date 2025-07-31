@@ -111,7 +111,7 @@ export async function GET(
     return NextResponse.json(responseData);
     
   } catch (error) {
-    console.error('❌ Error getting workflow details:', error);
+    console.error('[ERROR] Error getting workflow details:', error);
     
     const errorResponse = {
       success: false,

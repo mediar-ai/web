@@ -198,7 +198,7 @@ function filterInternalParameters(schema: Record<string, unknown>): Record<strin
     }
   }
   
-  console.log(`🧹 Filtered out ${Object.keys(schema).length - Object.keys(filtered).length} internal parameters: ${internalParams.filter(param => param in schema).join(', ')}`);
+  console.log(`[CLEAN] Filtered out ${Object.keys(schema).length - Object.keys(filtered).length} internal parameters: ${internalParams.filter(param => param in schema).join(', ')}`);
   return filtered;
 }
 
@@ -358,7 +358,7 @@ export async function GET(
           automationSequence = versionData.automation_sequence;
         }
       } catch (parseError) {
-        console.error('❌ Error parsing automation sequence:', parseError);
+        console.error('[ERROR] Error parsing automation sequence:', parseError);
         return NextResponse.json(
           { success: false, error: 'Failed to parse automation sequence' },
           { status: 500 }
@@ -431,12 +431,12 @@ export async function GET(
           }, {} as Record<string, string>);
         }
         
-        console.log(`✅ Successfully analyzed schema: ${Object.keys(inputParameters).length} parameters found`);
+        console.log(`[SUCCESS] Successfully analyzed schema: ${Object.keys(inputParameters).length} parameters found`);
       } else {
-        console.log(`⚠️  No automation sequence found for workflow ${workflowIdNum}`);
+        console.log(`[WARN]  No automation sequence found for workflow ${workflowIdNum}`);
       }
     } catch (e) {
-      console.error(`❌ Error analyzing schema for workflow ${workflowIdNum}:`, e);
+      console.error(`[ERROR] Error analyzing schema for workflow ${workflowIdNum}:`, e);
       // Continue with empty schema rather than failing
     }
 
@@ -483,7 +483,7 @@ export async function GET(
     return NextResponse.json(response);
 
   } catch (error) {
-    console.error('❌ Error generating workflow schema:', error);
+    console.error('[ERROR] Error generating workflow schema:', error);
     
     return NextResponse.json(
       {

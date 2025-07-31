@@ -201,7 +201,7 @@ export async function GET(
     return NextResponse.json(responseData);
 
   } catch (error) {
-    console.error('❌ Error fetching workflow machine assignments:', error);
+    console.error('[ERROR] Error fetching workflow machine assignments:', error);
     return NextResponse.json(
       {
         success: false,
@@ -230,7 +230,7 @@ export async function POST(
       );
     }
 
-    console.log(`🔧 Creating machine assignments for workflow ${workflowIdNum}`);
+    console.log(`[FIX] Creating machine assignments for workflow ${workflowIdNum}`);
 
     // Validate required fields
     if (!body.machine_assignments || !Array.isArray(body.machine_assignments)) {
@@ -345,7 +345,7 @@ export async function POST(
           created_at: newAssignment.created_at
         });
 
-        console.log(`✅ Created ${assignment.assignment_type} assignment for machine ${machine.name}`);
+        console.log(`[SUCCESS] Created ${assignment.assignment_type} assignment for machine ${machine.name}`);
 
       } catch (assignmentError) {
         errors.push(`Error processing assignment for machine ${assignment.machine_id}: ${assignmentError}`);
@@ -372,7 +372,7 @@ export async function POST(
     return NextResponse.json(responseData, { status: statusCode });
 
   } catch (error) {
-    console.error('❌ Error creating workflow machine assignments:', error);
+    console.error('[ERROR] Error creating workflow machine assignments:', error);
     return NextResponse.json(
       {
         success: false,
@@ -401,7 +401,7 @@ export async function PUT(
       );
     }
 
-    console.log(`🔧 Updating machine assignments for workflow ${workflowIdNum}`);
+    console.log(`[FIX] Updating machine assignments for workflow ${workflowIdNum}`);
 
     // Validate request body
     if (!body.assignment_id) {
@@ -475,7 +475,7 @@ export async function PUT(
       ? updatedAssignment.deployed_workflows[0] 
       : updatedAssignment.deployed_workflows;
 
-    console.log(`✅ Updated assignment for machine ${machine?.name} on workflow ${workflow?.name}`);
+    console.log(`[SUCCESS] Updated assignment for machine ${machine?.name} on workflow ${workflow?.name}`);
 
     return NextResponse.json({
       success: true,
@@ -497,7 +497,7 @@ export async function PUT(
     });
 
   } catch (error) {
-    console.error('❌ Error updating workflow machine assignment:', error);
+    console.error('[ERROR] Error updating workflow machine assignment:', error);
     return NextResponse.json(
       {
         success: false,
@@ -588,7 +588,7 @@ export async function DELETE(
       return machine?.name || `Machine ${assignment.machine_id}`;
     });
 
-    console.log(`✅ Removed ${deletedCount} machine assignment(s): ${machineNames.join(', ')}`);
+    console.log(`[SUCCESS] Removed ${deletedCount} machine assignment(s): ${machineNames.join(', ')}`);
 
     return NextResponse.json({
       success: true,
@@ -611,7 +611,7 @@ export async function DELETE(
     });
 
   } catch (error) {
-    console.error('❌ Error removing workflow machine assignments:', error);
+    console.error('[ERROR] Error removing workflow machine assignments:', error);
     return NextResponse.json(
       {
         success: false,

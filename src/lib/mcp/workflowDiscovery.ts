@@ -18,7 +18,7 @@ export class WorkflowDiscovery {
   private readonly CACHE_TTL = 30000; // 30 seconds
 
   async discoverWorkflows(): Promise<WorkflowRecord[]> {
-    console.log('🔧 [MCP] Discovering workflows from database...');
+    console.log('[FIX] [MCP] Discovering workflows from database...');
     
     const { data: workflows, error } = await supabase
       .from('deployed_workflows_with_sequence')
@@ -27,11 +27,11 @@ export class WorkflowDiscovery {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('🔧 [MCP] Error fetching workflows:', error);
+      console.error('[FIX] [MCP] Error fetching workflows:', error);
       throw new Error(`Failed to fetch workflows: ${error.message}`);
     }
 
-    console.log(`🔧 [MCP] Found ${workflows?.length || 0} workflows`);
+    console.log(`[FIX] [MCP] Found ${workflows?.length || 0} workflows`);
     return workflows || [];
   }
 
@@ -48,7 +48,7 @@ export class WorkflowDiscovery {
   }
 
   async refreshTools(): Promise<void> {
-    console.log('🔧 [MCP] Refreshing workflow tools...');
+    console.log('[FIX] [MCP] Refreshing workflow tools...');
     
     try {
       const workflows = await this.discoverWorkflows();
@@ -64,18 +64,18 @@ export class WorkflowDiscovery {
           };
           
           newToolsCache.set(tool.name, cachedTool);
-          console.log(`🔧 [MCP] Generated tool: ${tool.name} (workflow ${workflow.id})`);
+          console.log(`[FIX] [MCP] Generated tool: ${tool.name} (workflow ${workflow.id})`);
         } catch (error) {
-          console.error(`🔧 [MCP] Failed to generate tool for workflow ${workflow.id}:`, error);
+          console.error(`[FIX] [MCP] Failed to generate tool for workflow ${workflow.id}:`, error);
         }
       }
 
       this.toolsCache = newToolsCache;
       this.lastRefresh = Date.now();
       
-      console.log(`🔧 [MCP] Processed ${this.toolsCache.size} workflow tools`);
+      console.log(`[FIX] [MCP] Processed ${this.toolsCache.size} workflow tools`);
     } catch (error) {
-      console.error('🔧 [MCP] Error refreshing tools:', error);
+      console.error('[FIX] [MCP] Error refreshing tools:', error);
       throw error;
     }
   }

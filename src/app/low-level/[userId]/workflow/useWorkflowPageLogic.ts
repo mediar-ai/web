@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 
+import type { TimelineAnnotation } from '@/components/low-level/types';
 import { useUser } from '@/context/UserContext';
 import type { Session, UserSessionData } from '@/lib/db';
 import type { LowLevelEvent } from '@/types';
@@ -81,50 +82,7 @@ interface ExtendedUnrelatedEvent extends UnrelatedEvent {
   batch_timestamp: string;
 }
 
-interface TimelineAnnotation {
-  id: number;
-  raw_event_id: number;
-  analysis_id: number;
-  is_workflow_related: boolean;
-  user_action: string;
-  ui_element_interacted: string | null;
-  content_change: string | null;
-  synthesized_workflow_step: string | null;
-  confidence_score: number;
-  batch_timestamp: string;
-  unrelated_reason?: string;
-  created_at: string;
-  // Additional properties needed by EditableTimelineMappings
-  user_id?: string;
-  model_used?: string;
-  workflow_id?: number | null;
-  workflow_type_id?: number | null;
-  workflow_instance_id?: number | null;
-  workflow_step_id?: number | null;
-  workflow_substep_id?: number | null;
-  template_name?: string;
-  type_name?: string;
-  instance_name?: string;
-  step_name?: string;
-  substep_name?: string;
-  event_type?: string;
-  step_title?: string;
-  user_intent?: string;
-  step_summary?: string;
-  events_that_happened?: string;
-  how_content_changed?: string;
-  results_if_any?: string;
-  what_was_clicked?: string;
-  what_was_typed?: string;
-  window_title?: string;
-  inputs?: string | string[] | null;
-  outputs?: string | string[] | null;
-  business_logics?: string | null;
-  event_payload?: Record<string, unknown>;
-  event_created_at?: string;
-  selected_labels?: string[];
-  suggested_labels?: string[];
-}
+
 
 export function useWorkflowPageLogic(userId: string) {
   const { setUserId } = useUser();
@@ -188,8 +146,21 @@ export function useWorkflowPageLogic(userId: string) {
   const [timelineMappingProgress, setTimelineMappingProgress] = useState(0);
   const [timelineMappingElapsedTime, setTimelineMappingElapsedTime] = useState(0);
   const timelineMappingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [timelineMappingBatch, setTimelineMappingBatch] = useState<{current: number, total: number} | null>(null);
-  const [batchList, setBatchList] = useState<any[]>([]); // State to hold batch list for UI
+  const [timelineMappingBatch, setTimelineMappingBatch] = useState<{
+    current: number, 
+    total: number,
+    mode?: 'sequential' | 'parallel'
+  } | null>(null);
+
+  // Batch status list for timeline mapping
+  const [batchList, setBatchList] = useState<Array<{
+    id: number;
+    timeWindow: string;
+    status: string;
+    processingTime?: number;
+    eventCount?: number;
+    mappingCount?: number;
+  }>>([]);
   
   // Orchestration state for the new full process
   const [isOrchestrating, setIsOrchestrating] = useState(false);
@@ -205,6 +176,9 @@ export function useWorkflowPageLogic(userId: string) {
     startDate: null,
     endDate: null
   });
+
+  // Storage key for time boundary persistence
+  const TIME_BOUNDARY_STORAGE_KEY = useMemo(() => `workflow-time-boundary-${userId}`, [userId]);
   
   // Data is now fetched directly by backend APIs - frontend only handles stats and UI state
 
@@ -360,14 +334,43 @@ export function useWorkflowPageLogic(userId: string) {
           console.error("Failed to fetch session data");
         }
       } catch (error) {
-        console.error("Error fetching user stats:", error);
+        console.error('[WORKFLOW_DEBUG] Error fetching user stats:', error);
       }
     };
 
-    // Data fetching moved to backend APIs - frontend only loads stats
+    // Data fetching moved to backend APIs - frontend only handles stats
     setIsFetchingEvents(false);
     fetchUserStats();
-  }, [userId, setUserId, loadSynthesisSession]);
+
+    // Load time boundary from localStorage
+    if (userId) {
+      const storedBoundary = localStorage.getItem(TIME_BOUNDARY_STORAGE_KEY);
+      if (storedBoundary) {
+        try {
+          const parsed = JSON.parse(storedBoundary);
+          if (parsed.startDate && parsed.endDate) {
+            setTimeBoundary({
+              startDate: new Date(parsed.startDate),
+              endDate: new Date(parsed.endDate)
+            });
+          }
+        } catch (e) {
+          console.error("Failed to parse time boundary from localStorage", e);
+        }
+      }
+    }
+  }, [userId, loadSynthesisSession, TIME_BOUNDARY_STORAGE_KEY]);
+
+  // Save time boundary to localStorage when it changes
+  useEffect(() => {
+    if (userId && timeBoundary.startDate && timeBoundary.endDate) {
+      const toStore = {
+        startDate: timeBoundary.startDate.toISOString(),
+        endDate: timeBoundary.endDate.toISOString()
+      };
+      localStorage.setItem(TIME_BOUNDARY_STORAGE_KEY, JSON.stringify(toStore));
+    }
+  }, [timeBoundary, userId, TIME_BOUNDARY_STORAGE_KEY]);
 
   useEffect(() => {
     const newRefs: Record<string, React.RefObject<HTMLTextAreaElement | null>[]> = {};
@@ -651,6 +654,46 @@ export function useWorkflowPageLogic(userId: string) {
       return;
     }
 
+    // 🔄 ADD: Clean up existing draft annotations first (following workflow synthesis pattern)
+    if (synthesisSessionId) {
+      setTimelineMappingStatus("Cleaning up previous annotations...");
+      setTimelineMappingProgress(0);
+      
+      try {
+        console.log(`🧹 Cleaning up existing draft annotations for session: ${synthesisSessionId}`);
+        
+        const cleanupResponse = await fetch('/api/timeline-event-mappings/cleanup-drafts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            userId: userId, 
+            synthesis_session_id: synthesisSessionId 
+          })
+        });
+        
+        if (!cleanupResponse.ok) {
+          const errorData = await cleanupResponse.json().catch(() => ({}));
+          throw new Error(errorData.details || `Cleanup failed: ${cleanupResponse.status} ${cleanupResponse.statusText}`);
+        }
+        
+        const cleanupResult = await cleanupResponse.json();
+        console.log(`✅ Cleaned up ${cleanupResult.deletedCount || 0} draft annotations`);
+        
+        if (cleanupResult.deletedCount > 0) {
+          setTimelineMappingStatus(`Cleaned up ${cleanupResult.deletedCount} previous annotations. Starting fresh mapping...`);
+        } else {
+          setTimelineMappingStatus("No previous annotations to clean. Starting fresh mapping...");
+        }
+      } catch (cleanupError) {
+        console.error("Cleanup failed:", cleanupError);
+        // Don't fail the entire process - just warn and continue
+        setTimelineMappingStatus("Warning: Cleanup failed, but continuing with mapping...");
+      }
+    }
+
+    // Transition to done state when user clicks timeline mapping
+    setSynthesisStep('done');
+
     // 🔧 FIX: Ensure clean UI state IMMEDIATELY and prevent race conditions
     setTimelineAnnotations([]); // Clear UI state first
     setIsMappingTimeline(true);  // Set mapping flag to prevent useEffect interference
@@ -736,12 +779,42 @@ export function useWorkflowPageLogic(userId: string) {
               ));
             }
             
-            // Handle batch information for better progress tracking
-            if (parsed.data?.currentBatch && parsed.data?.totalBatches) {
-              const batchInfo = { current: parsed.data.currentBatch, total: parsed.data.totalBatches };
+            // Handle initial table setup
+            if (parsed.data?.initializeTable) {
+              setTimelineAnnotations([]);
+            }
+            
+            // Handle batch information for parallel vs sequential processing
+            if (parsed.data?.parallelMode) {
+              // Parallel processing: Use completion-based progress
+              if (parsed.data?.completedCount && parsed.data?.totalBatches) {
+                const completedBatches = parsed.data.completedCount;
+                const totalBatches = parsed.data.totalBatches;
+                const batchInfo = { 
+                  current: completedBatches, 
+                  total: totalBatches,
+                  mode: 'parallel' as const
+                };
+                setTimelineMappingBatch(batchInfo);
+                
+                // Enhanced status message for parallel processing
+                if (parsed.status) {
+                  setTimelineMappingStatus(parsed.status);
+                }
+              } else if (parsed.status) {
+                // Handle parallel processing status without batch counts
+                setTimelineMappingStatus(parsed.status);
+              }
+            } else if (parsed.data?.currentBatch && parsed.data?.totalBatches) {
+              // Sequential processing: Use sequential batch progress
+              const batchInfo = { 
+                current: parsed.data.currentBatch, 
+                total: parsed.data.totalBatches,
+                mode: 'sequential' as const
+              };
               setTimelineMappingBatch(batchInfo);
               
-              // Calculate more accurate progress based on batch info
+              // Calculate sequential progress based on batch info
               const batchProgress = (parsed.data.currentBatch - 1) / parsed.data.totalBatches * 100;
               setTimelineMappingProgress(Math.round(batchProgress));
               
@@ -752,7 +825,11 @@ export function useWorkflowPageLogic(userId: string) {
             } else {
               // Fallback to original behavior if no batch info
               if (parsed.status) setTimelineMappingStatus(parsed.status);
-              if (typeof parsed.progress === 'number') setTimelineMappingProgress(parsed.progress);
+            }
+            
+            // Always update progress if provided (works for both modes)
+            if (typeof parsed.progress === 'number') {
+              setTimelineMappingProgress(parsed.progress);
             }
             
             // Always process annotations array (even if empty) to ensure UI updates
@@ -762,11 +839,13 @@ export function useWorkflowPageLogic(userId: string) {
                 allAnnotations.push(...newAnnotations);
                 // 🔧 FIX: Always use fresh array reference to ensure React re-renders
                 setTimelineAnnotations([...allAnnotations]);
-                console.log(`📊 Updated UI with ${newAnnotations.length} new annotations. Total: ${allAnnotations.length}`);
+                const mode = parsed.data?.parallelMode ? 'parallel' : 'sequential';
+                console.log(`📊 [${mode.toUpperCase()}] Updated UI with ${newAnnotations.length} new annotations. Total: ${allAnnotations.length}`);
               } else {
                 // Even for empty batches, update the UI to show the processing is active
                 setTimelineAnnotations([...allAnnotations]);
-                console.log(`📊 Processed empty batch. Total annotations: ${allAnnotations.length}`);
+                const mode = parsed.data?.parallelMode ? 'parallel' : 'sequential';
+                console.log(`📊 [${mode.toUpperCase()}] Processed empty batch. Total annotations: ${allAnnotations.length}`);
               }
             }
           } catch (parseError) {
@@ -795,6 +874,9 @@ export function useWorkflowPageLogic(userId: string) {
       setTimelineMappingStatus(`Completed! Generated ${allAnnotations.length} timeline mappings`);
       setTimelineMappingBatch(null);
       console.log(`🎉 Timeline mapping completed! Total mappings: ${allAnnotations.length}`);
+
+      // Transition to timeline_complete state to follow consistent step pattern
+      setSynthesisStep('timeline_complete');
 
     } catch (error) {
       console.error("Error during timeline mapping:", error);
@@ -1072,14 +1154,34 @@ export function useWorkflowPageLogic(userId: string) {
     }
   }, [userId, synthesisSessionId, messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries, draftWorkflowNames, saveSynthesisSession]);
 
-  const handleTimelineAnnotationsChange = useCallback(async (updatedAnnotations: TimelineAnnotation[]) => {
-    setTimelineAnnotations(updatedAnnotations);
+  const handleTimelineAnnotationsChange = useCallback(async (changedAnnotations: TimelineAnnotation[]) => {
+    // Merge changed annotations into existing state instead of replacing all
+    setTimelineAnnotations(current => {
+      if (!current) return changedAnnotations;
+      
+      const updated = [...current];
+      changedAnnotations.forEach(changedAnnotation => {
+        const index = updated.findIndex(a => a.id === changedAnnotation.id);
+        if (index !== -1) {
+          updated[index] = changedAnnotation;
+        } else {
+          // If annotation doesn't exist, add it (edge case)
+          updated.push(changedAnnotation);
+        }
+      });
+      return updated;
+    });
     
-    // Auto-save the updated timeline annotations to the database
+    // Auto-save only the changed timeline annotations to the database
     try {
-      // Update each annotation in the database
-      const updatePromises = updatedAnnotations.map(async (annotation) => {
-        const response = await fetch(`/api/timeline-event-mappings/${annotation.analysis_id}`, {
+      // Update each changed annotation in the database by individual annotation ID
+      const updatePromises = changedAnnotations.map(async (annotation) => {
+        if (!annotation.id) {
+          console.error('Annotation missing ID, cannot update:', annotation);
+          return false;
+        }
+        
+        const response = await fetch(`/api/timeline-event-mappings/annotation/${annotation.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1089,7 +1191,7 @@ export function useWorkflowPageLogic(userId: string) {
         });
         
         if (!response.ok) {
-          console.error(`Failed to update timeline annotation ${annotation.analysis_id}:`, response.status);
+          console.error(`Failed to update timeline annotation ${annotation.id}:`, response.status);
         }
         
         return response.ok;
@@ -1098,7 +1200,7 @@ export function useWorkflowPageLogic(userId: string) {
       const results = await Promise.all(updatePromises);
       const successCount = results.filter(Boolean).length;
       
-      console.log(`Auto-saved ${successCount}/${updatedAnnotations.length} timeline annotations`);
+      console.log(`Auto-saved ${successCount}/${changedAnnotations.length} changed timeline annotations`);
       
     } catch (error) {
       console.error('Error auto-saving timeline annotations:', error);
@@ -1402,7 +1504,7 @@ export function useWorkflowPageLogic(userId: string) {
 
             // Check for completion or error
             if (data.success) {
-              setSynthesisStep('done');
+              setSynthesisStep('timeline_complete');
               setTimeout(() => setIsOrchestrating(false), 2000);
               break;
             }
@@ -1427,6 +1529,11 @@ export function useWorkflowPageLogic(userId: string) {
         orchestrationTimerRef.current = null;
       }
     }
+  };
+
+  const clearTimeBoundary = () => {
+    setTimeBoundary({ startDate: null, endDate: null });
+    localStorage.removeItem(TIME_BOUNDARY_STORAGE_KEY);
   };
 
   return {
@@ -1496,5 +1603,6 @@ export function useWorkflowPageLogic(userId: string) {
     // Time boundary state
     timeBoundary,
     setTimeBoundary,
+    clearTimeBoundary,
   };
 } 

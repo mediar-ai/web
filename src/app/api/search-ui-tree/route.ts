@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    console.log(`✅ Found ${events.length} matching events (total: ${count || 0})`);
+    console.log(`[SUCCESS] Found ${events.length} matching events (total: ${count || 0})`);
     
     // Process multiple events
     const results = [];
@@ -288,7 +288,7 @@ export async function GET(request: NextRequest) {
       }
     };
     
-    console.log(`📊 Processed ${results.length} events, extracted ${totalValuesExtracted} total values`);
+    console.log(`[STATS] Processed ${results.length} events, extracted ${totalValuesExtracted} total values`);
     return NextResponse.json(responseData);
     
   } catch (err) {

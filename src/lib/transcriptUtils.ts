@@ -205,7 +205,7 @@ export function formatUserInstructions(instructions?: string): string {
     return 'No additional user instructions provided.';
   }
 
-  console.log('✅ User instructions detected for workflow synthesis:', instructions.substring(0, 100) + (instructions.length > 100 ? '...' : ''));
+  console.log('[SUCCESS] User instructions detected for workflow synthesis:', instructions.substring(0, 100) + (instructions.length > 100 ? '...' : ''));
   return `User Instructions: ${instructions.trim()}`;
 }
 
@@ -219,8 +219,8 @@ export function buildComprehensiveContext(
   transcripts: TranscriptItem[],
   userInstructions?: string
 ): string {
-  console.log('🔧 Building comprehensive context for workflow synthesis:');
-  console.log(`📊 Transcripts: ${transcripts.length} messages`);
+  console.log('[FIX] Building comprehensive context for workflow synthesis:');
+  console.log(`[STATS] Transcripts: ${transcripts.length} messages`);
   console.log(`📝 Instructions: ${userInstructions ? 'provided' : 'none'}`);
   console.log('📏 No transcript length limits applied');
   

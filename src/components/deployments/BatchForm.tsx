@@ -567,7 +567,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
       }
     }
     
-    console.log('✅ BatchForm: Filtered dynamic parameters:', filtered_dynamic_parameters);
+    console.log('[SUCCESS] BatchForm: Filtered dynamic parameters:', filtered_dynamic_parameters);
 
     const calculateConditionalCombinations = (params: Record<string, JsonValue[]>): number => {
       let totalCombinations = 0;

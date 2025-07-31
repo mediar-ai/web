@@ -105,10 +105,10 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
             setAvailableMachines(data.machines);
             console.log('📋 Loaded machines for testing:', data.machines);
           } else {
-            console.error('❌ Failed to load machines:', data.error);
+            console.error('[ERROR] Failed to load machines:', data.error);
           }
         } catch (error) {
-          console.error('❌ Error fetching machines:', error);
+          console.error('[ERROR] Error fetching machines:', error);
         } finally {
           setLoadingMachines(false);
         }
@@ -127,10 +127,10 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
             // Set default to active version 
             setSelectedVersionNumber('__ACTIVE__');
           } else {
-            console.error('❌ Failed to load versions:', data.error);
+            console.error('[ERROR] Failed to load versions:', data.error);
           }
         } catch (error) {
-          console.error('❌ Error fetching versions:', error);
+          console.error('[ERROR] Error fetching versions:', error);
         } finally {
           setLoadingVersions(false);
         }
@@ -177,17 +177,17 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
             version_number: data.workflow.version,
             is_valid: true
           });
-          console.log('✅ Version validated:', data.workflow.version);
+          console.log('[SUCCESS] Version validated:', data.workflow.version);
         } else {
           setVersionValidation({
             version_number: selectedVersionNumber,
             is_valid: false,
             error: data.error
           });
-          console.warn('⚠️ Version validation failed:', data.error);
+          console.warn('[WARN] Version validation failed:', data.error);
         }
       } catch (error) {
-        console.error('❌ Error validating version:', error);
+        console.error('[ERROR] Error validating version:', error);
         setVersionValidation({
           version_number: selectedVersionNumber,
           is_valid: false,
@@ -242,18 +242,18 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
       console.log('📡 BatchTestDialog: Server response:', data);
       
       if (data.success) {
-        console.log('✅ BatchTestDialog: Batch submission successful');
+        console.log('[SUCCESS] BatchTestDialog: Batch submission successful');
         console.log('🎯 BatchTestDialog: Execution IDs:', data.execution_ids);
         onOpenChange(false);
         if (onSubmit) {
           onSubmit();
         }
       } else {
-        console.error('❌ BatchTestDialog: Failed to submit test run:', data.error);
+        console.error('[ERROR] BatchTestDialog: Failed to submit test run:', data.error);
         alert(`Failed to submit test run: ${data.error}`);
       }
     } catch (error) {
-      console.error('❌ BatchTestDialog: Error submitting test run:', error);
+      console.error('[ERROR] BatchTestDialog: Error submitting test run:', error);
       alert('Failed to submit test run execution');
     } finally {
       setIsSubmitting(false);

@@ -272,7 +272,7 @@ export async function POST(
       );
     }
 
-    console.log(`✅ Found workflow "${workflow.name}" - checking cache first...`);
+    console.log(`[SUCCESS] Found workflow "${workflow.name}" - checking cache first...`);
 
     // 🎯 Simple machine assignment: Default to machine ID 1 (Primary Windows VM)
     console.log(`🔍 Assigning to default machine for workflow ${workflowIdNum}...`);
@@ -288,7 +288,7 @@ export async function POST(
       .single();
 
     if (machineError || !machine) {
-      console.error(`❌ Failed to find machine ${assigned_machine_id}:`, machineError);
+      console.error(`[ERROR] Failed to find machine ${assigned_machine_id}:`, machineError);
       return NextResponse.json(
         { error: `Machine ${assigned_machine_id} not found in remote_machines table` },
         { status: 500 }
@@ -296,7 +296,7 @@ export async function POST(
     }
 
     const mcp_endpoint = machine.mcp_endpoint;
-    console.log(`✅ Assigned to machine ID ${assigned_machine_id}: ${assignment_reason}`);
+    console.log(`[SUCCESS] Assigned to machine ID ${assigned_machine_id}: ${assignment_reason}`);
     console.log(`🔗 Machine endpoint: ${mcp_endpoint}`);
 
     // ✨ NEW: Check cache first for instant results
@@ -377,7 +377,7 @@ export async function POST(
         }
       }
     } catch (cacheError) {
-      console.warn('⚠️ Cache lookup failed, proceeding with normal execution:', cacheError);
+      console.warn('[WARN] Cache lookup failed, proceeding with normal execution:', cacheError);
       // Continue with normal execution if cache fails
     }
 
@@ -412,7 +412,7 @@ export async function POST(
       throw executionError;
     }
 
-    console.log(`✅ Created execution ${execution.id} - waiting for completion (max ${MAX_WAIT_TIME_MS / 1000}s)...`);
+    console.log(`[SUCCESS] Created execution ${execution.id} - waiting for completion (max ${MAX_WAIT_TIME_MS / 1000}s)...`);
 
     // Poll execution until completion or timeout
     try {
@@ -426,7 +426,7 @@ export async function POST(
         .single();
 
       const totalTimeSeconds = Math.floor((Date.now() - startTime) / 1000);
-      console.log(`✅ Synchronous execution ${execution.id} completed in ${totalTimeSeconds}s`);
+      console.log(`[SUCCESS] Synchronous execution ${execution.id} completed in ${totalTimeSeconds}s`);
 
       // Format the response
       const responseData = formatExecutionResponse(completedExecution, updatedWorkflow || workflow, full_detailed_response);
@@ -481,7 +481,7 @@ export async function POST(
 
   } catch (error) {
     const totalTimeSeconds = Math.floor((Date.now() - startTime) / 1000);
-    console.error('❌ Error in synchronous execution:', error);
+    console.error('[ERROR] Error in synchronous execution:', error);
     
     return NextResponse.json(
       {

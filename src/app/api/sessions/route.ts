@@ -45,7 +45,7 @@ export async function GET(request: Request) {
       process.env.SUPABASE_SERVICE_KEY!
     );
 
-    // ✅ REVERTED: Use original lightweight session_metadata table as designed
+    // [SUCCESS] REVERTED: Use original lightweight session_metadata table as designed
     // This is the correct approach - lightweight metadata summary table
     const { data: sessions, error: sessionsError } = await supabase
       .from('session_metadata')

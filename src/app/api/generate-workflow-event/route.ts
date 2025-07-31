@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
           .in('low_level_workflow_analysis_id', analysisIds);
 
         if (labelingError) {
-          console.warn('⚠️ Error fetching labeling data:', labelingError);
+          console.warn('[WARN] Error fetching labeling data:', labelingError);
         } else {
           // Create labeling map
           const labelingMap = new Map<number, { selected_labels: string[]; suggested_labels: string[] }>();
@@ -177,7 +177,7 @@ Please respond with a JSON object in this exact format:
         
         try {
           const analysisData = JSON.parse(cleanedText);
-          console.log('✅ Vertex AI workflow event generation successful');
+          console.log('[SUCCESS] Vertex AI workflow event generation successful');
         
         // Add schema version to mark as V2
         const v2Analysis = {
@@ -187,7 +187,7 @@ Please respond with a JSON object in this exact format:
         
         return NextResponse.json(v2Analysis);
         } catch (parseError) {
-          console.error('❌ Failed to parse Vertex AI response as JSON:', parseError);
+          console.error('[ERROR] Failed to parse Vertex AI response as JSON:', parseError);
           console.log('🔍 Cleaned text:', cleanedText.substring(0, 300));
           return NextResponse.json({ 
             error: 'Invalid JSON response from Vertex AI',

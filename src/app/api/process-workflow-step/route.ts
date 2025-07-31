@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
             requestBody = await req.json();
             console.log(`📥 [${requestId}] Request body parsed successfully`);
         } catch (parseError) {
-            console.error(`❌ [${requestId}] Failed to parse request body:`, parseError);
+            console.error(`[ERROR] [${requestId}] Failed to parse request body:`, parseError);
             return NextResponse.json({ 
                 error: 'Invalid JSON in request body',
                 details: parseError instanceof Error ? parseError.message : 'Unknown parsing error',
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
         // Extract parameters with validation
         const { prompt: promptKey, model, context } = requestBody;
         
-        console.log(`📊 [${requestId}] Request parameters:`, {
+        console.log(`[STATS] [${requestId}] Request parameters:`, {
             promptKey,
             model,
             contextType: typeof context,
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
         });
 
         if (!promptKey || !model || !context) {
-            console.error(`❌ [${requestId}] Missing required parameters:`, {
+            console.error(`[ERROR] [${requestId}] Missing required parameters:`, {
                 hasPromptKey: !!promptKey,
                 hasModel: !!model,
                 hasContext: !!context
@@ -89,19 +89,19 @@ export async function POST(req: NextRequest) {
          const actualPrompt = promptLibrary[promptKey];
 
          if (!actualPrompt) {
-             console.error(`❌ [${requestId}] Invalid prompt key provided: ${promptKey}`);
+             console.error(`[ERROR] [${requestId}] Invalid prompt key provided: ${promptKey}`);
              return NextResponse.json({ 
                  error: `Invalid prompt key provided: ${promptKey}`,
                  requestId
              }, { status: 400 });
          }
 
-        console.log(`✅ [${requestId}] Prompt resolved successfully. Length: ${actualPrompt.length} characters`);
+        console.log(`[SUCCESS] [${requestId}] Prompt resolved successfully. Length: ${actualPrompt.length} characters`);
         console.log(`🚀 [${requestId}] Using Vertex AI for workflow step processing with model: ${model}`);
 
         // Add system resource monitoring
         const memoryUsage = process.memoryUsage();
-        console.log(`📊 [${requestId}] System resources:`, {
+        console.log(`[STATS] [${requestId}] System resources:`, {
             heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
             heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)}MB`,
             external: `${Math.round(memoryUsage.external / 1024 / 1024)}MB`,
@@ -120,14 +120,14 @@ export async function POST(req: NextRequest) {
                 true // 🔥 ENABLE USAGE METADATA TRACKING
             );
 
-            console.log(`✅ [${requestId}] Vertex AI step analysis successful`);
+            console.log(`[SUCCESS] [${requestId}] Vertex AI step analysis successful`);
             
             // 🔥 EXTRACT CONTENT AND USAGE FROM NEW RESPONSE FORMAT
             const analysisContent = result.content;
             const usageMetadata = result.usage;
             
-            console.log(`📊 [${requestId}] Usage metadata:`, usageMetadata);
-            console.log(`📊 [${requestId}] Response processing time: ${Date.now() - requestStart}ms`);
+            console.log(`[STATS] [${requestId}] Usage metadata:`, usageMetadata);
+            console.log(`[STATS] [${requestId}] Response processing time: ${Date.now() - requestStart}ms`);
             
             // Return both analysis and structured_output for compatibility with UI route
             return NextResponse.json({
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
             });
 
         } catch (vertexError) {
-            console.error(`❌ [${requestId}] Vertex AI call failed:`, {
+            console.error(`[ERROR] [${requestId}] Vertex AI call failed:`, {
                 error: vertexError,
                 errorType: vertexError instanceof Error ? vertexError.constructor.name : typeof vertexError,
                 errorMessage: vertexError instanceof Error ? vertexError.message : String(vertexError),
@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
         const processingTime = Date.now() - requestStart;
         
         // Comprehensive error logging
-        console.error(`❌ [${requestId || 'unknown'}] Critical error in POST /api/process-workflow-step:`, {
+        console.error(`[ERROR] [${requestId || 'unknown'}] Critical error in POST /api/process-workflow-step:`, {
             error,
             errorType: error instanceof Error ? error.constructor.name : typeof error,
             errorMessage: error instanceof Error ? error.message : String(error),

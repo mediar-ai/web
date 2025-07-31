@@ -111,7 +111,7 @@ Event ${i + 1}:
     // Prepare AI request with simplified prompt
     const actualPrompt = 'Analyze this: The user searched for "' + searchResults.keyword + '" and found ' + results.length + ' results. ' + question;
 
-    console.log(`🤖 Calling Vertex AI directly...`);
+    console.log(`[LLM] Calling Vertex AI directly...`);
     console.log('🔍 Prompt being sent:', actualPrompt);
 
     // Call Vertex AI directly using getVertexGenAI
@@ -131,11 +131,11 @@ Event ${i + 1}:
     const aiAnalysis = aiResponse?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     if (!aiAnalysis || aiAnalysis.trim() === '') {
-      console.error('❌ Empty AI response from Vertex AI');
+      console.error('[ERROR] Empty AI response from Vertex AI');
       throw new Error('No response received from AI');
     }
 
-    console.log(`✅ AI analysis completed in ${Date.now() - startTime}ms`);
+    console.log(`[SUCCESS] AI analysis completed in ${Date.now() - startTime}ms`);
 
     // Prepare response
     const responseData = {
@@ -158,7 +158,7 @@ Event ${i + 1}:
     return NextResponse.json(responseData);
 
   } catch (error) {
-    console.error('❌ Analysis error:', error);
+    console.error('[ERROR] Analysis error:', error);
     
     return NextResponse.json(
       {

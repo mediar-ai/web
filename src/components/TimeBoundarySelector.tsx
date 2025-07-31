@@ -21,6 +21,7 @@ interface QuickOption {
 interface TimeBoundarySelectorProps {
   selectedBoundary: TimeBoundary;
   onBoundaryChange: (boundary: TimeBoundary) => void;
+  onClear?: () => void; // Add this optional prop
   disabled?: boolean;
   userId?: string; // Added userId prop
   required?: boolean; // Added required prop for validation
@@ -43,6 +44,7 @@ const QUICK_OPTIONS: QuickOption[] = [
 export function TimeBoundarySelector({ 
   selectedBoundary, 
   onBoundaryChange,
+  onClear,
   disabled = false,
   userId,
   required = false
@@ -61,7 +63,7 @@ export function TimeBoundarySelector({
         .then(data => {
           if (data.earliestTimestamp && data.latestTimestamp) {
             setUserDataRange(data);
-            console.log(`📊 User data range: ${data.earliestTimestamp} to ${data.latestTimestamp} (${data.totalRangeHours}h total)`);
+            console.log(`[STATS] User data range: ${data.earliestTimestamp} to ${data.latestTimestamp} (${data.totalRangeHours}h total)`);
           } else {
             console.warn('No data range found for user:', userId);
             setUserDataRange(null);
@@ -155,6 +157,7 @@ export function TimeBoundarySelector({
     setSelectedQuickOption(null);
     setUseCustomRange(false);
     onBoundaryChange({ startDate: null, endDate: null });
+    onClear?.(); // Call the onClear prop if provided
   };
 
   const isInvalid = required && (!selectedBoundary.startDate || !selectedBoundary.endDate);

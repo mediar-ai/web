@@ -26,7 +26,7 @@ export async function GET() {
     });
 
   } catch (error) {
-    console.error('🔧 [MCP Workflows] Error listing workflows:', error);
+    console.error('[FIX] [MCP Workflows] Error listing workflows:', error);
     
     return NextResponse.json({ 
       error: 'Failed to list workflows',

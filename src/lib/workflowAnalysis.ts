@@ -108,10 +108,10 @@ export async function generateWorkflowStepAnalysisWithSchema(
       generation_timestamp: new Date().toISOString(),
     };
 
-    console.log('✅ Vertex AI workflow analysis successful');
+    console.log('[SUCCESS] Vertex AI workflow analysis successful');
     return analysis;
   } catch (error) {
-    console.error('❌ Vertex AI workflow analysis failed:', error);
+    console.error('[ERROR] Vertex AI workflow analysis failed:', error);
     throw error;
   }
 }

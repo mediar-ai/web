@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
       let enhancedWorkflowData = workflow.detailed_workflow_data;
       if (workflow.detailed_workflow_data) {
         enhancedWorkflowData = generateComponentIds(workflow.detailed_workflow_data);
-        console.log(`💾 Generated component IDs for workflow: ${workflow.title}`);
+        console.log(`[DB] Generated component IDs for workflow: ${workflow.title}`);
       }
 
       // Create the workflow record with enhanced data
@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
       enhancedWorkflows.push(savedWorkflow);
     }
 
-    console.log(`✅ Successfully saved ${enhancedWorkflows.length} workflows with component IDs`);
+    console.log(`[SUCCESS] Successfully saved ${enhancedWorkflows.length} workflows with component IDs`);
     return NextResponse.json({ success: true, data: enhancedWorkflows });
 
   } catch (error) {

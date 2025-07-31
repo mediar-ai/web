@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
 
     const { workflow_mappings, unrelated_events }: AnalysisResult = analysis_result;
 
-    console.log(`💾 [DEPRECATED] Saving timeline mappings: ${workflow_mappings.length} mapped events, ${unrelated_events.length} unrelated events`);
+    console.log(`[DB] [DEPRECATED] Saving timeline mappings: ${workflow_mappings.length} mapped events, ${unrelated_events.length} unrelated events`);
 
     // Prepare records for database insertion
     const records = [];
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    console.log(`✅ [DEPRECATED] Successfully saved ${data?.length || 0} timeline annotations with IDs`);
+    console.log(`[SUCCESS] [DEPRECATED] Successfully saved ${data?.length || 0} timeline annotations with IDs`);
     
     return NextResponse.json({ 
       success: true, 

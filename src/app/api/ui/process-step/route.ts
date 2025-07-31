@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       .limit(10);
 
     if (analysesError) {
-      console.warn('⚠️ Error fetching neighbor analyses:', analysesError);
+      console.warn('[WARN] Error fetching neighbor analyses:', analysesError);
     }
 
     // Fetch labeling data for neighbor analyses
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
         .in('low_level_workflow_analysis_id', analysisIds);
 
       if (labelsError) {
-        console.warn('⚠️ Error fetching labeling data:', labelsError);
+        console.warn('[WARN] Error fetching labeling data:', labelsError);
       } else {
         labelingData = labelsData || [];
       }

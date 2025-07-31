@@ -101,7 +101,7 @@ export function CacheResultsPopup({
               {/* Results Summary */}
               {cacheResult.status === 'completed' && (
                 <div className="text-sm text-green-700 mb-2">
-                  ✅ {cacheResult.quotes_found || 0} quotes found
+                  [SUCCESS] {cacheResult.quotes_found || 0} quotes found
                   {cacheResult.execution_duration_seconds && (
                     <span className="text-gray-500 ml-2">
                       (in {formatDuration(cacheResult.execution_duration_seconds)})
@@ -112,7 +112,7 @@ export function CacheResultsPopup({
               
               {cacheResult.status === 'failed' && (
                 <div className="text-sm text-red-700 mb-2">
-                  ❌ Execution failed
+                  [ERROR] Execution failed
                   {cacheResult.error_message && (
                     <div className="text-xs text-red-600 mt-1 font-mono">
                       {cacheResult.error_message}

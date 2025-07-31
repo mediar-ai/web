@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
       cacheError = error;
     } else {
       // Basic query: MINIMAL fields for maximum speed (excludes ALL heavy/optional debugging data)
-      console.log(`⚡ Running BASIC cache query with minimal fields (${failed_only ? 'failed only' : 'successful only'})`);
+      console.log(`[PERF] Running BASIC cache query with minimal fields (${failed_only ? 'failed only' : 'successful only'})`);
       const { data, error } = await supabase
         .from('workflow_executions')
         .select('id, formatted_output, created_at, execution_duration_seconds, started_at, completed_at, error_message, status')
@@ -270,7 +270,7 @@ export async function POST(request: NextRequest) {
             : cacheHit.formatted_output;
         }
       } catch (parseError) {
-        console.warn('⚠️ Failed to parse formatted_output:', parseError);
+        console.warn('[WARN] Failed to parse formatted_output:', parseError);
         quotes = [];
       }
 
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
       const speedImprovement = originalDuration > 0 ? Math.round((originalDuration * 1000) / queryTime) : 0;
 
       const isSuccessful = cacheHit.status === 'completed';
-      console.log(`✅ Cache HIT! Execution ${cacheHit.id} (${cacheHit.status}) - ${queryTime}ms vs ${originalDuration}s original`);
+      console.log(`[SUCCESS] Cache HIT! Execution ${cacheHit.id} (${cacheHit.status}) - ${queryTime}ms vs ${originalDuration}s original`);
 
       // Return minimal response with only formatted_output when full_detailed_response is false
       if (!full_detailed_response) {
@@ -473,7 +473,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(response);
     } else {
-      console.log(`❌ Cache MISS for workflow ${workflowIdNum} (${queryTime}ms query) - ${failed_only ? 'no failed' : 'no successful'} executions found`);
+      console.log(`[ERROR] Cache MISS for workflow ${workflowIdNum} (${queryTime}ms query) - ${failed_only ? 'no failed' : 'no successful'} executions found`);
       
       return NextResponse.json({
         success: true,
@@ -500,7 +500,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     const queryTime = Date.now() - startTime;
-    console.error('❌ Cache lookup error:', error);
+    console.error('[ERROR] Cache lookup error:', error);
     
     return NextResponse.json(
       {

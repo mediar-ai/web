@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching cached responses:', error);
+    console.error('[ERROR] Error fetching cached responses:', error);
     return NextResponse.json(
       {
         success: false,
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     );
 
   } catch (error) {
-    console.error('❌ Error in response cache API:', error);
+    console.error('[ERROR] Error in response cache API:', error);
     return NextResponse.json(
       {
         success: false,
