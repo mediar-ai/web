@@ -460,6 +460,26 @@ function createStreamingResponse(
       const chatId = `chatcmpl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const created = Math.floor(Date.now() / 1000);
 
+      // Helper function to safely enqueue data only if controller is not closed
+      const safeEnqueue = (data: Uint8Array) => {
+        try {
+          // Check if controller is still open by checking its state
+          if (controller.desiredSize !== null) {
+            controller.enqueue(data);
+            return true;
+          } else {
+            console.log('⚠️ Controller is closed, skipping enqueue');
+            return false;
+          }
+        } catch (error) {
+          console.log(
+            '⚠️ Failed to enqueue data, controller likely closed:',
+            error
+          );
+          return false;
+        }
+      };
+
       try {
         // Send initial chunk (OpenAI format)
         const startChunk = {
@@ -475,9 +495,13 @@ function createStreamingResponse(
             },
           ],
         };
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(startChunk)}\n\n`)
-        );
+        if (
+          !safeEnqueue(
+            encoder.encode(`data: ${JSON.stringify(startChunk)}\n\n`)
+          )
+        ) {
+          return; // Exit early if controller is closed
+        }
 
         // Initialize the generative model
         const modelConfig = {
@@ -494,24 +518,31 @@ function createStreamingResponse(
 
         const generativeModel = vertexAI.getGenerativeModel(modelConfig);
 
-        // Convert ALL messages to Vertex AI format (don't exclude the last one)
-        const allMessages = messages.map(msg => {
-          // Handle different message types
+        // Convert OpenAI messages to Vertex AI format
+        const allMessages: any[] = [];
+
+        for (let i = 0; i < messages.length; i++) {
+          const msg = messages[i];
+          console.log(`📝 Converting message ${i}: ${msg.role}`);
+
           if (msg.role === 'user') {
-            return {
+            allMessages.push({
               role: 'user' as const,
               parts: [{ text: msg.content || '' }],
-            };
-          } else if (msg.role === 'model' || msg.role === 'assistant') {
-            const parts: (TextPart | FunctionCallPart)[] = [];
+            });
+          } else if (msg.role === 'assistant') {
+            const parts: any[] = [];
 
             // Add text content if present
             if (msg.content) {
               parts.push({ text: msg.content });
             }
 
-            // Add function calls if present (OpenAI format)
+            // Handle OpenAI tool_calls format
             if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+              console.log(
+                `🔧 Converting ${msg.tool_calls.length} tool calls in message ${i}`
+              );
               for (const toolCall of msg.tool_calls) {
                 parts.push({
                   functionCall: {
@@ -524,6 +555,9 @@ function createStreamingResponse(
 
             // Legacy support for functionCalls format
             if (msg.functionCalls && Array.isArray(msg.functionCalls)) {
+              console.log(
+                `🔧 Converting ${msg.functionCalls.length} legacy function calls in message ${i}`
+              );
               for (const functionCall of msg.functionCalls) {
                 parts.push({
                   functionCall: {
@@ -534,64 +568,119 @@ function createStreamingResponse(
               }
             }
 
-            return {
+            const result = {
               role: 'model' as const,
               parts: parts.length > 0 ? parts : [{ text: msg.content || '' }],
             };
+            console.log(
+              `✅ Assistant message ${i} converted with ${result.parts.length} parts`
+            );
+            allMessages.push(result);
           } else if (msg.role === 'tool') {
-            // Handle OpenAI tool messages - need to map tool_call_id to function name
-            // Find the corresponding function name from the assistant message
-            let functionName = msg.tool_call_id || '';
+            // Group consecutive tool responses into a single function message
+            const toolResponses: any[] = [];
+            let j = i;
 
-            // Look backward through messages to find the assistant message with tool_calls
-            for (let i = messages.indexOf(msg) - 1; i >= 0; i--) {
-              const prevMsg = messages[i];
-              if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
-                const toolCall = prevMsg.tool_calls.find(
-                  tc => tc.id === msg.tool_call_id
-                );
-                if (toolCall) {
-                  functionName = toolCall.function.name;
-                  break;
+            // Find all consecutive tool messages
+            while (j < messages.length && messages[j].role === 'tool') {
+              const toolMsg = messages[j];
+              let functionName = toolMsg.tool_call_id || '';
+
+              // Look backward to find the corresponding function name
+              for (let k = j - 1; k >= 0; k--) {
+                const prevMsg = messages[k];
+                if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
+                  const toolCall = prevMsg.tool_calls.find(
+                    tc => tc.id === toolMsg.tool_call_id
+                  );
+                  if (toolCall) {
+                    functionName = toolCall.function.name;
+                    break;
+                  }
                 }
               }
+
+              console.log(
+                `🔧 Adding tool response for call ID ${toolMsg.tool_call_id} -> function ${functionName} to group`
+              );
+              toolResponses.push({
+                functionResponse: {
+                  name: functionName,
+                  response: { result: toolMsg.content || '' },
+                },
+              });
+
+              j++;
             }
 
-            return {
+            // Create a single function message with all responses
+            const functionMessage = {
               role: 'function' as const,
-              parts: [
-                {
-                  functionResponse: {
-                    name: functionName, // Use actual function name, not tool_call_id
-                    response: { result: msg.content || '' },
-                  },
-                },
-              ],
+              parts: toolResponses,
             };
-          } else if (msg.role === 'function') {
-            // Handle legacy function responses
-            return {
-              role: 'function' as const,
-              parts: msg.functionResponses
-                ? msg.functionResponses.map((fr: LegacyFunctionResponse) => ({
-                    functionResponse: {
-                      name: fr.name,
-                      response: fr.response,
-                    },
-                  }))
-                : [{ text: msg.content || '' }],
-            };
-          }
 
-          // Default fallback - handle all role types explicitly
-          const vertexRole = ['user', 'system'].includes(msg.role)
-            ? ('user' as const)
-            : ('model' as const);
-          return {
-            role: vertexRole,
-            parts: [{ text: msg.content || '' }],
-          };
-        });
+            console.log(
+              `✅ Created grouped function message with ${toolResponses.length} responses`
+            );
+            allMessages.push(functionMessage);
+
+            // Skip the processed tool messages
+            i = j - 1; // -1 because the for loop will increment
+          } else {
+            // Unknown role, treat as text
+            console.warn(`⚠️ Unknown message role: ${msg.role}`);
+            allMessages.push({
+              role: 'user' as const,
+              parts: [{ text: msg.content || '' }],
+            });
+          }
+        }
+
+        console.log(
+          `📊 Converted ${messages.length} messages into ${allMessages.length} VertexAI messages`
+        );
+
+        // Additional validation: count function calls vs responses
+        let totalFunctionCalls = 0;
+        let totalFunctionResponses = 0;
+
+        for (const msg of allMessages) {
+          if (msg.role === 'model' && msg.parts) {
+            const functionCalls = msg.parts.filter(
+              (part: any) => part.functionCall
+            ).length;
+            totalFunctionCalls += functionCalls;
+            if (functionCalls > 0) {
+              console.log(
+                `📊 Model message has ${functionCalls} function calls`
+              );
+            }
+          }
+          if (msg.role === 'function' && msg.parts) {
+            const functionResponses = msg.parts.filter(
+              (part: any) => part.functionResponse
+            ).length;
+            totalFunctionResponses += functionResponses;
+            if (functionResponses > 0) {
+              console.log(
+                `📊 Function message has ${functionResponses} function responses`
+              );
+            }
+          }
+        }
+
+        console.log(
+          `📊 Total function calls: ${totalFunctionCalls}, Total function responses: ${totalFunctionResponses}`
+        );
+
+        if (totalFunctionCalls !== totalFunctionResponses) {
+          console.error(
+            `❌ MISMATCH: ${totalFunctionCalls} calls vs ${totalFunctionResponses} responses`
+          );
+          throw new Error(
+            `Function call/response mismatch: ${totalFunctionCalls} calls but ${totalFunctionResponses} responses. This will cause VertexAI to fail.`
+          );
+        }
 
         const lastMessage = messages[messages.length - 1];
 
@@ -682,9 +771,13 @@ function createStreamingResponse(
                   },
                 ],
               };
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify(textChunk)}\n\n`)
-              );
+              if (
+                !safeEnqueue(
+                  encoder.encode(`data: ${JSON.stringify(textChunk)}\n\n`)
+                )
+              ) {
+                return; // Exit early if controller is closed
+              }
             }
           }
 
@@ -726,9 +819,13 @@ function createStreamingResponse(
                     },
                   ],
                 };
-                controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify(toolCallChunk)}\n\n`)
-                );
+                if (
+                  !safeEnqueue(
+                    encoder.encode(`data: ${JSON.stringify(toolCallChunk)}\n\n`)
+                  )
+                ) {
+                  return; // Exit early if controller is closed
+                }
               }
             }
           }
@@ -755,12 +852,18 @@ function createStreamingResponse(
             total_tokens: Math.floor(fullText.length / 4),
           },
         };
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`)
-        );
+        if (
+          !safeEnqueue(
+            encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`)
+          )
+        ) {
+          return; // Exit early if controller is closed
+        }
 
         // Send completion marker (OpenAI standard)
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        if (!safeEnqueue(encoder.encode('data: [DONE]\n\n'))) {
+          return; // Exit early if controller is closed
+        }
       } catch (error) {
         console.error('[ERROR] Streaming error:', error);
 
@@ -783,10 +886,16 @@ function createStreamingResponse(
             code: 'internal_error',
           },
         };
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`)
-        );
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        if (
+          !safeEnqueue(
+            encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`)
+          )
+        ) {
+          return; // Exit early if controller is closed
+        }
+        if (!safeEnqueue(encoder.encode('data: [DONE]\n\n'))) {
+          return; // Exit early if controller is closed
+        }
       } finally {
         controller.close();
       }
@@ -820,6 +929,9 @@ function validateToolCallSequence(messages: OpenAIMessage[]): string | null {
       currentMsg.tool_calls &&
       currentMsg.tool_calls.length > 0
     ) {
+      console.log(
+        `🔍 Found ${currentMsg.tool_calls.length} tool calls in message ${i}`
+      );
       for (const toolCall of currentMsg.tool_calls) {
         unresolvedToolCalls.set(toolCall.id, { messageIndex: i, toolCall });
       }
@@ -835,6 +947,9 @@ function validateToolCallSequence(messages: OpenAIMessage[]): string | null {
         return `Tool response has tool_call_id '${currentMsg.tool_call_id}' but no matching tool call found in conversation history.`;
       }
 
+      console.log(
+        `✅ Found tool response for call ID: ${currentMsg.tool_call_id}`
+      );
       unresolvedToolCalls.delete(currentMsg.tool_call_id);
     }
 
@@ -845,6 +960,10 @@ function validateToolCallSequence(messages: OpenAIMessage[]): string | null {
         item => item.toolCall.function.name
       );
 
+      console.error(
+        `❌ Unresolved tool calls before user message:`,
+        unresolvedIds
+      );
       return `Found ${unresolvedToolCalls.size} unresolved tool call(s) before user message: [${unresolvedIds.join(', ')}]. Functions: [${unresolvedFunctions.join(', ')}]. All tool calls must have corresponding tool responses before the conversation can continue.`;
     }
   }
@@ -856,9 +975,14 @@ function validateToolCallSequence(messages: OpenAIMessage[]): string | null {
       item => item.toolCall.function.name
     );
 
+    console.error(
+      `❌ Conversation ends with unresolved tool calls:`,
+      unresolvedIds
+    );
     return `Conversation ends with ${unresolvedToolCalls.size} unresolved tool call(s): [${unresolvedIds.join(', ')}]. Functions: [${unresolvedFunctions.join(', ')}]. All tool calls must have corresponding tool responses.`;
   }
 
+  console.log(`✅ Tool call sequence validation passed`);
   return null;
 }
 
