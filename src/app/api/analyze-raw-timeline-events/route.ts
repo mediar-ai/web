@@ -55,6 +55,7 @@ interface BatchProcessingParams {
   totalBatches: number;
   TIMELINE_MAPPING_ANALYSIS_PROMPT: string;
   SINGLE_BATCH_MAPPING_SCHEMA: any;
+  startDate: string; // Add startDate for timeline start boundary
 }
 
 interface BatchResult {
@@ -98,7 +99,8 @@ async function processSingleBatch(params: BatchProcessingParams): Promise<BatchR
     synthesis_session_id,
     totalBatches,
     TIMELINE_MAPPING_ANALYSIS_PROMPT,
-    SINGLE_BATCH_MAPPING_SCHEMA
+    SINGLE_BATCH_MAPPING_SCHEMA,
+    startDate // Timeline start boundary
   } = params;
 
   const batchStartTime = Date.now();
@@ -110,72 +112,119 @@ async function processSingleBatch(params: BatchProcessingParams): Promise<BatchR
     // ✅ NEW LOGIC: Use UI tree event boundaries (following sequential processor)
     const currentUiEventTimestamp = new Date(uiEvent.created_at);
     
+    // Declare variables that will be used throughout the function
+    let earlierTimestamp: Date;
+    let laterTimestamp: Date;
+    let batchEvents: any[];
+    
     if (!previousUiEvent) {
-      // No previous UI tree event - skip this batch or handle as special case
-      console.log(`WARNING [BATCH-${displayIndex}] No previous UI tree event found - this is the first/oldest event`);
-      const processingTime = Date.now() - batchStartTime;
+      // ✅ ENHANCED: First UI tree - process events from timeline START to first UI tree
+      console.log(`✅ [BATCH-${displayIndex}] First UI tree detected - processing from timeline start`);
+      const timelineStart = new Date(startDate);
+      const firstUiEventTimestamp = new Date(uiEvent.created_at);
       
-      return {
-        batchIndex: displayIndex,
-        uiEventId: uiEvent.id,
-        status: 'skipped_no_previous',
-        eventCount: 0,
-        processingTimeMs: processingTime
-      };
-    }
-    
-    const previousUiEventTimestamp = new Date(previousUiEvent.created_at);
-    
-    console.log(`Processing batch ${displayIndex}: Events between UI trees`);
-    console.log(`   Previous UI tree: ${previousUiEventTimestamp.toISOString()}`);
-    console.log(`   Current UI tree:  ${currentUiEventTimestamp.toISOString()}`);
-
-    // 🔧 FIX: Since UI events are processed newest-first, we need to swap the comparison logic
-    // We want events BETWEEN the two UI tree timestamps, regardless of processing order
-    const earlierTimestamp = currentUiEventTimestamp < previousUiEventTimestamp ? currentUiEventTimestamp : previousUiEventTimestamp;
-    const laterTimestamp = currentUiEventTimestamp > previousUiEventTimestamp ? currentUiEventTimestamp : previousUiEventTimestamp;
-    
-    console.log(`   ✅ CORRECTED: Finding events between ${earlierTimestamp.toISOString()} and ${laterTimestamp.toISOString()}`);
-
-    // CORRECT: Fetch events BETWEEN consecutive UI tree events (like sequential processor)
-    const { data: allBatchEvents, error: batchError } = await supabaseAdmin
-      .from('low_level_events_enriched')
-      .select('*')
-      .eq('user_id', userId)
-      .gt('created_at', earlierTimestamp.toISOString())  // AFTER earlier timestamp
-      .lt('created_at', laterTimestamp.toISOString())    // BEFORE later timestamp
-      .not('event_type', 'in', '(screenshot_diff,ui_tree)') // Exclude both screenshot_diff and ui_tree events
-      .order('created_at', { ascending: true });
-
-    if (batchError) {
-      console.error(`ERROR fetching batch events for batch ${displayIndex}:`, batchError);
-      return {
-        batchIndex: displayIndex,
-        uiEventId: uiEvent.id,
-        status: 'failed_no_events',
-        eventCount: 0,
-        processingTimeMs: Date.now() - batchStartTime,
-        error: `Error fetching events: ${batchError.message}`
-      };
-    }
-
-    const batchEvents = allBatchEvents || [];
-
-    if (!batchEvents || batchEvents.length === 0) {
-      const processingTime = Date.now() - batchStartTime;
-      console.log(`WARNING [BATCH-${displayIndex}] No events found between UI tree boundaries (${processingTime}ms)`);
-      console.log(`WARNING [BATCH-${displayIndex}] UI tree window: ${previousUiEventTimestamp.toISOString()} → ${currentUiEventTimestamp.toISOString()}`);
+      console.log(`   Timeline Start: ${timelineStart.toISOString()}`);
+      console.log(`   First UI tree:  ${firstUiEventTimestamp.toISOString()}`);
       
-      return {
-        batchIndex: displayIndex,
-        uiEventId: uiEvent.id,
-        status: 'empty_no_events',
-        eventCount: 0,
-        processingTimeMs: processingTime
-      };
-    }
+      // Set timestamps for processing
+      earlierTimestamp = timelineStart;
+      laterTimestamp = firstUiEventTimestamp;
+      
+      // Fetch events BETWEEN timeline start and first UI tree
+      const { data: allBatchEvents, error: batchError } = await supabaseAdmin
+        .from('low_level_events_enriched')
+        .select('*')
+        .eq('user_id', userId)
+        .gt('created_at', timelineStart.toISOString())     // AFTER timeline start
+        .lt('created_at', firstUiEventTimestamp.toISOString()) // BEFORE first UI tree
+        .not('event_type', 'in', '(screenshot_diff,ui_tree)') // Exclude both screenshot_diff and ui_tree events
+        .order('created_at', { ascending: true });
 
-    console.log(`SUCCESS [BATCH-${displayIndex}] Found ${batchEvents.length} events between UI tree boundaries`);
+      if (batchError) {
+        console.error(`ERROR fetching batch events for first batch ${displayIndex}:`, batchError);
+        return {
+          batchIndex: displayIndex,
+          uiEventId: uiEvent.id,
+          status: 'failed_no_events',
+          eventCount: 0,
+          processingTimeMs: Date.now() - batchStartTime,
+          error: `Error fetching events: ${batchError.message}`
+        };
+      }
+
+      batchEvents = allBatchEvents || [];
+
+      if (!batchEvents || batchEvents.length === 0) {
+        const processingTime = Date.now() - batchStartTime;
+        console.log(`WARNING [BATCH-${displayIndex}] No events found between timeline start and first UI tree (${processingTime}ms)`);
+        console.log(`WARNING [BATCH-${displayIndex}] Timeline window: ${timelineStart.toISOString()} → ${firstUiEventTimestamp.toISOString()}`);
+        
+        return {
+          batchIndex: displayIndex,
+          uiEventId: uiEvent.id,
+          status: 'empty_no_events',
+          eventCount: 0,
+          processingTimeMs: processingTime
+        };
+      }
+
+      console.log(`SUCCESS [BATCH-${displayIndex}] Found ${batchEvents.length} events between timeline start and first UI tree`);
+      
+    } else {
+    
+      const previousUiEventTimestamp = new Date(previousUiEvent.created_at);
+      
+      console.log(`Processing batch ${displayIndex}: Events between UI trees`);
+      console.log(`   Previous UI tree: ${previousUiEventTimestamp.toISOString()}`);
+      console.log(`   Current UI tree:  ${currentUiEventTimestamp.toISOString()}`);
+
+      // 🔧 FIX: Since UI events are processed newest-first, we need to swap the comparison logic
+      // We want events BETWEEN the two UI tree timestamps, regardless of processing order
+      earlierTimestamp = currentUiEventTimestamp < previousUiEventTimestamp ? currentUiEventTimestamp : previousUiEventTimestamp;
+      laterTimestamp = currentUiEventTimestamp > previousUiEventTimestamp ? currentUiEventTimestamp : previousUiEventTimestamp;
+      
+      console.log(`   ✅ CORRECTED: Finding events between ${earlierTimestamp.toISOString()} and ${laterTimestamp.toISOString()}`);
+      
+      // Fetch events BETWEEN consecutive UI tree events (like sequential processor)
+      const { data: allBatchEvents, error: batchError } = await supabaseAdmin
+        .from('low_level_events_enriched')
+        .select('*')
+        .eq('user_id', userId)
+        .gt('created_at', earlierTimestamp.toISOString())  // AFTER earlier timestamp
+        .lt('created_at', laterTimestamp.toISOString())    // BEFORE later timestamp
+        .not('event_type', 'in', '(screenshot_diff,ui_tree)') // Exclude both screenshot_diff and ui_tree events
+        .order('created_at', { ascending: true });
+
+      if (batchError) {
+        console.error(`ERROR fetching batch events for batch ${displayIndex}:`, batchError);
+        return {
+          batchIndex: displayIndex,
+          uiEventId: uiEvent.id,
+          status: 'failed_no_events',
+          eventCount: 0,
+          processingTimeMs: Date.now() - batchStartTime,
+          error: `Error fetching events: ${batchError.message}`
+        };
+      }
+
+      batchEvents = allBatchEvents || [];
+
+      if (!batchEvents || batchEvents.length === 0) {
+        const processingTime = Date.now() - batchStartTime;
+        console.log(`WARNING [BATCH-${displayIndex}] No events found between UI tree boundaries (${processingTime}ms)`);
+        console.log(`WARNING [BATCH-${displayIndex}] UI tree window: ${earlierTimestamp.toISOString()} → ${laterTimestamp.toISOString()}`);
+        
+        return {
+          batchIndex: displayIndex,
+          uiEventId: uiEvent.id,
+          status: 'empty_no_events',
+          eventCount: 0,
+          processingTimeMs: processingTime
+        };
+      }
+
+      console.log(`SUCCESS [BATCH-${displayIndex}] Found ${batchEvents.length} events between UI tree boundaries`);
+    }
 
     // Find corresponding analysis using ONLY direct UI tree event ID matching
     console.log(`DEBUG Batch ${displayIndex}: Looking for analysis for UI event at ${currentUiEventTimestamp.toISOString()}`);
@@ -524,8 +573,8 @@ async function processSingleBatch(params: BatchProcessingParams): Promise<BatchR
         processingTimeMs: totalProcessingTime,
         annotations: enrichedAnnotations,
         batchAnalysis,
-        startTime: previousUiEventTimestamp, // Use previous UI tree event as start time
-        endTime: currentUiEventTimestamp // Use current UI tree event as end time
+        startTime: earlierTimestamp, // Use start of time window
+        endTime: laterTimestamp // Use end of time window
       };
     } else {
       const totalProcessingTime = Date.now() - batchStartTime;
@@ -870,7 +919,8 @@ export async function POST(req: NextRequest) {
             synthesis_session_id,
             totalBatches,
             TIMELINE_MAPPING_ANALYSIS_PROMPT,
-            SINGLE_BATCH_MAPPING_SCHEMA
+            SINGLE_BATCH_MAPPING_SCHEMA,
+            startDate // Pass startDate for timeline boundary
           }).then(result => {
             // Handle completion in real-time
             handleBatchCompletion(result);
