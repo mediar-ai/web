@@ -113,3 +113,6 @@ test-screenshot.*
 *.sql.gz
 *.backup
 modal.logs
+
+# clerk configuration (can include secrets)
+/.clerk/
