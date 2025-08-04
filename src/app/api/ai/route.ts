@@ -1009,7 +1009,7 @@ export async function POST(request: NextRequest) {
     // Extract parameters using OpenAI-compatible names
     const {
       messages,
-      model = 'gemini-2.5-flash',
+      model = 'gemini-2.5-pro',
       tools,
       max_tokens = 1000,
       maxTokens = 1000,
