@@ -1,7 +1,7 @@
 # Windows Events Ingestion API
 
 This document outlines how to send low-level events from the Windows recorder to the Mediar application for processing and analysis.
-
+                            
 ## Endpoint
 
 - **URL:** `https://app.mediar.ai/api/ingest`
@@ -10,8 +10,7 @@ This document outlines how to send low-level events from the Windows recorder to
 
 ## General Request Structure
 
-All requests must be a `POST` with a JSON body. The body must contain a `session_id`, an optional `user_id`, and a `payload` object. The server uses the `payload.type` field to determine how to process the event.
-
+All requests must be a `POST` with a JSON body. The body must contain a `session_id`, an optional `user_id`, and a `payload` object. The server uses the `payload.type` field to determine how to process the event.    
 ```json
 {
   "session_id": "your-session-id",
@@ -35,10 +34,10 @@ There are three primary ways to send data, based on the `payload.type`.
 ### Path 1: Meaningful Event (with UI Tree)
 
 This is the primary method for capturing a complete snapshot of the UI state. It is the equivalent of an "Initial Dump" in the web recorder workflow.
-
+                            
 - **`payload.type`**: `meaningful_event`
 - **`payload.event` object**: Must contain a `screen` object with a `ui_tree` string. A `screenshot_data` string is optional but recommended for better analysis.
-
+                            
 #### Example Body
 
 ```json
@@ -51,7 +50,7 @@ This is the primary method for capturing a complete snapshot of the UI state. It
     "event": {
       "mouse": null,
       "screen": {
-g        "ui_tree": "{\\\"id\\\": ... }"
+        "ui_tree": "{\\\"id\\\": ... }"
       }
     }
   }
@@ -63,7 +62,7 @@ g        "ui_tree": "{\\\"id\\\": ... }"
 ### Path 2: Screenshot Diff
 
 This path is used to get a detailed analysis of a visual change between two screenshots. It is the equivalent of a "UI Diff" in the web recorder workflow.
-
+                            
 - **`payload.type`**: `screenshot_diff`
 - **`payload.event` object**: Must contain a `screenshot_diff` object with the following fields:
   - `before`: The base64 data URL for the "before" image. Use `null` if not available (not empty string).
@@ -130,7 +129,7 @@ When sending screenshot data in the `screenshot_diff` event:
 - The server will normalize empty strings to `null` for backward compatibility
 - Both `before` and `after` screenshots are required for a standard diff operation
 - If only the `after` screenshot is provided (first screenshot case), it will be processed as an initial dump
-
+                            
 ### Error Responses
 
 If the request contains invalid screenshot data, the server will return a `400` error with debug information including:
@@ -143,7 +142,7 @@ If the request contains invalid screenshot data, the server will return a `400` 
 ## Success Response
 
 A successful request will return a `200 OK` status. If the request included screenshots that were processed, the response body will detail the outcome. Note that analysis happens asynchronously, so the success response only confirms that the event was received.
-
+                                                        
 ### Example Response
 
 ```json
@@ -151,4 +150,4 @@ A successful request will return a `200 OK` status. If the request included scre
   "message": "Event ingested successfully",
   "dbInsertSuccess": true
 }
-``` 
+```
