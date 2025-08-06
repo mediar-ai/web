@@ -1,4 +1,4 @@
-import type { WorkflowRecord, WorkflowVariable, MCPTool, JSONSchemaProperty, AutomationSequence, WorkflowStep, SchemaAnalysisResult } from './types';
+import type { AutomationSequence, JSONSchemaProperty, MCPTool, SchemaAnalysisResult, WorkflowRecord, WorkflowStep, WorkflowVariable } from './types';
 
 /**
  * Generate an MCP tool from a workflow record
@@ -8,8 +8,14 @@ export async function generateToolFromWorkflow(workflow: WorkflowRecord): Promis
   console.log(`[FIX] [MCP] Generating MCP tool for workflow: ${workflow.name} (ID: ${workflow.id})`);
 
   try {
+    // Normalize automation_sequence to always be an array
+    let sequences = workflow.automation_sequence;
+    if (!Array.isArray(sequences)) {
+      sequences = [sequences];
+    }
+    
     // Use the same schema analysis logic as your existing /schema endpoint
-    const { coreVariables, conditionalVariables } = analyzeAutomationSequence(workflow.automation_sequence);
+    const { coreVariables, conditionalVariables } = analyzeAutomationSequence(sequences);
     
     // Merge core and conditional variables
     const mergedSchema = { ...coreVariables, ...conditionalVariables };
