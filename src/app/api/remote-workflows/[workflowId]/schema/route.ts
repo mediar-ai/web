@@ -31,147 +31,8 @@ interface AutomationSequence {
   };
 }
 
-// Helper function to extract variables from a step's arguments
-function extractVariablesFromStep(step: WorkflowStep, variables: Set<string>) {
-  if (!step || !step.arguments) return;
-  
-  const extractFromValue = (value: unknown): void => {
-    if (typeof value === 'string') {
-      // Extract {{variable}} patterns
-      const matches = value.match(/\{\{([^}]+)\}\}/g);
-      if (matches) {
-        matches.forEach(match => {
-          const varName = match.replace(/\{\{|\}\}/g, '').trim();
-          variables.add(varName);
-        });
-      }
-    } else if (typeof value === 'object' && value !== null) {
-      Object.values(value).forEach(v => extractFromValue(v));
-    }
-  };
-  
-  extractFromValue(step.arguments);
-}
 
-// Helper function to check if variable is used in any conditional branch
-function isVariableUsedInAnyBranch(varName: string, conditionalBranches: Record<string, Record<string, Set<string>>>): boolean {
-  for (const controlVar in conditionalBranches) {
-    for (const branchValue in conditionalBranches[controlVar]) {
-      if (conditionalBranches[controlVar][branchValue].has(varName)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
 
-// Analyze automation sequence to identify conditional logic (reused from overview endpoint)
-function analyzeAutomationSequence(automationSequence: JSONValue[] | AutomationSequence[]) {
-  if (!automationSequence || !Array.isArray(automationSequence) || automationSequence.length === 0) {
-    return { coreVariables: {}, conditionalVariables: {} };
-  }
-  
-  const mainSequence = automationSequence[0] as JSONObject | AutomationSequence;
-  
-  // Handle both JSONObject and AutomationSequence types
-  const arguments_obj = mainSequence.arguments as JSONObject | undefined;
-  if (!arguments_obj || !arguments_obj.variables) {
-    return { coreVariables: {}, conditionalVariables: {} };
-  }
-  
-  const allVariables = arguments_obj.variables as unknown as Record<string, WorkflowVariable>;
-  const steps = (arguments_obj.steps || []) as WorkflowStep[];
-  
-  // Track which variables are used in unconditional vs conditional contexts
-  const unconditionalVars = new Set<string>();
-  const conditionalBranches: Record<string, Record<string, Set<string>>> = {};
-  
-  // Process each step
-  steps.forEach((step: WorkflowStep) => {
-    if (step.group_name && step.if) {
-      // This is a conditional group
-      const condition = step.if;
-      // Parse condition like "quote_type == 'Face Value'"
-      const conditionMatch = condition.match(/(\w+)\s*==\s*['"]([^'"]+)['"]/);
-      if (conditionMatch) {
-        const [, controlVar, value] = conditionMatch;
-        
-        if (!conditionalBranches[controlVar]) {
-          conditionalBranches[controlVar] = {};
-        }
-        
-        // Extract variables used in this branch
-        const branchVars = new Set<string>();
-        if (step.steps && Array.isArray(step.steps)) {
-          step.steps.forEach((subStep: WorkflowStep) => {
-            extractVariablesFromStep(subStep, branchVars);
-          });
-        }
-        
-        conditionalBranches[controlVar][value] = branchVars;
-      }
-    } else if (step.steps && Array.isArray(step.steps)) {
-      // Unconditional group
-      step.steps.forEach((subStep: WorkflowStep) => {
-        extractVariablesFromStep(subStep, unconditionalVars);
-      });
-    } else {
-      // Single unconditional step
-      extractVariablesFromStep(step, unconditionalVars);
-    }
-  });
-  
-  // Build the hierarchical schema
-  const coreVariables: Record<string, WorkflowVariable> = {};
-  const conditionalVariables: Record<string, WorkflowVariable & { controls?: Record<string, Record<string, WorkflowVariable>> }> = {};
-  
-  // Process all variables
-  Object.entries(allVariables).forEach(([varName, varDef]) => {
-    // Check if this variable is a controlling variable
-    if (conditionalBranches[varName]) {
-      // This is a controlling variable
-      conditionalVariables[varName] = {
-        ...varDef,
-        controls: {}
-      };
-      
-      // For each branch value, find variables used only in that branch
-      Object.entries(conditionalBranches[varName]).forEach(([branchValue, branchVars]) => {
-        const branchSpecificVars: Record<string, unknown> = {};
-        
-        (branchVars as Set<string>).forEach(usedVar => {
-          // Remove prefixes like "selectors." to get the base variable name
-          const baseVarName = usedVar.split('.').pop() || usedVar;
-          
-          // Check if this variable exists in allVariables and is not used unconditionally
-          Object.entries(allVariables).forEach(([fullVarName, fullVarDef]) => {
-            if (fullVarName === baseVarName || fullVarName.endsWith(baseVarName)) {
-              if (!unconditionalVars.has(fullVarName) && !unconditionalVars.has(usedVar)) {
-                // Create branch-specific parameter name to avoid conflicts
-                const branchSpecificName = `${fullVarName}_${branchValue.toLowerCase().replace(/\s+/g, '_')}`;
-                branchSpecificVars[branchSpecificName] = {
-                  ...fullVarDef,
-                  // Add metadata to track the original variable name
-                  _originalName: fullVarName,
-                  _branchValue: branchValue
-                };
-              }
-            }
-          });
-        });
-        
-        if (Object.keys(branchSpecificVars).length > 0) {
-          (conditionalVariables[varName] as unknown as { controls: Record<string, unknown> }).controls[branchValue] = branchSpecificVars;
-        }
-      });
-    } else if (!isVariableUsedInAnyBranch(varName, conditionalBranches)) {
-      // This is a core variable (not used exclusively in branches)
-      coreVariables[varName] = varDef;
-    }
-  });
-  
-  return { coreVariables, conditionalVariables };
-}
 
 // Helper to extract default values from hierarchical schema
 function extractDefaultsFromHierarchical(schema: Record<string, unknown>): Record<string, unknown> {
@@ -435,6 +296,65 @@ function extractValidationRules(schema: Record<string, unknown>): Record<string,
   return rules;
 }
 
+// Helper to check if parameter is internal/system parameter
+function isInternalParameter(key: string): boolean {
+  const internalParams = [
+    'url',
+    'selectors', 
+    'output_parser',
+    'quote_parser',
+    'products_parser',
+    'steps'
+  ];
+  
+  return internalParams.includes(key) || key.endsWith('_parser') || key.startsWith('_');
+}
+
+// Analyze automation sequence to extract variables
+function analyzeAutomationSequence(sequences: AutomationSequence[]): { coreVariables: Record<string, WorkflowVariable>; conditionalVariables: Record<string, WorkflowVariable> } {
+  const coreVariables: Record<string, WorkflowVariable> = {};
+  const conditionalVariables: Record<string, WorkflowVariable> = {};
+
+  for (const sequence of sequences) {
+    if (sequence.arguments?.variables) {
+      // Core variables from the main arguments
+      Object.entries(sequence.arguments.variables).forEach(([key, variable]) => {
+        if (!isInternalParameter(key)) {
+          coreVariables[key] = variable;
+        }
+      });
+    }
+
+    // Analyze conditional steps for additional variables
+    if (sequence.arguments?.steps) {
+      analyzeStepsForVariables(sequence.arguments.steps, conditionalVariables);
+    }
+  }
+
+  return { coreVariables, conditionalVariables };
+}
+
+// Recursively analyze steps for conditional variables
+function analyzeStepsForVariables(steps: WorkflowStep[], conditionalVars: Record<string, WorkflowVariable>): void {
+  for (const step of steps) {
+    if (step.steps) {
+      analyzeStepsForVariables(step.steps, conditionalVars);
+    }
+    
+    // Extract variables from step arguments
+    if (step.arguments) {
+      Object.entries(step.arguments).forEach(([key, value]) => {
+        if (typeof value === 'object' && value !== null && 'type' in value) {
+          const variable = value as WorkflowVariable;
+          if (!isInternalParameter(key)) {
+            conditionalVars[key] = variable;
+          }
+        }
+      });
+    }
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }
@@ -550,17 +470,28 @@ export async function GET(
     let expectedOutputs = {};
 
     try {
-      if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
+      // Handle both object and array formats for automation_sequence
+      let automationSequenceArray;
+      if (workflow.automation_sequence) {
+        if (Array.isArray(workflow.automation_sequence)) {
+          automationSequenceArray = workflow.automation_sequence;
+        } else if (typeof workflow.automation_sequence === 'object') {
+          // Convert single object to array
+          automationSequenceArray = [workflow.automation_sequence];
+        }
+      }
+      
+      if (automationSequenceArray && automationSequenceArray.length > 0) {
         console.log(`🔍 Analyzing automation sequence for workflow ${workflowIdNum}...`);
         
         // Analyze the automation sequence for conditional logic
-        const { coreVariables, conditionalVariables } = analyzeAutomationSequence(workflow.automation_sequence);
+        const { coreVariables, conditionalVariables } = analyzeAutomationSequence(automationSequenceArray);
         
         // Merge core and conditional variables into a hierarchical schema
         const mergedSchema = { ...coreVariables, ...conditionalVariables };
         
         // Transform the schema for UI (convert enum to select, array to checkbox-list, etc.)
-        const transformedSchema = transformVariablesToSchema(mergedSchema as unknown as JSONObject, workflow.automation_sequence);
+        const transformedSchema = transformVariablesToSchema(mergedSchema as unknown as JSONObject, automationSequenceArray);
         
         // Filter out internal/technical parameters from the public API documentation
         const filteredSchema = filterInternalParameters(transformedSchema);
@@ -577,7 +508,7 @@ export async function GET(
         validationRules = extractValidationRules(apiReadySchema);
         
         // Extract expected outputs
-        const mainSequence = workflow.automation_sequence[0];
+        const mainSequence = automationSequenceArray[0];
         if (mainSequence.arguments && mainSequence.arguments.output_parser && mainSequence.arguments.output_parser.fieldsToExtract) {
           expectedOutputs = Object.keys(mainSequence.arguments.output_parser.fieldsToExtract).reduce((acc, key) => {
             acc[key] = "dynamically extracted";
