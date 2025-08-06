@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
+import { NextRequest, NextResponse } from 'next/server';
+import { v4 as uuidv4 } from 'uuid';
 
 type JsonValue = string | number | boolean | { [x: string]: JsonValue } | Array<JsonValue>;
 type JsonObject = { [x: string]: JsonValue };
@@ -27,6 +27,8 @@ const getArrayFields = async (workflowId: number, supabase: ReturnType<typeof cr
       const mainSequence = workflow.automation_sequence[0];
       const variables = mainSequence?.arguments?.variables || {};
       
+      console.log('🔍 BATCH EXECUTE: Analyzing variables for array fields:', Object.keys(variables));
+      
       // Recursively find array-type fields
       const findArrayFields = (obj: Record<string, JsonValue>, prefix = '') => {
         Object.entries(obj).forEach(([key, value]) => {
@@ -34,10 +36,12 @@ const getArrayFields = async (workflowId: number, supabase: ReturnType<typeof cr
           
           if (value && typeof value === 'object' && !Array.isArray(value)) {
             const valueObj = value as Record<string, JsonValue>;
-            // Check if this is a parameter definition
+            console.log(`🔍 BATCH EXECUTE: Checking ${fullKey}: type=${valueObj.type}, hasOptions=${!!valueObj.options}`);
+            
+            // Check if this is a parameter definition with array type
             if (valueObj.type === 'array') {
               arrayFields.add(fullKey);
-              console.log(`🔍 Identified array field: ${fullKey}`);
+              console.log(`✅ BATCH EXECUTE: Identified array field: ${fullKey}`);
             } else if (!valueObj.type && !valueObj.description && !valueObj.hasOwnProperty('default')) {
               // This might be a nested group - recurse
               findArrayFields(valueObj, fullKey);
@@ -47,6 +51,7 @@ const getArrayFields = async (workflowId: number, supabase: ReturnType<typeof cr
       };
       
       findArrayFields(variables);
+      console.log('🔍 BATCH EXECUTE: Final array fields detected:', Array.from(arrayFields));
     }
   } catch (error) {
     console.warn('[WARN] Error analyzing workflow schema for array fields:', error);
@@ -289,6 +294,14 @@ export async function POST(
     
     // Generate all unique parameter combinations
     const arrayFields = await getArrayFields(workflowIdNum, createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!));
+    
+    // 🔧 TEMPORARY FIX: Hardcode known array fields that should be treated as checkbox fields
+    // These fields should be treated as a single selection, not iterated over
+    const knownArrayFields = new Set(['product_types']);
+    knownArrayFields.forEach(field => arrayFields.add(field));
+    
+    console.log('🔧 BATCH EXECUTE: Combined array fields (detected + hardcoded):', Array.from(arrayFields));
+    
     const combinations = isSingleExecution ? [{}] : await getCombinations(dynamic_parameters, arrayFields);
     
     console.log('🎯 BATCH EXECUTE: Generated combinations:', combinations.length);
