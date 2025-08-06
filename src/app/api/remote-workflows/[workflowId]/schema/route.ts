@@ -1,5 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
+
+// Import the required types
+type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue> | null;
+type JSONObject = { [x: string]: JSONValue };
 
 // Define types for workflow components (reused from overview endpoint)
 interface WorkflowStep {
@@ -62,18 +66,21 @@ function isVariableUsedInAnyBranch(varName: string, conditionalBranches: Record<
 }
 
 // Analyze automation sequence to identify conditional logic (reused from overview endpoint)
-function analyzeAutomationSequence(automationSequence: AutomationSequence[]) {
+function analyzeAutomationSequence(automationSequence: JSONValue[] | AutomationSequence[]) {
   if (!automationSequence || !Array.isArray(automationSequence) || automationSequence.length === 0) {
     return { coreVariables: {}, conditionalVariables: {} };
   }
   
-  const mainSequence = automationSequence[0];
-  if (!mainSequence.arguments || !mainSequence.arguments.variables) {
+  const mainSequence = automationSequence[0] as JSONObject | AutomationSequence;
+  
+  // Handle both JSONObject and AutomationSequence types
+  const arguments_obj = mainSequence.arguments as JSONObject | undefined;
+  if (!arguments_obj || !arguments_obj.variables) {
     return { coreVariables: {}, conditionalVariables: {} };
   }
   
-  const allVariables = mainSequence.arguments.variables;
-  const steps = mainSequence.arguments.steps || [];
+  const allVariables = arguments_obj.variables as unknown as Record<string, WorkflowVariable>;
+  const steps = (arguments_obj.steps || []) as WorkflowStep[];
   
   // Track which variables are used in unconditional vs conditional contexts
   const unconditionalVars = new Set<string>();
@@ -186,6 +193,150 @@ function extractDefaultsFromHierarchical(schema: Record<string, unknown>): Recor
   }
   return defaults;
 }
+
+// Helper function to extract steps from nested automation sequence
+function extractStepsFromSequence(automationSequence: JSONValue[]): JSONValue[] {
+  const allSteps: JSONValue[] = [];
+  
+  function collectSteps(items: JSONValue[]) {
+    items.forEach(item => {
+      const obj = item as JSONObject;
+      if (obj.steps && Array.isArray(obj.steps)) {
+        allSteps.push(...obj.steps);
+        collectSteps(obj.steps);
+      } else {
+        allSteps.push(item);
+      }
+    });
+  }
+  
+  collectSteps(automationSequence);
+  return allSteps;
+}
+
+// Helper function to detect checkbox-list fields based on workflow patterns
+function detectCheckboxListFields(
+  allVariables: Record<string, JSONValue>, 
+  automationSequence: JSONValue[]
+): Record<string, boolean> {
+  const checkboxFields: Record<string, boolean> = {};
+  const allSteps = extractStepsFromSequence(automationSequence);
+  
+  Object.entries(allVariables).forEach(([varName, varDef]) => {
+    const variable = varDef as JSONObject;
+    
+    // Rule 1: Simple heuristic - array type with options
+    if (variable.type === 'array' && Array.isArray(variable.options)) {
+      checkboxFields[varName] = true;
+      return;
+    }
+    
+    // Rule 2: Array type with default values (fallback for when options aren't explicit)
+    if (variable.type === 'array' && Array.isArray(variable.default) && variable.default.length > 0) {
+      // Check for automation sequence patterns to confirm checkbox behavior
+      const hasCheckboxPatterns = allSteps.some(stepValue => {
+        const step = stepValue as JSONObject;
+        
+        // Pattern A: set_toggled with contains()
+        if (step.tool_name === 'set_toggled' && 
+          step.arguments &&
+          typeof (step.arguments as JSONObject).state === 'string' &&
+            ((step.arguments as JSONObject).state as string).includes(`contains(${varName},`)) {
+          return true;
+        }
+        
+        // Pattern B: Conditional groups with contains() or !contains()
+        if (step.if && typeof step.if === 'string' &&
+            (step.if.includes(`contains(${varName},`) || 
+             step.if.includes(`!contains(${varName},`))) {
+          return true;
+        }
+        
+        // Pattern C: Group names that suggest checkbox behavior
+        if (step.group_name && typeof step.group_name === 'string' &&
+            step.if && typeof step.if === 'string' &&
+            (step.if.includes(`contains(${varName},`) || 
+             step.if.includes(`!contains(${varName},`))) {
+          return true;
+        }
+        
+        return false;
+      });
+      
+      if (hasCheckboxPatterns) {
+        checkboxFields[varName] = true;
+      }
+    }
+  });
+  
+  return checkboxFields;
+}
+
+
+
+// Helper to recursively transform variables into a UI-friendly schema
+const transformVariablesToSchema = (variables: JSONObject, automationSequence: JSONValue[] = []): JSONObject => {
+  const schema: JSONObject = {};
+  const checkboxFields = detectCheckboxListFields(variables, automationSequence);
+  
+  for (const key in variables) {
+    if (Object.prototype.hasOwnProperty.call(variables, key)) {
+      const variable = { ...(variables[key] as JSONObject) };
+
+      // Convert "enum" to "select" for the UI component
+      if (variable.type === 'enum' && Array.isArray(variable.options)) {
+        variable.type = 'select';
+      }
+      // Convert detected checkbox arrays to checkbox-list
+      else if (checkboxFields[key]) {
+        variable.type = 'checkbox-list';
+        
+        // Use explicit options if available
+        if (Array.isArray(variable.options)) {
+          // Deduplicate options to avoid key conflicts
+          const uniqueOptions = [...new Set(variable.options as string[])];
+          variable.options = uniqueOptions.map(item => ({
+            value: item,
+            label: item
+          }));
+        }
+        // Fallback: generate options from default values
+        else if (Array.isArray(variable.default)) {
+          // Deduplicate options to avoid key conflicts
+          const uniqueDefaults = [...new Set(variable.default as string[])];
+          variable.options = uniqueDefaults.map(item => ({
+            value: item,
+            label: item
+          }));
+        }
+      }
+      // Simple fallback: if it's an array type, convert to checkbox-list
+      else if (variable.type === 'array') {
+        variable.type = 'checkbox-list';
+        
+        // Generate options from available sources
+        if (Array.isArray(variable.options)) {
+          // Deduplicate options to avoid key conflicts
+          const uniqueOptions = [...new Set(variable.options as string[])];
+          variable.options = uniqueOptions.map(item => ({
+            value: item,
+            label: item
+          }));
+        } else if (Array.isArray(variable.default)) {
+          // Deduplicate options to avoid key conflicts
+          const uniqueDefaults = [...new Set(variable.default as string[])];
+          variable.options = uniqueDefaults.map(item => ({
+            value: item,
+            label: item
+          }));
+        }
+      }
+      
+      schema[key] = variable;
+    }
+  }
+  return schema;
+};
 
 // Helper to filter out internal/technical parameters that API users don't need to see
 function filterInternalParameters(schema: Record<string, unknown>): Record<string, unknown> {
@@ -408,8 +559,11 @@ export async function GET(
         // Merge core and conditional variables into a hierarchical schema
         const mergedSchema = { ...coreVariables, ...conditionalVariables };
         
+        // Transform the schema for UI (convert enum to select, array to checkbox-list, etc.)
+        const transformedSchema = transformVariablesToSchema(mergedSchema as unknown as JSONObject, workflow.automation_sequence);
+        
         // Filter out internal/technical parameters from the public API documentation
-        const filteredSchema = filterInternalParameters(mergedSchema);
+        const filteredSchema = filterInternalParameters(transformedSchema);
         
         // Convert conditional branch-specific parameters back to original parameter names for API docs
         // This ensures docs show what users should actually send to the execute endpoint

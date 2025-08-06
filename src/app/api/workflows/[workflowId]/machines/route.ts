@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -137,7 +137,7 @@ export async function GET(
         name: workflow.name,
         status: workflow.status
       },
-      assignments: (assignments || []).map(assignment => {
+      assignments: (assignments || []).map((assignment) => {
         const machine = Array.isArray(assignment.remote_machines) 
           ? assignment.remote_machines[0] 
           : assignment.remote_machines;
