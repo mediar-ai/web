@@ -5,15 +5,15 @@ import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { supabase } from '@/lib/supabase';
+
 import {
-  Execution,
-  LiveExecutionStatus,
-  WorkflowOverview,
-  WorkflowWithSettings,
+    Execution,
+    LiveExecutionStatus,
+    WorkflowOverview,
+    WorkflowWithSettings,
 } from '@/lib/workflow-types';
 import { SignIn, useAuth, useOrganization } from '@clerk/nextjs';
-import { RealtimeChannel } from '@supabase/supabase-js';
+
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -128,9 +128,7 @@ function AuthenticatedWorkflowsPage({
   const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(null);
   const [loadingExecutions, setLoadingExecutions] = useState(true);
 
-  // Add connection status tracking
-  const [realtimeConnected, setRealtimeConnected] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState<number | null>(null);
+  // Simple polling implementation - no realtime dependencies needed
 
   // Fetch workflows
   const fetchWorkflows = useCallback(async (showLoading = true) => {
@@ -247,155 +245,30 @@ function AuthenticatedWorkflowsPage({
     fetchLiveExecutions();
   }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
 
-  // Enhanced polling fallback system
+  // Simple 2-second polling for live execution updates
   useEffect(() => {
     let pollTimer: NodeJS.Timeout | null = null;
     
-    if (pollingInterval && pollingInterval > 0) {
-      console.log(`[STATS] [POLLING] Starting enhanced polling every ${pollingInterval}ms`);
-      
-      const doPoll = () => {
-        console.log('[STATS] [POLLING] Refreshing data...');
-        fetchLiveExecutions();
-        fetchExecutions(false);
-        fetchWorkflows(false);
-      };
-      
-      // Initial poll
-      doPoll();
-      
-      // Set up interval
-      pollTimer = setInterval(doPoll, pollingInterval);
-    }
+    console.log('[POLLING] Starting 2-second polling for execution updates...');
+    
+    const doPoll = () => {
+      // Only fetch live executions and executions (not workflows) to minimize load
+      fetchLiveExecutions();
+      fetchExecutions(false); // false = don't show loading spinner
+    };
+    
+    // Set up 2-second interval polling
+    pollTimer = setInterval(doPoll, 2000);
     
     return () => {
       if (pollTimer) {
         clearInterval(pollTimer);
-        console.log('[STATS] [POLLING] Stopped polling');
+        console.log('[POLLING] Stopped polling');
       }
     };
-  }, [pollingInterval, fetchLiveExecutions, fetchExecutions, fetchWorkflows]);
+  }, [fetchLiveExecutions, fetchExecutions]);
 
-  // Real-time subscriptions for live updates
-  useEffect(() => {
-    let channel: RealtimeChannel | null = null;
-    let retryTimeout: NodeJS.Timeout | null = null;
-    let connectionAttempts = 0;
-    const MAX_RETRY_ATTEMPTS = 5;
-    const RETRY_DELAY = 2000;
-
-    const setupRealtimeSubscription = async () => {
-      try {
-        connectionAttempts++;
-        console.log(`[NETWORK] [SUBSCRIPTION] Attempt ${connectionAttempts}/${MAX_RETRY_ATTEMPTS} - Setting up realtime subscription...`);
-
-        // Clean up existing channel
-        if (channel) {
-          await supabase.removeChannel(channel);
-          channel = null;
-        }
-
-        // Create channel with improved configuration
-        channel = supabase
-          .channel('workflow-dashboard-updates', {
-            config: {
-              broadcast: { self: false },
-              presence: { key: 'user_id' }
-            }
-          })
-          .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'workflow_executions'
-          }, (payload: { eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
-            console.log('[NETWORK] [REALTIME] workflow_executions change:', payload);
-            
-            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-              // Force refresh execution data to get latest changes
-              fetchLiveExecutions();
-              
-              // Also refresh the main executions list if needed
-              if (payload.eventType === 'INSERT') {
-                // New execution created - refresh the main list too
-                fetchExecutions(false);
-              }
-            }
-          })
-          .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'deployed_workflows'
-          }, (payload: { eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
-            console.log('[NETWORK] [REALTIME] deployed_workflows change:', payload);
-            // Refetch workflows when they change
-            fetchWorkflows();
-          })
-          .subscribe(async (status: string, err?: Error) => {
-            console.log('[NETWORK] [SUBSCRIPTION] Status change:', {
-              status,
-              error: err,
-              timestamp: new Date().toISOString(),
-              attempt: connectionAttempts
-            });
-            
-            if (status === 'SUBSCRIBED') {
-              console.log('[NETWORK] [SUBSCRIPTION] [SUCCESS] Successfully connected to realtime');
-              setRealtimeConnected(true);
-              connectionAttempts = 0; // Reset counter on success
-              
-              // Clear any pending retries
-              if (retryTimeout) {
-                clearTimeout(retryTimeout);
-                retryTimeout = null;
-              }
-              
-            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-              console.log(`[NETWORK] [SUBSCRIPTION] [WARN] Connection failed: ${status}`);
-              
-              // If we have retry attempts left, try again
-              if (connectionAttempts < MAX_RETRY_ATTEMPTS) {
-                console.log(`[NETWORK] [SUBSCRIPTION] 🔄 Retrying in ${RETRY_DELAY}ms...`);
-                retryTimeout = setTimeout(() => {
-                  setupRealtimeSubscription();
-                }, RETRY_DELAY);
-              } else {
-                console.log('[NETWORK] [SUBSCRIPTION] [ERROR] Max retry attempts reached, falling back to polling');
-                setRealtimeConnected(false);
-                // Fall back to polling every 10 seconds
-                setPollingInterval(10000);
-              }
-            }
-          });
-
-      } catch (error) {
-        console.error('[NETWORK] [SUBSCRIPTION] Setup error:', error);
-        
-        // Retry if we haven't exceeded max attempts
-        if (connectionAttempts < MAX_RETRY_ATTEMPTS) {
-          retryTimeout = setTimeout(() => {
-            setupRealtimeSubscription();
-          }, RETRY_DELAY);
-        } else {
-          console.log('[NETWORK] [SUBSCRIPTION] Falling back to polling mode');
-          setRealtimeConnected(false);
-          setPollingInterval(10000);
-        }
-      }
-    };
-
-    // Initial setup
-    setupRealtimeSubscription();
-
-    // Cleanup function
-    return () => {
-      if (retryTimeout) {
-        clearTimeout(retryTimeout);
-      }
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
-    };
-  }, [fetchLiveExecutions, fetchWorkflows, fetchExecutions]);
+  // Note: Removed complex realtime subscription setup - now using simple 2-second polling above
 
   useEffect(() => {
     previousWorkflows.current = workflows;
@@ -554,11 +427,9 @@ function AuthenticatedWorkflowsPage({
               loadingDetails={loadingDetails}
               loadingExecutionId={loadingExecutionId}
               loadingExecutions={loadingExecutions}
-              realtimeConnected={realtimeConnected}
 
               onBatchSubmit={() => {
-                fetchExecutions();
-                fetchLiveExecutions();
+                // No manual refresh needed - 2-second polling will handle updates
               }}
             />
           ))}

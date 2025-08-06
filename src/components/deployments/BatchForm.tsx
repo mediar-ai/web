@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X, CornerDownLeft } from 'lucide-react';
+import { CornerDownLeft, X } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
 type JsonValue = string | number | boolean | { [x: string]: JsonValue } | Array<JsonValue> | null;
 type JsonObject = { [x:string]: JsonValue };
@@ -229,11 +229,11 @@ const ParameterField = ({
                 <SelectValue placeholder="Select a value..." />
               </SelectTrigger>
               <SelectContent>
-                {schema.options.map((option: { value: string; label: string }) => {
+                {schema.options.map((option: { value: string; label: string }, index: number) => {
                   const isSelected = values.some(v => String(v) === option.value);
                   return (
                     <SelectItem
-                      key={option.value}
+                      key={`${path}-option-${option.value}-${index}`}
                       value={option.value}
                       disabled={isSelected}
                       className={isSelected ? 'text-muted-foreground line-through' : ''}
@@ -297,7 +297,7 @@ const ParameterField = ({
         <div className="w-full flex-1 flex items-center gap-2">
             <div className="flex flex-wrap gap-1 flex-1">
                 {values.map((val, index) => (
-                <div key={index} className={`relative group flex items-center gap-1 bg-gray-100 hover:bg-gray-200 rounded-md px-1.5 py-0.5 text-xs transition-colors border ${error ? 'border-red-500' : 'border-black'}`}>
+                <div key={`${path}-${val}-${index}`} className={`relative group flex items-center gap-1 bg-gray-100 hover:bg-gray-200 rounded-md px-1.5 py-0.5 text-xs transition-colors border ${error ? 'border-red-500' : 'border-black'}`}>
                     <span>{String(val)}</span>
                     <button onClick={() => onRemoveValue(path, index)} className="text-gray-500 hover:text-black" disabled={disabled}>
                     <X className="h-3 w-3" />
@@ -351,12 +351,12 @@ const ParameterRow = ({
           {Object.entries(schemaItem.controls).map(([branchValue, branchControls]) => {
             const isSelected = selectedValues.includes(branchValue);
             return (
-              <div key={branchValue}>
+              <div key={`${path}-branch-${branchValue}`}>
                 <h4 className={`text-sm font-medium mb-1.5 ${isSelected ? 'text-gray-800' : 'text-gray-400'}`}>{branchValue}</h4>
                 <div className="pl-3 space-y-3">
                 {isSelected && Object.entries(branchControls).map(([branchParamName, branchParamDef]) => (
                     <ParameterRow
-                      key={branchParamName}
+                      key={`${path}-${branchValue}-${branchParamName}`}
                       path={branchParamName}
                       schemaItem={branchParamDef}
                       dynamicValues={dynamicValues}
@@ -600,33 +600,35 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
               const schemaItem = schema[key] as SchemaItem;
               // Checkbox fields contribute 1 combination (all selected values are one parameter)
               // Other field types contribute values.length combinations (each value is separate)
-              if (schemaItem.type === 'checkbox-list') {
+              if (schemaItem && schemaItem.type === 'checkbox-list') {
                 branchCombinations *= 1;
                 console.log(`🔍 Global checkbox field ${key}: contributing 1 combination (${values.length} selected values)`);
               } else {
               branchCombinations *= values.length;
-                console.log(`🔍 Global ${schemaItem.type || 'field'} ${key}: contributing ${values.length} combinations`);
+                console.log(`🔍 Global ${schemaItem?.type || 'field'} ${key}: contributing ${values.length} combinations`);
               }
             }
           });
           
           // Multiply by this branch's specific parameters
           const branchParams = (schema[controlVar] as SchemaItem).controls![cVal as string];
-          Object.keys(branchParams).forEach(bpKey => {
-            const values = params[bpKey];
-            if (values && values.length > 0) {
-              const branchSchemaItem = branchParams[bpKey];
-              // Checkbox fields contribute 1 combination (all selected values are one parameter)
-              // Other field types contribute values.length combinations (each value is separate)
-              if (branchSchemaItem.type === 'checkbox-list') {
-                branchCombinations *= 1;
-                console.log(`🔍 Branch checkbox field ${bpKey}: contributing 1 combination (${values.length} selected values)`);
-              } else {
-              branchCombinations *= values.length;
-                console.log(`🔍 Branch ${branchSchemaItem.type || 'field'} ${bpKey}: contributing ${values.length} combinations`);
+          if (branchParams) {
+            Object.keys(branchParams).forEach(bpKey => {
+              const values = params[bpKey];
+              if (values && values.length > 0) {
+                const branchSchemaItem = branchParams[bpKey];
+                // Checkbox fields contribute 1 combination (all selected values are one parameter)
+                // Other field types contribute values.length combinations (each value is separate)
+                if (branchSchemaItem && branchSchemaItem.type === 'checkbox-list') {
+                  branchCombinations *= 1;
+                  console.log(`🔍 Branch checkbox field ${bpKey}: contributing 1 combination (${values.length} selected values)`);
+                } else {
+                branchCombinations *= values.length;
+                  console.log(`🔍 Branch ${branchSchemaItem?.type || 'field'} ${bpKey}: contributing ${values.length} combinations`);
+                }
               }
-            }
-          });
+            });
+          }
           totalCombinations += branchCombinations;
         });
 
@@ -638,12 +640,12 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
             const schemaItem = schema[key] as SchemaItem;
             // Checkbox fields contribute 1 combination (all selected values are one parameter)
             // Other field types contribute values.length combinations (each value is separate)
-            if (schemaItem.type === 'checkbox-list') {
+            if (schemaItem && schemaItem.type === 'checkbox-list') {
               totalCombinations *= 1;
               console.log(`🔍 Checkbox field ${key}: contributing 1 combination (${values.length} selected values)`);
             } else {
             totalCombinations *= values.length;
-              console.log(`🔍 ${schemaItem.type || 'Field'} ${key}: contributing ${values.length} combinations`);
+              console.log(`🔍 ${schemaItem?.type || 'Field'} ${key}: contributing ${values.length} combinations`);
             }
           }
         });

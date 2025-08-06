@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Loader2, FileText, Activity, ChevronDown, ChevronRight, Play, Upload } from 'lucide-react';
-import { WorkflowWithSettings, Execution, LiveExecutionStatus } from '@/lib/workflow-types';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { VersionUploadDialog } from '@/components/deployments/VersionUploadDialog';
+import { WorkflowSettingsModal } from '@/components/deployments/WorkflowSettingsModal';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Execution, LiveExecutionStatus, WorkflowWithSettings } from '@/lib/workflow-types';
+import { Activity, AlertCircle, CheckCircle, ChevronDown, ChevronRight, Clock, FileText, Loader2, Play, PlayCircle, Settings, Upload, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface WorkflowCardProps {
   workflow: WorkflowWithSettings;
@@ -22,7 +23,7 @@ interface WorkflowCardProps {
   loadingExecutions?: boolean;
   onBatchSubmit?: () => void;
   isNested?: boolean; // For styling nested settings workflows
-  realtimeConnected?: boolean; // Connection status for display
+
 }
 
 const getStatusBadge = (status: string) => {
@@ -78,12 +79,13 @@ export function WorkflowCard({
   loadingExecutions = false,
   onBatchSubmit,
   isNested,
-  realtimeConnected = false,
+
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [connectedWorkflowsExpanded, setConnectedWorkflowsExpanded] = useState(false);
   const [localTimeOffsets, setLocalTimeOffsets] = useState<Map<number, number>>(new Map());
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [resumingWorkflow, setResumingWorkflow] = useState(false);
   
   // Cache-related state for showing preview results for pending executions
@@ -451,6 +453,15 @@ export function WorkflowCard({
                 {loadingDetails ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
                 <span className="ml-2">DETAILS</span>
               </Button>
+              
+              <Button 
+                onClick={() => setShowSettingsModal(true)}
+                variant="black-outline"
+                size="lg"
+                className="font-mono text-base h-10 px-4 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg rounded-lg font-bold border-2 hover:bg-gray-50"
+              >
+                <Settings className="w-5 h-5" />
+              </Button>
             </div>
             
             <p className="text-black text-base mb-2">{workflow.description}</p>
@@ -517,17 +528,7 @@ export function WorkflowCard({
                         {recentExecutions.length > 0 && (
                           <Badge variant="black-outline" className="text-sm h-7 px-3">{recentExecutions.length} RECENT</Badge>
                         )}
-                        {/* Connection Status */}
-                        <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${
-                          realtimeConnected 
-                            ? 'bg-green-100 text-green-800 border border-green-200' 
-                            : 'bg-gray-100 text-gray-700 border border-gray-300'
-                        }`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${
-                            realtimeConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
-                          }`} />
-                          {realtimeConnected ? 'REALTIME' : 'POLLING'}
-                        </div>
+
                       </>
                     )}
                   </div>
@@ -743,6 +744,14 @@ export function WorkflowCard({
         open={showBatchTestDialog}
         onOpenChange={setShowBatchTestDialog}
         onSubmit={onBatchSubmit}
+      />
+      
+      {/* Workflow Settings Modal */}
+      <WorkflowSettingsModal 
+        workflow={workflow}
+        open={showSettingsModal}
+        onOpenChange={setShowSettingsModal}
+        onSettingsUpdated={onBatchSubmit} // Refresh workflow data after settings change
       />
     </Card>
   );
