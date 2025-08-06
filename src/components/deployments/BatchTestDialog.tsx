@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Server } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { BatchForm } from '@/components/deployments/BatchForm';
 import { Workflow } from '@/lib/workflow-types';
@@ -60,12 +60,19 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
   
   // Machine selection state
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
-  const [selectedMachineId, setSelectedMachineId] = useState<string>('1'); // Default to VM (machine 1)
+  const [selectedMachineId, setSelectedMachineId] = useState<string>('1'); // Will be updated based on workflow assignments
   const [loadingMachines, setLoadingMachines] = useState(false);
 
   // Version selection state
   const [availableVersions, setAvailableVersions] = useState<WorkflowVersion[]>([]);
-  const [selectedVersionNumber, setSelectedVersionNumber] = useState<string>('__ACTIVE__');
+  const [selectedVersionNumber, setSelectedVersionNumber] = useState<string>('');
+  
+  // Version-specific schema state - stores schema for the selected version
+  const [versionSchema, setVersionSchema] = useState<{
+    input_parameters: JsonObject;
+    sample_inputs: JsonObject;
+    version_number: string;
+  } | null>(null);
   
   // Version-specific validation state (for safety, but we still use workflow.input_parameters for UI)
   const [versionValidation, setVersionValidation] = useState<{
@@ -104,6 +111,9 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
           if (data.success) {
             setAvailableMachines(data.machines);
             console.log('📋 Loaded machines for testing:', data.machines);
+            
+            // After loading machines, fetch workflow assignments to set preferred default
+            await fetchWorkflowAssignments(data.machines);
           } else {
             console.error('[ERROR] Failed to load machines:', data.error);
           }
@@ -111,6 +121,31 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
           console.error('[ERROR] Error fetching machines:', error);
         } finally {
           setLoadingMachines(false);
+        }
+      };
+
+      const fetchWorkflowAssignments = async (_machines: Machine[]) => {
+        try {
+          const response = await fetch(`/api/workflows/${workflow.id}/machines`);
+          const data = await response.json();
+          
+          if (data.success && data.assignments && data.assignments.length > 0) {
+            // Sort assignments by priority (lower number = higher priority)
+            const sortedAssignments = data.assignments.sort((a: any, b: any) => a.priority - b.priority);
+            const preferredAssignment = sortedAssignments[0]; // Highest priority assignment
+            
+            console.log('🎯 Found workflow assignments:', data.assignments);
+            console.log('🎯 Using preferred machine ID:', preferredAssignment.machine_id);
+            
+            // Set the preferred machine as default
+            setSelectedMachineId(preferredAssignment.machine_id.toString());
+          } else {
+            console.log('🎯 No workflow assignments found, keeping default (machine 1)');
+            setSelectedMachineId('1'); // Fallback to machine 1 if no assignments
+          }
+        } catch (error) {
+          console.error('[ERROR] Error fetching workflow assignments:', error);
+          setSelectedMachineId('1'); // Fallback to machine 1 on error
         }
       };
 
@@ -124,8 +159,16 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
             setAvailableVersions(data.versions);
             console.log('📋 Loaded versions for testing:', data.versions);
             
-            // Set default to active version 
-            setSelectedVersionNumber('__ACTIVE__');
+            // Set default to the actual active version from the list
+            const activeVersion = data.versions.find((v: WorkflowVersion) => v.is_active);
+            if (activeVersion) {
+              setSelectedVersionNumber(activeVersion.version_number);
+              console.log('📋 Auto-selected active version:', activeVersion.version_number);
+            } else {
+              // Fallback to empty string if no active version found (will use 'active' in API calls)
+              setSelectedVersionNumber('');
+              console.warn('⚠️ No active version found in version list');
+            }
           } else {
             console.error('[ERROR] Failed to load versions:', data.error);
           }
@@ -161,33 +204,50 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
     }
     }, [open, workflow?.id, storageKey, resetBatchSpec]);
 
-  // Validate version-specific data when version changes (for safety)
+  // Load version-specific schema when version changes
   useEffect(() => {
     if (!workflow || !selectedVersionNumber) return;
     
-    const validateVersion = async () => {
+    const loadVersionSchema = async () => {
       setLoadingVersionValidation(true);
+      setVersionSchema(null); // Clear previous schema
+      resetBatchSpec(); // Reset form values when switching versions
+      
       try {
-        const versionParam = selectedVersionNumber === '__ACTIVE__' ? 'active' : selectedVersionNumber;
+        // Use 'active' if no version selected, otherwise use the specific version
+        const versionParam = !selectedVersionNumber ? 'active' : selectedVersionNumber;
         const response = await fetch(`/api/remote-workflows/${workflow.id}/schema?version=${versionParam}`);
         const data = await response.json();
         
         if (data.success) {
+          // Set both validation state and schema
           setVersionValidation({
             version_number: data.workflow.version,
             is_valid: true
           });
-          console.log('[SUCCESS] Version validated:', data.workflow.version);
+          
+          // Store the complete schema for the selected version
+          setVersionSchema({
+            input_parameters: data.schema?.input_parameters || {},
+            sample_inputs: data.schema?.sample_request || {},
+            version_number: data.workflow.version
+          });
+          
+          console.log('[SUCCESS] Version schema loaded:', data.workflow.version);
+          console.log('[DEBUG] Full data object:', data);
+          console.log('[DEBUG] Schema object:', data.schema);
+          console.log('[DEBUG] Input parameters object:', data.schema?.input_parameters);
+          console.log('[DEBUG] Schema parameters:', Object.keys(data.schema?.input_parameters || {}));
         } else {
           setVersionValidation({
             version_number: selectedVersionNumber,
             is_valid: false,
             error: data.error
           });
-          console.warn('[WARN] Version validation failed:', data.error);
+          console.warn('[WARN] Version schema loading failed:', data.error);
         }
       } catch (error) {
-        console.error('[ERROR] Error validating version:', error);
+        console.error('[ERROR] Error loading version schema:', error);
         setVersionValidation({
           version_number: selectedVersionNumber,
           is_valid: false,
@@ -198,7 +258,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
       }
     };
 
-    validateVersion();
+    loadVersionSchema();
   }, [workflow?.id, selectedVersionNumber]);
 
  
@@ -221,7 +281,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
     console.log('🚀 BatchTestDialog: Submitting batch with spec:', batchSpec);
     console.log('🔢 BatchTestDialog: Total combinations:', totalCombinations);
     console.log('🎯 BatchTestDialog: Selected machine ID:', selectedMachineId);
-    console.log('📋 BatchTestDialog: Selected version:', selectedVersionNumber === '__ACTIVE__' ? 'active version' : selectedVersionNumber || 'active version');
+            console.log('📋 BatchTestDialog: Selected version:', selectedVersionNumber || 'active version');
     
     setIsSubmitting(true);
     try {
@@ -229,7 +289,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
       const requestBody = {
         ...batchSpec,
         machine_id: parseInt(selectedMachineId),
-        version_number: selectedVersionNumber === '__ACTIVE__' ? undefined : selectedVersionNumber || undefined, // Send version or undefined for active
+        version_number: selectedVersionNumber || undefined, // Send version or undefined for active
       };
 
       const response = await fetch(`/api/remote-workflows/${workflow.id}/batch-execute`, {
@@ -357,15 +417,6 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                       <SelectValue placeholder="Active version" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__ACTIVE__">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-green-500" />
-                          <span className="font-medium">Active Version</span>
-                          <span className="text-xs text-muted-foreground">
-                            (Production)
-                          </span>
-                        </div>
-                      </SelectItem>
                       {availableVersions.map((version) => (
                         <SelectItem key={`version-${version.version_id}`} value={version.version_number}>
                           <div className="flex items-center justify-between w-full">
@@ -454,19 +505,36 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
               </p>
             </CardHeader>
             <CardContent className="p-0">
-              {workflow.input_parameters && Object.keys(workflow.input_parameters).length > 0 ? (
-                <div className="max-h-[50vh] overflow-y-auto">
-                  <BatchForm
-                    schema={workflow.input_parameters as JsonObject}
-                    initialValues={workflow.sample_inputs as JsonObject}
-                    onSpecChange={handleSpecChange}
-                    onCombinationsChange={setTotalCombinations}
-                    initialSpec={batchSpec}
-                  />
-                </div>
-              ) : (
-                <p className="p-6">This workflow has no configurable parameters.</p>
-              )}
+              {(() => {
+                // Use version-specific schema if available, otherwise fall back to workflow schema
+                const currentSchema = versionSchema?.input_parameters || workflow.input_parameters;
+                const currentSampleInputs = versionSchema?.sample_inputs || workflow.sample_inputs;
+                
+                return currentSchema && Object.keys(currentSchema).length > 0 ? (
+                  <div className="max-h-[50vh] overflow-y-auto">
+                    {loadingVersionValidation && (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        Loading version schema...
+                      </div>
+                    )}
+                    <BatchForm
+                      key={versionSchema?.version_number || 'default'} // Force re-render on version change
+                      schema={currentSchema as JsonObject}
+                      initialValues={currentSampleInputs as JsonObject}
+                      onSpecChange={handleSpecChange}
+                      onCombinationsChange={setTotalCombinations}
+                      initialSpec={batchSpec}
+                    />
+                  </div>
+                ) : (
+                  <p className="p-6">
+                    {loadingVersionValidation 
+                      ? "Loading parameters..." 
+                      : "This workflow has no configurable parameters."
+                    }
+                  </p>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>
