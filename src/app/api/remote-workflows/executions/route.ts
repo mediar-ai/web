@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { cacheResponse } from '@/lib/responseCache';
+import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,11 +21,15 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const include_results = searchParams.get('include_results') === 'true';
 
-    // Build base query - use only existing database fields
-    // Performance optimization: heavy fields (execution_params, results) are fetched but only included in response if requested
+    // Build base query - PERFORMANCE OPTIMIZED: exclude heavy JSONB fields by default
+    // Heavy fields (execution_params, results) are only included when include_results=true
+    const selectFields = include_results 
+      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, deployed_workflows!inner(id, name, description, category)'
+      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, deployed_workflows!inner(id, name, description, category)';
+    
     let query = supabase
       .from('workflow_executions')
-      .select('id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, deployed_workflows!inner(id, name, description, category)')
+      .select(selectFields)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -61,65 +65,66 @@ export async function GET(request: NextRequest) {
 
     // Format executions with computed metrics
     const formattedExecutions = (executions || []).map(execution => {
-      const workflow = Array.isArray(execution.deployed_workflows) 
-        ? execution.deployed_workflows[0] 
-        : execution.deployed_workflows;
+      const executionAny = execution as any;
+      const workflow = Array.isArray(executionAny.deployed_workflows) 
+        ? executionAny.deployed_workflows[0] 
+        : executionAny.deployed_workflows;
 
       // Calculate runtime
-      const startedAt = execution.started_at ? new Date(execution.started_at) : null;
-      const completedAt = execution.completed_at ? new Date(execution.completed_at) : null;
+      const startedAt = executionAny.started_at ? new Date(executionAny.started_at) : null;
+      const completedAt = executionAny.completed_at ? new Date(executionAny.completed_at) : null;
       const now = new Date();
       
       let runtimeSeconds = 0;
       if (startedAt) {
-        const endTime = completedAt || (execution.status === 'running' ? now : null);
+        const endTime = completedAt || (executionAny.status === 'running' ? now : null);
         if (endTime) {
           runtimeSeconds = Math.floor((endTime.getTime() - startedAt.getTime()) / 1000);
         }
       }
 
       const formattedExecution = {
-        execution_id: execution.id,
-        workflow_id: execution.workflow_id,
+        execution_id: executionAny.id,
+        workflow_id: executionAny.workflow_id,
         workflow_name: workflow?.name || 'Unknown Workflow',
         workflow_category: workflow?.category || 'general',
         
-        status: execution.status,
-        progress_percentage: execution.progress_percentage || 0,
-        current_step_index: execution.current_step_index || 0,
-        total_steps: execution.total_steps || 0,
+        status: executionAny.status,
+        progress_percentage: executionAny.progress_percentage || 0,
+        current_step_index: executionAny.current_step_index || 0,
+        total_steps: executionAny.total_steps || 0,
         
         // Timing
-        started_at: execution.started_at,
-        completed_at: execution.completed_at,
+        started_at: executionAny.started_at,
+        completed_at: executionAny.completed_at,
         runtime_seconds: runtimeSeconds,
-        execution_duration_seconds: execution.execution_duration_seconds,
+        execution_duration_seconds: executionAny.execution_duration_seconds,
         
         // Status flags
-        is_running: execution.status === 'running',
-        is_completed: ['completed', 'failed', 'cancelled'].includes(execution.status),
-        is_successful: execution.status === 'completed',
-        has_error: execution.status === 'failed' && !!execution.error_message,
+        is_running: executionAny.status === 'running',
+        is_completed: ['completed', 'failed', 'cancelled'].includes(executionAny.status),
+        is_successful: executionAny.status === 'completed',
+        has_error: executionAny.status === 'failed' && !!executionAny.error_message,
         
         // Error info
-        error_message: execution.error_message,
-        formatted_output: execution.formatted_output,
+        error_message: executionAny.error_message,
+        formatted_output: executionAny.formatted_output,
         
         // Metadata
-        modal_call_id: execution.modal_call_id,
-        created_at: execution.created_at,
-        updated_at: execution.updated_at,
+        modal_call_id: executionAny.modal_call_id,
+        created_at: executionAny.created_at,
+        updated_at: executionAny.updated_at,
         
         // Quick access URLs
         endpoints: {
-          details: `/api/remote-workflows/executions/${execution.id}`,
-          workflow_details: `/api/remote-workflows/${execution.workflow_id}`
+          details: `/api/remote-workflows/executions/${executionAny.id}`,
+          workflow_details: `/api/remote-workflows/${executionAny.workflow_id}`
         },
         
         // Conditionally include detailed data if requested
         ...(include_results && {
-          execution_params: execution.execution_params || {},
-          results: execution.results || {}
+          execution_params: executionAny.execution_params || {},
+          results: executionAny.results || {}
         })
       };
 
