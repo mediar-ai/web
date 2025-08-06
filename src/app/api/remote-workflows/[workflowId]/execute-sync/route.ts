@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { cacheResponse, extractRequestParams, normalizeEndpointPath } from '@/lib/responseCache';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 // Types for execution and workflow data
 interface ExecutionResults {
@@ -274,28 +274,65 @@ export async function POST(
 
     console.log(`[SUCCESS] Found workflow "${workflow.name}" - checking cache first...`);
 
-    // 🎯 Simple machine assignment: Default to machine ID 1 (Primary Windows VM)
-    console.log(`🔍 Assigning to default machine for workflow ${workflowIdNum}...`);
+    // 🎯 NEW: Smart machine assignment using existing database function
+    console.log(`🔍 Getting optimal machine assignment for workflow ${workflowIdNum}...`);
     
-    const assigned_machine_id: number = 1;
-    const assignment_reason = 'Default assignment to Primary Windows VM';
-    
-    // Look up machine endpoint
-    const { data: machine, error: machineError } = await supabase
-      .from('remote_machines')
-      .select('mcp_endpoint')
-      .eq('id', assigned_machine_id)
-      .single();
+    // Use existing database function for machine assignment
+    const { data: optimalMachine, error: optimalError } = await supabase
+      .rpc('get_optimal_machine_for_workflow', {
+        p_workflow_id: workflowIdNum,
+        p_execution_params: parameters
+      });
 
-    if (machineError || !machine) {
-      console.error(`[ERROR] Failed to find machine ${assigned_machine_id}:`, machineError);
-      return NextResponse.json(
-        { error: `Machine ${assigned_machine_id} not found in remote_machines table` },
-        { status: 500 }
-      );
+    let assigned_machine_id: number;
+    let assignment_reason: string;
+    let mcp_endpoint: string;
+
+    if (!optimalError && optimalMachine && optimalMachine.length > 0) {
+      // Use optimal machine assignment
+      const machine = optimalMachine[0];
+      assigned_machine_id = machine.machine_id;
+      assignment_reason = machine.assignment_reason;
+      
+      // Get machine endpoint
+      const { data: machineDetails, error: machineError } = await supabase
+        .from('remote_machines')
+        .select('mcp_endpoint')
+        .eq('id', assigned_machine_id)
+        .single();
+
+      if (machineError || !machineDetails) {
+        console.error(`[ERROR] Failed to get machine endpoint for ${assigned_machine_id}:`, machineError);
+        return NextResponse.json(
+          { error: `Machine ${assigned_machine_id} endpoint not found` },
+          { status: 500 }
+        );
+      }
+      
+      mcp_endpoint = machineDetails.mcp_endpoint;
+    } else {
+      // Fallback to machine 1 (existing behavior)
+      console.log(`[INFO] No optimal machine found, using fallback Machine 1`);
+      assigned_machine_id = 1;
+      assignment_reason = 'Fallback to Primary Windows VM (no optimal assignment found)';
+      
+      const { data: fallbackMachine, error: fallbackError } = await supabase
+        .from('remote_machines')
+        .select('mcp_endpoint')
+        .eq('id', 1)
+        .single();
+
+      if (fallbackError || !fallbackMachine) {
+        console.error(`[ERROR] Failed to find fallback machine 1:`, fallbackError);
+        return NextResponse.json(
+          { error: `Fallback machine 1 not found in remote_machines table` },
+          { status: 500 }
+        );
+      }
+      
+      mcp_endpoint = fallbackMachine.mcp_endpoint;
     }
 
-    const mcp_endpoint = machine.mcp_endpoint;
     console.log(`[SUCCESS] Assigned to machine ID ${assigned_machine_id}: ${assignment_reason}`);
     console.log(`🔗 Machine endpoint: ${mcp_endpoint}`);
 
