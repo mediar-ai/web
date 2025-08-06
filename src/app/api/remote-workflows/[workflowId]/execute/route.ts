@@ -1,3 +1,4 @@
+import { cacheResponse, extractRequestParams, normalizeEndpointPath } from '@/lib/responseCache';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -122,6 +123,7 @@ export async function POST(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    const startTime = Date.now();
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
     const body = await request.json();
@@ -486,6 +488,18 @@ export async function POST(
         schema: `/api/remote-workflows/${workflowIdNum}/schema`
       }
     };
+
+    // Cache the successful response for documentation
+    const endpointPath = normalizeEndpointPath(`/api/remote-workflows/[workflowId]/execute`);
+    const requestParams = extractRequestParams(request, { workflowId });
+    await cacheResponse({
+      endpointPath,
+      httpMethod: 'POST',
+      statusCode: 200,
+      responseBody: response,
+      requestParams,
+      executionTimeMs: Date.now() - startTime
+    });
 
     return NextResponse.json(response, { status: 200 });
 
