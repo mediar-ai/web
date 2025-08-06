@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { CodeBlock } from '@/components/ui/code-block';
 import { Menu, X } from 'lucide-react';
 import mermaid from 'mermaid';
+import { useEffect, useRef, useState } from 'react';
 
 // Types for dynamic schema data
 interface WorkflowSchema {
@@ -583,18 +583,31 @@ export default function RemoteWorkflowsAPIDocsPage() {
           console.log(`[SUCCESS] Fetched cached get workflow details response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
         }
 
-                 // Fetch cached execute-sync response and apply to all workflow execute-sync endpoints
-         const executeSyncResponse = await getCachedResponse('/api/remote-workflows/[workflowId]/execute-sync', 'POST');
-         if (executeSyncResponse) {
-           const executeSyncResponseString = JSON.stringify(executeSyncResponse, null, 2);
-           
-           // Apply the cached response to all execute-sync endpoints (for each workflow schema)
-           Object.keys(workflowSchemas).forEach(workflowId => {
-             responses[`execute-sync-workflow-${workflowId}`] = executeSyncResponseString;
-           });
-           
-           console.log(`[SUCCESS] Fetched cached execute-sync response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
-         }
+        // Fetch cached execute response and apply to all workflow execute endpoints
+        const executeResponse = await getCachedResponse('/api/remote-workflows/[workflowId]/execute', 'POST');
+        if (executeResponse) {
+          const executeResponseString = JSON.stringify(executeResponse, null, 2);
+          
+          // Apply the cached response to all execute endpoints (for each workflow schema)
+          Object.keys(workflowSchemas).forEach(workflowId => {
+            responses[`execute-workflow-${workflowId}`] = executeResponseString;
+          });
+          
+          console.log(`[SUCCESS] Fetched cached execute response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
+        }
+
+        // Fetch cached execute-sync response and apply to all workflow execute-sync endpoints
+        const executeSyncResponse = await getCachedResponse('/api/remote-workflows/[workflowId]/execute-sync', 'POST');
+        if (executeSyncResponse) {
+          const executeSyncResponseString = JSON.stringify(executeSyncResponse, null, 2);
+          
+          // Apply the cached response to all execute-sync endpoints (for each workflow schema)
+          Object.keys(workflowSchemas).forEach(workflowId => {
+            responses[`execute-sync-workflow-${workflowId}`] = executeSyncResponseString;
+          });
+          
+          console.log(`[SUCCESS] Fetched cached execute-sync response and applied to ${Object.keys(workflowSchemas).length} workflow(s)`);
+        }
 
         // Fetch cached live execution status response
         const liveExecutionStatusResponse = await getCachedResponse('/api/remote-workflows/executions/live', 'GET');
@@ -1430,12 +1443,12 @@ graph TB
           </div>
         )}
 
-        {/* Parameter Validation Section - only for execute endpoints */}
-        {endpoint.id.startsWith('execute-workflow-') && endpoint.workflowInfo && (
+        {/* Parameter Validation Section - for both execute and execute-sync endpoints */}
+        {(endpoint.id.startsWith('execute-workflow-') || endpoint.id.startsWith('execute-sync-workflow-')) && endpoint.workflowInfo && (
           <div className="mb-8">
             <h3 className="text-lg font-semibold mb-3">Parameter Validation</h3>
             {(() => {
-              const workflowId = endpoint.id.replace('execute-workflow-', '');
+              const workflowId = endpoint.id.replace('execute-workflow-', '').replace('execute-sync-workflow-', '');
               const workflowSchema = workflowSchemas[parseInt(workflowId)];
               if (workflowSchema && workflowSchema.validation_rules) {
                 return <ParameterValidationTable validationRules={workflowSchema.validation_rules as Record<string, ValidationRule>} />;
