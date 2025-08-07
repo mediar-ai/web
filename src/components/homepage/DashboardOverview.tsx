@@ -2,11 +2,8 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserButton } from '@clerk/nextjs';
 import {
-    Archive,
-    BarChart3,
     Building2,
     Database,
     Play,
@@ -15,33 +12,55 @@ import {
     Workflow
 } from 'lucide-react';
 import Link from 'next/link';
-
-interface UserStatus {
-  inDatabase: boolean;
-  hasOrganization: boolean;
-  organizationId?: string;
-  organizationName?: string;
-  userRole?: string;
-}
+import { useEffect, useState } from 'react';
 
 interface DashboardOverviewProps {
-  userStatus: UserStatus;
+  organizationName: string;
+  userRole: string;
   userId: string;
   isAdmin?: boolean;
   isOwner?: boolean;
 }
 
-export default function DashboardOverview({ userStatus, userId, isAdmin, isOwner }: DashboardOverviewProps) {
+export default function DashboardOverview({ organizationName, userRole, userId, isAdmin, isOwner }: DashboardOverviewProps) {
+  const [hasRawEvents, setHasRawEvents] = useState(false);
+
+  // Check if user has raw events
+  useEffect(() => {
+    const checkUserEvents = async () => {
+      try {
+        const response = await fetch(`/api/users/${userId}/has-events`);
+        if (response.ok) {
+          const data = await response.json();
+          setHasRawEvents(data.hasEvents);
+          console.log(`[DashboardOverview] User ${userId} has events: ${data.hasEvents} (${data.totalEventCount} total)`);
+        } else {
+          console.error('[DashboardOverview] Failed to check user events:', response.status);
+          // Default to showing the button if we can't check
+          setHasRawEvents(true);
+        }
+      } catch (error) {
+        console.error('[DashboardOverview] Error checking user events:', error);
+        // Default to showing the button if we can't check
+        setHasRawEvents(true);
+      }
+    };
+
+    if (userId) {
+      checkUserEvents();
+    }
+  }, [userId]);
+
   const getRoleBadgeColor = (role?: string) => {
     switch (role) {
       case 'org:owner':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
+        return 'bg-black text-white border-black';
       case 'org:admin':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-white text-black border-black';
       case 'org:member':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-white text-black border-black';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-white text-black border-black';
     }
   };
 
@@ -59,7 +78,7 @@ export default function DashboardOverview({ userStatus, userId, isAdmin, isOwner
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -73,20 +92,18 @@ export default function DashboardOverview({ userStatus, userId, isAdmin, isOwner
               </div>
               
               {/* Organization Info */}
-              {userStatus.organizationName && (
-                <div className="flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-full">
-                  <Building2 className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">
-                    {userStatus.organizationName}
-                  </span>
-                  <Badge 
-                    variant="outline" 
-                    className={getRoleBadgeColor(userStatus.userRole)}
-                  >
-                    {getRoleDisplayName(userStatus.userRole)}
-                  </Badge>
-                </div>
-              )}
+              <div className="flex items-center space-x-2 px-3 py-1 bg-white border border-black rounded-lg">
+                <Building2 className="w-4 h-4 text-black" />
+                <span className="text-sm font-medium text-black">
+                  {organizationName}
+                </span>
+                <Badge 
+                  variant="outline" 
+                  className={getRoleBadgeColor(userRole)}
+                >
+                  {getRoleDisplayName(userRole)}
+                </Badge>
+              </div>
             </div>
 
             <UserButton 
@@ -108,7 +125,7 @@ export default function DashboardOverview({ userStatus, userId, isAdmin, isOwner
           <h2 className="text-3xl font-bold text-black mb-2">
             Welcome back!
           </h2>
-          <p className="text-gray-600 mb-6">
+          <p className="text-black mb-6">
             Access your workflow tools and organization dashboard below.
           </p>
 
@@ -116,24 +133,26 @@ export default function DashboardOverview({ userStatus, userId, isAdmin, isOwner
           <div className="flex flex-wrap gap-3 mb-6">
             {/* Web Page - Available to all */}
             <Link href="/web">
-              <Button className="bg-black text-white hover:bg-gray-800">
+              <Button className="bg-black text-white hover:bg-black border border-black">
                 <Play className="w-4 h-4 mr-2" />
                 Web Workflows
               </Button>
             </Link>
 
-            {/* Raw Events - Available to all */}
-            <Link href={`/low-level/${userId}/raw-low-level-events`}>
-              <Button variant="outline" className="border-black text-black hover:bg-black hover:text-white">
-                <Database className="w-4 h-4 mr-2" />
-                Raw Events
-              </Button>
-            </Link>
+            {/* Raw Events - Only if user has events */}
+            {hasRawEvents && (
+              <Link href={`/low-level/${userId}/raw-low-level-events`}>
+                <Button variant="outline" className="border-black text-black hover:bg-black hover:text-white">
+                  <Database className="w-4 h-4 mr-2" />
+                  Raw Events
+                </Button>
+              </Link>
+            )}
 
             {/* Admin Dashboard - Only for Admins/Owners */}
             {(isAdmin || isOwner) && (
               <Link href="/admin">
-                <Button variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
+                <Button variant="outline" className="border-black text-black hover:bg-white">
                   <Users className="w-4 h-4 mr-2" />
                   Admin Dashboard
                 </Button>
@@ -143,7 +162,7 @@ export default function DashboardOverview({ userStatus, userId, isAdmin, isOwner
             {/* Deployments - Only for Admins/Owners */}
             {(isAdmin || isOwner) && (
               <Link href="/deployments">
-                <Button variant="outline" className="border-purple-200 text-purple-700 hover:bg-purple-50">
+                <Button variant="outline" className="border-black text-black hover:bg-white">
                   <Settings className="w-4 h-4 mr-2" />
                   Deployments
                 </Button>
@@ -151,112 +170,9 @@ export default function DashboardOverview({ userStatus, userId, isAdmin, isOwner
             )}
           </div>
 
-          {/* Account Information */}
-          <Card className="border-gray-200 bg-gray-50">
-            <CardContent className="pt-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div>
-                    <h4 className="font-medium text-black">Signed in</h4>
-                    <p className="text-sm text-gray-600">
-                      {userStatus.organizationName ? (
-                        <>
-                          {getRoleDisplayName(userStatus.userRole)} in {userStatus.organizationName}
-                        </>
-                      ) : (
-                        'Manage your account settings'
-                      )}
-                    </p>
-                  </div>
-                  {userStatus.userRole && (
-                    <Badge 
-                      variant="outline" 
-                      className={getRoleBadgeColor(userStatus.userRole)}
-                    >
-                      {getRoleDisplayName(userStatus.userRole)}
-                    </Badge>
-                  )}
-                </div>
-                <UserButton 
-                  afterSignOutUrl="/"
-                  appearance={{
-                    elements: {
-                      avatarBox: "w-10 h-10"
-                    }
-                  }}
-                />
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
-        {/* Recent Activity & Stats */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Quick Stats */}
-          <Card className="border-black-outline">
-            <CardHeader>
-              <CardTitle className="text-black flex items-center gap-2">
-                <BarChart3 className="w-5 h-5" />
-                Quick Stats
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600">Active Workflows</span>
-                <span className="font-semibold text-black">12</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600">This Month</span>
-                <span className="font-semibold text-black">48 captures</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600">Success Rate</span>
-                <span className="font-semibold text-green-600">94%</span>
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Recent Activity */}
-          <Card className="border-black-outline lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-black flex items-center gap-2">
-                <Archive className="w-5 h-5" />
-                Recent Activity
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                  <div>
-                    <p className="font-medium text-black">Login Workflow Captured</p>
-                    <p className="text-sm text-gray-600">2 hours ago</p>
-                  </div>
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                    Completed
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                  <div>
-                    <p className="font-medium text-black">Form Automation Deployed</p>
-                    <p className="text-sm text-gray-600">5 hours ago</p>
-                  </div>
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                    Running
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                  <div>
-                    <p className="font-medium text-black">Team Member Added</p>
-                    <p className="text-sm text-gray-600">1 day ago</p>
-                  </div>
-                  <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
-                    Admin
-                  </Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       </main>
     </div>
   );

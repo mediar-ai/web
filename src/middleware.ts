@@ -1,7 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
 const isAdminRoute = createRouteMatcher([
-  '/admin(.*)'
+  '/admin(.*)',
+  '/' // Protect homepage with Clerk auth
 ]);
 
 const isDeploymentRoute = createRouteMatcher([
