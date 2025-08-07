@@ -46,7 +46,7 @@ import { SignIn, useAuth, useOrganization } from '@clerk/nextjs';
 import { ChevronDown, ChevronRight, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 
 // Owner-only components
-import PendingAccessRequests from '@/components/admin/PendingAccessRequests';
+
 import RoleManagementSection from '@/components/admin/RoleManagementSection';
 
 const truncateId = (id: string) => `...${id.slice(-4)}`;
@@ -178,7 +178,7 @@ export default function AdminPage() {
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="max-w-md w-full space-y-8 text-center border border-black rounded-lg p-8">
           <h2 className="text-2xl font-bold text-black">Access Denied</h2>
-          <p className="text-gray-600">You need admin or member privileges to access this dashboard.</p>
+          <p className="text-black">You need admin or member privileges to access this dashboard.</p>
           <Link href="/">
             <Button variant="black-outline">Return to Home</Button>
           </Link>
@@ -216,6 +216,7 @@ function AuthenticatedAdminPage({
   userRole
 }: Omit<AuthenticatedAdminPageProps, 'isGlobalAdmin'>) {
   const { userId } = useAuth();
+  const { organization } = useOrganization();
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [isLiveRefreshing, setIsLiveRefreshing] = useState(false);
@@ -646,28 +647,24 @@ function AuthenticatedAdminPage({
     setInviteStatus({ message: 'Sending invitation...', error: false });
 
     try {
-      const response = await fetch('/api/invite-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+      // Use Clerk frontend API directly
+      await organization?.inviteMember({
+        emailAddress: inviteEmail,
+        role: inviteRole as 'org:admin' | 'org:member'
       });
 
-      const result = await response.json();
-
-      if (response.ok) {
-        setInviteStatus({ message: result.message, error: false });
-        // Optionally close the dialog after a delay
-        setTimeout(() => {
-          setIsInviteDialogOpen(false);
-          setInviteEmail('');
-          setInviteRole('org:member');
-          setInviteStatus(null);
-        }, 2000);
-      } else {
-        throw new Error(result.details || 'Failed to send invitation.');
-      }
+      setInviteStatus({ message: `Invitation sent to ${inviteEmail}`, error: false });
+      
+      // Close the dialog after a delay
+      setTimeout(() => {
+        setIsInviteDialogOpen(false);
+        setInviteEmail('');
+        setInviteRole('org:member');
+        setInviteStatus(null);
+      }, 2000);
+      
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send invitation';
       setInviteStatus({ message: errorMessage, error: true });
     }
   };
@@ -748,7 +745,7 @@ function AuthenticatedAdminPage({
                 </DialogHeader>
                 <form onSubmit={handleInviteUser} className="space-y-4">
                   <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email Address</label>
+                    <label htmlFor="email" className="block text-sm font-medium text-black">Email Address</label>
                     <Input
                       id="email"
                       type="email"
@@ -760,7 +757,7 @@ function AuthenticatedAdminPage({
                     />
                   </div>
                   <div>
-                    <label htmlFor="role" className="block text-sm font-medium text-gray-700">Role</label>
+                    <label htmlFor="role" className="block text-sm font-medium text-black">Role</label>
                     <Select value={inviteRole} onValueChange={setInviteRole}>
                       <SelectTrigger id="role" className="mt-1">
                         <SelectValue placeholder="Select a role" />
@@ -870,7 +867,7 @@ function AuthenticatedAdminPage({
       {/* Owner-Only Sections */}
       {isOwner && (
         <div className="space-y-6 mb-6">
-          <PendingAccessRequests isOwner={isOwner} />
+          
           <RoleManagementSection isOwner={isOwner} currentUserId={userId || undefined} />
         </div>
       )}
