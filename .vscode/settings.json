@@ -54,5 +54,8 @@
     "**/.next": true,
     "**/out": true,
     "**/.vercel": true
-  }
+  },
+  "workbench.editor.splitOnDragAndDrop": false,
+  "workbench.editor.enablePreview": false,
+  "workbench.editor.revealIfOpen": true
 }
