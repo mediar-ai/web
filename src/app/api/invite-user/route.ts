@@ -1,5 +1,4 @@
-import { clerkClient } from '@clerk/nextjs/server';
-import { getAuth } from '@clerk/nextjs/server';
+import { clerkClient, getAuth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -11,9 +10,9 @@ export async function POST(request: NextRequest) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    // 2. Authorize the user (must be an admin)
-    if (orgRole !== 'org:admin') {
-      return new NextResponse("Forbidden - Only admins can invite users.", { status: 403 });
+    // 2. Authorize the user (must be an admin or owner)
+    if (orgRole !== 'org:admin' && orgRole !== 'org:owner') {
+      return new NextResponse("Forbidden - Only admins and owners can invite users.", { status: 403 });
     }
     
     // 3. Get the request body
