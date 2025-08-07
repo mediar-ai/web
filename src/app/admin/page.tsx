@@ -45,6 +45,10 @@ import {
 import { SignIn, useAuth, useOrganization } from '@clerk/nextjs';
 import { ChevronDown, ChevronRight, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 
+// Owner-only components
+import PendingAccessRequests from '@/components/admin/PendingAccessRequests';
+import RoleManagementSection from '@/components/admin/RoleManagementSection';
+
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
 const formatDuration = (seconds: number) => {
@@ -165,10 +169,11 @@ export default function AdminPage() {
   // Check if user has required role for full access dashboard
   const hasAdminRole = has({ role: 'org:admin' });
   const hasMemberRole = has({ role: 'org:member' });
+  const hasOwnerRole = has({ role: 'org:owner' });
   
   // Access level will be determined by the API based on organization_data_access table
   
-  if (!hasAdminRole && !hasMemberRole) {
+  if (!hasAdminRole && !hasMemberRole && !hasOwnerRole) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="max-w-md w-full space-y-8 text-center border border-black rounded-lg p-8">
@@ -186,6 +191,7 @@ export default function AdminPage() {
   return (
     <AuthenticatedAdminPage 
       isAdmin={hasAdminRole}
+      isOwner={hasOwnerRole}
       organizationId={organization?.id}
       organizationName={organization?.name}
       userRole={membership?.role}
@@ -195,6 +201,7 @@ export default function AdminPage() {
 
 interface AuthenticatedAdminPageProps {
   isAdmin: boolean;
+  isOwner: boolean;
   isGlobalAdmin: boolean;
   organizationId?: string;
   organizationName?: string;
@@ -202,11 +209,13 @@ interface AuthenticatedAdminPageProps {
 }
 
 function AuthenticatedAdminPage({ 
-  isAdmin, 
+  isAdmin,
+  isOwner,
   organizationId, 
   organizationName, 
   userRole
 }: Omit<AuthenticatedAdminPageProps, 'isGlobalAdmin'>) {
+  const { userId } = useAuth();
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [isLiveRefreshing, setIsLiveRefreshing] = useState(false);
@@ -668,6 +677,9 @@ function AuthenticatedAdminPage({
     if (isGlobalAdmin) {
       return "Mediar Admin - Global Access";
     }
+    if (isOwner && organizationName) {
+      return `Owner - ${organizationName}`;
+    }
     if (isAdmin && organizationName) {
       return `Admin - ${organizationName}`;
     }
@@ -854,6 +866,14 @@ function AuthenticatedAdminPage({
           </CardContent>
         </Card>
       </div>
+      
+      {/* Owner-Only Sections */}
+      {isOwner && (
+        <div className="space-y-6 mb-6">
+          <PendingAccessRequests isOwner={isOwner} />
+          <RoleManagementSection isOwner={isOwner} currentUserId={userId || undefined} />
+        </div>
+      )}
       
       {/* Processing Health Section - Collapsible - Global Admins Only */}
       {isGlobalAdmin && (
