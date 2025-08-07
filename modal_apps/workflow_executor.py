@@ -2047,8 +2047,8 @@ def check_and_process_queued_jobs():
             if cleanup_count > 0:
                 logger.info("🧹 Enhanced cleanup: %d stale executions cleaned up", cleanup_count)
 
-        # 🎯 SIMPLIFIED MACHINE LOGIC: Find next queued job for an available machine
-        # Jobs already have assigned_machine_id and mcp_endpoint - just need to check availability
+        # 🎯 ENHANCED MACHINE LOGIC: Find next queued job for a machine with available capacity
+        # Jobs already have assigned_machine_id and mcp_endpoint - check against max_concurrent_executions
         cur.execute("""
             SELECT 
                 we.id,
@@ -2058,181 +2058,220 @@ def check_and_process_queued_jobs():
                 we.assigned_machine_id,
                 we.mcp_endpoint,
                 we.version_number,
-                we.created_at
+                we.created_at,
+                rm.max_concurrent_executions,
+                rm.name as machine_name
             FROM workflow_executions we
+            JOIN remote_machines rm ON we.assigned_machine_id = rm.id
             WHERE we.status = 'queued'
               AND we.assigned_machine_id IS NOT NULL
               AND we.mcp_endpoint IS NOT NULL
-              AND NOT EXISTS (
-                  -- Machine is not currently running anything
-                  SELECT 1 FROM workflow_executions running
+              AND rm.status = 'active'
+              AND (
+                  -- Machine has available capacity based on max_concurrent_executions
+                  SELECT COUNT(*)
+                  FROM workflow_executions running
                   WHERE running.assigned_machine_id = we.assigned_machine_id
                     AND running.status = 'running'
                     AND running.started_at > NOW() - INTERVAL '30 minutes'
-              )
-              AND NOT EXISTS (
-                  -- Machine doesn't have an active coordinator lock
-                  SELECT 1 FROM processing_locks pl
+              ) < rm.max_concurrent_executions
+              AND (
+                  -- Allow concurrent claiming by checking coordinator lock count vs capacity
+                  SELECT COUNT(*) 
+                  FROM processing_locks pl
                   WHERE pl.user_id = CONCAT('machine-', we.assigned_machine_id, '-coordinator')
                     AND pl.status = 'in_progress'
                     AND pl.expires_at > NOW()
-              )
+              ) < rm.max_concurrent_executions
             ORDER BY we.created_at ASC  -- Process oldest jobs first
-            LIMIT 1
             FOR UPDATE SKIP LOCKED
         """)
         
-        job_to_claim = cur.fetchone()
+        jobs_to_claim = cur.fetchall()
         
-        if not job_to_claim:
+        if not jobs_to_claim:
             logger.debug("⏸️ No available jobs found (all machines busy or no queued jobs)")
             return {
                 "status": "no_available_jobs",
                 "coordinator_id": coordinator_id
             }
         
-        execution_id = job_to_claim["id"]
-        machine_id = job_to_claim["assigned_machine_id"]
+        # Group jobs by machine to claim multiple jobs per machine up to capacity
+        jobs_by_machine = {}
+        for job in jobs_to_claim:
+            machine_id = job["assigned_machine_id"]
+            if machine_id not in jobs_by_machine:
+                jobs_by_machine[machine_id] = []
+            jobs_by_machine[machine_id].append(job)
         
-        logger.debug("🎯 Found available job %s for machine %s", execution_id, machine_id)
-
-        # 🔒 MACHINE-SPECIFIC COORDINATOR LOCK: Prevent race conditions for this machine
-        machine_coordinator_id = f"machine-{machine_id}-coordinator-{uuid.uuid4().hex[:8]}"
-        try:
+        # Limit jobs per machine to available capacity
+        jobs_to_process = []
+        for machine_id, machine_jobs in jobs_by_machine.items():
+            max_concurrent = machine_jobs[0]["max_concurrent_executions"]
+            
+            # Get current running count for this machine
             cur.execute("""
-                INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
-                VALUES (%s, 0, %s, 'in_progress', NOW() + INTERVAL '5 minutes')
-                ON CONFLICT (user_id, event_id) DO NOTHING
-                RETURNING id
-            """, (f"machine-{machine_id}-coordinator", machine_coordinator_id))
+                SELECT COUNT(*) as running_count
+                FROM workflow_executions 
+                WHERE assigned_machine_id = %s 
+                  AND status = 'running'
+                  AND started_at > NOW() - INTERVAL '30 minutes'
+            """, (machine_id,))
+            current_running = cur.fetchone()["running_count"]
             
-            if not cur.fetchone():
-                logger.debug("⏸️  Machine %s coordinator already running, skipping", machine_id)
-                return {
-                    "status": "skipped",
-                    "reason": "machine_coordinator_already_running",
-                    "machine_id": machine_id,
-                    "coordinator_id": coordinator_id
-                }
-            
-            conn.commit()
-            logger.debug("🔒 Acquired machine %s coordinator lock: %s", machine_id, machine_coordinator_id)
-        except Exception as lock_error:
-            logger.error("❌ Failed to acquire machine %s coordinator lock: %s", machine_id, lock_error)
-            return {
-                "status": "machine_coordinator_lock_failed",
-                "error": str(lock_error),
-                "machine_id": machine_id,
-                "coordinator_id": coordinator_id
-            }
-
-        # 🚫 WORKFLOW-SPECIFIC FAILURE PATTERN CHECK
-        workflow_id = job_to_claim["workflow_id"]
-        should_block, block_reason, check_duration_ms = check_failure_patterns_for_workflow(cur, conn, workflow_id)
+            # Calculate available slots
+            available_slots = max_concurrent - current_running
+            if available_slots > 0:
+                # Take only the jobs we can handle
+                jobs_for_this_machine = machine_jobs[:available_slots]
+                jobs_to_process.extend(jobs_for_this_machine)
+                logger.debug("🎯 Found %d jobs for machine %s (%s) - capacity %d/%d", 
+                           len(jobs_for_this_machine), machine_id, 
+                           machine_jobs[0]["machine_name"], current_running + len(jobs_for_this_machine), max_concurrent)
         
-        if should_block:
-            logger.warning("🚫 BLOCKED job claim for workflow %d on machine %s: %s", workflow_id, machine_id, block_reason)
+        if not jobs_to_process:
+            logger.debug("⏸️ No jobs can be claimed after capacity check")
             return {
-                "status": "blocked",
-                "reason": block_reason,
-                "workflow_id": workflow_id,
-                "machine_id": machine_id,
-                "check_duration_ms": check_duration_ms,
+                "status": "no_available_jobs", 
                 "coordinator_id": coordinator_id
             }
 
-        # 🎯 CLAIM THE PRE-ASSIGNED JOB: Update status to running
-        modal_call_id = f"modal-machine{machine_id}-{int(time.time())}-{random.randint(1000, 9999)}"
-
-        cur.execute(
-            """
-            UPDATE workflow_executions
-            SET
-                status = 'running',
-                started_at = NOW(),
-                modal_call_id = %s
-            WHERE id = %s
-              AND status = 'queued'
-            RETURNING
-                id, workflow_id, execution_params, client_id,
-                assigned_machine_id, mcp_endpoint, version_number;
-            """,
-            (modal_call_id, execution_id)
-        )
-
-        job_to_process = cur.fetchone()
-        conn.commit()
-
-        if not job_to_process:
-            logger.warning("⚠️ Failed to claim execution %s (may have been claimed by another process)", execution_id)
-            return {
-                "status": "claim_failed",
-                "execution_id": execution_id,
-                "machine_id": machine_id,
-                "coordinator_id": coordinator_id
-            }
-
-        # Successfully claimed the job
-        execution_id = job_to_process["id"]
-        workflow_id = job_to_process["workflow_id"]
-        execution_params = job_to_process["execution_params"] or {}
-        client_id = job_to_process["client_id"]
-        assigned_machine_id = job_to_process["assigned_machine_id"]
-        mcp_endpoint = job_to_process["mcp_endpoint"]
-        version_number = job_to_process["version_number"]
+        # 🎯 CLAIM ALL AVAILABLE JOBS: Process multiple jobs in parallel
+        claimed_jobs = []
         
-        logger.info(
-            "✅ Claimed execution ID %s for workflow %s on machine %s (endpoint: %s)",
-            execution_id,
-            workflow_id,
-            assigned_machine_id,
-            mcp_endpoint[:50] + "..." if len(mcp_endpoint) > 50 else mcp_endpoint
-        )
-
-        # Dispatch the job to Modal
-        try:
-            logger.info("🚀 Dispatching job %s to Modal for machine %s...", execution_id, assigned_machine_id)
+        for job in jobs_to_process:
+            execution_id = job["id"]
+            machine_id = job["assigned_machine_id"]
+            workflow_id = job["workflow_id"]
+            machine_name = job["machine_name"]
+            max_concurrent = job["max_concurrent_executions"]
             
-            modal_future = execute_workflow.remote(
-                workflow_id=workflow_id,
-                mcp_endpoint=mcp_endpoint,
-                execution_params=execution_params,
-                client_id=client_id,
-                execution_id=execution_id,
-                version_number=version_number,
-            )
+            # 🚫 WORKFLOW-SPECIFIC FAILURE PATTERN CHECK for each job
+            should_block, block_reason, check_duration_ms = check_failure_patterns_for_workflow(cur, conn, workflow_id)
             
-            logger.info("✅ Job %s successfully dispatched to Modal for machine %s", execution_id, assigned_machine_id)
+            if should_block:
+                logger.warning("🚫 BLOCKED job %d for workflow %d on machine %s: %s", execution_id, workflow_id, machine_id, block_reason)
+                continue  # Skip this job but continue with others
             
-            return {
-                "status": "job_claimed",
-                "execution_id": execution_id,
-                "workflow_id": workflow_id,
-                "machine_id": assigned_machine_id,
-                "modal_future": str(modal_future),
-                "coordinator_id": coordinator_id
-            }
-
-        except Exception as dispatch_error:
-            logger.error("❌ Failed to dispatch job %s to Modal: %s", execution_id, dispatch_error)
-            
-            # Revert the execution status back to queued since dispatch failed
+            # 🔒 CREATE COORDINATOR LOCK for this specific job
+            machine_coordinator_id = f"machine-{machine_id}-coordinator-{uuid.uuid4().hex[:8]}"
             try:
                 cur.execute("""
-                    UPDATE workflow_executions 
-                    SET status = 'queued', started_at = NULL, modal_call_id = NULL
-                    WHERE id = %s
-                """, (execution_id,))
-                conn.commit()
-                logger.info("🔄 Reverted execution %s back to queued status", execution_id)
-            except Exception as revert_error:
-                logger.error("❌ Failed to revert execution status: %s", revert_error)
+                    INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
+                    VALUES (%s, %s, %s, 'in_progress', NOW() + INTERVAL '5 minutes')
+                """, (f"machine-{machine_id}-coordinator", execution_id, machine_coordinator_id))
+                
+            except Exception as lock_error:
+                logger.error("❌ Failed to create coordinator lock for job %d: %s", execution_id, lock_error)
+                continue  # Skip this job but continue with others
             
+            # 🎯 CLAIM THIS JOB: Update status to running
+            modal_call_id = f"modal-machine{machine_id}-{int(time.time())}-{random.randint(1000, 9999)}-{execution_id}"
+
+            cur.execute(
+                """
+                UPDATE workflow_executions
+                SET
+                    status = 'running',
+                    started_at = NOW(),
+                    modal_call_id = %s
+                WHERE id = %s
+                  AND status = 'queued'
+                RETURNING
+                    id, workflow_id, execution_params, client_id,
+                    assigned_machine_id, mcp_endpoint, version_number;
+                """,
+                (modal_call_id, execution_id)
+            )
+
+            job_to_process = cur.fetchone()
+
+            if not job_to_process:
+                logger.warning("⚠️ Failed to claim execution %s (may have been claimed by another process)", execution_id)
+                continue  # Skip this job but continue with others
+            
+            # Successfully claimed the job
+            claimed_jobs.append(job_to_process)
+            
+            logger.info(
+                "✅ Claimed execution ID %s for workflow %s on machine %s (%s) - capacity %d",
+                execution_id,
+                job_to_process["workflow_id"],
+                machine_id,
+                machine_name,
+                max_concurrent
+            )
+        
+        # Commit all job claims at once
+        conn.commit()
+        
+        if not claimed_jobs:
+            logger.warning("⚠️ No jobs were successfully claimed")
+            return {
+                "status": "no_jobs_claimed",
+                "coordinator_id": coordinator_id
+            }
+        
+        # 🚀 DISPATCH ALL CLAIMED JOBS TO MODAL IN PARALLEL
+        dispatched_jobs = []
+        for job_to_process in claimed_jobs:
+            execution_id = job_to_process["id"]
+            workflow_id = job_to_process["workflow_id"]
+            execution_params = job_to_process["execution_params"] or {}
+            client_id = job_to_process["client_id"]
+            assigned_machine_id = job_to_process["assigned_machine_id"]
+            mcp_endpoint = job_to_process["mcp_endpoint"]
+            version_number = job_to_process["version_number"]
+            
+            try:
+                logger.info("🚀 Dispatching job %s to Modal for machine %s...", execution_id, assigned_machine_id)
+                
+                modal_future = execute_workflow.remote(
+                    workflow_id=workflow_id,
+                    mcp_endpoint=mcp_endpoint,
+                    execution_params=execution_params,
+                    client_id=client_id,
+                    execution_id=execution_id,
+                    version_number=version_number,
+                )
+                
+                dispatched_jobs.append({
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                    "machine_id": assigned_machine_id,
+                    "modal_future": str(modal_future)
+                })
+                
+                logger.info("✅ Job %s successfully dispatched to Modal for machine %s", execution_id, assigned_machine_id)
+                
+            except Exception as dispatch_error:
+                logger.error("❌ Failed to dispatch job %s to Modal: %s", execution_id, dispatch_error)
+                
+                # Revert the execution status back to queued since dispatch failed
+                try:
+                    cur.execute("""
+                        UPDATE workflow_executions 
+                        SET status = 'queued', started_at = NULL, modal_call_id = NULL
+                        WHERE id = %s
+                    """, (execution_id,))
+                    conn.commit()
+                    logger.info("🔄 Reverted execution %s back to queued status", execution_id)
+                except Exception as revert_error:
+                    logger.error("❌ Failed to revert execution status: %s", revert_error)
+        
+        # Return summary of all dispatched jobs
+        if dispatched_jobs:
+            logger.info("🎉 Successfully dispatched %d jobs in parallel!", len(dispatched_jobs))
+            return {
+                "status": "jobs_claimed",
+                "dispatched_jobs": dispatched_jobs,
+                "total_dispatched": len(dispatched_jobs),
+                "coordinator_id": coordinator_id
+            }
+        else:
             return {
                 "status": "dispatch_failed",
-                "error": str(dispatch_error),
-                "execution_id": execution_id,
-                "machine_id": assigned_machine_id,
+                "error": "No jobs were successfully dispatched",
                 "coordinator_id": coordinator_id
             }
 
