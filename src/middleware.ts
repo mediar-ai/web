@@ -81,26 +81,28 @@ export default clerkMiddleware(async (auth, req) => {
     console.log('[Middleware Debug] Full auth object keys:', Object.keys(auth));
     console.log('[Middleware Debug] Has function result for org:admin:', has({ role: 'org:admin' }));
     console.log('[Middleware Debug] Has function result for org:member:', has({ role: 'org:member' }));
+    console.log('[Middleware Debug] Has function result for org:owner:', has({ role: 'org:owner' }));
     
     const hasOrgAdminRole = has({ role: 'org:admin' });
     const hasOrgMemberRole = has({ role: 'org:member' });
+    const hasOrgOwnerRole = has({ role: 'org:owner' });
     
     const organizationMemberships = sessionClaims?.organizationMemberships || {};
     console.log('[Middleware Debug] Organization memberships:', organizationMemberships);
     console.log('[Middleware Debug] Organization memberships type:', typeof organizationMemberships);
     console.log('[Middleware Debug] Organization memberships keys:', Object.keys(organizationMemberships));
     
-    let hasAnyAdminRole = hasOrgAdminRole;
+    let hasAnyAdminRole = hasOrgAdminRole || hasOrgOwnerRole; // Owners have admin privileges
     let hasAnyMemberRole = hasOrgMemberRole;
     
     // Handle organization memberships as object { orgId: role }
     if (typeof organizationMemberships === 'object' && organizationMemberships !== null) {
       for (const [orgId, role] of Object.entries(organizationMemberships)) {
         console.log('[Middleware Debug] Checking membership:', { orgId, role });
-        if (role === 'org:admin') {
+        if (role === 'org:admin' || role === 'org:owner') {
           hasAnyAdminRole = true;
         }
-        if (role === 'org:member' || role === 'org:admin') {
+        if (role === 'org:member' || role === 'org:admin' || role === 'org:owner') {
           hasAnyMemberRole = true;
         }
       }
@@ -108,6 +110,7 @@ export default clerkMiddleware(async (auth, req) => {
     
     console.log('[Middleware Debug] Has org admin role:', hasOrgAdminRole);
     console.log('[Middleware Debug] Has org member role:', hasOrgMemberRole);
+    console.log('[Middleware Debug] Has org owner role:', hasOrgOwnerRole);
     console.log('[Middleware Debug] Has any admin role:', hasAnyAdminRole);
     console.log('[Middleware Debug] Has any member role:', hasAnyMemberRole);
     
