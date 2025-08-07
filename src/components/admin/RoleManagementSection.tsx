@@ -135,13 +135,13 @@ export default function RoleManagementSection({ isOwner, currentUserId }: RoleMa
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'org:owner':
-        return <Crown className="w-4 h-4 text-purple-600" />;
+        return <Crown className="w-4 h-4 text-black" />;
       case 'org:admin':
-        return <Shield className="w-4 h-4 text-blue-600" />;
+        return <Shield className="w-4 h-4 text-black" />;
       case 'org:member':
-        return <User className="w-4 h-4 text-green-600" />;
+        return <User className="w-4 h-4 text-black" />;
       default:
-        return <User className="w-4 h-4 text-gray-600" />;
+        return <User className="w-4 h-4 text-black" />;
     }
   };
 
@@ -149,13 +149,13 @@ export default function RoleManagementSection({ isOwner, currentUserId }: RoleMa
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case 'org:owner':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
+        return 'bg-black text-white border-black';
       case 'org:admin':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-white text-black border-black';
       case 'org:member':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-white text-black border-black';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-white text-black border-black';
     }
   };
 
