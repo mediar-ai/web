@@ -112,8 +112,8 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
             setAvailableMachines(data.machines);
             console.log('📋 Loaded machines for testing:', data.machines);
             
-            // After loading machines, fetch workflow assignments to set preferred default
-            await fetchWorkflowAssignments(data.machines);
+            // After loading machines, fetch optimal machine to set preferred default
+            await fetchOptimalMachine(data.machines);
           } else {
             console.error('[ERROR] Failed to load machines:', data.error);
           }
@@ -124,27 +124,25 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
         }
       };
 
-      const fetchWorkflowAssignments = async (_machines: Machine[]) => {
+      const fetchOptimalMachine = async (_machines: Machine[]) => {
         try {
-          const response = await fetch(`/api/workflows/${workflow.id}/machines`);
+          // Use the same logic as backend execution routes
+          const response = await fetch(`/api/remote-workflows/${workflow.id}/optimal-machine`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ execution_params: {} })
+          });
           const data = await response.json();
           
-          if (data.success && data.assignments && data.assignments.length > 0) {
-            // Sort assignments by priority (lower number = higher priority)
-            const sortedAssignments = data.assignments.sort((a: any, b: any) => a.priority - b.priority);
-            const preferredAssignment = sortedAssignments[0]; // Highest priority assignment
-            
-            console.log('🎯 Found workflow assignments:', data.assignments);
-            console.log('🎯 Using preferred machine ID:', preferredAssignment.machine_id);
-            
-            // Set the preferred machine as default
-            setSelectedMachineId(preferredAssignment.machine_id.toString());
+          if (data.success && data.machine_id) {
+            console.log('🎯 Optimal machine assignment:', data.machine_id, data.machine_name, data.assignment_reason);
+            setSelectedMachineId(data.machine_id.toString());
           } else {
-            console.log('🎯 No workflow assignments found, keeping default (machine 1)');
-            setSelectedMachineId('1'); // Fallback to machine 1 if no assignments
+            console.log('🎯 No optimal machine found, using fallback machine 1');
+            setSelectedMachineId('1'); // Fallback to machine 1 if no optimal machine
           }
         } catch (error) {
-          console.error('[ERROR] Error fetching workflow assignments:', error);
+          console.error('[ERROR] Error fetching optimal machine:', error);
           setSelectedMachineId('1'); // Fallback to machine 1 on error
         }
       };
