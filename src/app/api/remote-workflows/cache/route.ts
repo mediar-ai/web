@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 // Type definition for workflow execution cache hit
 interface WorkflowExecutionCacheHit {
@@ -104,6 +104,110 @@ async function getApiParameterNames(workflowId: number, executionParams: Record<
   }
 }
 
+// Similarity scoring algorithm based on analysis of 3,933+ executions
+function calculateSimilarityScore(
+  requestParams: Record<string, unknown>, 
+  candidateParams: Record<string, unknown>
+): number {
+  let totalScore = 0;
+
+  // Helper function to normalize height to inches
+  const normalizeHeight = (height: string | unknown): number => {
+    if (typeof height !== 'string') return 0;
+    const trimmed = height.trim();
+    
+    // Handle "5 10" format (feet inches)
+    if (trimmed.match(/^\d+\s+\d+$/)) {
+      const [feet, inches] = trimmed.split(' ').map(Number);
+      return feet * 12 + inches;
+    }
+    
+    // Handle "178" format (cm)
+    if (trimmed.match(/^\d+$/)) {
+      return Math.round(Number(trimmed) / 2.54); // Convert cm to inches
+    }
+    
+    return 0;
+  };
+
+  // Helper function to calculate age from DOB
+  const getAgeFromDOB = (dob: string | unknown): number => {
+    if (typeof dob !== 'string') return 0;
+    try {
+      const year = parseInt(dob.split('/')[2]);
+      return 2025 - year;
+    } catch {
+      return 0;
+    }
+  };
+
+  // Helper function to calculate array overlap (for future product_types similarity if needed)
+  // const calculateArrayOverlap = (arr1: unknown, arr2: unknown): number => {
+  //   if (!Array.isArray(arr1) || !Array.isArray(arr2)) return 0;
+  //   const set1 = new Set(arr1);
+  //   const set2 = new Set(arr2);
+  //   const intersection = new Set([...set1].filter(x => set2.has(x)));
+  //   const union = new Set([...set1, ...set2]);
+  //   return union.size > 0 ? intersection.size / union.size : 0;
+  // };
+
+  // HIGH IMPACT (70% total weight)
+  
+  // applicant_tobacco_usage (0.30 weight)
+  const tobacco1 = requestParams.applicant_tobacco_usage;
+  const tobacco2 = candidateParams.applicant_tobacco_usage;
+  const tobaccoScore = tobacco1 === tobacco2 ? 1.0 : 0.0;
+  totalScore += tobaccoScore * 0.30;
+
+  // applicant_dob (0.20 weight) 
+  const age1 = getAgeFromDOB(requestParams.applicant_dob);
+  const age2 = getAgeFromDOB(candidateParams.applicant_dob);
+  const ageDiff = Math.abs(age1 - age2);
+  const ageScore = Math.max(0, 1 - Math.pow(ageDiff / 10, 2));
+  totalScore += ageScore * 0.20;
+
+  // applicant_gender (0.20 weight)
+  const gender1 = requestParams.applicant_gender;
+  const gender2 = candidateParams.applicant_gender;
+  const genderScore = gender1 === gender2 ? 1.0 : 0.0;
+  totalScore += genderScore * 0.20;
+
+  // MEDIUM IMPACT (30% total weight)
+
+  // applicant_state (0.15 weight)
+  const state1 = requestParams.applicant_state;
+  const state2 = candidateParams.applicant_state;
+  const stateScore = state1 === state2 ? 1.0 : 0.4;
+  totalScore += stateScore * 0.15;
+
+  // quote_value (0.10 weight)
+  const val1 = Number(requestParams.quote_value) || 0;
+  const val2 = Number(candidateParams.quote_value) || 0;
+  const maxVal = Math.max(val1, val2);
+  const quoteScore = maxVal > 0 ? 1.0 - Math.min(1.0, Math.abs(val1 - val2) / maxVal) : 1.0;
+  totalScore += quoteScore * 0.10;
+
+  // quote_type (0.05 weight)
+  const type1 = requestParams.quote_type;
+  const type2 = candidateParams.quote_type;
+  const typeScore = type1 === type2 ? 1.0 : 0.2;
+  totalScore += typeScore * 0.05;
+
+  // LOW IMPACT (5% total weight)
+
+  // applicant_height (0.05 weight)
+  const height1 = normalizeHeight(requestParams.applicant_height);
+  const height2 = normalizeHeight(candidateParams.applicant_height);
+  const heightDiff = Math.abs(height1 - height2);
+  const heightScore = Math.max(0, 1 - (heightDiff / 12));
+  totalScore += heightScore * 0.05;
+
+  // IGNORED (0% weight - analysis showed no impact)
+  // applicant_weight, applicant_zip_code, applicant_tobacco_usage omitted
+
+  return Math.min(1.0, Math.max(0.0, totalScore));
+}
+
 /**
  * Cache endpoint for instant quote retrieval based on parameters
  * 
@@ -181,14 +285,12 @@ export async function POST(request: NextRequest) {
     const parametersJson = JSON.stringify(sortedParameters);
     const parametersHash = crypto.createHash('md5').update(parametersJson).digest('hex');
     
-    console.log(`🎯 Using hash-based lookup: ${parametersHash}`);
+    console.log(`🎯 First trying exact hash-based lookup: ${parametersHash}`);
 
-    // Optimized cache lookup query using parameter hash for maximum speed
-    let cacheResults, cacheError;
+    // Step 1: Try exact hash lookup first (for perfect matches)
+    let exactResults, exactError;
     
     if (full_detailed_response) {
-      // Detailed query: Include ALL fields including heavy debugging data (raw_logs, raw_mcp_response, execution_logs)
-      console.log(`🔍 Running DETAILED cache query with debugging fields (${failed_only ? 'failed only' : 'successful only'})`);
       const { data, error } = await supabase
         .from('workflow_executions')
         .select('id, formatted_output, created_at, execution_duration_seconds, results, raw_logs, raw_mcp_response, execution_logs, started_at, completed_at, updated_at, progress_percentage, current_step_index, total_steps, error_message, modal_call_id, client_id, execution_params, status')
@@ -197,49 +299,50 @@ export async function POST(request: NextRequest) {
         .eq('execution_params_hash', parametersHash)
         .order('id', { ascending: false })
         .limit(1);
-      cacheResults = data;
-      cacheError = error;
+      exactResults = data;
+      exactError = error;
     } else {
-      // Basic query: MINIMAL fields for maximum speed (excludes ALL heavy/optional debugging data)
-      console.log(`[PERF] Running BASIC cache query with minimal fields (${failed_only ? 'failed only' : 'successful only'})`);
       const { data, error } = await supabase
         .from('workflow_executions')
-        .select('id, formatted_output, created_at, execution_duration_seconds, started_at, completed_at, error_message, status')
+        .select('id, formatted_output, created_at, execution_duration_seconds, started_at, completed_at, error_message, status, execution_params')
         .eq('workflow_id', workflowIdNum)
         .in('status', statusFilter)
         .eq('execution_params_hash', parametersHash)
         .order('id', { ascending: false })
         .limit(1);
-      cacheResults = data;
-      cacheError = error;
+      exactResults = data;
+      exactError = error;
     }
 
-    // Fallback to JSONB lookup if hash lookup didn't find anything (for backwards compatibility)
-    if (cacheResults && cacheResults.length === 0) {
-      console.log(`🔄 Hash lookup missed, falling back to JSONB lookup (${failed_only ? 'failed only' : 'successful only'})`);
+    let cacheResults, cacheError;
+
+    // If exact match found, use it
+    if (exactResults && exactResults.length > 0) {
+      console.log(`✅ Exact hash match found! Using perfect match.`);
+      cacheResults = exactResults;
+      cacheError = exactError;
+    } else {
+      // Step 2: No exact match - get candidates for similarity scoring
+      console.log(`🔍 No exact match found. Getting candidates for similarity scoring (max 50 most recent)`);
       
       if (full_detailed_response) {
-        console.log(`🔄 Fallback DETAILED JSONB query with all fields`);
         const { data, error } = await supabase
           .from('workflow_executions')
           .select('id, formatted_output, created_at, execution_duration_seconds, results, raw_logs, raw_mcp_response, execution_logs, started_at, completed_at, updated_at, progress_percentage, current_step_index, total_steps, error_message, modal_call_id, client_id, execution_params, status')
           .eq('workflow_id', workflowIdNum)
           .in('status', statusFilter)
-          .eq('execution_params', JSON.stringify(parameters))
           .order('id', { ascending: false })
-          .limit(1);
+          .limit(50);
         cacheResults = data;
         cacheError = error;
       } else {
-        console.log(`🔄 Fallback BASIC JSONB query with minimal fields`);
         const { data, error } = await supabase
           .from('workflow_executions')
-          .select('id, formatted_output, created_at, execution_duration_seconds, started_at, completed_at, error_message, status')
+          .select('id, formatted_output, created_at, execution_duration_seconds, started_at, completed_at, error_message, status, execution_params')
           .eq('workflow_id', workflowIdNum)
           .in('status', statusFilter)
-          .eq('execution_params', JSON.stringify(parameters))
           .order('id', { ascending: false })
-          .limit(1);
+          .limit(50);
         cacheResults = data;
         cacheError = error;
       }
@@ -252,7 +355,39 @@ export async function POST(request: NextRequest) {
     const queryTime = Date.now() - startTime;
 
     if (cacheResults && cacheResults.length > 0) {
-      const cacheHit = cacheResults[0] as WorkflowExecutionCacheHit;
+      let cacheHit: WorkflowExecutionCacheHit;
+      let similarityScore = 1.0; // Default for exact matches
+      let candidatesEvaluated = 1;
+      let cacheMethod = 'exact_hash_match';
+
+      // Check if we have multiple candidates (similarity scoring needed)
+      if (cacheResults.length > 1 || !exactResults?.length) {
+        console.log(`🧮 Scoring ${cacheResults.length} candidates using similarity algorithm`);
+        
+        // Score all candidates
+        const scoredCandidates = cacheResults.map(candidate => {
+          const score = calculateSimilarityScore(parameters, candidate.execution_params || {});
+          return {
+            ...candidate,
+            similarity_score: score
+          };
+        });
+
+        // Sort by highest similarity score
+        scoredCandidates.sort((a, b) => b.similarity_score - a.similarity_score);
+        
+        const bestMatch = scoredCandidates[0];
+        cacheHit = bestMatch as WorkflowExecutionCacheHit;
+        similarityScore = bestMatch.similarity_score;
+        candidatesEvaluated = scoredCandidates.length;
+        cacheMethod = 'similarity_based';
+
+        console.log(`🎯 Best match: Execution ${cacheHit.id} with similarity score ${similarityScore.toFixed(3)} (evaluated ${candidatesEvaluated} candidates)`);
+      } else {
+        // Single exact match
+        cacheHit = cacheResults[0] as WorkflowExecutionCacheHit;
+        console.log(`🎯 Using exact match: Execution ${cacheHit.id}`);
+      }
       
       // Get workflow details for enhanced response
       const { data: workflow } = await supabase
@@ -306,7 +441,7 @@ export async function POST(request: NextRequest) {
       const speedImprovement = originalDuration > 0 ? Math.round((originalDuration * 1000) / queryTime) : 0;
 
       const isSuccessful = cacheHit.status === 'completed';
-      console.log(`[SUCCESS] Cache HIT! Execution ${cacheHit.id} (${cacheHit.status}) - ${queryTime}ms vs ${originalDuration}s original`);
+      console.log(`[SUCCESS] Cache HIT! Execution ${cacheHit.id} (${cacheHit.status}) via ${cacheMethod} (similarity: ${similarityScore.toFixed(3)}) - ${queryTime}ms vs ${originalDuration}s original`);
 
       // Return minimal response with only formatted_output when full_detailed_response is false
       if (!full_detailed_response) {
@@ -325,7 +460,10 @@ export async function POST(request: NextRequest) {
             original_duration_seconds: originalDuration,
             cache_query_time_ms: queryTime,
             speed_improvement: `${speedImprovement}x faster`,
-            quote_count: quoteCount
+            quote_count: quoteCount,
+            similarity_score: similarityScore,
+            cache_method: cacheMethod,
+            candidates_evaluated: candidatesEvaluated
           },
           response_metadata: {
             execution_mode: 'synchronous_cached',
@@ -459,7 +597,10 @@ export async function POST(request: NextRequest) {
           original_duration_seconds: originalDuration,
           cache_query_time_ms: queryTime,
           speed_improvement: `${speedImprovement}x faster`,
-          quote_count: quoteCount
+          quote_count: quoteCount,
+          similarity_score: similarityScore,
+          cache_method: cacheMethod,
+          candidates_evaluated: candidatesEvaluated
         },
         response_metadata: {
           execution_mode: 'cached',
