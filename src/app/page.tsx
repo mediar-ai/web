@@ -48,4 +48,5 @@ function HomePage() {
   );
 }
 
+// Authentication-based homepage - deployed on $(date)
 export default HomePage;
