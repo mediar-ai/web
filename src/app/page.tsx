@@ -3,9 +3,9 @@
 import { useAuth, useOrganization } from '@clerk/nextjs';
 
 // Homepage components
+import ContactAdminSection from '@/components/homepage/ContactAdminSection';
 import DashboardOverview from '@/components/homepage/DashboardOverview';
 import LandingSection from '@/components/homepage/LandingSection';
-import SimpleContactMessage from '@/components/homepage/SimpleContactMessage';
 
 function HomePage() {
   const { isLoaded, userId } = useAuth();
@@ -30,22 +30,29 @@ function HomePage() {
 
   // Check if user has organization membership (Clerk-only authorization)
   if (!organization || !membership) {
-    return <SimpleContactMessage />;
+    return <ContactAdminSection userId={userId} onStatusCheck={() => {}} isChecking={false} />;
   }
 
   // Show dashboard overview for users with organization access
   const isAdmin = membership.role === 'org:admin';
   const isOwner = membership.role === 'org:owner';
   
-          return (
-          <DashboardOverview
-            organizationName={organization.name}
-            userRole={membership.role}
-            userId={userId}
-            isAdmin={isAdmin}
-            isOwner={isOwner}
-          />
-        );
+  const userStatus = {
+    inDatabase: true,
+    hasOrganization: true,
+    organizationId: organization.id,
+    organizationName: organization.name,
+    userRole: membership.role,
+  };
+  
+  return (
+    <DashboardOverview
+      userStatus={userStatus}
+      userId={userId}
+      isAdmin={isAdmin}
+      isOwner={isOwner}
+    />
+  );
 }
 
 export default HomePage;
