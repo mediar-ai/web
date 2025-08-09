@@ -37,17 +37,10 @@ function HomePage() {
   const isAdmin = membership.role === 'org:admin';
   const isOwner = membership.role === 'org:owner';
   
-  const userStatus = {
-    inDatabase: true,
-    hasOrganization: true,
-    organizationId: organization.id,
-    organizationName: organization.name,
-    userRole: membership.role,
-  };
-  
   return (
     <DashboardOverview
-      userStatus={userStatus}
+      organizationName={organization.name}
+      userRole={membership.role}
       userId={userId}
       isAdmin={isAdmin}
       isOwner={isOwner}
