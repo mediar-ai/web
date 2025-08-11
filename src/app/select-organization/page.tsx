@@ -1,23 +1,23 @@
 'use client';
 
-import { OrganizationSwitcher, useAuth, useOrganization } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { OrganizationSwitcher, useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 
 export default function SelectOrganizationPage() {
   const { isLoaded, userId } = useAuth();
-  const { organization } = useOrganization();
-  const router = useRouter();
+  // Removed organization and router since we're not using auto-redirect anymore
+  // const { organization } = useOrganization();
+  // const router = useRouter();
 
-  useEffect(() => {
-    // If user has an active organization, redirect to dashboard
-    if (isLoaded && organization) {
-      router.push('/admin');
-    }
-  }, [isLoaded, organization, router]);
+  // Removed automatic redirect to admin - users can manually navigate to admin if needed
+  // useEffect(() => {
+  //   // If user has an active organization, redirect to dashboard
+  //   if (isLoaded && organization) {
+  //     router.push('/admin');
+  //   }
+  // }, [isLoaded, organization, router]);
 
   if (!isLoaded) {
     return (
