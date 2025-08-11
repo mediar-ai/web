@@ -1,8 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
 const isAdminRoute = createRouteMatcher([
-  '/admin(.*)',
-  '/' // Protect homepage with Clerk auth
+  '/admin(.*)'
+  // Removed homepage from admin routes - let users access it freely
 ]);
 
 const isDeploymentRoute = createRouteMatcher([
@@ -115,10 +115,11 @@ export default clerkMiddleware(async (auth, req) => {
     console.log('[Middleware Debug] Has any admin role:', hasAnyAdminRole);
     console.log('[Middleware Debug] Has any member role:', hasAnyMemberRole);
     
-    if (Object.keys(organizationMemberships).length > 0 && !orgId) {
-      console.log('[Middleware Debug] User has orgs but no active org - redirecting to org selection');
-      return Response.redirect(new URL('/select-organization', req.url));
-    }
+    // Allow users to access homepage even without active org - let them choose where to go
+    // if (Object.keys(organizationMemberships).length > 0 && !orgId) {
+    //   console.log('[Middleware Debug] User has orgs but no active org - redirecting to org selection');
+    //   return Response.redirect(new URL('/select-organization', req.url));
+    // }
     
     if (!hasAnyAdminRole && !hasAnyMemberRole) {
       console.log('[Middleware Debug] Access denied - redirecting to unauthorized');
