@@ -28,7 +28,7 @@ function HomePage() {
     return <LandingSection />;
   }
 
-  // Check if user has organization membership (Clerk-only authorization)
+  // Check if user has organization membership - if not, show contact admin section
   if (!organization || !membership) {
     return <ContactAdminSection userId={userId} onStatusCheck={() => {}} isChecking={false} />;
   }
