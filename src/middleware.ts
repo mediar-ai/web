@@ -5,9 +5,7 @@ const isAdminRoute = createRouteMatcher([
   // Removed homepage from admin routes - let users access it freely
 ]);
 
-const isDeploymentRoute = createRouteMatcher([
-  '/deployments(.*)'
-]);
+const isDeploymentRoute = createRouteMatcher(['/deployments(.*)']);
 
 const isPublicApiRoute = createRouteMatcher([
   '/api/ingest(.*)',
@@ -22,7 +20,7 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/analyze-raw-timeline-events(.*)',
   '/api/sync-processed-counts(.*)',
   '/api/process-workflow-step(.*)',
-  '/api/remote-workflows(.*)'
+  '/api/remote-workflows(.*)',
 ]);
 
 const isProtectedApiRoute = createRouteMatcher([
@@ -36,7 +34,7 @@ const isProtectedApiRoute = createRouteMatcher([
   '/api/generate-events(.*)',
   '/api/mcp/(.*)',
   '/api/edit-workflow(.*)',
-  '/api/workflows/(.*)'
+  '/api/workflows/(.*)',
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -44,71 +42,106 @@ export default clerkMiddleware(async (auth, req) => {
   if (isPublicApiRoute(req)) {
     return;
   }
-  
+
   // Handle protected API routes - require authentication but allow any authenticated user
   if (isProtectedApiRoute(req)) {
     const { userId } = await auth();
-    
+
     if (!userId) {
-      console.log('[Middleware] Protected API route accessed without authentication:', req.url);
+      console.log(
+        '[Middleware] Protected API route accessed without authentication:',
+        req.url
+      );
       await auth.protect();
       return;
     }
-    
-    console.log('[Middleware] Protected API route accessed by authenticated user:', userId);
+
+    console.log(
+      '[Middleware] Protected API route accessed by authenticated user:',
+      userId
+    );
     return; // Allow access for authenticated users
   }
-  
+
   // Protect admin and deployment routes
   if (isAdminRoute(req) || isDeploymentRoute(req)) {
     const { userId } = await auth();
-    
+
     // Protect admin routes by requiring authentication
     if (!userId) {
       await auth.protect();
       return;
     }
-    
+
     const { has, orgId, orgRole, orgSlug, sessionClaims } = await auth();
-    
+
     // Debug logging to see what Clerk is providing
     console.log('[Middleware Debug] User ID:', userId);
     console.log('[Middleware Debug] Org ID:', orgId);
     console.log('[Middleware Debug] Org Role:', orgRole);
     console.log('[Middleware Debug] Org Slug:', orgSlug);
-    console.log('[Middleware Debug] Session Claims:', JSON.stringify(sessionClaims, null, 2));
-    
+    console.log(
+      '[Middleware Debug] Session Claims:',
+      JSON.stringify(sessionClaims, null, 2)
+    );
+
     // Add more detailed debugging
     console.log('[Middleware Debug] Full auth object keys:', Object.keys(auth));
-    console.log('[Middleware Debug] Has function result for org:admin:', has({ role: 'org:admin' }));
-    console.log('[Middleware Debug] Has function result for org:member:', has({ role: 'org:member' }));
-    console.log('[Middleware Debug] Has function result for org:owner:', has({ role: 'org:owner' }));
-    
+    console.log(
+      '[Middleware Debug] Has function result for org:admin:',
+      has({ role: 'org:admin' })
+    );
+    console.log(
+      '[Middleware Debug] Has function result for org:member:',
+      has({ role: 'org:member' })
+    );
+    console.log(
+      '[Middleware Debug] Has function result for org:owner:',
+      has({ role: 'org:owner' })
+    );
+
     const hasOrgAdminRole = has({ role: 'org:admin' });
     const hasOrgMemberRole = has({ role: 'org:member' });
     const hasOrgOwnerRole = has({ role: 'org:owner' });
-    
-    const organizationMemberships = sessionClaims?.organizationMemberships || {};
-    console.log('[Middleware Debug] Organization memberships:', organizationMemberships);
-    console.log('[Middleware Debug] Organization memberships type:', typeof organizationMemberships);
-    console.log('[Middleware Debug] Organization memberships keys:', Object.keys(organizationMemberships));
-    
+
+    const organizationMemberships =
+      sessionClaims?.organizationMemberships || {};
+    console.log(
+      '[Middleware Debug] Organization memberships:',
+      organizationMemberships
+    );
+    console.log(
+      '[Middleware Debug] Organization memberships type:',
+      typeof organizationMemberships
+    );
+    console.log(
+      '[Middleware Debug] Organization memberships keys:',
+      Object.keys(organizationMemberships)
+    );
+
     let hasAnyAdminRole = hasOrgAdminRole || hasOrgOwnerRole; // Owners have admin privileges
     let hasAnyMemberRole = hasOrgMemberRole;
-    
+
     // Handle organization memberships as object { orgId: role }
-    if (typeof organizationMemberships === 'object' && organizationMemberships !== null) {
+    if (
+      typeof organizationMemberships === 'object' &&
+      organizationMemberships !== null
+    ) {
       for (const [orgId, role] of Object.entries(organizationMemberships)) {
         console.log('[Middleware Debug] Checking membership:', { orgId, role });
         if (role === 'org:admin' || role === 'org:owner') {
           hasAnyAdminRole = true;
         }
-        if (role === 'org:member' || role === 'org:admin' || role === 'org:owner') {
+        if (
+          role === 'org:member' ||
+          role === 'org:admin' ||
+          role === 'org:owner'
+        ) {
           hasAnyMemberRole = true;
         }
       }
     }
-    
+
     console.log('[Middleware Debug] Has org admin role:', hasOrgAdminRole);
     console.log('[Middleware Debug] Has org member role:', hasOrgMemberRole);
     console.log('[Middleware Debug] Has org owner role:', hasOrgOwnerRole);
@@ -122,16 +155,16 @@ export default clerkMiddleware(async (auth, req) => {
     // }
     
     if (!hasAnyAdminRole && !hasAnyMemberRole) {
-      console.log('[Middleware Debug] Access denied - redirecting to unauthorized');
+      console.log(
+        '[Middleware Debug] Access denied - redirecting to unauthorized'
+      );
       return Response.redirect(new URL('/unauthorized', req.url));
     }
-    
+
     console.log('[Middleware Debug] Access granted');
   }
 });
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
-}; 
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+};

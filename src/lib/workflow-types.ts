@@ -79,6 +79,8 @@ export interface WorkflowWithSettings extends Workflow {
 export type WorkflowOverview = Omit<Workflow, 'automation_sequence'>;
 
 export interface ExecutionResult {
+  // Optional structured outputs (user-defined schema)
+  mediar_parser?: Array<Record<string, unknown>>;
   quotes?: Array<{
     provider: string;
     premium: number;
@@ -157,4 +159,4 @@ export interface LiveExecutionStatus {
   estimated_seconds_remaining: number | null;
   steps_per_minute: number | null;
   runtime_seconds?: number;
-} 
+}

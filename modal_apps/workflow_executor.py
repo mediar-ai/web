@@ -1320,6 +1320,18 @@ def execute_workflow(
                     "Received %d quotes from MCP workflow.",
                     len(results.get("quotes", [])),
                 )
+
+                # Optional AI enrichment step (delegated to helper module for clarity)
+                try:
+                    from modal_apps.output_enrichment import enrich_results_if_enabled
+
+                    results = enrich_results_if_enabled(
+                        results=results,
+                        execution_params=execution_params,
+                        automation_sequence=automation_sequence,
+                    )
+                except Exception as enrich_err:
+                    logger.warning("⚠️ Enrichment step encountered an error but was ignored: %s", enrich_err)
             finally:
                 loop.close()
 
