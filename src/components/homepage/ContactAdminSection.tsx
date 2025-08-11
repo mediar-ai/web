@@ -4,7 +4,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserButton } from '@clerk/nextjs';
-import { CheckCircle, Copy, Mail, MessageSquare, RefreshCw } from 'lucide-react';
+import { CheckCircle, Copy, Mail, MessageSquare, Play, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 
 interface ContactAdminSectionProps {
@@ -45,6 +46,24 @@ export default function ContactAdminSection({
             Your account has been created, but you need organization access to continue.
           </p>
         </div>
+
+        {/* Web Workflows Access */}
+        <Card className="border-black-outline">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <h3 className="text-lg font-semibold text-black">Try Web Workflows</h3>
+              <p className="text-gray-600">
+                You can still access our web workflow recorder while waiting for organization access.
+              </p>
+              <Link href="/web">
+                <Button className="bg-black text-white hover:bg-gray-800">
+                  <Play className="w-4 h-4 mr-2" />
+                  Web Workflows
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Main Card */}
         <Card className="border-black-outline">
