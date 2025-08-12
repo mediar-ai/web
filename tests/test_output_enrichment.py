@@ -73,16 +73,18 @@ def test_enrich_results_with_quotes_payload_sync_mode():
     )
 
     # Assertions
-    assert "structured_output" in enriched
     assert enriched["enrichment"]["status"] == "succeeded"
+    # Support both legacy and new storage locations
+    so = enriched.get("structured_output") or enriched.get("mediar_parser") or {}
     assert enriched["enrichment"]["mode"] == "sync"
     assert enriched["raw_output"]["mime_type"] in ("text/plain", "text/html")
 
-    # The raw payload should contain serialized quotes JSON
-    assert "fullText" in enriched["raw_output"]["value"]
+    # The raw payload should contain the quote text content (we limit to text-only lines now)
+    raw_val = enriched["raw_output"]["value"]
+    assert isinstance(raw_val, str) and ("$17.93" in raw_val or "Prosperity" in raw_val)
 
     # Dual-case keys should be present inside structured_output
-    so = enriched.get("structured_output") or {}
+    so = so or {}
     assert so.get("quote_items_detected") == 2
     assert so.get("quoteItemsDetected") == 2
     assert so.get("model_used") == execution_params["enrichment"]["model"]
@@ -113,9 +115,8 @@ def test_structured_output_alias_and_dual_case_when_custom_output_key():
 
     enriched = enrich_results_if_enabled(results, exec_params, None, ai_enricher=enricher)
 
-    # Both the configured output_key and the alias should be set
+    # The configured output_key should be set; structured_output is optional now
     assert "mediar_parser" in enriched
-    assert "structured_output" in enriched
 
     # Dual-case keys should be present
     mp = enriched["mediar_parser"]
@@ -165,28 +166,29 @@ def test_enrich_results_with_real_vertex_if_env_present():
     )
     # Verbose logs to stdout so it's visible under -s
     print("\n=== ENRICHMENT METADATA ===\n" + json.dumps(enriched.get("enrichment"), ensure_ascii=False, indent=2))
-    if "structured_output" in enriched:
-        print("\n=== STRUCTURED OUTPUT ===\n" + json.dumps(enriched["structured_output"], ensure_ascii=False, indent=2))
+    so = enriched.get("structured_output") or enriched.get("mediar_parser")
+    if so is not None:
+        print("\n=== STRUCTURED OUTPUT ===\n" + json.dumps(so, ensure_ascii=False, indent=2))
+    
+    # TEST DUAL-CASE KEYS (only when succeeded)
+    so = enriched.get("structured_output") or enriched.get("mediar_parser")
+    if so and enriched["enrichment"]["status"] == "succeeded":
+        # Check that both snake_case and camelCase versions exist
+        if "quote_items_detected" in so:
+            assert "quoteItemsDetected" in so, "Missing camelCase version of quote_items_detected"
+            assert so["quote_items_detected"] == so["quoteItemsDetected"], "Values don't match"
+            print(f"OK Dual-case verified: quote_items_detected={so['quote_items_detected']}, quoteItemsDetected={so['quoteItemsDetected']}")
         
-        # TEST DUAL-CASE KEYS
-        so = enriched["structured_output"]
-        if so and enriched["enrichment"]["status"] == "succeeded":
-            # Check that both snake_case and camelCase versions exist
-            if "quote_items_detected" in so:
-                assert "quoteItemsDetected" in so, "Missing camelCase version of quote_items_detected"
-                assert so["quote_items_detected"] == so["quoteItemsDetected"], "Values don't match"
-                print(f"✓ Dual-case verified: quote_items_detected={so['quote_items_detected']}, quoteItemsDetected={so['quoteItemsDetected']}")
-            
-            if "summary" in so:
-                # summary is already lowercase, no camelCase needed
-                print(f"✓ Summary field present: {so['summary'][:50]}...")
+        if "summary" in so:
+            # summary is already lowercase, no camelCase needed
+            print(f"OK Summary field present: {so['summary'][:50]}...")
     else:
         print("\n=== NO STRUCTURED OUTPUT; FULL ENRICHED ===\n" + json.dumps(enriched, ensure_ascii=False, indent=2))
 
     assert "enrichment" in enriched
     assert enriched["enrichment"]["status"] in ("succeeded", "failed")
     if enriched["enrichment"]["status"] == "succeeded":
-        assert "structured_output" in enriched
+        assert any(k in enriched for k in ("structured_output", "mediar_parser"))
 
 
 def _quote_array_schema():
@@ -279,7 +281,7 @@ def test_structured_output_quality_with_messy_inputs():
                 "schema": schema,
                 "instructions": instructions,
                 "temperature": 0.1,
-                "max_tokens": 2000,
+                "max_tokens": 20000,
             },
         }
         return enrich_results_if_enabled(results, exec_params, None)
@@ -292,7 +294,7 @@ def test_structured_output_quality_with_messy_inputs():
 
     for idx, scenario in enumerate(messy_scenarios, start=1):
         enriched = run_case(scenario)
-        so = enriched.get("structured_output") or []
+        so = enriched.get("structured_output") or enriched.get("mediar_parser") or []
         print(f"\n=== Scenario {idx} | items: {len(so)} ===")
         print(json.dumps(so, ensure_ascii=False, indent=2))
         for item in so:

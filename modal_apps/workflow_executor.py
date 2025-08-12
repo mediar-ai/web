@@ -193,13 +193,29 @@ secrets = [
 
 # Database connection configuration using environment variables
 def get_db_config():
-    """Get database configuration from environment variables (Modal secrets)"""
+    """Get database configuration from environment variables (Modal secrets)
+
+    Supports both discrete credentials and a single Postgres connection URL.
+    Recognized variables (checked in order):
+      - SUPABASE_DB_URL / DATABASE_URL / POSTGRES_URL (full DSN)
+      - SUPABASE_HOST, SUPABASE_USER, SUPABASE_PASSWORD (discrete)
+    """
+    # Prefer a single DSN URL if provided
+    dsn = (
+        os.environ.get("SUPABASE_DB_URL")
+        or os.environ.get("DATABASE_URL")
+        or os.environ.get("POSTGRES_URL")
+    )
+    if dsn:
+        return {"dsn": dsn}
+
+    # Fall back to discrete credentials
     return {
-        'host': os.environ['SUPABASE_HOST'],
-        'port': 5432,
-        'database': 'postgres',
-        'user': os.environ['SUPABASE_USER'],
-        'password': os.environ['SUPABASE_PASSWORD']
+        "host": os.environ["SUPABASE_HOST"],
+        "port": 5432,
+        "database": "postgres",
+        "user": os.environ["SUPABASE_USER"],
+        "password": os.environ["SUPABASE_PASSWORD"],
     }
 
 # Configuration for auto-cancellation
@@ -378,6 +394,135 @@ def get_database_connection():
     except Exception as e:
         logger.error("❌ Database connection failed: %s", e)
         raise
+
+
+def execute_workflow_by_version(
+    *,
+    version_number: str,
+    mcp_endpoint: str,
+    execution_params: Dict[str, Any] | None = None,
+    client_id: Optional[str] = None,
+    status: Optional[str] = None,
+    workflow_name_contains: Optional[str] = None,
+    category: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Convenience wrapper to run a workflow when you only know the version.
+
+    Resolves the unique workflow_id for the given version (with optional filters) and
+    runs the existing executor while passing the same version to ensure exact selection.
+    """
+    workflow_id = resolve_workflow_id_for_version(
+        version_number=version_number,
+        status=status,
+        workflow_name_contains=workflow_name_contains,
+        category=category,
+    )
+    return execute_workflow.local(  # type: ignore[attr-defined]
+        workflow_id=workflow_id,
+        mcp_endpoint=mcp_endpoint,
+        execution_params=execution_params or {},
+        client_id=client_id,
+        version_number=version_number,
+    )
+
+
+def resolve_workflow_id_for_version(
+    version_number: str,
+    *,
+    status: Optional[str] = None,
+    workflow_name_contains: Optional[str] = None,
+    category: Optional[str] = None,
+) -> int:
+    """Resolve a single workflow ID for a given version number.
+
+    Version numbers are not globally unique. Optional filters help disambiguate.
+
+    Args:
+        version_number: The version number to look up (e.g., "1.0.67").
+        status: Optional workflow status to filter on (e.g., "deployed").
+        workflow_name_contains: Optional case-insensitive substring match on workflow name.
+        category: Optional workflow category filter.
+
+    Returns:
+        The resolved workflow ID.
+
+    Raises:
+        ValueError: If no workflows match or if multiple workflows match the criteria.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_database_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        conditions = ["v.version_number = %s"]
+        params: List[Any] = [version_number]
+
+        if status:
+            conditions.append("w.status = %s")
+            params.append(status)
+
+        if category:
+            conditions.append("w.category = %s")
+            params.append(category)
+
+        if workflow_name_contains:
+            conditions.append("w.name ILIKE %s")
+            params.append(f"%{workflow_name_contains}%")
+
+        where_clause = " AND ".join(conditions)
+
+        cur.execute(
+            f"""
+            SELECT
+                w.id,
+                w.name,
+                w.status,
+                w.category,
+                w.version AS current_version
+            FROM deployed_workflow_versions v
+            JOIN deployed_workflows w ON w.id = v.workflow_id
+            WHERE {where_clause}
+            ORDER BY w.updated_at DESC
+            """,
+            params,
+        )
+
+        rows = cur.fetchall() or []
+        if len(rows) == 0:
+            raise ValueError(
+                f"No workflows found with version {version_number}"
+                + (
+                    f" (status={status})" if status else ""
+                )
+                + (f" (category={category})" if category else "")
+                + (
+                    f" (name contains '{workflow_name_contains}')"
+                    if workflow_name_contains
+                    else ""
+                )
+            )
+
+        if len(rows) > 1:
+            summary = ", ".join(
+                [
+                    f"{row['id']}:{row['name']}:{row['status']}:{row['category']}"
+                    for row in rows
+                ]
+            )
+            raise ValueError(
+                "Multiple workflows match the version; refine filters: " + summary
+            )
+
+        return int(rows[0]["id"])  # type: ignore[call-arg]
+
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        finally:
+            if conn is not None:
+                conn.close()
 
 
 def extract_applicant_info(workflow_data: Dict[str, Any]) -> Dict[str, str]:
@@ -696,6 +841,88 @@ def log_merge_details(original, merged, path=""):
         elif original.get(key) != merged.get(key):
             logger.info(f"  🔄 Changed '{new_path}': '{original.get(key)}' -> '{merged.get(key)}'")
 
+
+def _truncate_middle(text: str, max_length: int = 400) -> str:
+    """Truncate long strings keeping the beginning and end for context."""
+    try:
+        if not isinstance(text, str):
+            text = str(text)
+        if len(text) <= max_length:
+            return text
+        head = max_length // 2
+        tail = max_length - head - 3
+        return f"{text[:head]}...{text[-tail:]}"
+    except Exception:
+        return text[:max_length]
+
+
+def log_mcp_execution_breakdown(mcp_content: Dict[str, Any]) -> None:
+    """Log a structured breakdown of MCP execution groups and steps to diagnose failures."""
+    try:
+        if not isinstance(mcp_content, dict):
+            logger.info("🧩 MCP content is not a dict; skipping breakdown log")
+            return
+
+        status = mcp_content.get("status")
+        total_tools = mcp_content.get("total_tools")
+        executed_tools = mcp_content.get("executed_tools")
+        total_duration_ms = mcp_content.get("total_duration_ms")
+        logger.info("🧩 MCP Summary | status=%s | total_tools=%s | executed_tools=%s | total_duration_ms=%s",
+                    status, total_tools, executed_tools, total_duration_ms)
+
+        results = mcp_content.get("results", [])
+        if not isinstance(results, list):
+            logger.info("🧩 MCP results is not a list; type=%s", type(results).__name__)
+            return
+
+        total_groups = len(results)
+        logger.info("🧩 MCP Groups: %d", total_groups)
+
+        first_error_logged = False
+        for group_index, group in enumerate(results):
+            group_name = group.get("group_name", f"group_{group_index}")
+            group_status = group.get("status", "unknown")
+            group_duration = group.get("duration_ms", 0)
+            group_results = group.get("results", [])
+            logger.info("   ▸ Group %d: %s | status=%s | duration_ms=%s | steps=%d",
+                        group_index, group_name, group_status, group_duration, len(group_results) if isinstance(group_results, list) else 0)
+
+            if not isinstance(group_results, list):
+                logger.info("     ↳ Group results is not a list; type=%s", type(group_results).__name__)
+                continue
+
+            for step_index, step in enumerate(group_results):
+                tool = step.get("tool_name", f"step_{step_index}")
+                step_status = step.get("status", "unknown")
+                step_duration = step.get("duration_ms", 0)
+                logger.info("     - Step %d.%d | tool=%s | status=%s | duration_ms=%s",
+                            group_index, step_index, tool, step_status, step_duration)
+
+                if step_status == "error":
+                    error_payload = step.get("error")
+                    logger.error("       ✖ Error in %s: %s", tool, _truncate_middle(error_payload, 600))
+                    if not first_error_logged:
+                        try:
+                            # Attempt to extract an error_type if the payload embeds JSON
+                            error_type = None
+                            if isinstance(error_payload, str):
+                                # Try to find a JSON fragment in the string
+                                json_start = error_payload.find("{")
+                                json_end = error_payload.rfind("}")
+                                if json_start != -1 and json_end != -1 and json_end > json_start:
+                                    import json as _json
+                                    fragment = error_payload[json_start:json_end + 1]
+                                    parsed = _json.loads(fragment)
+                                    error_type = parsed.get("error_type") or parsed.get("type")
+                            logger.error("       ✖ First error summary | group=%s | step=%s | tool=%s | error_type=%s",
+                                         group_name, f"{group_index}.{step_index}", tool, error_type or "Unknown")
+                        except Exception:
+                            logger.error("       ✖ Failed to parse error payload for %s", tool)
+                        first_error_logged = True
+
+    except Exception as breakdown_err:
+        logger.error("Failed to log MCP execution breakdown: %s", breakdown_err)
+
 async def execute_mcp_workflow(
     workflow_data: Dict[str, Any], execution_params: Dict[str, Any], mcp_endpoint: str
 ) -> Dict[str, Any]:
@@ -958,6 +1185,12 @@ async def execute_mcp_workflow(
                 executed_steps = []
 
                 if mcp_content:
+                    # New: structured breakdown logging of groups/steps/errors
+                    try:
+                        log_mcp_execution_breakdown(mcp_content)
+                    except Exception as _e:
+                        logger.warning("Failed to log MCP breakdown: %s", _e)
+
                     # --- MORE DETAILED LOGGING FOR PARSER ---
                     logger.info(
                         "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
