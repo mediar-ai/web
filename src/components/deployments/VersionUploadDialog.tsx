@@ -54,6 +54,9 @@ export function VersionUploadDialog({
   
   // Format detection state
   const [detectedFormat, setDetectedFormat] = useState<ContentFormat>('unknown');
+  
+  // New: Optional workflow label
+  const [workflowLabel, setWorkflowLabel] = useState<string>('');
 
   const resetState = () => {
     setSelectedFile(null);
@@ -64,6 +67,7 @@ export function VersionUploadDialog({
     setUploading(false);
     setActivateImmediately(false);
     setDetectedFormat('unknown');
+    setWorkflowLabel('');
   };
 
   // Enhanced format detection
@@ -225,7 +229,8 @@ export function VersionUploadDialog({
         body: JSON.stringify({
           automation_sequence: automationSequence,
           set_as_active: activateImmediately,
-          change_notes: `Uploaded via UI - ${sourceDescription} (${format.toUpperCase()} format)`
+          change_notes: `Uploaded via UI - ${sourceDescription} (${format.toUpperCase()} format)`,
+          workflow_label: workflowLabel && workflowLabel.trim().length > 0 ? workflowLabel.trim() : undefined,
         }),
       });
 
@@ -411,6 +416,22 @@ arguments:
 
           {/* Activation Control */}
           <div className="border rounded-lg p-4 space-y-3">
+            {/* New: Optional Workflow Label */}
+            <div className="space-y-2">
+              <Label htmlFor="workflow-label" className="text-sm font-medium">Workflow Label (optional)</Label>
+              <Input
+                id="workflow-label"
+                type="text"
+                placeholder={workflowName || 'e.g. Lead Intake - Quote Flow'}
+                value={workflowLabel}
+                onChange={(e) => setWorkflowLabel(e.target.value)}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground">
+                If provided, this will update the workflow name in the database.
+              </p>
+            </div>
+
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="activate-immediately"

@@ -98,7 +98,7 @@ export async function POST(
     const workflowIdNum = parseInt(workflowId);
     
     const body = await request.json();
-    const { automation_sequence, version_number, change_notes, set_as_active = false } = body;
+    const { automation_sequence, version_number, change_notes, set_as_active = false, workflow_label } = body;
 
     if (!automation_sequence) {
       return NextResponse.json(
@@ -198,6 +198,21 @@ export async function POST(
         { success: false, error: `Workflow ${workflowIdNum} not found` },
         { status: 404 }
       );
+    }
+
+    // Optional: Update workflow name/label if provided
+    if (typeof workflow_label === 'string' && workflow_label.trim().length > 0) {
+      const trimmedLabel = workflow_label.trim();
+      const { error: nameUpdateError } = await supabase
+        .from('deployed_workflows')
+        .update({ name: trimmedLabel, updated_at: new Date().toISOString() })
+        .eq('id', workflowIdNum);
+      if (nameUpdateError) {
+        console.warn(`[WARN] Failed to update workflow name for ${workflowIdNum}:`, nameUpdateError.message);
+      } else {
+        // Reflect local variable so response returns updated name
+        (workflow as any).name = trimmedLabel;
+      }
     }
 
     // Generate next version number if not provided
@@ -307,7 +322,7 @@ export async function POST(
       },
       workflow: {
         id: workflowIdNum,
-        name: workflow.name,
+        name: (workflow as any).name,
         total_versions: workflow.total_versions + 1,
         current_version: set_as_active ? newVersionNumber : workflow.version
       }
