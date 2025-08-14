@@ -313,7 +313,7 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
             return False, "", check_duration_ms
         
         # Check if ALL 3 most recent executions are failures with identical error messages
-        all_failed = all(exec['status'] == 'failed' for exec in recent_executions)
+        all_failed = all(row['status'] == 'failed' for row in recent_executions)
         
         if not all_failed:
             logger.debug("🔍 Pre-claim check for workflow %d: Not all recent executions failed, proceeding (took %dms)", 
@@ -321,7 +321,7 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
             return False, "", check_duration_ms
         
         # All 3 are failures - check if they have identical error messages
-        error_messages = [exec['error_message'] for exec in recent_executions if exec['error_message']]
+        error_messages = [row['error_message'] for row in recent_executions if row['error_message']]
         
         if len(error_messages) == CONSECUTIVE_FAILURE_THRESHOLD and all(msg == error_messages[0] for msg in error_messages):
             # Found problematic pattern - cancel remaining queued jobs for this workflow
@@ -2292,6 +2292,8 @@ def check_and_process_queued_jobs():
     conn = None
     cur = None
     coordinator_id = f"global-scheduler-{uuid.uuid4().hex[:8]}-{int(time.time())}"
+    # Track all machine coordinator locks we create so we can release them reliably
+    acquired_locks: List[Tuple[str, str]] = []  # (user_id, processor_id)
 
     try:
         # Connect to database
@@ -2300,21 +2302,24 @@ def check_and_process_queued_jobs():
 
         # 🔒 GLOBAL SCHEDULER LOCK: Prevent multiple scheduler instances from racing
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
                 VALUES ('global-scheduler', 0, %s, 'in_progress', NOW() + INTERVAL '2 minutes')
                 ON CONFLICT (user_id, event_id) DO NOTHING
                 RETURNING id
-            """, (coordinator_id,))
-            
+                """,
+                (coordinator_id,),
+            )
+
             if not cur.fetchone():
                 logger.debug("⏸️  Another global scheduler is already running")
                 return {
                     "status": "skipped",
                     "reason": "scheduler_already_running",
-                    "coordinator_id": coordinator_id
+                    "coordinator_id": coordinator_id,
                 }
-            
+
             conn.commit()
             logger.debug("🔒 Acquired global scheduler lock: %s", coordinator_id)
         except Exception as lock_error:
@@ -2322,8 +2327,21 @@ def check_and_process_queued_jobs():
             return {
                 "status": "scheduler_lock_failed",
                 "error": str(lock_error),
-                "coordinator_id": coordinator_id
+                "coordinator_id": coordinator_id,
             }
+
+        # 🧹 Clean up stale coordinator locks before capacity checks
+        try:
+            cur.execute(
+                """
+                DELETE FROM processing_locks
+                WHERE (status <> 'in_progress' OR expires_at <= NOW())
+                  AND user_id LIKE 'machine-%-coordinator'
+                """
+            )
+            conn.commit()
+        except Exception as cleanup_err:
+            logger.warning("⚠️ Failed to cleanup stale coordinator locks: %s", cleanup_err)
 
         # Periodically clean up stale executions
         if int(time.time()) % 60 == 0:
@@ -2439,12 +2457,17 @@ def check_and_process_queued_jobs():
             
             # 🔒 CREATE COORDINATOR LOCK for this specific job
             machine_coordinator_id = f"machine-{machine_id}-coordinator-{uuid.uuid4().hex[:8]}"
+            machine_user_id = f"machine-{machine_id}-coordinator"
             try:
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
                     VALUES (%s, %s, %s, 'in_progress', NOW() + INTERVAL '5 minutes')
-                """, (f"machine-{machine_id}-coordinator", execution_id, machine_coordinator_id))
-                
+                    """,
+                    (machine_user_id, execution_id, machine_coordinator_id),
+                )
+                # Track for guaranteed release after commit
+                acquired_locks.append((machine_user_id, machine_coordinator_id))
             except Exception as lock_error:
                 logger.error("❌ Failed to create coordinator lock for job %d: %s", execution_id, lock_error)
                 continue  # Skip this job but continue with others
@@ -2572,20 +2595,26 @@ def check_and_process_queued_jobs():
         try:
             if cur and conn and 'coordinator_id' in locals():
                 # Release global scheduler lock
-                cur.execute("""
+                cur.execute(
+                    """
                     DELETE FROM processing_locks 
                     WHERE user_id = 'global-scheduler' AND event_id = 0 AND processor_id = %s
-                """, (coordinator_id,))
-                
-                # Release machine-specific coordinator lock if it was acquired
-                if 'machine_coordinator_id' in locals() and 'machine_id' in locals():
-                    cur.execute("""
+                    """,
+                    (coordinator_id,),
+                )
+
+                # Release all machine-specific coordinator locks we created
+                if acquired_locks:
+                    cur.executemany(
+                        """
                         DELETE FROM processing_locks 
-                        WHERE user_id = %s AND event_id = 0 AND processor_id = %s
-                    """, (f"machine-{machine_id}-coordinator", machine_coordinator_id))
-                
+                        WHERE user_id = %s AND processor_id = %s
+                        """,
+                        acquired_locks,
+                    )
+
                 conn.commit()
-                logger.debug("🔓 Released coordinator locks: %s", coordinator_id)
+                logger.debug("🔓 Released coordinator locks: %s (count=%d)", coordinator_id, len(acquired_locks))
         except Exception as unlock_error:
             logger.error("❌ Failed to release coordinator locks %s: %s", coordinator_id, unlock_error)
         
