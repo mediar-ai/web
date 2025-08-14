@@ -6,8 +6,7 @@ import re
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
-from contextlib import AsyncExitStack
+from typing import Dict, Any, Optional, List, Tuple
 import os
 import logging
 import psycopg2
@@ -16,9 +15,8 @@ import io
 import sys
 import collections.abc
 
-# Add contextlib for stdout/stderr capture
-import contextlib
 import yaml  # For YAML sequence loading
+from modal_apps.output_enrichment import enrich_results_if_enabled
 
 # Configure logging to capture everything
 logging.basicConfig(
@@ -174,15 +172,24 @@ app = modal.App("workflow-executor")
 
 # Create image with MCP dependencies for browser automation
 # Note: MCP might need to be installed differently or might not be available via pip
-image = modal.Image.debian_slim().pip_install(
-    [
-        "psycopg2-binary",  # Direct database connection
-        "httpx",  # HTTP client
-        "websockets",  # WebSocket support
-        "PyYAML",  # YAML parsing for dual-format sequence support
-        # Commenting out 'mcp' as it might not be available via pip
-        # We'll handle MCP differently or mock it for now
-    ]
+image = (
+    modal.Image.debian_slim()
+    .pip_install(
+        [
+            "psycopg2-binary",  # Direct database connection
+            "httpx",  # HTTP client
+            "websockets",  # WebSocket support
+            "PyYAML",  # YAML parsing for dual-format sequence support
+            # AI enrichment deps (GenAI preferred; Vertex fallback)
+            "google-genai",
+            "google-cloud-aiplatform",
+            "google-auth",
+            # Commenting out 'mcp' as it might not be available via pip
+            # We'll handle MCP differently or mock it for now
+        ]
+    )
+    # Include local package so sibling modules are available at runtime (Modal 1.0 packaging)
+    .add_local_python_source("modal_apps")
 )
 
 # Secrets for database access and MCP endpoint
@@ -981,129 +988,164 @@ async def execute_mcp_workflow(
         logger.info(f"Full Arguments Payload (truncated): {log_string[:200]}{'...' if len(log_string) > 200 else ''}")
         logger.info("--- END DETAILED LOGGING ---")
 
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            # Step 1: Initialize MCP session
-            logger.info("🔌 Initializing MCP session...")
-            init_request = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"roots": {"listChanged": False}, "sampling": {}},
-                    "clientInfo": {
-                        "name": "modal-workflow-executor",
-                        "version": "1.0.0",
-                    },
+        # Ensure we always target the gatekeeper's /mcp path
+        endpoint_url = mcp_endpoint if mcp_endpoint.endswith('/mcp') else f"{mcp_endpoint.rstrip('/')}/mcp"
+
+        # Step 1: Initialize MCP session with 503 backoff so LB can reroute to a free VM
+        logger.info("🔌 Initializing MCP session...")
+        init_request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"roots": {"listChanged": False}, "sampling": {}},
+                "clientInfo": {
+                    "name": "modal-workflow-executor",
+                    "version": "1.0.0",
                 },
-            }
+            },
+        }
 
-            response = await client.post(
-                mcp_endpoint,
-                json=init_request,
-                headers={"Accept": "application/json, text/event-stream"},
-            )
+        session_client = None
+        response = None
+        backoff_seconds = 0.2
+        max_retries = 3
 
-            if response.status_code != 200:
-                # 🔄 AUTO-RESTART LOGIC: If MCP server is unreachable, try to restart it
-                if response.status_code in [404, 502, 503, 504]:  # Common "server down" errors
-                    logger.warning("🚨 MCP server unreachable (status %d). Attempting automatic restart...", response.status_code)
-                    
-                    # Check if MCP server is actually down
-                    health_endpoint = f"{mcp_endpoint.replace('/mcp', '')}/health"
-                    if not await check_mcp_server_health(health_endpoint):
-                        logger.info("🔄 Confirmed: MCP server is down. Initiating Windows VM service restart...")
-                        
-                        # Attempt to restart the Windows VM service
-                        if await restart_windows_vm_service():
-                            logger.info("✅ VM service restart initiated. Waiting for MCP server recovery...")
-                            
-                            # Wait for MCP server to come back online
-                            if await wait_for_mcp_server_recovery(health_endpoint, max_wait_seconds=90):
-                                logger.info("🎉 MCP server recovered! Retrying workflow execution...")
-                                
-                                # Retry the MCP session initialization
-                                retry_response = await client.post(
-                                    mcp_endpoint,
-                                    json=init_request,
-                                    headers={"Accept": "application/json, text/event-stream"},
-                                )
-                                
-                                if retry_response.status_code == 200:
-                                    logger.info("✅ MCP session initialized successfully after restart")
-                                    response = retry_response  # Use the successful response
+        for attempt in range(max_retries + 1):
+            # New TCP connection each attempt so the LB can pick a different VM
+            client = httpx.AsyncClient(timeout=300.0)
+            try:
+                trial = await client.post(
+                    endpoint_url,
+                    json=init_request,
+                    headers={"Accept": "application/json, text/event-stream"},
+                )
+
+                # Busy VM via gatekeeper → immediate retry with backoff
+                if trial.status_code == 503:
+                    logger.info("⏳ MCP busy (503). Retry %d/%d after %.0fms", attempt + 1, max_retries, backoff_seconds * 1000)
+                    await client.aclose()
+                    if attempt == max_retries:
+                        raise Exception("All workers busy (503). Please retry shortly.")
+                    await asyncio.sleep(backoff_seconds)
+                    backoff_seconds *= 2
+                    continue
+
+                # Other non-200 statuses → fall back to existing health/restart handling
+                if trial.status_code != 200:
+                    health_endpoint = f"{endpoint_url.replace('/mcp', '')}/health"
+                    if trial.status_code in [404, 502, 504]:
+                        logger.warning("🚨 MCP server unreachable (status %d). Attempting automatic restart...", trial.status_code)
+                        if not await check_mcp_server_health(health_endpoint):
+                            logger.info("🔄 Confirmed: MCP server is down. Initiating Windows VM service restart...")
+                            if await restart_windows_vm_service():
+                                logger.info("✅ VM service restart initiated. Waiting for MCP server recovery...")
+                                if await wait_for_mcp_server_recovery(health_endpoint, max_wait_seconds=90):
+                                    # Try once more on a fresh connection
+                                    await client.aclose()
+                                    client = httpx.AsyncClient(timeout=300.0)
+                                    retry_response = await client.post(
+                                        endpoint_url,
+                                        json=init_request,
+                                        headers={"Accept": "application/json, text/event-stream"},
+                                    )
+                                    if retry_response.status_code == 200:
+                                        trial = retry_response
+                                    else:
+                                        await client.aclose()
+                                        raise Exception(f"Failed to initialize MCP session after restart: {retry_response.status_code}")
                                 else:
-                                    logger.error("❌ MCP session initialization still failed after restart: %d", retry_response.status_code)
-                                    raise Exception(f"Failed to initialize MCP session after restart: {retry_response.status_code}")
+                                    await client.aclose()
+                                    raise Exception("MCP server did not recover after Windows VM service restart")
                             else:
-                                logger.error("❌ MCP server did not recover after restart")
-                                raise Exception("MCP server did not recover after Windows VM service restart")
+                                await client.aclose()
+                                raise Exception("Failed to restart Windows VM service - MCP server remains unreachable")
                         else:
-                            logger.error("❌ Failed to restart Windows VM service")
-                            raise Exception("Failed to restart Windows VM service - MCP server remains unreachable")
+                            await client.aclose()
+                            raise Exception(f"Failed to initialize MCP session: {trial.status_code}")
                     else:
-                        logger.warning("⚠️ MCP server health check passed but session init failed")
-                        raise Exception(f"Failed to initialize MCP session: {response.status_code}")
-                else:
-                    # For other error codes, don't attempt restart
-                    raise Exception(f"Failed to initialize MCP session: {response.status_code}")
+                        await client.aclose()
+                        raise Exception(f"Failed to initialize MCP session: {trial.status_code}")
 
-            # Extract session ID from response headers
-            session_id = response.headers.get("Mcp-Session-Id")
-            if not session_id:
-                raise Exception("No session ID received from MCP server")
+                # Success → keep this client to preserve TCP affinity to the selected VM
+                session_client = client
+                response = trial
+                break
+            except Exception:
+                # Ensure the attempt client is closed on any exception we don't keep
+                if session_client is None:
+                    # Only close if we didn't keep it as the session client
+                    try:
+                        await client.aclose()
+                    except Exception:
+                        pass
+                raise
 
-            logger.info(f"✅ MCP session initialized: {session_id}")
+        if session_client is None or response is None:
+            raise Exception("Failed to initialize MCP session after retries")
 
-            # Step 1.5: Send initialized notification (required by MCP protocol)
-            logger.info("📤 Sending initialized notification...")
-            initialized_request = {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-                "params": {},
-            }
+        # Extract session ID from response headers
+        session_id = response.headers.get("Mcp-Session-Id")
+        if not session_id:
+            # Close the session client before raising
+            try:
+                await session_client.aclose()
+            except Exception:
+                pass
+            raise Exception("No session ID received from MCP server")
 
-            response = await client.post(
-                mcp_endpoint,
-                json=initialized_request,
-                headers={
-                    "Accept": "application/json, text/event-stream",
-                    "Mcp-Session-Id": session_id,
-                },
+        logger.info(f"✅ MCP session initialized: {session_id}")
+
+        # Step 1.5: Send initialized notification (required by MCP protocol)
+        logger.info("📤 Sending initialized notification...")
+        initialized_request = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {},
+        }
+
+        response = await session_client.post(
+            endpoint_url,
+            json=initialized_request,
+            headers={
+                "Accept": "application/json, text/event-stream",
+                "Mcp-Session-Id": session_id,
+            },
+        )
+
+        if response.status_code not in [200, 202]:
+            logger.warning(
+                "⚠️ Initialized notification failed: %s", response.status_code
             )
+        else:
+            logger.info("✅ Session initialized successfully")
 
-            if response.status_code not in [200, 202]:
-                logger.warning(
-                    "⚠️ Initialized notification failed: %s", response.status_code
-                )
-            else:
-                logger.info("✅ Session initialized successfully")
+        # Step 2: Execute the workflow
+        logger.info("🚀 Executing workflow: %s...", tool_name)
+        start_time = time.time()
 
-            # Step 2: Execute the workflow
-            logger.info("🚀 Executing workflow: %s...", tool_name)
-            start_time = time.time()
+        tool_request = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": arguments},
+        }
 
-            tool_request = {
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/call",
-                "params": {"name": tool_name, "arguments": arguments},
-            }
+        response = await session_client.post(
+            endpoint_url,
+            json=tool_request,
+            headers={
+                "Accept": "application/json, text/event-stream",
+                "Mcp-Session-Id": session_id,
+            },
+        )
 
-            response = await client.post(
-                mcp_endpoint,
-                json=tool_request,
-                headers={
-                    "Accept": "application/json, text/event-stream",
-                    "Mcp-Session-Id": session_id,
-                },
+        if response.status_code != 200:
+            raise Exception(
+                f"Workflow execution failed: {response.status_code} - {response.text}"
             )
-
-            if response.status_code != 200:
-                raise Exception(
-                    f"Workflow execution failed: {response.status_code} - {response.text}"
-                )
-
+        else:
             # Parse the response (handle SSE format)
             response_text = response.text
             if not response_text:
@@ -1191,7 +1233,7 @@ async def execute_mcp_workflow(
                     except Exception as _e:
                         logger.warning("Failed to log MCP breakdown: %s", _e)
 
-                    # --- MORE DETAILED LOGGING FOR PARSER ---
+                # --- MORE DETAILED LOGGING FOR PARSER ---
                     logger.info(
                         "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
                     )
@@ -1556,8 +1598,7 @@ def execute_workflow(
 
                 # Optional AI enrichment step (delegated to helper module for clarity)
                 try:
-                    from modal_apps.output_enrichment import enrich_results_if_enabled
-
+                    
                     results = enrich_results_if_enabled(
                         results=results,
                         execution_params=execution_params,
@@ -2127,8 +2168,6 @@ def health_check() -> Dict[str, Any]:
 
         # Test 3: MCP endpoint availability (simple check)
         try:
-            import httpx
-
             # Just check if endpoint is reachable
             health_data["checks"]["mcp_endpoint"] = {
                 "status": "pass",
