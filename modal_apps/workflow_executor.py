@@ -970,12 +970,16 @@ async def execute_mcp_workflow(
             import httpx
             return httpx.AsyncClient(timeout=300.0)
 
-        session_client, response = await post_with_503_backoff(
-            _client_factory,
-            endpoint_url,
-            init_request,
-            {"Accept": "application/json, text/event-stream"},
-        )
+        async def _initialize_session():
+            client, resp = await post_with_503_backoff(
+                _client_factory,
+                endpoint_url,
+                init_request,
+                {"Accept": "application/json, text/event-stream"},
+            )
+            return client, resp
+
+        session_client, response = await _initialize_session()
 
         # Handle non-503 non-200 statuses with existing health/restart flow
         if response.status_code != 200:
@@ -1054,15 +1058,39 @@ async def execute_mcp_workflow(
             "params": {},
         }
 
-        response = await session_client.post(
-            endpoint_url,
-            json=initialized_request,
-            headers={
-                "Accept": "application/json, text/event-stream",
-                "Mcp-Session-Id": session_id,
-            },
-        )
+        async def _post_with_session(payload):
+            nonlocal session_client, session_id
+            resp = await session_client.post(
+                endpoint_url,
+                json=payload,
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Mcp-Session-Id": session_id,
+                },
+            )
+            if resp.status_code == 401:
+                # Session likely landed on a different VM. Re-initialize once.
+                try:
+                    await session_client.aclose()
+                except Exception:
+                    pass
+                session_client, response2 = await _initialize_session()
+                session_id2 = response2.headers.get("Mcp-Session-Id")
+                if not session_id2:
+                    raise Exception("Re-initialize failed: no session id")
+                session_id = session_id2
+                # Retry once with new session
+                resp = await session_client.post(
+                    endpoint_url,
+                    json=payload,
+                    headers={
+                        "Accept": "application/json, text/event-stream",
+                        "Mcp-Session-Id": session_id,
+                    },
+                )
+            return resp
 
+        response = await _post_with_session(initialized_request)
         if response.status_code not in [200, 202]:
             logger.warning(
                 "⚠️ Initialized notification failed: %s", response.status_code
@@ -1081,14 +1109,7 @@ async def execute_mcp_workflow(
             "params": {"name": tool_name, "arguments": arguments},
         }
 
-        response = await session_client.post(
-            endpoint_url,
-            json=tool_request,
-            headers={
-                "Accept": "application/json, text/event-stream",
-                "Mcp-Session-Id": session_id,
-            },
-        )
+        response = await _post_with_session(tool_request)
 
         if response.status_code != 200:
             raise Exception(
