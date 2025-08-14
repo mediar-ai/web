@@ -64,3 +64,30 @@ async def test_post_with_503_backoff_exhausts_and_raises():
     assert "All workers busy" in str(exc.value)
 
 
+class LBClient(DummyClient):
+    def __init__(self, vm_id, responses):
+        super().__init__(responses)
+        self.vm_id = vm_id
+
+
+@pytest.mark.asyncio
+async def test_post_with_503_backoff_creates_new_client_per_retry():
+    # First attempt: VM A busy (503). Second: VM B available (200).
+    attempts = []
+
+    def client_factory():
+        if not attempts:
+            attempts.append("A")
+            return LBClient("A", [DummyResponse(503)])
+        attempts.append("B")
+        return LBClient("B", [DummyResponse(200)])
+
+    client, resp = await mcp_client.post_with_503_backoff(
+        client_factory, "http://lb/mcp", {}, {}, max_retries=3, initial_backoff=0
+    )
+
+    assert isinstance(client, LBClient)
+    assert client.vm_id == "B"
+    assert resp.status_code == 200
+    assert attempts == ["A", "B"], "Should create a fresh client on each retry so LB can reroute"
+
