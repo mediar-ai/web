@@ -661,8 +661,83 @@ def enrich_results_if_enabled(
                 ),
             }
         else:
+            # Deterministic fallback: derive minimal structure from quotes text
+            def _fallback_structured_from_quotes(res: Dict[str, Any]) -> list:
+                out = []
+                quotes = res.get("quotes")
+                if not isinstance(quotes, list):
+                    return out
+                for q in quotes:
+                    if not isinstance(q, dict):
+                        continue
+                    text = q.get("fullText") or q.get("text") or ""
+                    if not isinstance(text, str):
+                        text = str(text)
+                    # carrierProduct: up to first newline; fallback to first 140 chars
+                    carrier_product = None
+                    try:
+                        first_line = text.split("\n", 1)[0]
+                        carrier_product = first_line.strip()
+                    except Exception:
+                        carrier_product = text[:140].strip()
+                    # quoteValue: first $amount pattern
+                    quote_value = None
+                    m = re.search(r"\$\s*\d[\d,]*\.?\d*", text)
+                    if m:
+                        quote_value = m.group(0).replace(" ", "")
+                    # quoteType: Monthly Price if monthly-ish present
+                    qt = "Monthly Price" if re.search(r"monthly|monthly-?eft|month", text, re.I) else "Unknown"
+                    # status inference
+                    st = (
+                        "Discontinued" if re.search(r"discontinued", text, re.I)
+                        else ("Ineligible" if re.search(r"ineligible", text, re.I) else ("Excluded" if re.search(r"excluded|exclude", text, re.I) else "Available"))
+                    )
+                    item = {
+                        "carrierProduct": carrier_product or "Unknown",
+                        "quoteValue": quote_value or "",
+                        "quoteType": qt,
+                        "status": st,
+                        "raw_text": text,
+                    }
+                    out.append(item)
+                return out
+
+            fallback_items = []
+            try:
+                fallback_items = _fallback_structured_from_quotes(results)
+            except Exception as _e:
+                logger.warning("fallback_structured_from_quotes: error=%s", str(_e))
+
+            # If we have a useful fallback, attach it and also decorate original quotes with key fields
+            if isinstance(fallback_items, list) and fallback_items:
+                try:
+                    # Add dual-case aliases for compatibility
+                    fallback_items = add_dual_case_keys_inplace(fallback_items)
+                    # Place under requested key (default: quotes) without replacing by default
+                    output_key = cfg.get("output_key") or "quotes"
+                    replace_quotes = bool(cfg.get("replace_quotes"))
+                    if output_key == "quotes" and replace_quotes:
+                        results["quotes"] = fallback_items
+                    else:
+                        results[output_key] = fallback_items
+                    # Also mirror under mediar_parser unless omitted
+                    if not bool(cfg.get("omit_mediar_parser_alias")):
+                        results["mediar_parser"] = fallback_items
+                        results["mediarParser"] = fallback_items
+                    # Decorate original quotes in place so UI can read quoteValue
+                    if isinstance(results.get("quotes"), list):
+                        lim = min(len(results["quotes"]), len(fallback_items))
+                        for i in range(lim):
+                            if isinstance(results["quotes"][i], dict) and isinstance(fallback_items[i], dict):
+                                for k, v in fallback_items[i].items():
+                                    # Do not clobber existing non-empty values
+                                    if k not in results["quotes"][i] or not results["quotes"][i].get(k):
+                                        results["quotes"][i][k] = v
+                except Exception as _e:
+                    logger.warning("fallback placement failed: %s", str(_e))
+
             results["enrichment"] = {
-                "status": "failed",
+                "status": "failed" + ("_fallback_applied" if fallback_items else ""),
                 "mode": "sync",
                 "model": cfg.get("model"),
                 "schema_hash": schema_hash,
