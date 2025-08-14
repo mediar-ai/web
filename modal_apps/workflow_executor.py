@@ -17,6 +17,16 @@ import collections.abc
 
 import yaml  # For YAML sequence loading
 from modal_apps.output_enrichment import enrich_results_if_enabled
+from modal_apps.lib.db import (
+    get_database_connection,
+    get_db_config,
+)
+from modal_apps.lib.locks import (
+    cleanup_stale_machine_locks,
+    record_acquired_lock,
+    release_acquired_locks,
+)
+from modal_apps.lib.mcp_client import normalize_endpoint, post_with_503_backoff
 
 # Configure logging to capture everything
 logging.basicConfig(
@@ -198,32 +208,7 @@ secrets = [
     modal.Secret.from_name("custom-secret"),
 ]
 
-# Database connection configuration using environment variables
-def get_db_config():
-    """Get database configuration from environment variables (Modal secrets)
 
-    Supports both discrete credentials and a single Postgres connection URL.
-    Recognized variables (checked in order):
-      - SUPABASE_DB_URL / DATABASE_URL / POSTGRES_URL (full DSN)
-      - SUPABASE_HOST, SUPABASE_USER, SUPABASE_PASSWORD (discrete)
-    """
-    # Prefer a single DSN URL if provided
-    dsn = (
-        os.environ.get("SUPABASE_DB_URL")
-        or os.environ.get("DATABASE_URL")
-        or os.environ.get("POSTGRES_URL")
-    )
-    if dsn:
-        return {"dsn": dsn}
-
-    # Fall back to discrete credentials
-    return {
-        "host": os.environ["SUPABASE_HOST"],
-        "port": 5432,
-        "database": "postgres",
-        "user": os.environ["SUPABASE_USER"],
-        "password": os.environ["SUPABASE_PASSWORD"],
-    }
 
 # Configuration for auto-cancellation
 CONSECUTIVE_FAILURE_THRESHOLD = 3  # Number of identical failures
@@ -374,33 +359,6 @@ class CaptureOutput:
             sys.stderr = self._stderr
 
 
-def get_database_connection():
-    """Get a database connection with proper error handling and optimized settings"""
-    try:
-        # Optimize connection for concurrent usage
-        config = get_db_config()
-        config.update(
-            {
-                "connect_timeout": 10,  # Fail fast if connection takes too long
-                "application_name": "workflow_executor",
-            }
-        )
-
-        conn = psycopg2.connect(**config)
-        conn.autocommit = False
-
-        # Optimize connection for performance
-        with conn.cursor() as cur:
-            cur.execute("SET statement_timeout = '300s'")  # 5 minute query timeout
-            cur.execute(
-                "SET idle_in_transaction_session_timeout = '600s'"
-            )  # 10 minute idle timeout
-        conn.commit()
-
-        return conn
-    except Exception as e:
-        logger.error("❌ Database connection failed: %s", e)
-        raise
 
 
 def execute_workflow_by_version(
@@ -989,7 +947,7 @@ async def execute_mcp_workflow(
         logger.info("--- END DETAILED LOGGING ---")
 
         # Ensure we always target the gatekeeper's /mcp path
-        endpoint_url = mcp_endpoint if mcp_endpoint.endswith('/mcp') else f"{mcp_endpoint.rstrip('/')}/mcp"
+        endpoint_url = normalize_endpoint(mcp_endpoint)
 
         # Step 1: Initialize MCP session with 503 backoff so LB can reroute to a free VM
         logger.info("🔌 Initializing MCP session...")
@@ -1007,83 +965,74 @@ async def execute_mcp_workflow(
             },
         }
 
-        session_client = None
-        response = None
-        backoff_seconds = 0.2
-        max_retries = 3
+        # Initialize MCP session using helper with 503 backoff
+        def _client_factory():
+            import httpx
+            return httpx.AsyncClient(timeout=300.0)
 
-        for attempt in range(max_retries + 1):
-            # New TCP connection each attempt so the LB can pick a different VM
-            client = httpx.AsyncClient(timeout=300.0)
-            try:
-                trial = await client.post(
-                    endpoint_url,
-                    json=init_request,
-                    headers={"Accept": "application/json, text/event-stream"},
+        session_client, response = await post_with_503_backoff(
+            _client_factory,
+            endpoint_url,
+            init_request,
+            {"Accept": "application/json, text/event-stream"},
+        )
+
+        # Handle non-503 non-200 statuses with existing health/restart flow
+        if response.status_code != 200:
+            health_endpoint = f"{endpoint_url.replace('/mcp', '')}/health"
+            if response.status_code in [404, 502, 504]:
+                logger.warning(
+                    "🚨 MCP server unreachable (status %d). Attempting automatic restart...",
+                    response.status_code,
                 )
-
-                # Busy VM via gatekeeper → immediate retry with backoff
-                if trial.status_code == 503:
-                    logger.info("⏳ MCP busy (503). Retry %d/%d after %.0fms", attempt + 1, max_retries, backoff_seconds * 1000)
-                    await client.aclose()
-                    if attempt == max_retries:
-                        raise Exception("All workers busy (503). Please retry shortly.")
-                    await asyncio.sleep(backoff_seconds)
-                    backoff_seconds *= 2
-                    continue
-
-                # Other non-200 statuses → fall back to existing health/restart handling
-                if trial.status_code != 200:
-                    health_endpoint = f"{endpoint_url.replace('/mcp', '')}/health"
-                    if trial.status_code in [404, 502, 504]:
-                        logger.warning("🚨 MCP server unreachable (status %d). Attempting automatic restart...", trial.status_code)
-                        if not await check_mcp_server_health(health_endpoint):
-                            logger.info("🔄 Confirmed: MCP server is down. Initiating Windows VM service restart...")
-                            if await restart_windows_vm_service():
-                                logger.info("✅ VM service restart initiated. Waiting for MCP server recovery...")
-                                if await wait_for_mcp_server_recovery(health_endpoint, max_wait_seconds=90):
-                                    # Try once more on a fresh connection
-                                    await client.aclose()
-                                    client = httpx.AsyncClient(timeout=300.0)
-                                    retry_response = await client.post(
-                                        endpoint_url,
-                                        json=init_request,
-                                        headers={"Accept": "application/json, text/event-stream"},
-                                    )
-                                    if retry_response.status_code == 200:
-                                        trial = retry_response
-                                    else:
-                                        await client.aclose()
-                                        raise Exception(f"Failed to initialize MCP session after restart: {retry_response.status_code}")
-                                else:
-                                    await client.aclose()
-                                    raise Exception("MCP server did not recover after Windows VM service restart")
+                if not await check_mcp_server_health(health_endpoint):
+                    logger.info(
+                        "🔄 Confirmed: MCP server is down. Initiating Windows VM service restart..."
+                    )
+                    if await restart_windows_vm_service():
+                        logger.info(
+                            "✅ VM service restart initiated. Waiting for MCP server recovery..."
+                        )
+                        if await wait_for_mcp_server_recovery(
+                            health_endpoint, max_wait_seconds=90
+                        ):
+                            # Try once more on a fresh connection
+                            import httpx
+                            await session_client.aclose()
+                            retry_client = httpx.AsyncClient(timeout=300.0)
+                            retry_response = await retry_client.post(
+                                endpoint_url,
+                                json=init_request,
+                                headers={"Accept": "application/json, text/event-stream"},
+                            )
+                            if retry_response.status_code == 200:
+                                session_client = retry_client
+                                response = retry_response
                             else:
-                                await client.aclose()
-                                raise Exception("Failed to restart Windows VM service - MCP server remains unreachable")
+                                await retry_client.aclose()
+                                raise Exception(
+                                    f"Failed to initialize MCP session after restart: {retry_response.status_code}"
+                                )
                         else:
-                            await client.aclose()
-                            raise Exception(f"Failed to initialize MCP session: {trial.status_code}")
+                            await session_client.aclose()
+                            raise Exception(
+                                "MCP server did not recover after Windows VM service restart"
+                            )
                     else:
-                        await client.aclose()
-                        raise Exception(f"Failed to initialize MCP session: {trial.status_code}")
-
-                # Success → keep this client to preserve TCP affinity to the selected VM
-                session_client = client
-                response = trial
-                break
-            except Exception:
-                # Ensure the attempt client is closed on any exception we don't keep
-                if session_client is None:
-                    # Only close if we didn't keep it as the session client
-                    try:
-                        await client.aclose()
-                    except Exception:
-                        pass
-                raise
-
-        if session_client is None or response is None:
-            raise Exception("Failed to initialize MCP session after retries")
+                        await session_client.aclose()
+                        raise Exception(
+                            "Failed to restart Windows VM service - MCP server remains unreachable"
+                        )
+                else:
+                    await session_client.aclose()
+                    raise Exception(
+                        f"Failed to initialize MCP session: {response.status_code}"
+                    )
+            else:
+                await session_client.aclose()
+                raise Exception(
+                    f"Failed to initialize MCP session: {response.status_code}"
+                )
 
         # Extract session ID from response headers
         session_id = response.headers.get("Mcp-Session-Id")
@@ -2330,15 +2279,9 @@ def check_and_process_queued_jobs():
                 "coordinator_id": coordinator_id,
             }
 
-        # 🧹 Clean up stale coordinator locks before capacity checks
+        # 🧹 Clean up stale coordinator locks before capacity checks (via helper)
         try:
-            cur.execute(
-                """
-                DELETE FROM processing_locks
-                WHERE (status <> 'in_progress' OR expires_at <= NOW())
-                  AND user_id LIKE 'machine-%-coordinator'
-                """
-            )
+            cleanup_stale_machine_locks(cur)
             conn.commit()
         except Exception as cleanup_err:
             logger.warning("⚠️ Failed to cleanup stale coordinator locks: %s", cleanup_err)
@@ -2467,7 +2410,7 @@ def check_and_process_queued_jobs():
                     (machine_user_id, execution_id, machine_coordinator_id),
                 )
                 # Track for guaranteed release after commit
-                acquired_locks.append((machine_user_id, machine_coordinator_id))
+                record_acquired_lock(acquired_locks, machine_user_id, machine_coordinator_id)
             except Exception as lock_error:
                 logger.error("❌ Failed to create coordinator lock for job %d: %s", execution_id, lock_error)
                 continue  # Skip this job but continue with others
@@ -2603,15 +2546,8 @@ def check_and_process_queued_jobs():
                     (coordinator_id,),
                 )
 
-                # Release all machine-specific coordinator locks we created
-                if acquired_locks:
-                    cur.executemany(
-                        """
-                        DELETE FROM processing_locks 
-                        WHERE user_id = %s AND processor_id = %s
-                        """,
-                        acquired_locks,
-                    )
+                # Release all machine-specific coordinator locks we created (via helper)
+                release_acquired_locks(cur, acquired_locks)
 
                 conn.commit()
                 logger.debug("🔓 Released coordinator locks: %s (count=%d)", coordinator_id, len(acquired_locks))
