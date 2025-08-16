@@ -233,6 +233,7 @@ export async function POST(request: NextRequest) {
     // Logs for debugging
     const systemLen = system?.length || 0;
     const historyLen = history.length;
+    const historyCharLen = JSON.stringify(history).length;
     const toolsCount = functionDeclarations.length;
     const inputLen = input.length;
 
@@ -240,7 +241,8 @@ export async function POST(request: NextRequest) {
       model,
       systemLen,
       historyLen,
-      inputLen,
+      historyCharLen,
+      inputCharLen: inputLen,
       toolsCount,
       generationConfig,
     });
