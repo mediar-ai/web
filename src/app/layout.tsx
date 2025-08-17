@@ -9,6 +9,13 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Browser Workflow Capture",
   description: "Capture and analyze browser workflows with AI",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" }
+    ],
+    apple: { url: "/icon.svg", type: "image/svg+xml" }
+  }
 };
 
 export default function RootLayout({
