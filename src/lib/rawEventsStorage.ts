@@ -357,11 +357,11 @@ export class RawEventsStorage {
       
       await new Promise<void>((resolve, reject) => {
         deleteRequest.onsuccess = () => {
-          console.log('[RawEventsStorage] ✅ IndexedDB database completely deleted!');
+          console.log('[RawEventsStorage] [SUCCESS] IndexedDB database completely deleted!');
           resolve();
         };
         deleteRequest.onerror = () => {
-          console.error('[RawEventsStorage] ❌ Failed to delete IndexedDB:', deleteRequest.error);
+          console.error('[RawEventsStorage] [ERROR] Failed to delete IndexedDB:', deleteRequest.error);
           reject(deleteRequest.error);
         };
         deleteRequest.onblocked = () => {
@@ -375,7 +375,7 @@ export class RawEventsStorage {
       await this.init();
       
     } catch (error) {
-      console.error('[RawEventsStorage] ❌ Error during complete database deletion:', error);
+      console.error('[RawEventsStorage] [ERROR] Error during complete database deletion:', error);
       throw error;
     }
   }

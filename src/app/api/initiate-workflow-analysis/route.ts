@@ -1,15 +1,15 @@
-import { NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import {
-  WORKFLOW_IDENTIFICATION_PROMPT,
-  WORKFLOW_IDENTIFICATION_SCHEMA,
-  PROMPT_SYNTHESIZE_CONTEXT,
-  CONTEXT_SYNTHESIS_SCHEMA,
-  PROMPT_REFINE_WORKFLOWS_AND_CONTEXT,
-  WORKFLOW_REFINEMENT_SCHEMA,
+    CONTEXT_SYNTHESIS_SCHEMA,
+    PROMPT_REFINE_WORKFLOWS_AND_CONTEXT,
+    PROMPT_SYNTHESIZE_CONTEXT,
+    WORKFLOW_IDENTIFICATION_PROMPT,
+    WORKFLOW_IDENTIFICATION_SCHEMA,
+    WORKFLOW_REFINEMENT_SCHEMA,
 } from '@/lib/prompts';
 import { TranscriptItem } from '@/lib/transcriptUtils';
+import { callVertexWithStructuredOutput } from '@/lib/vertexai';
+import { createClient } from '@supabase/supabase-js';
+import { NextRequest } from 'next/server';
 
 function toSSE(data: object): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
@@ -25,12 +25,19 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Log time boundary information
-  if (startDate && endDate) {
-    console.log('Initiating time-bounded workflow analysis for userId:', userId, 'using model:', model, 'from:', startDate, 'to:', endDate);
-  } else {
-    console.log('Initiating workflow analysis for userId:', userId, 'using model:', model, '(no time boundaries)');
+  // 🔧 NEW: Require explicit timeframe selection
+  if (!startDate || !endDate) {
+    return new Response(JSON.stringify({
+      error: 'Timeframe selection is required. Please specify both startDate and endDate for workflow analysis initiation.',
+      details: 'Select a time period using the timeframe selector before initiating workflow analysis.'
+    }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
+
+  // Log time boundary information (now required)
+  console.log('Initiating time-bounded workflow analysis for userId:', userId, 'using model:', model, 'from:', startDate, 'to:', endDate);
 
   // Use a ReadableStream to send events as they happen
   const stream = new ReadableStream({
@@ -48,20 +55,15 @@ export async function POST(req: NextRequest) {
 
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
         
-        // Fetch analyses first (reusing logic from fetch-combined-analyses-v2)
-        // Apply time boundaries if provided
-        let query = supabaseAdmin
+        // Fetch analyses with required time filtering
+        const query = supabaseAdmin
           .from('low_level_workflow_analyses')
           .select('id, client_timestamp, window_title, llm_structured_output')
-          .eq('user_id', userId);
-
-        // Apply time filtering if boundaries are provided
-        if (startDate && endDate) {
-          query = query
-            .gte('client_timestamp', startDate)
-            .lte('client_timestamp', endDate);
-          controller.enqueue(toSSE({ status: `Filtering data from ${new Date(startDate).toLocaleString()} to ${new Date(endDate).toLocaleString()}...`, progress: 15 }));
-        }
+          .eq('user_id', userId)
+          .gte('client_timestamp', startDate)
+          .lte('client_timestamp', endDate);
+        
+        controller.enqueue(toSSE({ status: `Filtering data from ${new Date(startDate).toLocaleString()} to ${new Date(endDate).toLocaleString()}...`, progress: 15 }));
 
         const { data: analysesData, error: analysesError } = await query
           .order('client_timestamp', { ascending: false })
@@ -130,12 +132,10 @@ export async function POST(req: NextRequest) {
             .select('session_id, role, content, created_at, type, item_id')
             .eq('user_id', userId);
 
-          // Apply same time filtering as analyses
-          if (startDate && endDate) {
-            transcriptQuery = transcriptQuery
-              .gte('created_at', startDate)
-              .lte('created_at', endDate);
-          }
+          // Apply same time filtering as analyses (now required)
+          transcriptQuery = transcriptQuery
+            .gte('created_at', startDate)
+            .lte('created_at', endDate);
 
           transcriptQuery = transcriptQuery
             .order('created_at', { ascending: true })
@@ -144,14 +144,14 @@ export async function POST(req: NextRequest) {
           const { data: transcripts, error: transcriptError } = await transcriptQuery;
 
           if (transcriptError) {
-            console.warn('❌ Error fetching transcripts:', transcriptError);
+            console.warn('[ERROR] Error fetching transcripts:', transcriptError);
           } else {
             transcriptsData = transcripts || [];
-            console.log(`✅ Loaded ${transcriptsData.length} transcript items for analysis`);
+            console.log(`[SUCCESS] Loaded ${transcriptsData.length} transcript items for analysis`);
             
             if (transcriptsData.length > 0) {
-              console.log(`📊 Transcript session: ${transcriptsData[0]?.session_id}`);
-              console.log(`📊 Transcript time range: ${transcriptsData[0]?.created_at} to ${transcriptsData[transcriptsData.length - 1]?.created_at}`);
+              console.log(`[STATS] Transcript session: ${transcriptsData[0]?.session_id}`);
+              console.log(`[STATS] Transcript time range: ${transcriptsData[0]?.created_at} to ${transcriptsData[transcriptsData.length - 1]?.created_at}`);
             }
           }
         } catch (error) {

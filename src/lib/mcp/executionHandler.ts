@@ -38,7 +38,7 @@ export class ExecutionHandler {
     parameters: Record<string, unknown>,
     cachedTool: CachedTool
   ): Promise<ExecutionResult> {
-    console.log(`🔧 [MCP] Executing tool: ${toolName}`);
+    console.log(`[FIX] [MCP] Executing tool: ${toolName}`);
     
     try {
       const workflowId = cachedTool.workflow.id;
@@ -52,7 +52,7 @@ export class ExecutionHandler {
         ? `${this.baseUrl}/api/remote-workflows/${workflowId}/execute-sync`
         : `${this.baseUrl}/api/remote-workflows/${workflowId}/execute`;
 
-      console.log(`🔧 [MCP] Calling API: ${endpoint}`);
+      console.log(`[FIX] [MCP] Calling API: ${endpoint}`);
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -77,7 +77,7 @@ export class ExecutionHandler {
       }
 
     } catch (error) {
-      console.error(`🔧 [MCP] Tool execution error for ${toolName}:`, error);
+      console.error(`[FIX] [MCP] Tool execution error for ${toolName}:`, error);
       
       return {
         type: 'error',
@@ -116,7 +116,7 @@ export class ExecutionHandler {
       executionParams.include_details = full_detailed_response;
     }
 
-    console.log(`🔧 [MCP] Execution parameters:`, Object.keys(executionParams));
+    console.log(`[FIX] [MCP] Execution parameters:`, Object.keys(executionParams));
     
     return executionParams;
   }
@@ -153,7 +153,7 @@ export class ExecutionHandler {
   }
 
   private generateSuccessMessage(result: APIResponse, cachedTool: CachedTool): string {
-    let message = `✅ ${cachedTool.workflow.name} completed successfully`;
+    let message = `[SUCCESS] ${cachedTool.workflow.name} completed successfully`;
     
     // Add result summary if available
     if (result.data && typeof result.data === 'object') {
@@ -161,21 +161,21 @@ export class ExecutionHandler {
       
       // For quote workflows
       if (data.quotes && Array.isArray(data.quotes)) {
-        message += `\n📊 Generated ${data.quotes.length} insurance quotes`;
+        message += `\n[STATS] Generated ${data.quotes.length} insurance quotes`;
       }
       
       // For general results
       if (data.results && typeof data.results === 'object') {
         const results = data.results as Record<string, unknown>;
         if (results.count || results.length) {
-          message += `\n📊 Processed ${results.count || results.length} items`;
+          message += `\n[STATS] Processed ${results.count || results.length} items`;
         }
       }
     }
     
     // Add execution time if available
     if (result.execution_time_ms) {
-      message += `\n⏱️ Completed in ${Math.round(result.execution_time_ms / 1000)}s`;
+      message += `\n[TIME] Completed in ${Math.round(result.execution_time_ms / 1000)}s`;
     }
 
     return message;

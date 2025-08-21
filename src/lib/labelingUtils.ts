@@ -36,7 +36,7 @@ export async function fetchLabelingData(analysisIds: number[]): Promise<Map<numb
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.warn('⚠️ Supabase environment variables not available for labeling data fetch');
+    console.warn('[WARN] Supabase environment variables not available for labeling data fetch');
     return new Map();
   }
 
@@ -48,7 +48,7 @@ export async function fetchLabelingData(analysisIds: number[]): Promise<Map<numb
     .in('low_level_workflow_analysis_id', analysisIds);
 
   if (labelingError) {
-    console.warn('⚠️ Error fetching labeling data:', labelingError);
+    console.warn('[WARN] Error fetching labeling data:', labelingError);
     return new Map();
   }
 

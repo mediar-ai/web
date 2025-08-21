@@ -67,20 +67,23 @@ export interface WorkflowBoundaries {
   };
 }
 
-export type SynthesisStep = 'idle' | 'context_defined' | 'context_editing' | 'identifying' | 'workflows_selected' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_defined' | 'boundaries_editing' | 'synthesizing' | 'synthesis_complete' | 'done';
+export type SynthesisStep = 'idle' | 'context_defined' | 'context_editing' | 'identifying' | 'workflows_selected' | 'workflow_editing' | 'defining_boundaries' | 'boundaries_defined' | 'boundaries_editing' | 'synthesizing' | 'synthesis_complete' | 'done' | 'timeline_complete';
 
 export interface SynthesisSession {
-  synthesis_session_id: string;
+  id: number;
   user_id: string;
-  workflow_context: WorkflowContext;
   created_at: string;
   updated_at: string;
-  messages: Message[];
-  synthesis_step: SynthesisStep;
-  identified_workflow_names?: string[];
-  workflow_boundaries?: WorkflowBoundaries;
-  synthesized_workflows?: DetailedSynthesizedWorkflow[];
-  final_analysis?: FinalAnalysisData;
+  session_state: {
+    messages: Message[];
+    synthesis_step: SynthesisStep;
+    identified_workflow_names?: string[];
+    workflow_context?: WorkflowContext;
+    workflow_boundaries?: WorkflowBoundaries;
+    draft_workflow_names?: string[];
+    synthesized_workflows?: DetailedSynthesizedWorkflow[];
+    final_analysis?: FinalAnalysisData;
+  };
 }
 
 export interface DetailedSynthesizedWorkflow {

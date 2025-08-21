@@ -17,7 +17,7 @@ export async function GET() {
     });
 
   } catch (error) {
-    console.error('🔧 [MCP Health] Health check failed:', error);
+    console.error('[FIX] [MCP Health] Health check failed:', error);
     
     return NextResponse.json({
       status: 'unhealthy',

@@ -263,6 +263,8 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
   }, [annotations]);
 
   // Debounce updates to parent to avoid excessive renders
+  // OPTIMIZATION: Only pass changed annotations to reduce API calls from 7x to 1x per edit
+  // TODO: Future enhancement could batch multiple rapid changes to same annotation
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Extract workflow components for dropdowns
@@ -296,20 +298,8 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
       return true;
     });
 
-    // Remove duplicates based on analysis_id, keep the latest one
-    const deduplicatedMap = new Map();
-    filtered.forEach(annotation => {
-      const key = annotation.analysis_id;
-      if (!deduplicatedMap.has(key) || 
-          new Date(annotation.created_at) > new Date(deduplicatedMap.get(key).created_at)) {
-        deduplicatedMap.set(key, annotation);
-      }
-    });
-
-    const deduplicated = Array.from(deduplicatedMap.values());
-
-    // Sort
-    deduplicated.sort((a, b) => {
+    // Sort filtered annotations (deduplication removed)
+    filtered.sort((a, b) => {
       switch (sortBy) {
         case 'confidence':
           return (b.confidence_score || 0) - (a.confidence_score || 0);
@@ -321,7 +311,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
       }
     });
 
-    return deduplicated;
+    return filtered;
   }, [localAnnotations, searchTerm, filterStatus, sortBy]);
 
   // Group annotations by workflow hierarchy for workflow view
@@ -337,11 +327,11 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
         
         if (!workflows[workflowKey]) {
           workflows[workflowKey] = {
-            template_id: annotation.workflow_id,
+            template_id: annotation.workflow_id ?? null,
             template_name: annotation.template_name || 'Unknown Workflow',
-            type_id: annotation.workflow_type_id,
+            type_id: annotation.workflow_type_id ?? null,
             type_name: annotation.type_name || 'Unknown Type',
-            instance_id: annotation.workflow_instance_id,
+            instance_id: annotation.workflow_instance_id ?? null,
             instance_name: annotation.instance_name || 'Unknown Instance',
             steps: {}
           };
@@ -349,7 +339,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
 
         if (!workflows[workflowKey].steps[stepKey]) {
           workflows[workflowKey].steps[stepKey] = {
-            step_id: annotation.workflow_step_id,
+            step_id: annotation.workflow_step_id ?? null,
             step_name: annotation.step_name || 'Unknown Step',
             substeps: {}
           };
@@ -357,7 +347,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
 
         if (!workflows[workflowKey].steps[stepKey].substeps[substepKey]) {
           workflows[workflowKey].steps[stepKey].substeps[substepKey] = {
-            substep_id: annotation.workflow_substep_id,
+            substep_id: annotation.workflow_substep_id ?? null,
             substep_name: annotation.substep_name || 'Unknown Substep',
             step_title: annotation.step_title || 'Unknown Step Title',
             user_intent: annotation.user_intent || '',
@@ -447,16 +437,18 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
     );
     
     if (actualIndex !== -1) {
-      updated[actualIndex] = {
+      const changedAnnotation = {
         ...updated[actualIndex],
         [field]: value,
       };
+      updated[actualIndex] = changedAnnotation;
 
       setLocalAnnotations(updated);
 
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
-        onAnnotationsChange(updated);
+        // Only pass the changed annotation for optimization
+        onAnnotationsChange([changedAnnotation]);
       }, 300);
     }
   };
@@ -466,7 +458,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
     const actualIndex = updated.findIndex(ann => ann.analysis_id === analysisId);
     
     if (actualIndex !== -1) {
-        updated[actualIndex] = {
+        const changedAnnotation = {
             ...updated[actualIndex],
             is_workflow_related: false,
             workflow_id: null,
@@ -475,12 +467,14 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
             workflow_step_id: null,
             workflow_substep_id: null,
         };
+        updated[actualIndex] = changedAnnotation;
 
         setLocalAnnotations(updated);
 
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
-            onAnnotationsChange(updated);
+            // Only pass the changed annotation for optimization
+            onAnnotationsChange([changedAnnotation]);
         }, 300);
     }
   };
@@ -495,7 +489,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
     const actualIndex = updated.findIndex(ann => ann.analysis_id === annotation.analysis_id);
 
     if (actualIndex !== -1) {
-        updated[actualIndex] = {
+        const changedAnnotation = {
             ...updated[actualIndex],
             is_workflow_related: true,
             workflow_id: workflow.template_id,
@@ -509,12 +503,14 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
             workflow_substep_id: substep.substep_id,
             substep_name: substep.substep_name,
         };
+        updated[actualIndex] = changedAnnotation;
         
         setLocalAnnotations(updated);
 
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
-            onAnnotationsChange(updated);
+            // Only pass the changed annotation for optimization
+            onAnnotationsChange([changedAnnotation]);
         }, 300);
 
         setAddEventModalState({ isOpen: false, workflow: null, step: null, substep: null });
@@ -580,7 +576,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
     <div className="space-y-4">
       <div className="flex items-center space-x-2 text-sm text-muted-foreground">
         <Edit2 className="h-4 w-4" />
-        <span>Review and edit timeline event mappings below:</span>
+        <span>Review and edit timeline event annotations below:</span>
       </div>
 
       {/* Search and Filter Controls */}
@@ -589,7 +585,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
           <div className="relative">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search mappings..."
+              placeholder="Search annotations..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9"
@@ -601,7 +597,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Mappings</SelectItem>
+              <SelectItem value="all">All Annotations</SelectItem>
               <SelectItem value="related">Workflow Related</SelectItem>
               <SelectItem value="unrelated">Unrelated</SelectItem>
             </SelectContent>
@@ -700,7 +696,7 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
           ) : analysisGroups.length === 0 ? (
             <Card className="p-8 text-center text-muted-foreground border border-black rounded-lg">
               <AlertCircle className="h-8 w-8 mx-auto mb-2" />
-              <p>No timeline mappings found matching your criteria.</p>
+              <p>No timeline annotations found matching your criteria.</p>
               {isProcessing && (
                 <p className="text-sm text-gray-500 mt-2">
                   Processing is still active - results may appear soon
@@ -962,7 +958,12 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                                  }
                               >
                                 <SelectTrigger id={`template-${annotation.analysis_id}`} className="flex-1">
-                                  <SelectValue placeholder="Select template..." />
+                                  <SelectValue>
+                                    {annotation.template_name && annotation.template_name !== 'Unknown Template' 
+                                      ? annotation.template_name 
+                                      : "Select template..."
+                                    }
+                                  </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent>
                                   {workflowComponents.templates.map(template => (
@@ -985,7 +986,12 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                                 }
                               >
                                 <SelectTrigger id={`type-${annotation.analysis_id}`} className="flex-1">
-                                  <SelectValue placeholder="Select type..." />
+                                  <SelectValue>
+                                    {annotation.type_name && annotation.type_name !== 'Unknown Type' 
+                                      ? annotation.type_name 
+                                      : "Select type..."
+                                    }
+                                  </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent>
                                   {workflowComponents.types
@@ -1010,7 +1016,12 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                                 }
                               >
                                 <SelectTrigger id={`instance-${annotation.analysis_id}`} className="flex-1">
-                                  <SelectValue placeholder="Select instance..." />
+                                  <SelectValue>
+                                    {annotation.instance_name && annotation.instance_name !== 'Unknown Instance' 
+                                      ? annotation.instance_name 
+                                      : "Select instance..."
+                                    }
+                                  </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent>
                                   {workflowComponents.instances
@@ -1035,7 +1046,12 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                                 }
                               >
                                 <SelectTrigger id={`step-${annotation.analysis_id}`} className="flex-1">
-                                  <SelectValue placeholder="Select step..." />
+                                  <SelectValue>
+                                    {annotation.step_name && annotation.step_name !== 'Unknown Step' 
+                                      ? annotation.step_name 
+                                      : "Select step..."
+                                    }
+                                  </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent>
                                   {workflowComponents.steps
@@ -1060,7 +1076,12 @@ export const EditableTimelineMappings: React.FC<EditableTimelineMappingsProps> =
                                 }
                               >
                                 <SelectTrigger id={`substep-${annotation.analysis_id}`} className="flex-1">
-                                  <SelectValue placeholder="Select substep (optional)..." />
+                                  <SelectValue>
+                                    {annotation.substep_name && annotation.substep_name !== 'Unknown Substep' 
+                                      ? annotation.substep_name 
+                                      : "Select substep (optional)..."
+                                    }
+                                  </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="none">No substep</SelectItem>

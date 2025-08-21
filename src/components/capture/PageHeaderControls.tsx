@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, RotateCcw, Zap, RefreshCw, PictureInPicture } from 'lucide-react';
-import type { PageHeaderControlsProps } from '../../types';
-import { SignedIn, SignedOut, UserButton, OrganizationSwitcher } from '@clerk/nextjs';
+import { OrganizationSwitcher, SignedIn, SignedOut, UserButton, useOrganization } from '@clerk/nextjs';
+import { AlertTriangle, PictureInPicture, RefreshCw, RotateCcw, Zap } from 'lucide-react';
 import Link from 'next/link';
+import React, { useEffect, useState } from 'react';
+import type { PageHeaderControlsProps } from '../../types';
 
 interface StatusIndicatorProps {
   mainStatus: string;
@@ -57,6 +57,27 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
   );
 };
 
+const ConditionalOrganizationSwitcher: React.FC = () => {
+  const { organization, membership } = useOrganization();
+
+  // Only show OrganizationSwitcher if user has organization membership
+  if (!organization || !membership) {
+    return null;
+  }
+
+  return (
+    <OrganizationSwitcher 
+      hidePersonal={true}
+      afterSelectOrganizationUrl="/"
+      appearance={{
+        elements: {
+          organizationSwitcherTrigger: "px-3 py-2 text-sm border rounded-md hover:bg-gray-50"
+        }
+      }}
+    />
+  );
+};
+
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   stream,
   handleStartScreenShare,
@@ -81,7 +102,7 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   }, []);
 
   return (
-    <div className="w-full max-w-7xl sticky top-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col sm:flex-row items-center justify-between mt-4 p-3 border rounded-lg shadow-sm gap-4">
+    <div className="w-full sticky top-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col sm:flex-row items-center justify-between mt-4 p-3 border rounded-lg shadow-sm gap-4">
       <div className="flex items-center gap-4 text-sm font-mono w-full sm:w-auto">
         <StatusIndicator
           mainStatus={mainStatus}
@@ -110,15 +131,7 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
           <PictureInPicture className="h-4 w-4" />
         </Button>
         <SignedIn>
-          <OrganizationSwitcher 
-            hidePersonal={true}
-            afterSelectOrganizationUrl="/admin"
-            appearance={{
-              elements: {
-                organizationSwitcherTrigger: "px-3 py-2 text-sm border rounded-md hover:bg-gray-50"
-              }
-            }}
-          />
+          <ConditionalOrganizationSwitcher />
           <UserButton 
             appearance={{
               elements: {

@@ -10,7 +10,7 @@ const executionHandler = new ExecutionHandler();
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    console.log('🔧 [MCP API] Received request:', body.method);
+    console.log('[FIX] [MCP API] Received request:', body.method);
 
     // Handle different MCP methods
     switch (body.method) {
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       case 'tools/list':
         await workflowDiscovery.refreshTools();
         const tools = workflowDiscovery.getToolsList();
-        console.log('🔧 [MCP API] Serving', tools.length, 'workflow tools');
+        console.log('[FIX] [MCP API] Serving', tools.length, 'workflow tools');
         
         return NextResponse.json({
           jsonrpc: '2.0',
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
       case 'tools/call':
         const { name, arguments: toolArgs } = body.params;
-        console.log('🔧 [MCP API] Executing tool:', name, 'with args:', toolArgs);
+        console.log('[FIX] [MCP API] Executing tool:', name, 'with args:', toolArgs);
         
         // Ensure tools cache is populated first
         await workflowDiscovery.getTools();
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
       case 'notifications/initialized':
         // Client notification that initialization is complete
-        console.log('🔧 [MCP API] Client initialized successfully');
+        console.log('[FIX] [MCP API] Client initialized successfully');
         return NextResponse.json({
           jsonrpc: '2.0',
           id: body.id,
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
     }
   } catch (error) {
-    console.error('🔧 [MCP API] Error:', error);
+    console.error('[FIX] [MCP API] Error:', error);
     return NextResponse.json({
       jsonrpc: '2.0',
       id: null,

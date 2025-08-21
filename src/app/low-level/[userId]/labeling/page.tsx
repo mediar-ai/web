@@ -3,68 +3,68 @@
 import ScreenshotView from '@/components/low-level/ScreenshotView';
 import UITreeTimeline from '@/components/low-level/UITreeTimeline';
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuRadioGroup,
-    DropdownMenuRadioItem,
-    DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from '@/components/ui/input';
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useUser } from '@/context/UserContext';
 import type { LowLevelEvent } from '@/types';
 import {
-    ColumnDef,
-    ColumnSizingState,
-    flexRender,
-    getCoreRowModel,
-    getSortedRowModel,
-    SortingState,
-    useReactTable,
+  ColumnDef,
+  ColumnSizingState,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  SortingState,
+  useReactTable,
 } from '@tanstack/react-table';
 import { AlertCircle, ArrowUpDown, ChevronDown, ChevronUp, RefreshCw, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { createRef, RefObject, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -110,7 +110,7 @@ type WorkflowLabelData = {
 type ProcessingMode = 'unprocessed' | 'all' | 'range';
 
 interface GenericEvent {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   [key: string]: any;
 }
 
@@ -298,8 +298,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     };
 
     const data = allWorkflowAnalyses.reduce<TableData[]>((acc, analysis) => {
-      const eventTime = new Date(analysis.client_timestamp).getTime();
-      const currentUiTreeEvent = uiTreeEvents.find(e => Math.abs(new Date(getEventTimestamp(e)).getTime() - eventTime) < 1000);
+      // Use direct ID matching via source_ui_tree_event_id for reliable linking
+      const currentUiTreeEvent = uiTreeEvents.find(e => e.id === analysis.source_ui_tree_event_id);
 
       if (currentUiTreeEvent) {
         const currentIndex = uiTreeEvents.findIndex(e => e.id === currentUiTreeEvent.id);
@@ -308,8 +308,9 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
         const eventsBetween = previousUiTreeEvent ? allEvents.filter(event => {
           const eventTimestamp = new Date(getEventTimestamp(event)).getTime();
           const prevTimestamp = new Date(getEventTimestamp(previousUiTreeEvent!)).getTime();
+          const currentEventTimestamp = new Date(getEventTimestamp(currentUiTreeEvent)).getTime();
           const isRelevant = event.payload.payload?.type !== 'ui_tree' && event.payload.payload?.type !== 'screenshot_diff';
-          return isRelevant && eventTimestamp > prevTimestamp && eventTimestamp < eventTime;
+          return isRelevant && eventTimestamp > prevTimestamp && eventTimestamp < currentEventTimestamp;
         }) : [];
 
         acc.push({
@@ -340,7 +341,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
 
   useEffect(() => {
     if (selectedEvent) {
-        const analysis = allWorkflowAnalyses.find(a => Math.abs(new Date(a.client_timestamp).getTime() - new Date(getEventTimestamp(selectedEvent)).getTime()) < 1000);
+        // Use direct ID matching via source_ui_tree_event_id for reliable linking
+        const analysis = allWorkflowAnalyses.find(a => a.source_ui_tree_event_id === selectedEvent.id);
         if (analysis && rowRefs[analysis.id]) {
             rowRefs[analysis.id].current?.scrollIntoView({
                 behavior: 'smooth',
@@ -632,7 +634,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
       },
       {
         accessorKey: 'userSelection',
-        header: () => <div className="whitespace-normal break-words">Workflow Event (to annotate)</div>,
+        header: () => <div className="whitespace-normal break-words">Step annotation (generated)</div>,
         cell: ({ row }) => {
             const analysisId = row.original.id;
             const eventData = workflowEvents[analysisId];
@@ -757,30 +759,8 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
     }, 1500); // Return to original after 1.5 seconds of inactivity
   };
 
-  useEffect(() => {
-    // This effect previously toggled document.body.style.overflow based on isHoveringScreenshot,
-    // causing a layout jump.
-    // Now, it sets up stable scrollbar handling for the body to prevent such jumps.
-    // The consequence is that the body might scroll when the mouse is over the sticky header.
-    // If that's an issue, further changes to prevent body scroll (without causing jumps)
-    // would be needed for the sticky header's hover state.
-
-    const originalOverflow = document.body.style.overflow;
-    const originalScrollbarGutter = document.body.style.scrollbarGutter;
-
-    // Set overflow to auto (if not already hidden by something else)
-    // and enable stable scrollbar gutter.
-    if (document.body.style.overflow !== 'hidden') {
-      document.body.style.overflow = 'auto';
-    }
-    document.body.style.scrollbarGutter = 'stable';
-
-    return () => {
-      // Restore original styles on unmount
-      document.body.style.overflow = originalOverflow;
-      document.body.style.scrollbarGutter = originalScrollbarGutter;
-    };
-  }, []); // Empty dependency array: run once on mount, cleanup on unmount.
+  // Note: Scrollbar stability is now handled globally in globals.css
+  // No need for page-specific scrollbar handling
 
   if (error) {
     return <div className="p-4 text-red-500 font-bold bg-red-50 rounded-md">Error: {error}</div>;
@@ -789,21 +769,32 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
   return (
     <>
       <div 
-        className="sticky top-16 bg-background z-10 border-b pb-4"
+        className="sticky top-0 bg-background z-10 border-b pb-4"
       >
         {loading ? (
             <div className="py-4 px-2 h-[220px] flex items-center justify-center"><Skeleton className="h-full w-full" /></div>
         ) : (
             <>
                 <div className="relative">
-                    {!isScreenshotCollapsed && <ScreenshotView 
-                      dataUrl={afterScreenshotDataUrl} 
-                      onWheel={handleScreenshotWheelScroll}
-                    />}
+                    <div className="max-w-full overflow-hidden min-h-[60px]">
+                        {!isScreenshotCollapsed && afterScreenshotDataUrl && (
+                            <div className="w-full">
+                                <ScreenshotView 
+                                  dataUrl={afterScreenshotDataUrl} 
+                                  onWheel={handleScreenshotWheelScroll}
+                                />
+                            </div>
+                        )}
+                        {!isScreenshotCollapsed && !afterScreenshotDataUrl && (
+                            <div className="w-full h-[200px] flex items-center justify-center border border-dashed border-gray-300 rounded-lg">
+                                <p className="text-muted-foreground">No screenshot available</p>
+                            </div>
+                        )}
+                    </div>
                     <Button 
                         variant="outline" 
                         size="icon" 
-                        className="absolute top-2 right-2 h-8 w-8 rounded-full bg-background shadow-lg"
+                        className="absolute top-2 right-2 h-8 w-8 rounded-full bg-background shadow-lg z-20"
                         onClick={() => setIsScreenshotCollapsed(!isScreenshotCollapsed)}
                     >
                         {isScreenshotCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
@@ -913,7 +904,7 @@ export default function LabelingPage({ params }: { params: Promise<{ userId: str
             </div>
         </div>
       <div className="border rounded-lg overflow-x-auto">
-          <Table style={{ minWidth: 1200 }}>
+          <Table>
           <TableHeader>
                 {table.getHeaderGroups().map(headerGroup => (
                   <TableRow key={headerGroup.id}>

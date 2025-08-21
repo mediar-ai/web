@@ -45,6 +45,10 @@ import {
 import { SignIn, useAuth, useOrganization } from '@clerk/nextjs';
 import { ChevronDown, ChevronRight, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 
+// Owner-only components
+
+import RoleManagementSection from '@/components/admin/RoleManagementSection';
+
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
 const formatDuration = (seconds: number) => {
@@ -147,7 +151,7 @@ export default function AdminPage() {
   // Show loading while Clerk is initializing
   if (!isLoaded) {
     return (
-      <div className="container mx-auto py-4">
+      <div className="stable-container py-4">
         <div>Loading...</div>
       </div>
     );
@@ -156,7 +160,7 @@ export default function AdminPage() {
   // Show sign-in if not authenticated
   if (!userId) {
     return (
-      <div className="container mx-auto py-4 flex justify-center">
+      <div className="stable-container py-4 flex justify-center">
         <SignIn />
       </div>
     );
@@ -165,15 +169,16 @@ export default function AdminPage() {
   // Check if user has required role for full access dashboard
   const hasAdminRole = has({ role: 'org:admin' });
   const hasMemberRole = has({ role: 'org:member' });
+  const hasOwnerRole = has({ role: 'org:owner' });
   
   // Access level will be determined by the API based on organization_data_access table
   
-  if (!hasAdminRole && !hasMemberRole) {
+  if (!hasAdminRole && !hasMemberRole && !hasOwnerRole) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="max-w-md w-full space-y-8 text-center border border-black rounded-lg p-8">
           <h2 className="text-2xl font-bold text-black">Access Denied</h2>
-          <p className="text-gray-600">You need admin or member privileges to access this dashboard.</p>
+          <p className="text-black">You need admin or member privileges to access this dashboard.</p>
           <Link href="/">
             <Button variant="black-outline">Return to Home</Button>
           </Link>
@@ -186,6 +191,7 @@ export default function AdminPage() {
   return (
     <AuthenticatedAdminPage 
       isAdmin={hasAdminRole}
+      isOwner={hasOwnerRole}
       organizationId={organization?.id}
       organizationName={organization?.name}
       userRole={membership?.role}
@@ -195,6 +201,7 @@ export default function AdminPage() {
 
 interface AuthenticatedAdminPageProps {
   isAdmin: boolean;
+  isOwner: boolean;
   isGlobalAdmin: boolean;
   organizationId?: string;
   organizationName?: string;
@@ -202,11 +209,14 @@ interface AuthenticatedAdminPageProps {
 }
 
 function AuthenticatedAdminPage({ 
-  isAdmin, 
+  isAdmin,
+  isOwner,
   organizationId, 
   organizationName, 
   userRole
 }: Omit<AuthenticatedAdminPageProps, 'isGlobalAdmin'>) {
+  const { userId } = useAuth();
+  const { organization } = useOrganization();
   const [userSessions, setUserSessions] = useState<Record<string, UserSessionData>>({});
   const [loading, setLoading] = useState(true);
   const [isLiveRefreshing, setIsLiveRefreshing] = useState(false);
@@ -569,7 +579,7 @@ function AuthenticatedAdminPage({
     startPolling();
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    console.log('[Admin] ✅ Intelligent polling enabled - updates every 2s when active, 30s when hidden');
+    console.log('[Admin] [SUCCESS] Intelligent polling enabled - updates every 2s when active, 30s when hidden');
 
     return () => {
       clearTimeout(pollingInterval);
@@ -637,28 +647,24 @@ function AuthenticatedAdminPage({
     setInviteStatus({ message: 'Sending invitation...', error: false });
 
     try {
-      const response = await fetch('/api/invite-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+      // Use Clerk frontend API directly
+      await organization?.inviteMember({
+        emailAddress: inviteEmail,
+        role: inviteRole as 'org:admin' | 'org:member'
       });
 
-      const result = await response.json();
-
-      if (response.ok) {
-        setInviteStatus({ message: result.message, error: false });
-        // Optionally close the dialog after a delay
-        setTimeout(() => {
-          setIsInviteDialogOpen(false);
-          setInviteEmail('');
-          setInviteRole('org:member');
-          setInviteStatus(null);
-        }, 2000);
-      } else {
-        throw new Error(result.details || 'Failed to send invitation.');
-      }
+      setInviteStatus({ message: `Invitation sent to ${inviteEmail}`, error: false });
+      
+      // Close the dialog after a delay
+      setTimeout(() => {
+        setIsInviteDialogOpen(false);
+        setInviteEmail('');
+        setInviteRole('org:member');
+        setInviteStatus(null);
+      }, 2000);
+      
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send invitation';
       setInviteStatus({ message: errorMessage, error: true });
     }
   };
@@ -667,6 +673,9 @@ function AuthenticatedAdminPage({
   const getAccessLevelText = () => {
     if (isGlobalAdmin) {
       return "Mediar Admin - Global Access";
+    }
+    if (isOwner && organizationName) {
+      return `Owner - ${organizationName}`;
     }
     if (isAdmin && organizationName) {
       return `Admin - ${organizationName}`;
@@ -683,7 +692,7 @@ function AuthenticatedAdminPage({
 
   if (loading) {
     return (
-      <div className="container mx-auto py-4">
+      <div className="stable-container py-4">
         <h1 className="text-xl font-bold mb-3">Admin - All Users</h1>
         <div>Loading sessions...</div>
       </div>
@@ -736,7 +745,7 @@ function AuthenticatedAdminPage({
                 </DialogHeader>
                 <form onSubmit={handleInviteUser} className="space-y-4">
                   <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email Address</label>
+                    <label htmlFor="email" className="block text-sm font-medium text-black">Email Address</label>
                     <Input
                       id="email"
                       type="email"
@@ -748,7 +757,7 @@ function AuthenticatedAdminPage({
                     />
                   </div>
                   <div>
-                    <label htmlFor="role" className="block text-sm font-medium text-gray-700">Role</label>
+                    <label htmlFor="role" className="block text-sm font-medium text-black">Role</label>
                     <Select value={inviteRole} onValueChange={setInviteRole}>
                       <SelectTrigger id="role" className="mt-1">
                         <SelectValue placeholder="Select a role" />
@@ -854,6 +863,14 @@ function AuthenticatedAdminPage({
           </CardContent>
         </Card>
       </div>
+      
+      {/* Owner-Only Sections */}
+      {isOwner && (
+        <div className="space-y-6 mb-6">
+          
+          <RoleManagementSection isOwner={isOwner} currentUserId={userId || undefined} />
+        </div>
+      )}
       
       {/* Processing Health Section - Collapsible - Global Admins Only */}
       {isGlobalAdmin && (

@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { callVertexWithStructuredOutput } from '@/lib/vertexai';
-import { WORKFLOW_SYNTHESIS_PROMPT } from '@/lib/prompts';
-import { WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/prompts';
+import { WORKFLOW_SYNTHESIS_PROMPT, WORKFLOW_SYNTHESIS_SCHEMA } from '@/lib/prompts';
 import { buildComprehensiveContext, TranscriptItem } from '@/lib/transcriptUtils';
+import { callVertexWithStructuredOutput } from '@/lib/vertexai';
+import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 interface WorkflowSynthesisInput {
   name: string;
@@ -33,24 +32,29 @@ export async function POST(req: NextRequest) {
     
     const { model: modelName, context, startDate, endDate } = requestBody;
     console.log(`🎯 [${debugSessionId}] MODEL NAME: ${modelName}`);
-    console.log(`📊 [${debugSessionId}] CONTEXT KEYS: ${Object.keys(context || {}).join(', ')}`);
+    console.log(`[STATS] [${debugSessionId}] CONTEXT KEYS: ${Object.keys(context || {}).join(', ')}`);
 
     if (!modelName || !context) {
-      console.log(`❌ [${debugSessionId}] MISSING REQUIRED PARAMETERS:`, { modelName: !!modelName, context: !!context });
+      console.log(`[ERROR] [${debugSessionId}] MISSING REQUIRED PARAMETERS:`, { modelName: !!modelName, context: !!context });
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
     if (!context.userId) {
-      console.log(`❌ [${debugSessionId}] MISSING USER ID`);
+      console.log(`[ERROR] [${debugSessionId}] MISSING USER ID`);
       return NextResponse.json({ error: 'Missing userId in context' }, { status: 400 });
     }
 
-    console.log(`👤 [${debugSessionId}] USER ID: ${context.userId}`);
-    if (startDate && endDate) {
-      console.log(`🕐 [${debugSessionId}] TIME BOUNDARIES: ${startDate} to ${endDate}`);
-    } else {
-      console.log(`🕐 [${debugSessionId}] TIME BOUNDARIES: No time filtering (processing all data)`);
+    // 🔧 NEW: Require explicit timeframe selection
+    if (!startDate || !endDate) {
+      console.log(`❌ [${debugSessionId}] MISSING TIMEFRAME: startDate=${!!startDate}, endDate=${!!endDate}`);
+      return NextResponse.json({ 
+        error: 'Timeframe selection is required. Please specify both startDate and endDate for workflow synthesis.',
+        details: 'Select a time period using the timeframe selector before synthesizing workflows.'
+      }, { status: 400 });
     }
+
+    console.log(`👤 [${debugSessionId}] USER ID: ${context.userId}`);
+    console.log(`🕐 [${debugSessionId}] TIME BOUNDARIES: ${startDate} to ${endDate}`);
     console.log(`📝 [${debugSessionId}] USER INSTRUCTIONS: ${context.userInstructions ? 'YES - ' + context.userInstructions.length + ' chars' : 'NO'}`);
     console.log(`🏢 [${debugSessionId}] WORKFLOW CONTEXT:`, JSON.stringify(context.workflowContext, null, 2));
     console.log(`📋 [${debugSessionId}] WORKFLOWS COUNT: ${context.workflows ? context.workflows.length : 'N/A'}`);
@@ -60,12 +64,12 @@ export async function POST(req: NextRequest) {
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.log(`❌ [${debugSessionId}] MISSING SUPABASE ENV VARS`);
+      console.log(`[ERROR] [${debugSessionId}] MISSING SUPABASE ENV VARS`);
       throw new Error('Missing Supabase environment variables');
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-    console.log(`✅ [${debugSessionId}] SUPABASE CLIENT CREATED`);
+    console.log(`[SUCCESS] [${debugSessionId}] SUPABASE CLIENT CREATED`);
     
     // Fetch analyses first
     console.log(`🔍 [${debugSessionId}] FETCHING ANALYSES FOR USER: ${context.userId}`);
@@ -75,30 +79,28 @@ export async function POST(req: NextRequest) {
       .select('id, client_timestamp, window_title, llm_structured_output')
       .eq('user_id', context.userId);
 
-    // Apply time filtering if boundaries are provided
-    if (startDate && endDate) {
-      query = query
-        .gte('client_timestamp', startDate)
-        .lte('client_timestamp', endDate);
-      console.log(`🕐 [${debugSessionId}] TIME FILTERING: Applied to analyses query from ${startDate} to ${endDate}`);
-    }
+    // Apply time filtering (now required)
+    query = query
+      .gte('client_timestamp', startDate)
+      .lte('client_timestamp', endDate);
+    console.log(`🕐 [${debugSessionId}] TIME FILTERING: Applied to analyses query from ${startDate} to ${endDate}`);
 
     const { data: analysesData, error: analysesError } = await query
       .order('client_timestamp', { ascending: false })
       .limit(1000);
 
     if (analysesError) {
-      console.log(`❌ [${debugSessionId}] ANALYSES FETCH ERROR:`, analysesError);
+      console.log(`[ERROR] [${debugSessionId}] ANALYSES FETCH ERROR:`, analysesError);
       throw new Error(`Failed to fetch analyses: ${analysesError.message}`);
     }
 
     if (!analysesData || analysesData.length === 0) {
-      console.log(`❌ [${debugSessionId}] NO ANALYSIS DATA FOUND`);
+      console.log(`[ERROR] [${debugSessionId}] NO ANALYSIS DATA FOUND`);
       throw new Error('No analysis data found for this user');
     }
 
-    console.log(`✅ [${debugSessionId}] FETCHED ${analysesData.length} ANALYSES`);
-    console.log(`📊 [${debugSessionId}] FIRST ANALYSIS SAMPLE:`, JSON.stringify(analysesData[0], null, 2));
+    console.log(`[SUCCESS] [${debugSessionId}] FETCHED ${analysesData.length} ANALYSES`);
+    console.log(`[STATS] [${debugSessionId}] FIRST ANALYSIS SAMPLE:`, JSON.stringify(analysesData[0], null, 2));
 
     // Get all analysis IDs to fetch labels
     const analysisIds = analysesData.map(item => item.id);
@@ -111,7 +113,7 @@ export async function POST(req: NextRequest) {
       .in('low_level_workflow_analysis_id', analysisIds);
 
     if (labelsError) {
-      console.warn(`⚠️ [${debugSessionId}] LABELS FETCH ERROR:`, labelsError);
+      console.warn(`[WARN] [${debugSessionId}] LABELS FETCH ERROR:`, labelsError);
       // Continue without labels rather than failing completely
     }
 
@@ -150,7 +152,7 @@ export async function POST(req: NextRequest) {
     });
 
     console.log(`🔄 [${debugSessionId}] TRANSFORMED ${analyses.length} ANALYSES`);
-    console.log(`📊 [${debugSessionId}] SAMPLE TRANSFORMED ANALYSIS:`, JSON.stringify(analyses[0], null, 2));
+    console.log(`[STATS] [${debugSessionId}] SAMPLE TRANSFORMED ANALYSIS:`, JSON.stringify(analyses[0], null, 2));
 
     // Fetch transcripts for the same time range if they exist
     let transcriptsData: TranscriptItem[] = [];
@@ -161,31 +163,29 @@ export async function POST(req: NextRequest) {
         .select('session_id, role, content, created_at, type, item_id')
         .eq('user_id', context.userId);
 
-      // Apply same time filtering as analyses
-      if (startDate && endDate) {
-        transcriptQuery = transcriptQuery
-          .gte('created_at', startDate)
-          .lte('created_at', endDate);
-        console.log(`🕐 [${debugSessionId}] TIME FILTERING: Applied to transcripts query from ${startDate} to ${endDate}`);
-      }
+      // Apply same time filtering as analyses (now required)
+      transcriptQuery = transcriptQuery
+        .gte('created_at', startDate)
+        .lte('created_at', endDate);
+      console.log(`🕐 [${debugSessionId}] TIME FILTERING: Applied to transcripts query from ${startDate} to ${endDate}`);
 
       const { data: transcripts, error: transcriptError } = await transcriptQuery.order('created_at', { ascending: true })
         .limit(500); // Limit transcripts to prevent overwhelming context
 
       if (transcriptError) {
-        console.warn(`❌ [${debugSessionId}] TRANSCRIPT FETCH ERROR:`, transcriptError);
+        console.warn(`[ERROR] [${debugSessionId}] TRANSCRIPT FETCH ERROR:`, transcriptError);
       } else {
         transcriptsData = transcripts || [];
-        console.log(`✅ [${debugSessionId}] LOADED ${transcriptsData.length} TRANSCRIPT ITEMS`);
+        console.log(`[SUCCESS] [${debugSessionId}] LOADED ${transcriptsData.length} TRANSCRIPT ITEMS`);
         
         if (transcriptsData.length > 0) {
-          console.log(`📊 [${debugSessionId}] TRANSCRIPT SESSION: ${transcriptsData[0]?.session_id}`);
-          console.log(`📊 [${debugSessionId}] TRANSCRIPT TIME RANGE: ${transcriptsData[0]?.created_at} to ${transcriptsData[transcriptsData.length - 1]?.created_at}`);
-          console.log(`📊 [${debugSessionId}] SAMPLE TRANSCRIPT:`, JSON.stringify(transcriptsData[0], null, 2));
+          console.log(`[STATS] [${debugSessionId}] TRANSCRIPT SESSION: ${transcriptsData[0]?.session_id}`);
+          console.log(`[STATS] [${debugSessionId}] TRANSCRIPT TIME RANGE: ${transcriptsData[0]?.created_at} to ${transcriptsData[transcriptsData.length - 1]?.created_at}`);
+          console.log(`[STATS] [${debugSessionId}] SAMPLE TRANSCRIPT:`, JSON.stringify(transcriptsData[0], null, 2));
         }
       }
     } catch (error) {
-      console.error(`❌ [${debugSessionId}] TRANSCRIPT FETCH EXCEPTION:`, error);
+      console.error(`[ERROR] [${debugSessionId}] TRANSCRIPT FETCH EXCEPTION:`, error);
     }
 
     // Check if this is multiple workflows synthesis  
@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
       // Multiple workflows synthesis - events are now global
       const processedGlobalEvents = analyses ? processEvents(analyses) : [];
       console.log(`🔄 [${debugSessionId}] PROCESSED ${processedGlobalEvents.length} GLOBAL EVENTS`);
-      console.log(`📊 [${debugSessionId}] SAMPLE PROCESSED EVENT:`, JSON.stringify(processedGlobalEvents[0], null, 2));
+      console.log(`[STATS] [${debugSessionId}] SAMPLE PROCESSED EVENT:`, JSON.stringify(processedGlobalEvents[0], null, 2));
       
       const workflowDetails = context.workflows.map((workflow: WorkflowSynthesisInput) => {
         return `WORKFLOW: ${workflow.name}
@@ -250,7 +250,7 @@ Note: Each event contains embedded labels where available.`;
       console.log(`📤 [${debugSessionId}] PROMPT PREVIEW (first 500 chars):`, prompt.substring(0, 500) + '...');
       console.log(`📤 [${debugSessionId}] PROMPT PREVIEW (last 500 chars):`, '...' + prompt.substring(prompt.length - 500));
       
-      // 📊 CONTEXT SIZE MONITORING & WARNINGS
+      // [STATS] CONTEXT SIZE MONITORING & WARNINGS
       console.log(`🔍 [${debugSessionId}] ===== CONTEXT SIZE ANALYSIS =====`);
       
       const promptStats = {
@@ -264,7 +264,7 @@ Note: Each event contains embedded labels where available.`;
         }
       };
       
-      console.log(`📊 [${debugSessionId}] PROMPT STATISTICS:`, promptStats);
+      console.log(`[STATS] [${debugSessionId}] PROMPT STATISTICS:`, promptStats);
       
       // Define size thresholds and warnings
       const sizeThresholds = {
@@ -281,22 +281,22 @@ Note: Each event contains embedded labels where available.`;
         console.error(`🚨 [${debugSessionId}] DANGER: Prompt size ${promptStats.totalCharacters} chars exceeds danger threshold (${sizeThresholds.DANGER_CHARS})`);
         console.error(`🚨 [${debugSessionId}] RISK: Very high risk of timeout or model rejection`);
       } else if (promptStats.totalCharacters >= sizeThresholds.CRITICAL_CHARS) {
-        console.warn(`⚠️ [${debugSessionId}] CRITICAL: Prompt size ${promptStats.totalCharacters} chars exceeds critical threshold (${sizeThresholds.CRITICAL_CHARS})`);
-        console.warn(`⚠️ [${debugSessionId}] RISK: High risk of timeout or reduced performance`);
+        console.warn(`[WARN] [${debugSessionId}] CRITICAL: Prompt size ${promptStats.totalCharacters} chars exceeds critical threshold (${sizeThresholds.CRITICAL_CHARS})`);
+        console.warn(`[WARN] [${debugSessionId}] RISK: High risk of timeout or reduced performance`);
       } else if (promptStats.totalCharacters >= sizeThresholds.WARNING_CHARS) {
-        console.warn(`⚠️ [${debugSessionId}] WARNING: Prompt size ${promptStats.totalCharacters} chars exceeds warning threshold (${sizeThresholds.WARNING_CHARS})`);
-        console.warn(`⚠️ [${debugSessionId}] RISK: Moderate risk of slower processing`);
+        console.warn(`[WARN] [${debugSessionId}] WARNING: Prompt size ${promptStats.totalCharacters} chars exceeds warning threshold (${sizeThresholds.WARNING_CHARS})`);
+        console.warn(`[WARN] [${debugSessionId}] RISK: Moderate risk of slower processing`);
       } else {
-        console.log(`✅ [${debugSessionId}] GOOD: Prompt size ${promptStats.totalCharacters} chars within safe limits`);
+        console.log(`[SUCCESS] [${debugSessionId}] GOOD: Prompt size ${promptStats.totalCharacters} chars within safe limits`);
       }
       
       // Token-based warnings
       if (promptStats.estimatedTokens >= sizeThresholds.DANGER_TOKENS) {
         console.error(`🚨 [${debugSessionId}] DANGER: Estimated ${promptStats.estimatedTokens} tokens near model limits`);
       } else if (promptStats.estimatedTokens >= sizeThresholds.CRITICAL_TOKENS) {
-        console.warn(`⚠️ [${debugSessionId}] CRITICAL: Estimated ${promptStats.estimatedTokens} tokens may cause issues`);
+        console.warn(`[WARN] [${debugSessionId}] CRITICAL: Estimated ${promptStats.estimatedTokens} tokens may cause issues`);
       } else if (promptStats.estimatedTokens >= sizeThresholds.WARNING_TOKENS) {
-        console.warn(`⚠️ [${debugSessionId}] WARNING: Estimated ${promptStats.estimatedTokens} tokens requires monitoring`);
+        console.warn(`[WARN] [${debugSessionId}] WARNING: Estimated ${promptStats.estimatedTokens} tokens requires monitoring`);
       }
       
       // Size breakdown analysis
@@ -310,16 +310,16 @@ Note: Each event contains embedded labels where available.`;
       let adjustedTimeoutMs = 120000; // Default 2 minutes
       if (promptStats.totalCharacters >= sizeThresholds.DANGER_CHARS) {
         adjustedTimeoutMs = 300000; // 5 minutes for very large prompts
-        console.log(`⏱️ [${debugSessionId}] TIMEOUT ADJUSTED: Increased to ${adjustedTimeoutMs/1000}s due to large prompt size`);
+        console.log(`[TIME] [${debugSessionId}] TIMEOUT ADJUSTED: Increased to ${adjustedTimeoutMs/1000}s due to large prompt size`);
       } else if (promptStats.totalCharacters >= sizeThresholds.CRITICAL_CHARS) {
         adjustedTimeoutMs = 180000; // 3 minutes for large prompts  
-        console.log(`⏱️ [${debugSessionId}] TIMEOUT ADJUSTED: Increased to ${adjustedTimeoutMs/1000}s due to prompt size`);
+        console.log(`[TIME] [${debugSessionId}] TIMEOUT ADJUSTED: Increased to ${adjustedTimeoutMs/1000}s due to prompt size`);
       }
       
       console.log(`🔍 [${debugSessionId}] ===== CONTEXT SIZE ANALYSIS COMPLETE =====`);
       
-      // 💾 STORE INTERMEDIATE RESULTS - Save progress before VertexAI call
-      console.log(`💾 [${debugSessionId}] ===== STORING INTERMEDIATE RESULTS =====`);
+      // [DB] STORE INTERMEDIATE RESULTS - Save progress before VertexAI call
+      console.log(`[DB] [${debugSessionId}] ===== STORING INTERMEDIATE RESULTS =====`);
       
       const intermediateResults = {
         sessionId: debugSessionId,
@@ -338,7 +338,7 @@ Note: Each event contains embedded labels where available.`;
         status: 'prepared'
       };
       
-      console.log(`💾 [${debugSessionId}] INTERMEDIATE CHECKPOINT:`, {
+      console.log(`[DB] [${debugSessionId}] INTERMEDIATE CHECKPOINT:`, {
         stage: intermediateResults.stage,
         promptSize: intermediateResults.promptStats.totalCharacters,
         workflowCount: intermediateResults.requestData.workflows?.length,
@@ -348,7 +348,7 @@ Note: Each event contains embedded labels where available.`;
       // Store in-memory for this session (could be extended to database)
       const sessionStorage = new Map();
       sessionStorage.set(`${debugSessionId}_intermediate`, intermediateResults);
-      console.log(`💾 [${debugSessionId}] Stored intermediate results for recovery`);
+      console.log(`[DB] [${debugSessionId}] Stored intermediate results for recovery`);
       
       // Enhanced VertexAI call with timeout and progress tracking
       console.log(`🚀 [${debugSessionId}] STARTING VERTEX AI CALL WITH ENHANCED FEATURES`);
@@ -356,7 +356,7 @@ Note: Each event contains embedded labels where available.`;
       const vertexAIOptions = {
         timeoutMs: adjustedTimeoutMs, // Dynamic timeout based on prompt size
         onProgress: (stage: string, elapsed: number) => {
-          console.log(`📊 [${debugSessionId}] VERTEX AI PROGRESS: ${stage} (${elapsed}ms)`);
+          console.log(`[STATS] [${debugSessionId}] VERTEX AI PROGRESS: ${stage} (${elapsed}ms)`);
           
           // Update intermediate results with progress
           const updatedResults = {
@@ -404,7 +404,7 @@ Note: Each event contains embedded labels where available.`;
       
       const endTime = Date.now();
       
-      // 💾 STORE SUCCESSFUL RESULTS
+      // [DB] STORE SUCCESSFUL RESULTS
       const successResults = {
         ...intermediateResults,
         stage: 'completed',
@@ -419,10 +419,10 @@ Note: Each event contains embedded labels where available.`;
       };
       
       sessionStorage.set(`${debugSessionId}_success`, successResults);
-      console.log(`💾 [${debugSessionId}] Stored successful synthesis results`);
+      console.log(`[DB] [${debugSessionId}] Stored successful synthesis results`);
       
-      console.log(`✅ [${debugSessionId}] VERTEX AI CALL COMPLETED IN ${endTime - startTime}ms`);
-      console.log(`📊 [${debugSessionId}] RESULT STRUCTURE:`, {
+      console.log(`[SUCCESS] [${debugSessionId}] VERTEX AI CALL COMPLETED IN ${endTime - startTime}ms`);
+      console.log(`[STATS] [${debugSessionId}] RESULT STRUCTURE:`, {
         hasContent: !!result.content,
         hasUsage: !!result.usage,
         hasMetadata: !!result.metadata,
@@ -431,14 +431,14 @@ Note: Each event contains embedded labels where available.`;
       });
       
       if (result.usage) {
-        console.log(`📊 [${debugSessionId}] TOKEN USAGE:`, result.usage);
+        console.log(`[STATS] [${debugSessionId}] TOKEN USAGE:`, result.usage);
       }
       
       if (result.metadata) {
-        console.log(`📊 [${debugSessionId}] CALL METADATA:`, result.metadata);
+        console.log(`[STATS] [${debugSessionId}] CALL METADATA:`, result.metadata);
       }
 
-      console.log(`🔧 [${debugSessionId}] WORKFLOW RESULT:`, JSON.stringify(result.content, null, 2));
+      console.log(`[FIX] [${debugSessionId}] WORKFLOW RESULT:`, JSON.stringify(result.content, null, 2));
 
       return NextResponse.json({ 
         workflows: result.content.workflows,
@@ -489,13 +489,13 @@ EVENTS: ${JSON.stringify(processedSingleEvents, null, 2)}`;
     // This section should not be reached for multi-workflow synthesis
 
   } catch (error) {
-    console.error(`❌ [${debugSessionId}] ===== SYNTHESIS DEBUG SESSION FAILED =====`);
-    console.error(`❌ [${debugSessionId}] ERROR TYPE: ${error instanceof Error ? error.constructor.name : typeof error}`);
-    console.error(`❌ [${debugSessionId}] ERROR MESSAGE: ${error instanceof Error ? error.message : String(error)}`);
-    console.error(`❌ [${debugSessionId}] ERROR STACK:`, error instanceof Error ? error.stack : 'No stack trace');
+    console.error(`[ERROR] [${debugSessionId}] ===== SYNTHESIS DEBUG SESSION FAILED =====`);
+    console.error(`[ERROR] [${debugSessionId}] ERROR TYPE: ${error instanceof Error ? error.constructor.name : typeof error}`);
+    console.error(`[ERROR] [${debugSessionId}] ERROR MESSAGE: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`[ERROR] [${debugSessionId}] ERROR STACK:`, error instanceof Error ? error.stack : 'No stack trace');
     
-    // 🛡️ GRACEFUL DEGRADATION - Handle different types of failures
-    console.log(`🛡️ [${debugSessionId}] ===== GRACEFUL DEGRADATION ANALYSIS =====`);
+    // [PROTECTION] GRACEFUL DEGRADATION - Handle different types of failures
+    console.log(`[PROTECTION] [${debugSessionId}] ===== GRACEFUL DEGRADATION ANALYSIS =====`);
     
     const errorMessage = error instanceof Error ? error.message : String(error);
     const isTimeoutError = errorMessage.includes('timeout') || errorMessage.includes('Timeout');
@@ -575,7 +575,7 @@ EVENTS: ${JSON.stringify(processedSingleEvents, null, 2)}`;
       };
       
     } else if (isVertexAIError) {
-      console.log(`🤖 [${debugSessionId}] VERTEXAI DEGRADATION: Providing AI service guidance`);
+      console.log(`[LLM] [${debugSessionId}] VERTEXAI DEGRADATION: Providing AI service guidance`);
       
       degradedResponse.type = 'ai_service_error';
       degradedResponse.suggestions = [
@@ -619,7 +619,7 @@ EVENTS: ${JSON.stringify(processedSingleEvents, null, 2)}`;
       requestInfo: 'Request data not available in error context'
     };
     
-    console.log(`💾 [${debugSessionId}] PRESERVING ERROR CONTEXT:`, errorContext);
+    console.log(`[DB] [${debugSessionId}] PRESERVING ERROR CONTEXT:`, errorContext);
     
     // Add context preservation information
     degradedResponse.fallbackOptions.errorContext = errorContext;
@@ -627,7 +627,7 @@ EVENTS: ${JSON.stringify(processedSingleEvents, null, 2)}`;
       note: 'Detailed request data not available during error handling'
     };
     
-    console.log(`🛡️ [${debugSessionId}] ===== GRACEFUL DEGRADATION COMPLETE =====`);
+    console.log(`[PROTECTION] [${debugSessionId}] ===== GRACEFUL DEGRADATION COMPLETE =====`);
     console.log(`📋 [${debugSessionId}] DEGRADED RESPONSE:`, {
       type: degradedResponse.type,
       suggestionsCount: degradedResponse.suggestions.length,
@@ -636,4 +636,4 @@ EVENTS: ${JSON.stringify(processedSingleEvents, null, 2)}`;
 
     return NextResponse.json(degradedResponse, { status: 500 });
   }
-} 
+}

@@ -44,6 +44,7 @@ import { useWorkflowPageLogic } from './useWorkflowPageLogic';
 import { FilteredStatsDisplay } from '@/components/FilteredStatsDisplay';
 import { SavedSynthesesSection } from '@/components/SavedSynthesesSection';
 import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
+import { WorkflowExportDropdown } from '@/components/WorkflowExportDropdown';
 import { EditableTimelineMappings } from '@/components/low-level/EditableTimelineMappings';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
@@ -226,9 +227,9 @@ const STEP_DEFINITIONS: StepDefinition[] = [
   },
   {
     id: 'timeline-mapping',
-    title: 'Create Timeline Mapping',
-    actionText: 'Generate Timeline Map',
-    description: 'Analyze and map all low-level events to their corresponding workflow steps for full traceability.',
+    title: 'Create Timeline Annotations',
+    actionText: 'Generate Timeline Annotations',
+    description: 'Analyze and annotate all low-level events to their corresponding workflow steps for full traceability.',
   },
 ];
 
@@ -249,7 +250,7 @@ const StepperItemComponent = ({
 }) => {
     const { 
       synthesisStep, isFetchingEvents, isAnalyzingEvents, runInitialAnalysis, isLoading, 
-      refineAndIdentifyWorkflows, identifiedWorkflowNames, processAllWorkflows, 
+      refineAndIdentifyWorkflows, workflowNames, processAllWorkflows, 
       workflowBoundaries, proceedToSynthesis, generateAndSaveTimelineMapping, workflows,
       isMappingTimeline, timelineAnnotations, timeBoundary
     } = logic;
@@ -257,24 +258,24 @@ const StepperItemComponent = ({
     const actionMap: Record<string, (() => void) | undefined> = {
         'define-context': runInitialAnalysis,
         'select-workflows': refineAndIdentifyWorkflows,
-        'define-boundaries': () => processAllWorkflows(identifiedWorkflowNames),
+        'define-boundaries': () => processAllWorkflows(workflowNames),
         'timeline-mapping': () => generateAndSaveTimelineMapping(),
     };
 
     const stepState = useMemo(() => {
         const completedStates: Record<StepId, SynthesisStep[]> = {
-  'define-context': ['context_editing', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'],
-  'select-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'],
-  'define-boundaries': ['synthesizing', 'synthesis_complete', 'done'],
-  'synthesize-workflows': ['synthesis_complete', 'done'],
-          'timeline-mapping': ['done'],
+  'define-context': ['identifying', 'context_editing', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done', 'timeline_complete'],
+  'select-workflows': ['defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done', 'timeline_complete'],
+  'define-boundaries': ['synthesizing', 'synthesis_complete', 'done', 'timeline_complete'],
+  'synthesize-workflows': ['synthesis_complete', 'done', 'timeline_complete'],
+          'timeline-mapping': ['timeline_complete'],
 };
 
         const enabledStates = {
-            'define-context': Boolean(!isFetchingEvents && timeBoundary.startDate && timeBoundary.endDate),
-            'select-workflows': synthesisStep === 'context_editing',
-            'define-boundaries': synthesisStep === 'workflow_editing' && identifiedWorkflowNames.length > 0,
-            'timeline-mapping': synthesisStep === 'synthesis_complete',
+            'define-context': Boolean(!isFetchingEvents && timeBoundary.startDate && timeBoundary.endDate && ['idle'].includes(synthesisStep)),
+            'select-workflows': synthesisStep === 'context_editing' && timeBoundary.startDate && timeBoundary.endDate,
+            'define-boundaries': synthesisStep === 'workflow_editing' && workflowNames.length > 0 && timeBoundary.startDate && timeBoundary.endDate,
+            'timeline-mapping': synthesisStep === 'synthesis_complete' || synthesisStep === 'done',
         };
         
         // Active states should only be true when actual processing is happening (for spinning animation)
@@ -307,17 +308,17 @@ const StepperItemComponent = ({
                 case 'synthesize-workflows':
                     return synthesisStep === 'synthesis_complete' && !isMappingTimeline; // Editable when synthesis complete AND not mapping timeline
                 case 'timeline-mapping':
-                    return synthesisStep === 'done'; // Editable when done with timeline mapping
+                    return synthesisStep === 'done' || synthesisStep === 'timeline_complete'; // Editable during and after completion
                 default:
                     return false;
             }
         };
 
         const showComponentStates = {
-            'define-context': ['context_editing', 'identifying', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'].includes(synthesisStep),
-            'select-workflows': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'].includes(synthesisStep),
-            'define-boundaries': ['boundaries_editing', 'synthesizing', 'synthesis_complete', 'done'].includes(synthesisStep),
-            'synthesize-workflows': ['synthesis_complete', 'done'].includes(synthesisStep),
+            'define-context': ['context_editing', 'identifying', 'workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done', 'timeline_complete'].includes(synthesisStep),
+            'select-workflows': ['workflow_editing', 'defining_boundaries', 'boundaries_editing', 'synthesizing', 'synthesis_complete', 'done', 'timeline_complete'].includes(synthesisStep),
+            'define-boundaries': ['boundaries_editing', 'synthesizing', 'synthesis_complete', 'done', 'timeline_complete'].includes(synthesisStep),
+            'synthesize-workflows': ['synthesis_complete', 'done', 'timeline_complete'].includes(synthesisStep),
             'timeline-mapping': timelineAnnotations !== null,
         };
 
@@ -331,28 +332,38 @@ const StepperItemComponent = ({
             enabled: enabledStates[id as keyof typeof enabledStates] ?? false,
             showComponent: showComponentStates[id as keyof typeof showComponentStates] ?? false,
         };
-    }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, identifiedWorkflowNames, isMappingTimeline, timelineAnnotations, timeBoundary]);
+    }, [id, synthesisStep, isFetchingEvents, isAnalyzingEvents, workflowNames, isMappingTimeline, timelineAnnotations, timeBoundary]);
     
     const { completed, active, editable, enabled, showComponent } = stepState;
     const action = actionMap[id];
-    const [isCollapsed, setIsCollapsed] = useState(true);
-
-    const shouldBeExpanded = 
-        (id === 'define-context' && (synthesisStep === 'context_editing' || isAnalyzingEvents)) ||
-        (id === 'select-workflows' && synthesisStep === 'workflow_editing') ||
-        (id === 'define-boundaries' && synthesisStep === 'boundaries_editing') ||
-        (id === 'synthesize-workflows' && (synthesisStep === 'synthesizing' || synthesisStep === 'synthesis_complete')) ||
-        (id === 'timeline-mapping' && synthesisStep === 'done');
-
-
-
-    useEffect(() => {
-        if (shouldBeExpanded) {
-            setIsCollapsed(false);
-        } else if (completed) {
-            setIsCollapsed(true);
+    
+    // Storage key for step expansion state persistence
+    const STEP_STORAGE_KEY = useMemo(() => `workflow-step-expansion-${userId}-${id}`, [userId, id]);
+    
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+        try {
+            const stored = localStorage.getItem(STEP_STORAGE_KEY);
+            return stored !== null ? JSON.parse(stored) : true;
+        } catch {
+            return true;
         }
-    }, [shouldBeExpanded, completed]);
+    });
+
+    // Track if user has manually controlled this step
+    const [manuallyControlled, setManuallyControlled] = useState(false);
+
+    // Smart auto-expansion - only if user hasn't manually controlled
+    useEffect(() => {
+        const shouldAutoExpand = 
+            (id === 'synthesize-workflows' && synthesisStep === 'synthesis_complete') ||
+            (id === 'timeline-mapping' && timelineAnnotations !== null);
+        
+        // Only auto-expand if user hasn't manually controlled AND should expand
+        if (shouldAutoExpand && !manuallyControlled && isCollapsed) {
+            setIsCollapsed(false);
+            localStorage.setItem(STEP_STORAGE_KEY, JSON.stringify(false));
+        }
+    }, [synthesisStep, timelineAnnotations, manuallyControlled, isCollapsed, STEP_STORAGE_KEY, id]);
 
     return (
         <div className="relative">{/* Fixed parsing issue */}
@@ -381,7 +392,20 @@ const StepperItemComponent = ({
                         )}
                         
                         {(showComponent || (completed && !active)) && (
-                            <Button variant="ghost" size="sm" onClick={() => setIsCollapsed(!isCollapsed)} className="ml-2">
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => {
+                                    const newCollapsed = !isCollapsed;
+                                    setIsCollapsed(newCollapsed);
+                                    setManuallyControlled(true); // Mark as user-controlled
+                                    localStorage.setItem(STEP_STORAGE_KEY, JSON.stringify(newCollapsed));
+                                }} 
+                                className="ml-2 border-black hover:bg-gray-100 px-3 py-2 flex items-center gap-2"
+                            >
+                                <span className="text-xs font-medium">
+                                    {isCollapsed ? 'Show' : 'Hide'}
+                                </span>
                                 {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
                             </Button>
                         )}
@@ -418,7 +442,7 @@ const StepperItemComponent = ({
                                 
                                 {id === 'select-workflows' && (
                                     <div className={completed ? 'opacity-60 pointer-events-none' : ''}>
-                                        <EditableWorkflowList workflows={logic.identifiedWorkflowNames} onWorkflowsChange={logic.setIdentifiedWorkflowNames} />
+                                        <EditableWorkflowList workflows={logic.workflowNames} onWorkflowsChange={logic.setWorkflowNames} />
                                     </div>
                                 )}
                                 
@@ -428,7 +452,11 @@ const StepperItemComponent = ({
                                         {['boundaries_editing', 'synthesizing'].includes(synthesisStep) && (
                                             <CardFooter className="flex justify-between mt-6">
                                               <Button onClick={logic.goBackToWorkflowEditing} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>Back</Button>
-                                              <Button onClick={logic.confirmBoundaries} disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing'}>
+                                              <Button 
+                                                onClick={logic.confirmBoundaries} 
+                                                disabled={logic.isLoading || logic.synthesisStep !== 'boundaries_editing' || !logic.timeBoundary.startDate || !logic.timeBoundary.endDate}
+                                                title={!logic.timeBoundary.startDate || !logic.timeBoundary.endDate ? 'Please select a timeframe before synthesizing workflows' : undefined}
+                                              >
                                                 {logic.synthesisStep === 'synthesizing' ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Synthesizing...</> : 'Confirm Boundaries & Synthesize'}
                                               </Button>
                                             </CardFooter>
@@ -475,7 +503,7 @@ const StepperItemComponent = ({
                                       <div className="pt-4 flex-grow w-full">
                                         <div className="space-y-4">
                                           <div className="w-full">
-                                            <h3 className="text-lg font-semibold mb-4">Timeline Event Mappings</h3>
+                                            <h3 className="text-lg font-semibold mb-4">Timeline Event Annotations</h3>
                                             <div className="max-h-[800px] overflow-auto">
                                               {(timelineAnnotations !== null || logic.isMappingTimeline) ? (
                                                 <div className="space-y-4">
@@ -486,7 +514,9 @@ const StepperItemComponent = ({
                                                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div>
                                                         <span className="text-sm">
                                                           {logic.timelineMappingBatch 
-                                                            ? `Processing batch ${logic.timelineMappingBatch.current} of ${logic.timelineMappingBatch.total}... Results will appear as they're generated`
+                                                            ? logic.timelineMappingBatch.mode === 'parallel'
+                                                              ? `Processing ${logic.timelineMappingBatch.total} batches in parallel... ${logic.timelineMappingBatch.current} completed`
+                                                              : `Processing batch ${logic.timelineMappingBatch.current} of ${logic.timelineMappingBatch.total}... Results will appear as they're generated`
                                                             : 'Processing timeline events... Results will appear as they\'re generated'
                                                           }
                                                         </span>
@@ -500,7 +530,30 @@ const StepperItemComponent = ({
                                                             ></div>
                                                           </div>
                                                           <div className="text-xs text-gray-600 mt-1">
-                                                            {Math.round((logic.timelineMappingBatch.current / logic.timelineMappingBatch.total) * 100)}% complete
+                                                            {logic.timelineMappingBatch.mode === 'parallel'
+                                                              ? `${logic.timelineMappingBatch.current}/${logic.timelineMappingBatch.total} batches completed`
+                                                              : `${Math.round((logic.timelineMappingBatch.current / logic.timelineMappingBatch.total) * 100)}% complete`
+                                                            }
+                                                          </div>
+                                                        </div>
+                                                      )}
+
+                                                      {/* Batch Status List */}
+                                                      {logic.batchList.length > 0 && (
+                                                        <div className="mt-4 p-3 border border-black rounded-lg">
+                                                          <div className="text-sm font-medium mb-2">Batch Status:</div>
+                                                          <div className="text-xs space-y-1 max-h-40 overflow-y-auto">
+                                                            {logic.batchList.map(batch => (
+                                                              <div key={batch.id} className="flex justify-between items-center py-1">
+                                                                <span className="flex-1">Batch {batch.id}</span>
+                                                                <span className="flex-1 text-center">{batch.status}</span>
+                                                                <div className="flex-1 text-right text-xs">
+                                                                  {batch.eventCount !== undefined && `${batch.eventCount} events`}
+                                                                  {batch.mappingCount !== undefined && ` → ${batch.mappingCount} mapped`}
+                                                                  {batch.processingTime && ` (${batch.processingTime}ms)`}
+                                                                </div>
+                                                              </div>
+                                                            ))}
                                                           </div>
                                                         </div>
                                                       )}
@@ -510,49 +563,19 @@ const StepperItemComponent = ({
                                                   <EditableTimelineMappings
                                                     annotations={timelineAnnotations || []}
                                                     workflows={logic.workflows}
-                                                    onAnnotationsChange={() => {
-                                                      console.log("Annotations changed");
-                                                    }}
+                                                    onAnnotationsChange={logic.handleTimelineAnnotationsChange}
                                                     isProcessing={logic.isMappingTimeline}
                                                     processingBatch={logic.timelineMappingBatch}
                                                   />
                                                 </div>
                                               ) : (
                                                 <div className="text-center text-muted-foreground p-4 border border-black rounded-lg bg-muted/50">
-                                                  Click the button above to generate and view the timeline mapping data.
+                                                  Click the button above to generate and view the timeline annotation data.
                                                 </div>
                                               )}
                                             </div>
                                           </div>
-                                          
-                                          {/* Save Synthesis & Export Buttons - Outside of mappings view */}
-                          {logic.workflows && logic.workflows.length > 0 && logic.synthesisStep === 'done' && timelineAnnotations && (
-                            <div className="mt-8 pt-6 border-t flex justify-center gap-4">
-                              <Button 
-                                variant="default" 
-                                size="lg"
-                                disabled={saveStatus === 'saving'}
-                                onClick={async () => {
-                                  setSaveStatus('saving');
-                                  const result = await logic.saveSynthesis();
-                                  if (result.success) {
-                                    setSaveStatus('success');
-                                    setRefreshTrigger(prev => prev + 1);
-                                    setTimeout(() => setSaveStatus('idle'), 2000);
-                                  } else {
-                                    setSaveStatus('error');
-                                    setTimeout(() => setSaveStatus('idle'), 3000);
-                                  }
-                                }}
-                                className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
-                              >
-                                {saveStatus === 'saving' && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
-                                {saveStatus === 'success' && <div className="text-green-400">✓</div>}
-                                {saveStatus === 'error' && <div className="text-red-400">✗</div>}
-                                Save Complete Synthesis
-                              </Button>
-                            </div>
-                          )}
+                                                                                    
                         </div>
                       </div>
                     </div>
@@ -582,17 +605,25 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
   const showStatsCard = !isFetchingEvents;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="w-full mx-auto">
       {/* Stats Card - shown when in idle state */}
       {showStatsCard && (
         <div className="mb-6">
               {/* Time Boundary Selection */}
               <div className="mb-6">
+                <div className="mb-2">
+                  <label className="text-sm font-medium text-gray-700">
+                    Timeframe Selection <span className="text-red-500">*</span>
+                    <span className="text-xs text-gray-500 ml-2">(Required for timeline annotations)</span>
+                  </label>
+                </div>
                 <TimeBoundarySelector
                   selectedBoundary={logic.timeBoundary}
                   onBoundaryChange={logic.setTimeBoundary}
+                  onClear={logic.clearTimeBoundary}
                   disabled={logic.isLoading}
                   userId={userId}
+                  required={true}
                 />
               </div>
               
@@ -628,7 +659,7 @@ const Stepper = ({ logic, userId, saveStatus, setSaveStatus, setRefreshTrigger }
       )}
 
       {/* Always show the stepper */}
-      <div className="max-w-4xl mx-auto py-6">
+      <div className="w-full mx-auto py-6">
         <div className="space-y-8">
           {STEP_DEFINITIONS.map((step, index) => (
             <StepperItem
@@ -783,7 +814,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
             </div>
 
             {/* Main Content */}
-            <div className="w-full max-w-4xl mx-auto p-8 space-y-6">
+            <div className="w-full max-w-6xl mx-auto p-8 space-y-6">
                 {/* Setup Instructions - Always Visible */}
                 <Card className="w-full border-black">
                     <CardHeader>
@@ -807,9 +838,14 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                     <CardContent>
                         <Collapsible open={mainWorkflowOpen} onOpenChange={setMainWorkflowOpen}>
                             <div className="mb-4 text-left">
-                                <CollapsibleTrigger className="w-full flex items-center justify-between hover:bg-gray-50 p-2 rounded">
+                                <CollapsibleTrigger className="w-full flex items-center justify-between p-4 rounded-lg border border-black border-dashed bg-white hover:bg-gray-50 transition-colors duration-200 cursor-pointer group">
                                     <h3 className="text-lg font-semibold">Workflow Synthesis</h3>
-                                    {mainWorkflowOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                                            {mainWorkflowOpen ? 'Collapse' : 'Expand'}
+                                        </span>
+                                        {mainWorkflowOpen ? <ChevronDown className="h-5 w-5 text-black" /> : <ChevronRight className="h-5 w-5 text-black" />}
+                                    </div>
                                 </CollapsibleTrigger>
                                 
                                 <CollapsibleContent className={cn(
@@ -831,6 +867,49 @@ export default function WorkflowPage({ params }: { params: Promise<{ userId:stri
                     </CardContent>
                 </Card>
                 
+                {/* Save Synthesis & Export Buttons - Always visible when workflow is complete */}
+                {logic.workflows && logic.workflows.length > 0 && (logic.synthesisStep === 'done' || logic.synthesisStep === 'timeline_complete') && logic.timelineAnnotations && (
+                  <Card>
+                    <CardContent>
+                      <div className="flex justify-center gap-4 py-4">
+                        <Button 
+                          variant="default" 
+                          size="lg"
+                          disabled={saveStatus === 'saving'}
+                          onClick={async () => {
+                            setSaveStatus('saving');
+                            const result = await logic.saveSynthesis();
+                            if (result.success) {
+                              setSaveStatus('success');
+                              setRefreshTrigger(prev => prev + 1);
+                              setTimeout(() => setSaveStatus('idle'), 2000);
+                            } else {
+                              setSaveStatus('error');
+                              setTimeout(() => setSaveStatus('idle'), 3000);
+                            }
+                          }}
+                          className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
+                        >
+                          {saveStatus === 'saving' && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
+                          {saveStatus === 'success' && <div className="text-green-400">✓</div>}
+                          {saveStatus === 'error' && <div className="text-red-400">✗</div>}
+                          Save Complete Synthesis
+                        </Button>
+                        
+                        <WorkflowExportDropdown 
+                          workflows={logic.workflows.map(w => ({
+                            id: w.id,
+                            title: w.title,
+                            created_at: new Date().toISOString() // Use current date as fallback
+                          }))} 
+                          userId={userId}
+                          disabled={saveStatus === 'saving'}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Saved Syntheses Section */}
                 <SavedSynthesesSection userId={userId} refreshTrigger={refreshTrigger} />
             </div>

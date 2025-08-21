@@ -1,23 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { callVertexWithStructuredOutput } from '@/lib/vertexai';
 import { PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, WORKFLOW_REFINEMENT_SCHEMA } from '@/lib/prompts';
 import { TranscriptItem } from '@/lib/transcriptUtils';
+import { callVertexWithStructuredOutput } from '@/lib/vertexai';
+import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
     const { userId, workflow_context, draft_workflow_names, model, startDate, endDate } = await req.json();
 
     if (!model || !userId || !workflow_context || !draft_workflow_names) {
-    return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
-  }
-
-    // Log time boundary information
-    if (startDate && endDate) {
-      console.log('Refining workflow list for userId:', userId, 'with', draft_workflow_names.length, 'draft workflows', 'from:', startDate, 'to:', endDate);
-    } else {
-      console.log('Refining workflow list for userId:', userId, 'with', draft_workflow_names.length, 'draft workflows', '(no time boundaries)');
+      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
+
+    // 🔧 NEW: Require explicit timeframe selection
+    if (!startDate || !endDate) {
+      return NextResponse.json({ 
+        error: 'Timeframe selection is required. Please specify both startDate and endDate for workflow list refinement.',
+        details: 'Select a time period using the timeframe selector before refining workflow lists.'
+      }, { status: 400 });
+    }
+
+    // Log time boundary information (now required)
+    console.log('Refining workflow list for userId:', userId, 'with', draft_workflow_names.length, 'draft workflows', 'from:', startDate, 'to:', endDate);
 
     // Fetch analyses from database (reusing logic from fetch-combined-analyses-v2)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -29,18 +33,13 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Fetch analyses first with optional time filtering
-    let query = supabaseAdmin
+    // Fetch analyses with required time filtering
+    const query = supabaseAdmin
       .from('low_level_workflow_analyses')
       .select('id, client_timestamp, window_title, llm_structured_output')
-      .eq('user_id', userId);
-
-    // Apply time filtering if boundaries are provided
-    if (startDate && endDate) {
-      query = query
-        .gte('client_timestamp', startDate)
-        .lte('client_timestamp', endDate);
-    }
+      .eq('user_id', userId)
+      .gte('client_timestamp', startDate)
+      .lte('client_timestamp', endDate);
 
     const { data: analysesData, error: analysesError } = await query
       .order('client_timestamp', { ascending: false })
@@ -108,12 +107,10 @@ export async function POST(req: NextRequest) {
         .select('session_id, role, content, created_at, type, item_id')
         .eq('user_id', userId);
 
-      // Apply same time filtering as analyses
-      if (startDate && endDate) {
-        transcriptQuery = transcriptQuery
-          .gte('created_at', startDate)
-          .lte('created_at', endDate);
-      }
+      // Apply same time filtering as analyses (now required)
+      transcriptQuery = transcriptQuery
+        .gte('created_at', startDate)
+        .lte('created_at', endDate);
 
       const { data: transcripts, error: transcriptError } = await transcriptQuery
         .order('created_at', { ascending: true })

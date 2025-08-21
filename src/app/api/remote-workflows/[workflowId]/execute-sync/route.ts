@@ -1,14 +1,18 @@
+import {
+  cacheResponse,
+  extractRequestParams,
+  normalizeEndpointPath,
+} from '@/lib/responseCache';
+import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { cacheResponse, extractRequestParams, normalizeEndpointPath } from '@/lib/responseCache';
 
 // Types for execution and workflow data
 interface ExecutionResults {
   execution_summary?: { workflow_completed?: boolean };
-  performance_metrics?: { 
-    successful_steps?: number; 
-    failed_steps?: number; 
-    total_steps?: number; 
+  performance_metrics?: {
+    successful_steps?: number;
+    failed_steps?: number;
+    total_steps?: number;
   };
   quotes?: Array<unknown>;
   error_stage?: string;
@@ -55,7 +59,11 @@ const POLLING_INTERVAL_MS = 2000; // 2 seconds
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Helper function to poll execution status until completion
-async function pollExecutionUntilComplete(executionId: number, supabase: SupabaseClient, startTime: number): Promise<ExecutionData> {
+async function pollExecutionUntilComplete(
+  executionId: number,
+  supabase: SupabaseClient,
+  startTime: number
+): Promise<ExecutionData> {
   while (Date.now() - startTime < MAX_WAIT_TIME_MS) {
     // Get current execution status
     const { data: execution, error } = await supabase
@@ -69,8 +77,11 @@ async function pollExecutionUntilComplete(executionId: number, supabase: Supabas
     }
 
     // Check if execution is complete
-    const isCompleted = execution.status === 'completed' || execution.status === 'failed' || execution.status === 'error';
-    
+    const isCompleted =
+      execution.status === 'completed' ||
+      execution.status === 'failed' ||
+      execution.status === 'error';
+
     if (isCompleted) {
       return execution;
     }
@@ -80,26 +91,43 @@ async function pollExecutionUntilComplete(executionId: number, supabase: Supabas
   }
 
   // Execution timed out
-  throw new Error(`Execution timed out after ${MAX_WAIT_TIME_MS / 1000} seconds`);
+  throw new Error(
+    `Execution timed out after ${MAX_WAIT_TIME_MS / 1000} seconds`
+  );
 }
 
 // Helper function to format execution response (similar to execution details endpoint)
-function formatExecutionResponse(execution: ExecutionData, workflow: WorkflowData, full_detailed_response: boolean = false) {
+function formatExecutionResponse(
+  execution: ExecutionData,
+  workflow: WorkflowData,
+  full_detailed_response: boolean = false
+) {
   // Calculate execution metrics
-  const startedAt = execution.started_at ? new Date(execution.started_at) : null;
-  const completedAt = execution.completed_at ? new Date(execution.completed_at) : null;
-  const createdAt = execution.created_at ? new Date(execution.created_at) : null;
-  
+  const startedAt = execution.started_at
+    ? new Date(execution.started_at)
+    : null;
+  const completedAt = execution.completed_at
+    ? new Date(execution.completed_at)
+    : null;
+  const createdAt = execution.created_at
+    ? new Date(execution.created_at)
+    : null;
+
   let runtimeSeconds = 0;
   if (startedAt && completedAt) {
-    runtimeSeconds = Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000);
+    runtimeSeconds = Math.floor(
+      (completedAt.getTime() - startedAt.getTime()) / 1000
+    );
   } else if (createdAt && completedAt) {
-    runtimeSeconds = Math.floor((completedAt.getTime() - createdAt.getTime()) / 1000);
+    runtimeSeconds = Math.floor(
+      (completedAt.getTime() - createdAt.getTime()) / 1000
+    );
   }
 
   // Determine execution state
   const isSuccessful = execution.status === 'completed';
-  const hasFailed = execution.status === 'failed' || execution.status === 'error';
+  const hasFailed =
+    execution.status === 'failed' || execution.status === 'error';
   const hasError = hasFailed || !!execution.error_message;
 
   // Return minimal response with only formatted_output when full_detailed_response is false
@@ -115,9 +143,9 @@ function formatExecutionResponse(execution: ExecutionData, workflow: WorkflowDat
       response_metadata: {
         execution_mode: 'synchronous',
         full_detailed_response: false,
-        note: 'Concise response with only formatted_output. Add "?full_detailed_response=true" for complete details.'
+        note: 'Concise response with only formatted_output. Add "?full_detailed_response=true" for complete details.',
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -131,54 +159,57 @@ function formatExecutionResponse(execution: ExecutionData, workflow: WorkflowDat
       workflow_description: workflow?.description || 'No description available',
       workflow_version: workflow?.version || '1.0.0',
       workflow_category: workflow?.category || 'general',
-      
+
       // Status info
       status: execution.status,
       is_successful: isSuccessful,
       has_failed: hasFailed,
       has_error: hasError,
-      
+
       // Timing info
       created_at: execution.created_at,
       started_at: execution.started_at,
       completed_at: execution.completed_at,
-      execution_duration_seconds: execution.execution_duration_seconds || runtimeSeconds,
+      execution_duration_seconds:
+        execution.execution_duration_seconds || runtimeSeconds,
       runtime_seconds: runtimeSeconds,
-      
+
       // Progress info
       progress_percentage: execution.progress_percentage || 100,
       current_step_index: execution.current_step_index || 0,
       total_steps: execution.total_steps || 0,
-      
+
       // Error info (if any)
       error_message: execution.error_message || null,
       error_details: execution.results?.error_details || null,
-      
+
       // Execution details
       modal_call_id: execution.modal_call_id,
       client_id: execution.client_id,
       execution_params: execution.execution_params || {},
-      
+
       // Request Parameters - Enhanced with both original and processed formats
       request_parameters: {
         // The parameters as sent in the original request
         original_request: execution.execution_params || {},
-        
+
         // Parameter count for quick reference
-        parameter_count: execution.execution_params ? Object.keys(execution.execution_params).length : 0,
-        
+        parameter_count: execution.execution_params
+          ? Object.keys(execution.execution_params).length
+          : 0,
+
         // Helper info
-        note: full_detailed_response 
-          ? "Parameters as sent in the original request"
-          : "Parameters as sent in the original request. Add '?full_detailed_response=true' for additional analysis."
+        note: full_detailed_response
+          ? 'Parameters as sent in the original request'
+          : "Parameters as sent in the original request. Add '?full_detailed_response=true' for additional analysis.",
       },
-      
+
       // Results (if completed)
       results: execution.results || null,
-      
+
       // Human-friendly formatted output (if available)
       formatted_output: execution.formatted_output || null,
-      
+
       // Include raw data only in detailed response (for debugging)
       ...(full_detailed_response && {
         raw_data: {
@@ -187,27 +218,37 @@ function formatExecutionResponse(execution: ExecutionData, workflow: WorkflowDat
           execution_logs: execution.execution_logs || [],
           has_raw_logs: !!execution.raw_logs,
           has_mcp_response: !!execution.raw_mcp_response,
-          has_execution_logs: !!(execution.execution_logs && execution.execution_logs.length > 0)
-        }
+          has_execution_logs: !!(
+            execution.execution_logs && execution.execution_logs.length > 0
+          ),
+        },
       }),
-      
+
       // Summary
       summary: {
         execution_successful: isSuccessful,
-        workflow_completed: isSuccessful || (hasFailed && execution.results?.execution_summary?.workflow_completed),
-        steps_completed: execution.results?.performance_metrics?.successful_steps || 0,
+        workflow_completed:
+          isSuccessful ||
+          (hasFailed &&
+            execution.results?.execution_summary?.workflow_completed),
+        steps_completed:
+          execution.results?.performance_metrics?.successful_steps || 0,
         steps_failed: execution.results?.performance_metrics?.failed_steps || 0,
-        total_steps_attempted: execution.results?.performance_metrics?.total_steps || execution.total_steps || 0,
+        total_steps_attempted:
+          execution.results?.performance_metrics?.total_steps ||
+          execution.total_steps ||
+          0,
         quotes_found: execution.results?.quotes?.length || 0,
-        error_stage: execution.results?.error_stage || (hasError ? 'execution' : null)
-      }
+        error_stage:
+          execution.results?.error_stage || (hasError ? 'execution' : null),
+      },
     },
     response_metadata: {
       execution_mode: 'synchronous',
       full_detailed_response: full_detailed_response,
-      note: 'Synchronous execution completed. Returns full detailed response including results, summary, and raw data.'
+      note: 'Synchronous execution completed. Returns full detailed response including results, summary, and raw data.',
     },
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -216,22 +257,25 @@ export async function POST(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   const startTime = Date.now();
-  
+
   // Get URL parameters for controlling response detail level (declare outside try block)
   const { searchParams } = new URL(request.url);
-  const full_detailed_response = searchParams.get('full_detailed_response') === 'true';
-  
+  const full_detailed_response =
+    searchParams.get('full_detailed_response') === 'true';
+
   try {
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
-    
-    console.log(`🔄 Synchronous execution request for workflow ${workflowIdNum} (full_detailed_response: ${full_detailed_response})...`);
+
+    console.log(
+      `🔄 Synchronous execution request for workflow ${workflowIdNum} (full_detailed_response: ${full_detailed_response})...`
+    );
 
     // Parse request body
     const body = await request.json();
-    const { parameters = {}, version_number } = body;
+    const { parameters = {}, version_number, machine_id } = body;
     const client_id = `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
+
     console.log(`📋 Version requested: ${version_number || 'active version'}`);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -255,7 +299,7 @@ export async function POST(
         {
           success: false,
           error: `Workflow ${workflowIdNum} not found`,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         },
         { status: 404 }
       );
@@ -266,44 +310,143 @@ export async function POST(
         {
           success: false,
           error: `Workflow ${workflowIdNum} is not deployed (status: ${workflow.status})`,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         },
         { status: 400 }
       );
     }
 
-    console.log(`✅ Found workflow "${workflow.name}" - checking cache first...`);
+    console.log(
+      `[SUCCESS] Found workflow "${workflow.name}" - checking cache first...`
+    );
 
-    // 🎯 Simple machine assignment: Default to machine ID 1 (Primary Windows VM)
-    console.log(`🔍 Assigning to default machine for workflow ${workflowIdNum}...`);
-    
-    const assigned_machine_id: number = 1;
-    const assignment_reason = 'Default assignment to Primary Windows VM';
-    
-    // Look up machine endpoint
-    const { data: machine, error: machineError } = await supabase
-      .from('remote_machines')
-      .select('mcp_endpoint')
-      .eq('id', assigned_machine_id)
-      .single();
+    // 🎯 Machine assignment with Load Balancer preference
+    let assigned_machine_id: number | undefined = undefined;
+    let assignment_reason: string = '';
+    let mcp_endpoint: string | undefined = undefined;
 
-    if (machineError || !machine) {
-      console.error(`❌ Failed to find machine ${assigned_machine_id}:`, machineError);
+    // Honor explicit machine/cluster selection from client when provided
+    if (Number.isFinite(machine_id)) {
+      const { data: machine, error: machineErr } = await supabase
+        .from('remote_machines')
+        .select('id, mcp_endpoint, name, status')
+        .eq('id', machine_id)
+        .single();
+      if (!machineErr && machine) {
+        assigned_machine_id = machine.id;
+        mcp_endpoint = machine.mcp_endpoint;
+        assignment_reason = `User-selected machine (ID: ${machine_id})`;
+      } else {
+        return NextResponse.json(
+          { success: false, error: `Machine ${machine_id} not found` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const lbBase = process.env.MCP_LB_BASE_URL;
+    if (!assigned_machine_id && lbBase) {
+      console.log(
+        `🔍 Using Load Balancer endpoint from env MCP_LB_BASE_URL for workflow ${workflowIdNum}...`
+      );
+      const { data: lbMachine, error: lbError } = await supabase
+        .from('remote_machines')
+        .select('id, mcp_endpoint, name, status')
+        .eq('mcp_endpoint', lbBase)
+        .single();
+
+      if (!lbError && lbMachine) {
+        assigned_machine_id = lbMachine.id;
+        mcp_endpoint = lbMachine.mcp_endpoint;
+        assignment_reason = 'Load balancer routing';
+      } else {
+        console.warn(
+          '[WARN] MCP_LB_BASE_URL set but no matching remote_machines row found; falling back to optimal assignment'
+        );
+      }
+    }
+
+    // Fallback to optimal assignment when LB not configured or not found
+    if (!mcp_endpoint) {
+      console.log(
+        `🔍 Getting optimal machine assignment for workflow ${workflowIdNum}...`
+      );
+      const { data: optimalMachine, error: optimalError } = await supabase.rpc(
+        'get_optimal_machine_for_workflow',
+        {
+          p_workflow_id: workflowIdNum,
+          p_execution_params: parameters,
+        }
+      );
+
+      if (!optimalError && optimalMachine && optimalMachine.length > 0) {
+        const machine = optimalMachine[0];
+        assigned_machine_id = machine.machine_id;
+        assignment_reason = machine.assignment_reason;
+
+        const { data: machineDetails, error: machineError } = await supabase
+          .from('remote_machines')
+          .select('mcp_endpoint')
+          .eq('id', assigned_machine_id)
+          .single();
+
+        if (machineError || !machineDetails) {
+          console.error(
+            `[ERROR] Failed to get machine endpoint for ${assigned_machine_id}:`,
+            machineError
+          );
+          return NextResponse.json(
+            { error: `Machine ${assigned_machine_id} endpoint not found` },
+            { status: 500 }
+          );
+        }
+        mcp_endpoint = machineDetails.mcp_endpoint;
+      } else {
+        // Fallback to machine 1 (existing behavior)
+        console.log(
+          `[INFO] No optimal machine found, using fallback Machine 1`
+        );
+        assigned_machine_id = 1;
+        assignment_reason =
+          'Fallback to Primary Windows VM (no optimal assignment found)';
+
+        const { data: fallbackMachine, error: fallbackError } = await supabase
+          .from('remote_machines')
+          .select('mcp_endpoint')
+          .eq('id', 1)
+          .single();
+
+        if (fallbackError || !fallbackMachine) {
+          console.error(
+            `[ERROR] Failed to find fallback machine 1:`,
+            fallbackError
+          );
+          return NextResponse.json(
+            { error: `Fallback machine 1 not found in remote_machines table` },
+            { status: 500 }
+          );
+        }
+        mcp_endpoint = fallbackMachine.mcp_endpoint;
+      }
+    }
+
+    if (!assigned_machine_id || !mcp_endpoint) {
       return NextResponse.json(
-        { error: `Machine ${assigned_machine_id} not found in remote_machines table` },
-        { status: 500 }
+        { success: false, error: 'No available machine endpoint' },
+        { status: 503 }
       );
     }
 
-    const mcp_endpoint = machine.mcp_endpoint;
-    console.log(`✅ Assigned to machine ID ${assigned_machine_id}: ${assignment_reason}`);
+    console.log(
+      `[SUCCESS] Assigned to machine ID ${assigned_machine_id}: ${assignment_reason}`
+    );
     console.log(`🔗 Machine endpoint: ${mcp_endpoint}`);
 
     // ✨ NEW: Check cache first for instant results
     try {
       // Pass detailed response parameter to cache endpoint to maintain consistency
       const cacheUrl = `${request.url.split('/api')[0]}/api/remote-workflows/cache${full_detailed_response ? '?detailed_output=true' : ''}`;
-      
+
       const cacheResponse = await fetch(cacheUrl, {
         method: 'POST',
         headers: {
@@ -311,16 +454,18 @@ export async function POST(
         },
         body: JSON.stringify({
           workflow_id: workflowIdNum,
-          parameters: parameters
-        })
+          parameters: parameters,
+        }),
       });
 
       if (cacheResponse.ok) {
         const cacheData = await cacheResponse.json();
-        
+
         if (cacheData.success && cacheData.cached) {
-          console.log(`🚀 Cache HIT! Returning instant results from execution ${cacheData.cache_info.source_execution_id}`);
-          
+          console.log(
+            `🚀 Cache HIT! Returning instant results from execution ${cacheData.cache_info.source_execution_id}`
+          );
+
           // Dispatch background execution job for cache freshness with machine assignment
           const background_modal_call_id = `modal_bg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           const backgroundExecution = await supabase
@@ -333,51 +478,59 @@ export async function POST(
               modal_call_id: background_modal_call_id,
               // 🎯 Include machine assignment for background execution
               assigned_machine_id,
-              assignment_reason: 'Default assignment to Primary Windows VM (cache refresh)',
+              assignment_reason:
+                'Default assignment to Primary Windows VM (cache refresh)',
               machine_assignment_timestamp: new Date().toISOString(),
               assignment_method: 'auto',
               mcp_endpoint,
               // 🎯 Include version selection for background execution
-              version_number
+              version_number,
             })
             .select()
             .single();
 
-          console.log(`📋 Dispatched background execution ${backgroundExecution.data?.id} to keep cache fresh`);
+          console.log(
+            `📋 Dispatched background execution ${backgroundExecution.data?.id} to keep cache fresh`
+          );
 
           // Return cache results with background execution info (using new cache response structure)
           const cachedExecution = cacheData.execution;
-          
+
           return NextResponse.json({
             success: true,
             cached: true,
             execution: {
               // Use cached execution data with background execution info
               ...cachedExecution,
-              
+
               // Override with background execution details for freshness tracking
               request_parameters: {
                 ...cachedExecution.request_parameters,
-                note: `Instant cache response from execution ${cacheData.cache_info.source_execution_id}. Background execution ${backgroundExecution.data?.id} queued for freshness.`
-              }
+                note: `Instant cache response from execution ${cacheData.cache_info.source_execution_id}. Background execution ${backgroundExecution.data?.id} queued for freshness.`,
+              },
             },
             cache_info: cacheData.cache_info,
             background_execution: {
               execution_id: backgroundExecution.data?.id,
               status: 'queued',
-              message: 'Background execution dispatched to keep cache fresh'
+              message: 'Background execution dispatched to keep cache fresh',
             },
             response_metadata: {
               execution_mode: 'synchronous_cached',
-              detail_level: full_detailed_response ? 'cache_full' : 'cache_basic',
-              note: 'Returned cached results instantly while background execution updates cache'
+              detail_level: full_detailed_response
+                ? 'cache_full'
+                : 'cache_basic',
+              note: 'Returned cached results instantly while background execution updates cache',
             },
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           });
         }
       }
     } catch (cacheError) {
-      console.warn('⚠️ Cache lookup failed, proceeding with normal execution:', cacheError);
+      console.warn(
+        '[WARN] Cache lookup failed, proceeding with normal execution:',
+        cacheError
+      );
       // Continue with normal execution if cache fails
     }
 
@@ -385,7 +538,7 @@ export async function POST(
 
     // Create execution record in database with 'queued' status and machine assignment
     const modal_call_id = `modal_sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     const executionData = {
       workflow_id: workflowIdNum,
       client_id,
@@ -399,9 +552,9 @@ export async function POST(
       assignment_method: 'auto',
       mcp_endpoint,
       // 🎯 Include version selection
-      version_number
+      version_number,
     };
-    
+
     const { data: execution, error: executionError } = await supabase
       .from('workflow_executions')
       .insert(executionData)
@@ -412,12 +565,18 @@ export async function POST(
       throw executionError;
     }
 
-    console.log(`✅ Created execution ${execution.id} - waiting for completion (max ${MAX_WAIT_TIME_MS / 1000}s)...`);
+    console.log(
+      `[SUCCESS] Created execution ${execution.id} - waiting for completion (max ${MAX_WAIT_TIME_MS / 1000}s)...`
+    );
 
     // Poll execution until completion or timeout
     try {
-      const completedExecution = await pollExecutionUntilComplete(execution.id, supabase, startTime);
-      
+      const completedExecution = await pollExecutionUntilComplete(
+        execution.id,
+        supabase,
+        startTime
+      );
+
       // Get updated workflow details
       const { data: updatedWorkflow } = await supabase
         .from('deployed_workflows')
@@ -426,13 +585,21 @@ export async function POST(
         .single();
 
       const totalTimeSeconds = Math.floor((Date.now() - startTime) / 1000);
-      console.log(`✅ Synchronous execution ${execution.id} completed in ${totalTimeSeconds}s`);
+      console.log(
+        `[SUCCESS] Synchronous execution ${execution.id} completed in ${totalTimeSeconds}s`
+      );
 
       // Format the response
-      const responseData = formatExecutionResponse(completedExecution, updatedWorkflow || workflow, full_detailed_response);
-      
+      const responseData = formatExecutionResponse(
+        completedExecution,
+        updatedWorkflow || workflow,
+        full_detailed_response
+      );
+
       // Cache the successful response for documentation
-      const endpointPath = normalizeEndpointPath(`/api/remote-workflows/[workflowId]/execute-sync`);
+      const endpointPath = normalizeEndpointPath(
+        `/api/remote-workflows/[workflowId]/execute-sync`
+      );
       const requestParams = extractRequestParams(request, { workflowId });
       await cacheResponse({
         endpointPath,
@@ -440,49 +607,59 @@ export async function POST(
         statusCode: 200,
         responseBody: responseData,
         requestParams,
-        executionTimeMs: totalTimeSeconds * 1000
+        executionTimeMs: totalTimeSeconds * 1000,
       });
 
       // Return formatted response
       return NextResponse.json(responseData);
-
     } catch {
       // Execution timed out - return partial response
       const { data: timeoutExecution } = await supabase
         .from('workflow_executions')
-        .select('*, raw_logs, raw_mcp_response, execution_logs, formatted_output')
+        .select(
+          '*, raw_logs, raw_mcp_response, execution_logs, formatted_output'
+        )
         .eq('id', execution.id)
         .single();
 
       const totalTimeSeconds = Math.floor((Date.now() - startTime) / 1000);
-      console.warn(`⏰ Synchronous execution ${execution.id} timed out after ${totalTimeSeconds}s`);
+      console.warn(
+        `⏰ Synchronous execution ${execution.id} timed out after ${totalTimeSeconds}s`
+      );
 
       return NextResponse.json(
         {
           success: false,
           error: `Execution timed out after ${totalTimeSeconds} seconds`,
-          execution: timeoutExecution ? formatExecutionResponse(timeoutExecution, workflow, full_detailed_response).execution : null,
+          execution: timeoutExecution
+            ? formatExecutionResponse(
+                timeoutExecution,
+                workflow,
+                full_detailed_response
+              ).execution
+            : null,
           response_metadata: {
             execution_mode: 'synchronous',
-            detail_level: full_detailed_response ? 'timeout_full' : 'timeout_basic',
-            note: `Execution exceeded ${MAX_WAIT_TIME_MS / 1000} second timeout. Use /api/remote-workflows/executions/${execution.id} to check final status.`
+            detail_level: full_detailed_response
+              ? 'timeout_full'
+              : 'timeout_basic',
+            note: `Execution exceeded ${MAX_WAIT_TIME_MS / 1000} second timeout. Use /api/remote-workflows/executions/${execution.id} to check final status.`,
           },
           timeout_info: {
             execution_id: execution.id,
             status_endpoint: `/api/remote-workflows/executions/${execution.id}`,
             max_wait_time_seconds: MAX_WAIT_TIME_MS / 1000,
-            actual_wait_time_seconds: totalTimeSeconds
+            actual_wait_time_seconds: totalTimeSeconds,
           },
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         },
         { status: 408 } // Request Timeout
       );
     }
-
   } catch (error) {
     const totalTimeSeconds = Math.floor((Date.now() - startTime) / 1000);
-    console.error('❌ Error in synchronous execution:', error);
-    
+    console.error('[ERROR] Error in synchronous execution:', error);
+
     return NextResponse.json(
       {
         success: false,
@@ -491,12 +668,12 @@ export async function POST(
         response_metadata: {
           execution_mode: 'synchronous',
           detail_level: full_detailed_response ? 'error_full' : 'error_basic',
-          note: 'Synchronous execution failed before completion'
+          note: 'Synchronous execution failed before completion',
         },
         execution_time_seconds: totalTimeSeconds,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
   }
-} 
+}

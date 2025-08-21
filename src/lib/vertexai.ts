@@ -1,5 +1,5 @@
-import { VertexAI, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
-import type { SafetySetting, GenerateContentRequest, GenerateContentResponse } from '@google-cloud/vertexai';
+import type { GenerateContentRequest, GenerateContentResponse, SafetySetting } from '@google-cloud/vertexai';
+import { HarmBlockThreshold, HarmCategory, VertexAI } from '@google-cloud/vertexai';
 
 
 
@@ -236,7 +236,7 @@ export function getVertexGenAI() {
 }
 
 // Export types for compatibility
-export type { SafetySetting, GenerateContentRequest };
+export type { GenerateContentRequest, SafetySetting };
 
 // Helper function to get the right model name for Vertex AI
 export function getVertexModelName(inputModelName: string): string {
@@ -421,7 +421,7 @@ export async function callVertexWithStructuredOutput(
   } = {}
 ) {
   const {
-    timeoutMs = 90000, // 90 second default timeout
+    timeoutMs = 900000, // 15 minute default timeout (increased for large batches)
     onProgress,
     onTimeout,
     maxRetries = 2,

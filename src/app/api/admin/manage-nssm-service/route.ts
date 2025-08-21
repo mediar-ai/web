@@ -18,7 +18,7 @@ async function executeRemoteCommand(command: string, options: { timeout?: number
   const { timeout = 30000 } = options;
   
   try {
-    console.log(`🔧 Executing remote command: ${command}`);
+    console.log(`[FIX] Executing remote command: ${command}`);
     
     const { stdout, stderr } = await execAsync(command, { timeout });
     
@@ -28,7 +28,7 @@ async function executeRemoteCommand(command: string, options: { timeout?: number
       error: stderr || null
     };
   } catch (error) {
-    console.error('❌ Remote command failed:', error);
+    console.error('[ERROR] Remote command failed:', error);
     return {
       success: false,
       output: null,
@@ -56,14 +56,14 @@ async function tryDirectHTTP(action: string): Promise<{success: boolean, output:
     
     if (response.ok) {
       const data = await response.json();
-      console.log(`✅ Ngrok HTTP succeeded: ${action}`);
+      console.log(`[SUCCESS] Ngrok HTTP succeeded: ${action}`);
       return {
         success: true,
         output: JSON.stringify(data),
         error: null
       };
     } else {
-      console.log(`❌ Ngrok HTTP failed: ${response.status}`);
+      console.log(`[ERROR] Ngrok HTTP failed: ${response.status}`);
       return {
         success: false,
         output: null,
@@ -71,7 +71,7 @@ async function tryDirectHTTP(action: string): Promise<{success: boolean, output:
       };
     }
   } catch (error) {
-    console.log(`❌ Ngrok HTTP error: ${error}`);
+    console.log(`[ERROR] Ngrok HTTP error: ${error}`);
     return {
       success: false,
       output: null,
@@ -96,16 +96,16 @@ async function tryPowerShellRemoting(psCommand: string): Promise<{success: boole
     ];
     
     for (const method of methods) {
-      console.log(`🔧 Trying method: ${method.substring(0, 50)}...`);
+      console.log(`[FIX] Trying method: ${method.substring(0, 50)}...`);
       
       try {
         const result = await executeRemoteCommand(method, { timeout: 15000 });
         if (result.success && result.output) {
-          console.log(`✅ Method succeeded: ${method.substring(0, 30)}...`);
+          console.log(`[SUCCESS] Method succeeded: ${method.substring(0, 30)}...`);
           return result;
         }
              } catch {
-         console.log(`❌ Method failed: ${method.substring(0, 30)}...`);
+         console.log(`[ERROR] Method failed: ${method.substring(0, 30)}...`);
          continue;
        }
     }
@@ -256,7 +256,7 @@ const ServiceOperations = {
           };
         }
       } catch (mcpError) {
-        console.log(`⚠️ MCP server health check failed: ${mcpError}`);
+        console.log(`[WARN] MCP server health check failed: ${mcpError}`);
       }
       
       // Return management server health even if MCP fails
@@ -358,7 +358,7 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    console.log(`✅ NSSM Service Management completed:`, { 
+    console.log(`[SUCCESS] NSSM Service Management completed:`, { 
       action, 
       success: result.success,
       vm_reachable: connectivity.reachable 
@@ -369,7 +369,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ NSSM Service Management error:', error);
+    console.error('[ERROR] NSSM Service Management error:', error);
     
     return NextResponse.json({
       success: false,
@@ -424,7 +424,7 @@ export async function GET() {
     });
     
   } catch (error) {
-    console.error('❌ Status check error:', error);
+    console.error('[ERROR] Status check error:', error);
     
     return NextResponse.json({
       success: false,

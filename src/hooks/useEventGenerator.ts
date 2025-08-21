@@ -221,7 +221,7 @@ export function useEventGenerator({
           );
 
           logToUI(
-            '[processMultiActivityEvent] ✅ Distinct event generated:',
+            '[processMultiActivityEvent] [SUCCESS] Distinct event generated:',
             description,
           );
         } else {

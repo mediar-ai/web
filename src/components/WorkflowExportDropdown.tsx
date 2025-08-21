@@ -81,7 +81,7 @@ export function WorkflowExportDropdown({ workflows, userId, disabled = false }: 
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('❌ [UI-EXPORT] API request failed:', {
+        console.error('[ERROR] [UI-EXPORT] API request failed:', {
           exportId,
           status: response.status,
           statusText: response.statusText,
@@ -93,7 +93,7 @@ export function WorkflowExportDropdown({ workflows, userId, disabled = false }: 
 
       const result = await response.json();
       
-      console.log('📊 [UI-EXPORT] Export result received:', {
+      console.log('[STATS] [UI-EXPORT] Export result received:', {
         exportId,
         success: result.success,
         filename: result.filename,
@@ -104,7 +104,7 @@ export function WorkflowExportDropdown({ workflows, userId, disabled = false }: 
 
       if (result.success) {
         // Create and trigger download
-        console.log('💾 [UI-EXPORT] Creating download blob...', {
+        console.log('[DB] [UI-EXPORT] Creating download blob...', {
           exportId,
           filename: result.filename,
           contentType: 'text/yaml'
@@ -122,7 +122,7 @@ export function WorkflowExportDropdown({ workflows, userId, disabled = false }: 
 
         const totalTime = Date.now() - exportStartTime;
 
-        console.log(`✅ [UI-EXPORT] Successfully exported workflow: ${workflow.title}`, {
+        console.log(`[SUCCESS] [UI-EXPORT] Successfully exported workflow: ${workflow.title}`, {
           exportId,
           filename: result.filename,
           totalTimeMs: totalTime,
@@ -131,7 +131,7 @@ export function WorkflowExportDropdown({ workflows, userId, disabled = false }: 
         });
         
         if (result.metadata) {
-          console.log(`📊 [UI-EXPORT] Export metadata:`, {
+          console.log(`[STATS] [UI-EXPORT] Export metadata:`, {
             exportId,
             ...result.metadata
           });
@@ -213,7 +213,7 @@ export function WorkflowExportDropdown({ workflows, userId, disabled = false }: 
                 Created: {new Date(workflow.created_at).toLocaleDateString()}
               </span>
               <div className="text-xs text-muted-foreground mt-1">
-                Exports as YAML with timeline mapping and context
+                Exports as YAML with timeline annotation and context
               </div>
             </DropdownMenuItem>
           ))}

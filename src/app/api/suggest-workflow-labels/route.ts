@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
         { timeoutMs: 240000 } // 4 minutes (240s) to stay under 5min Vercel function limit
     );
 
-    console.log('✅ Vertex AI label suggestion successful');
+    console.log('[SUCCESS] Vertex AI label suggestion successful');
     return NextResponse.json(result);
 
   } catch (error) {

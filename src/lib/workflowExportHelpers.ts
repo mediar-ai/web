@@ -99,7 +99,7 @@ export function gatherComprehensiveContext(
   // 4. Variable Context from annotations and examples
   const variableContext = buildVariableContext(annotations, exampleWorkflows);
 
-  console.log(`✅ Context gathered: ${stepDescriptions.length} steps, ${Object.keys(variableContext).length} variables`);
+  console.log(`[SUCCESS] Context gathered: ${stepDescriptions.length} steps, ${Object.keys(variableContext).length} variables`);
 
   return {
     projectContext,
@@ -368,7 +368,7 @@ export function generateEnhancedWorkflowYAML(
     annotations.length
   );
 
-  console.log('✅ Enhanced YAML generated successfully');
+  console.log('[SUCCESS] Enhanced YAML generated successfully');
   return yamlContent;
 }
 

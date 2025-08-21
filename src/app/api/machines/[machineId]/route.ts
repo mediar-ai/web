@@ -183,7 +183,7 @@ export async function GET(
     return NextResponse.json(responseData);
 
   } catch (error) {
-    console.error('❌ Error fetching machine details:', error);
+    console.error('[ERROR] Error fetching machine details:', error);
     return NextResponse.json(
       {
         success: false,
@@ -212,7 +212,7 @@ export async function PUT(
       );
     }
 
-    console.log(`🔧 Updating machine ${machineIdNum}`);
+    console.log(`[FIX] Updating machine ${machineIdNum}`);
 
     // Verify machine exists
     const { data: existingMachine, error: fetchError } = await supabase
@@ -267,7 +267,7 @@ export async function PUT(
       throw new Error(`Database update failed: ${updateError.message}`);
     }
 
-    console.log(`✅ Machine ${updatedMachine.name} updated successfully`);
+    console.log(`[SUCCESS] Machine ${updatedMachine.name} updated successfully`);
 
     return NextResponse.json({
       success: true,
@@ -282,7 +282,7 @@ export async function PUT(
     });
 
   } catch (error) {
-    console.error('❌ Error updating machine:', error);
+    console.error('[ERROR] Error updating machine:', error);
     return NextResponse.json(
       {
         success: false,
@@ -344,7 +344,7 @@ export async function DELETE(
         throw new Error(`Database deletion failed: ${deleteError.message}`);
       }
 
-      console.log(`✅ Machine ${machineIdNum} permanently deleted`);
+      console.log(`[SUCCESS] Machine ${machineIdNum} permanently deleted`);
 
       return NextResponse.json({
         success: true,
@@ -368,7 +368,7 @@ export async function DELETE(
         throw new Error(`Database update failed: ${updateError.message}`);
       }
 
-      console.log(`✅ Machine ${updatedMachine.name} marked as inactive`);
+      console.log(`[SUCCESS] Machine ${updatedMachine.name} marked as inactive`);
 
       return NextResponse.json({
         success: true,
@@ -379,7 +379,7 @@ export async function DELETE(
     }
 
   } catch (error) {
-    console.error('❌ Error deleting machine:', error);
+    console.error('[ERROR] Error deleting machine:', error);
     return NextResponse.json(
       {
         success: false,

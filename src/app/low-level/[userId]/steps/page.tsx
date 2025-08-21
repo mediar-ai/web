@@ -417,16 +417,10 @@ export default function LlmIterationPage({ params }: { params: Promise<{ userId:
   const existingAnalysisForSelectedEvent = useMemo(() => {
     if (!selectedEvent || !allWorkflowAnalyses) return null;
     
-    // Get the timestamp of the selected event
-    const selectedEventTimestamp = new Date(getEventTimestamp(selectedEvent));
-
-    return allWorkflowAnalyses.find(analysis => {
-      const analysisTimestamp = new Date(analysis.client_timestamp);
-      
-      // Check if they are in the same second. This is more robust
-      // than an exact millisecond match.
-      return Math.floor(analysisTimestamp.getTime() / 1000) === Math.floor(selectedEventTimestamp.getTime() / 1000);
-    }) || null;
+    // Use direct ID matching via source_ui_tree_event_id for reliable linking
+    return allWorkflowAnalyses.find(analysis => 
+      analysis.source_ui_tree_event_id === selectedEvent.id
+    ) || null;
   }, [selectedEvent, allWorkflowAnalyses]);
 
   // Find the previous UI tree event in the timeline

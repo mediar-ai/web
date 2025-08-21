@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[INGEST] Processing event for session ${session_id}, type: ${payload.type}`);
 
-    // 🛡️ TARGETED UI TREE DUPLICATE PREVENTION
+    // [PROTECTION] TARGETED UI TREE DUPLICATE PREVENTION
     // Only apply duplicate detection to UI tree events (meaningful_event)
     if (payload.type === 'meaningful_event') {
       const uiTree = extractUITree(payload);
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save event' }, { status: 500 });
     }
 
-    console.log(`[INGEST] ✅ Successfully saved ${payload.type} event for session ${session_id}`);
+    console.log(`[INGEST] [SUCCESS] Successfully saved ${payload.type} event for session ${session_id}`);
     return NextResponse.json({ message: 'Event ingested successfully', dbInsertSuccess: true });
 
   } catch (error) {
