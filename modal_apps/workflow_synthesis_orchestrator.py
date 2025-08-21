@@ -9,9 +9,9 @@ app = modal.App("workflow-synthesis-orchestrator")
 app.image = modal.Image.debian_slim().pip_install("requests")
 
 def get_base_url() -> str:
-    """Get the base URL for API calls (Vercel deployment or localhost)"""
-    # For Modal deployment, always use the production Vercel URL
-    return "https://browser-workflow-capture-app.vercel.app"
+    """Get the base URL for API calls (production mediar.ai domain)"""
+    # For Modal deployment, always use the production mediar.ai URL
+    return "https://app.mediar.ai"
 
 def parse_sse_response(response) -> Dict[str, Any]:
     """Parse Server-Sent Events response to extract final data"""

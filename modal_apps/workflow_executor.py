@@ -6,8 +6,7 @@ import re
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
-from contextlib import AsyncExitStack
+from typing import Dict, Any, Optional, List, Tuple
 import os
 import logging
 import psycopg2
@@ -16,9 +15,18 @@ import io
 import sys
 import collections.abc
 
-# Add contextlib for stdout/stderr capture
-import contextlib
 import yaml  # For YAML sequence loading
+from modal_apps.output_enrichment import enrich_results_if_enabled
+from modal_apps.lib.db import (
+    get_database_connection,
+    get_db_config,
+)
+from modal_apps.lib.locks import (
+    cleanup_stale_machine_locks,
+    record_acquired_lock,
+    release_acquired_locks,
+)
+from modal_apps.lib.mcp_client import normalize_endpoint, post_with_503_backoff
 
 # Configure logging to capture everything
 logging.basicConfig(
@@ -174,15 +182,24 @@ app = modal.App("workflow-executor")
 
 # Create image with MCP dependencies for browser automation
 # Note: MCP might need to be installed differently or might not be available via pip
-image = modal.Image.debian_slim().pip_install(
-    [
-        "psycopg2-binary",  # Direct database connection
-        "httpx",  # HTTP client
-        "websockets",  # WebSocket support
-        "PyYAML",  # YAML parsing for dual-format sequence support
-        # Commenting out 'mcp' as it might not be available via pip
-        # We'll handle MCP differently or mock it for now
-    ]
+image = (
+    modal.Image.debian_slim()
+    .pip_install(
+        [
+            "psycopg2-binary",  # Direct database connection
+            "httpx",  # HTTP client
+            "websockets",  # WebSocket support
+            "PyYAML",  # YAML parsing for dual-format sequence support
+            # AI enrichment deps (GenAI preferred; Vertex fallback)
+            "google-genai",
+            "google-cloud-aiplatform",
+            "google-auth",
+            # Commenting out 'mcp' as it might not be available via pip
+            # We'll handle MCP differently or mock it for now
+        ]
+    )
+    # Include local package so sibling modules are available at runtime (Modal 1.0 packaging)
+    .add_local_python_source("modal_apps")
 )
 
 # Secrets for database access and MCP endpoint
@@ -191,14 +208,7 @@ secrets = [
     modal.Secret.from_name("custom-secret"),
 ]
 
-# Database connection configuration (matching sequential_processor.py)
-DB_CONFIG = {
-    "host": "aws-0-us-west-1.pooler.supabase.com",
-    "port": 5432,
-    "database": "postgres",
-    "user": "postgres.eshwntsgsputksqamckh",
-    "password": "dS64xX6mU3E4Sbyc",
-}
+
 
 # Configuration for auto-cancellation
 CONSECUTIVE_FAILURE_THRESHOLD = 3  # Number of identical failures
@@ -288,7 +298,7 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
             return False, "", check_duration_ms
         
         # Check if ALL 3 most recent executions are failures with identical error messages
-        all_failed = all(exec['status'] == 'failed' for exec in recent_executions)
+        all_failed = all(row['status'] == 'failed' for row in recent_executions)
         
         if not all_failed:
             logger.debug("🔍 Pre-claim check for workflow %d: Not all recent executions failed, proceeding (took %dms)", 
@@ -296,7 +306,7 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
             return False, "", check_duration_ms
         
         # All 3 are failures - check if they have identical error messages
-        error_messages = [exec['error_message'] for exec in recent_executions if exec['error_message']]
+        error_messages = [row['error_message'] for row in recent_executions if row['error_message']]
         
         if len(error_messages) == CONSECUTIVE_FAILURE_THRESHOLD and all(msg == error_messages[0] for msg in error_messages):
             # Found problematic pattern - cancel remaining queued jobs for this workflow
@@ -349,33 +359,135 @@ class CaptureOutput:
             sys.stderr = self._stderr
 
 
-def get_database_connection():
-    """Get a database connection with proper error handling and optimized settings"""
+
+
+def execute_workflow_by_version(
+    *,
+    version_number: str,
+    mcp_endpoint: str,
+    execution_params: Dict[str, Any] | None = None,
+    client_id: Optional[str] = None,
+    status: Optional[str] = None,
+    workflow_name_contains: Optional[str] = None,
+    category: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Convenience wrapper to run a workflow when you only know the version.
+
+    Resolves the unique workflow_id for the given version (with optional filters) and
+    runs the existing executor while passing the same version to ensure exact selection.
+    """
+    workflow_id = resolve_workflow_id_for_version(
+        version_number=version_number,
+        status=status,
+        workflow_name_contains=workflow_name_contains,
+        category=category,
+    )
+    return execute_workflow.local(  # type: ignore[attr-defined]
+        workflow_id=workflow_id,
+        mcp_endpoint=mcp_endpoint,
+        execution_params=execution_params or {},
+        client_id=client_id,
+        version_number=version_number,
+    )
+
+
+def resolve_workflow_id_for_version(
+    version_number: str,
+    *,
+    status: Optional[str] = None,
+    workflow_name_contains: Optional[str] = None,
+    category: Optional[str] = None,
+) -> int:
+    """Resolve a single workflow ID for a given version number.
+
+    Version numbers are not globally unique. Optional filters help disambiguate.
+
+    Args:
+        version_number: The version number to look up (e.g., "1.0.67").
+        status: Optional workflow status to filter on (e.g., "deployed").
+        workflow_name_contains: Optional case-insensitive substring match on workflow name.
+        category: Optional workflow category filter.
+
+    Returns:
+        The resolved workflow ID.
+
+    Raises:
+        ValueError: If no workflows match or if multiple workflows match the criteria.
+    """
+    conn = None
+    cur = None
     try:
-        # Optimize connection for concurrent usage
-        config = DB_CONFIG.copy()
-        config.update(
-            {
-                "connect_timeout": 10,  # Fail fast if connection takes too long
-                "application_name": "workflow_executor",
-            }
+        conn = get_database_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        conditions = ["v.version_number = %s"]
+        params: List[Any] = [version_number]
+
+        if status:
+            conditions.append("w.status = %s")
+            params.append(status)
+
+        if category:
+            conditions.append("w.category = %s")
+            params.append(category)
+
+        if workflow_name_contains:
+            conditions.append("w.name ILIKE %s")
+            params.append(f"%{workflow_name_contains}%")
+
+        where_clause = " AND ".join(conditions)
+
+        cur.execute(
+            f"""
+            SELECT
+                w.id,
+                w.name,
+                w.status,
+                w.category,
+                w.version AS current_version
+            FROM deployed_workflow_versions v
+            JOIN deployed_workflows w ON w.id = v.workflow_id
+            WHERE {where_clause}
+            ORDER BY w.updated_at DESC
+            """,
+            params,
         )
 
-        conn = psycopg2.connect(**config)
-        conn.autocommit = False
+        rows = cur.fetchall() or []
+        if len(rows) == 0:
+            raise ValueError(
+                f"No workflows found with version {version_number}"
+                + (
+                    f" (status={status})" if status else ""
+                )
+                + (f" (category={category})" if category else "")
+                + (
+                    f" (name contains '{workflow_name_contains}')"
+                    if workflow_name_contains
+                    else ""
+                )
+            )
 
-        # Optimize connection for performance
-        with conn.cursor() as cur:
-            cur.execute("SET statement_timeout = '300s'")  # 5 minute query timeout
-            cur.execute(
-                "SET idle_in_transaction_session_timeout = '600s'"
-            )  # 10 minute idle timeout
-        conn.commit()
+        if len(rows) > 1:
+            summary = ", ".join(
+                [
+                    f"{row['id']}:{row['name']}:{row['status']}:{row['category']}"
+                    for row in rows
+                ]
+            )
+            raise ValueError(
+                "Multiple workflows match the version; refine filters: " + summary
+            )
 
-        return conn
-    except Exception as e:
-        logger.error("❌ Database connection failed: %s", e)
-        raise
+        return int(rows[0]["id"])  # type: ignore[call-arg]
+
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        finally:
+            if conn is not None:
+                conn.close()
 
 
 def extract_applicant_info(workflow_data: Dict[str, Any]) -> Dict[str, str]:
@@ -694,6 +806,88 @@ def log_merge_details(original, merged, path=""):
         elif original.get(key) != merged.get(key):
             logger.info(f"  🔄 Changed '{new_path}': '{original.get(key)}' -> '{merged.get(key)}'")
 
+
+def _truncate_middle(text: str, max_length: int = 400) -> str:
+    """Truncate long strings keeping the beginning and end for context."""
+    try:
+        if not isinstance(text, str):
+            text = str(text)
+        if len(text) <= max_length:
+            return text
+        head = max_length // 2
+        tail = max_length - head - 3
+        return f"{text[:head]}...{text[-tail:]}"
+    except Exception:
+        return text[:max_length]
+
+
+def log_mcp_execution_breakdown(mcp_content: Dict[str, Any]) -> None:
+    """Log a structured breakdown of MCP execution groups and steps to diagnose failures."""
+    try:
+        if not isinstance(mcp_content, dict):
+            logger.info("🧩 MCP content is not a dict; skipping breakdown log")
+            return
+
+        status = mcp_content.get("status")
+        total_tools = mcp_content.get("total_tools")
+        executed_tools = mcp_content.get("executed_tools")
+        total_duration_ms = mcp_content.get("total_duration_ms")
+        logger.info("🧩 MCP Summary | status=%s | total_tools=%s | executed_tools=%s | total_duration_ms=%s",
+                    status, total_tools, executed_tools, total_duration_ms)
+
+        results = mcp_content.get("results", [])
+        if not isinstance(results, list):
+            logger.info("🧩 MCP results is not a list; type=%s", type(results).__name__)
+            return
+
+        total_groups = len(results)
+        logger.info("🧩 MCP Groups: %d", total_groups)
+
+        first_error_logged = False
+        for group_index, group in enumerate(results):
+            group_name = group.get("group_name", f"group_{group_index}")
+            group_status = group.get("status", "unknown")
+            group_duration = group.get("duration_ms", 0)
+            group_results = group.get("results", [])
+            logger.info("   ▸ Group %d: %s | status=%s | duration_ms=%s | steps=%d",
+                        group_index, group_name, group_status, group_duration, len(group_results) if isinstance(group_results, list) else 0)
+
+            if not isinstance(group_results, list):
+                logger.info("     ↳ Group results is not a list; type=%s", type(group_results).__name__)
+                continue
+
+            for step_index, step in enumerate(group_results):
+                tool = step.get("tool_name", f"step_{step_index}")
+                step_status = step.get("status", "unknown")
+                step_duration = step.get("duration_ms", 0)
+                logger.info("     - Step %d.%d | tool=%s | status=%s | duration_ms=%s",
+                            group_index, step_index, tool, step_status, step_duration)
+
+                if step_status == "error":
+                    error_payload = step.get("error")
+                    logger.error("       ✖ Error in %s: %s", tool, _truncate_middle(error_payload, 600))
+                    if not first_error_logged:
+                        try:
+                            # Attempt to extract an error_type if the payload embeds JSON
+                            error_type = None
+                            if isinstance(error_payload, str):
+                                # Try to find a JSON fragment in the string
+                                json_start = error_payload.find("{")
+                                json_end = error_payload.rfind("}")
+                                if json_start != -1 and json_end != -1 and json_end > json_start:
+                                    import json as _json
+                                    fragment = error_payload[json_start:json_end + 1]
+                                    parsed = _json.loads(fragment)
+                                    error_type = parsed.get("error_type") or parsed.get("type")
+                            logger.error("       ✖ First error summary | group=%s | step=%s | tool=%s | error_type=%s",
+                                         group_name, f"{group_index}.{step_index}", tool, error_type or "Unknown")
+                        except Exception:
+                            logger.error("       ✖ Failed to parse error payload for %s", tool)
+                        first_error_logged = True
+
+    except Exception as breakdown_err:
+        logger.error("Failed to log MCP execution breakdown: %s", breakdown_err)
+
 async def execute_mcp_workflow(
     workflow_data: Dict[str, Any], execution_params: Dict[str, Any], mcp_endpoint: str
 ) -> Dict[str, Any]:
@@ -752,129 +946,176 @@ async def execute_mcp_workflow(
         logger.info(f"Full Arguments Payload (truncated): {log_string[:200]}{'...' if len(log_string) > 200 else ''}")
         logger.info("--- END DETAILED LOGGING ---")
 
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            # Step 1: Initialize MCP session
-            logger.info("🔌 Initializing MCP session...")
-            init_request = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"roots": {"listChanged": False}, "sampling": {}},
-                    "clientInfo": {
-                        "name": "modal-workflow-executor",
-                        "version": "1.0.0",
-                    },
+        # Ensure we always target the gatekeeper's /mcp path
+        endpoint_url = normalize_endpoint(mcp_endpoint)
+
+        # Step 1: Initialize MCP session with 503 backoff so LB can reroute to a free VM
+        logger.info("🔌 Initializing MCP session...")
+        init_request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"roots": {"listChanged": False}, "sampling": {}},
+                "clientInfo": {
+                    "name": "modal-workflow-executor",
+                    "version": "1.0.0",
                 },
-            }
+            },
+        }
 
-            response = await client.post(
-                mcp_endpoint,
-                json=init_request,
-                headers={"Accept": "application/json, text/event-stream"},
+        # Initialize MCP session using helper with 503 backoff
+        def _client_factory():
+            import httpx
+            return httpx.AsyncClient(timeout=300.0)
+
+        async def _initialize_session():
+            client, resp = await post_with_503_backoff(
+                _client_factory,
+                endpoint_url,
+                init_request,
+                {"Accept": "application/json, text/event-stream"},
             )
+            return client, resp
 
-            if response.status_code != 200:
-                # 🔄 AUTO-RESTART LOGIC: If MCP server is unreachable, try to restart it
-                if response.status_code in [404, 502, 503, 504]:  # Common "server down" errors
-                    logger.warning("🚨 MCP server unreachable (status %d). Attempting automatic restart...", response.status_code)
-                    
-                    # Check if MCP server is actually down
-                    health_endpoint = f"{mcp_endpoint.replace('/mcp', '')}/health"
-                    if not await check_mcp_server_health(health_endpoint):
-                        logger.info("🔄 Confirmed: MCP server is down. Initiating Windows VM service restart...")
-                        
-                        # Attempt to restart the Windows VM service
-                        if await restart_windows_vm_service():
-                            logger.info("✅ VM service restart initiated. Waiting for MCP server recovery...")
-                            
-                            # Wait for MCP server to come back online
-                            if await wait_for_mcp_server_recovery(health_endpoint, max_wait_seconds=90):
-                                logger.info("🎉 MCP server recovered! Retrying workflow execution...")
-                                
-                                # Retry the MCP session initialization
-                                retry_response = await client.post(
-                                    mcp_endpoint,
-                                    json=init_request,
-                                    headers={"Accept": "application/json, text/event-stream"},
-                                )
-                                
-                                if retry_response.status_code == 200:
-                                    logger.info("✅ MCP session initialized successfully after restart")
-                                    response = retry_response  # Use the successful response
-                                else:
-                                    logger.error("❌ MCP session initialization still failed after restart: %d", retry_response.status_code)
-                                    raise Exception(f"Failed to initialize MCP session after restart: {retry_response.status_code}")
-                            else:
-                                logger.error("❌ MCP server did not recover after restart")
-                                raise Exception("MCP server did not recover after Windows VM service restart")
-                        else:
-                            logger.error("❌ Failed to restart Windows VM service")
-                            raise Exception("Failed to restart Windows VM service - MCP server remains unreachable")
-                    else:
-                        logger.warning("⚠️ MCP server health check passed but session init failed")
-                        raise Exception(f"Failed to initialize MCP session: {response.status_code}")
-                else:
-                    # For other error codes, don't attempt restart
-                    raise Exception(f"Failed to initialize MCP session: {response.status_code}")
+        session_client, response = await _initialize_session()
 
-            # Extract session ID from response headers
-            session_id = response.headers.get("Mcp-Session-Id")
-            if not session_id:
-                raise Exception("No session ID received from MCP server")
-
-            logger.info(f"✅ MCP session initialized: {session_id}")
-
-            # Step 1.5: Send initialized notification (required by MCP protocol)
-            logger.info("📤 Sending initialized notification...")
-            initialized_request = {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-                "params": {},
-            }
-
-            response = await client.post(
-                mcp_endpoint,
-                json=initialized_request,
-                headers={
-                    "Accept": "application/json, text/event-stream",
-                    "Mcp-Session-Id": session_id,
-                },
-            )
-
-            if response.status_code not in [200, 202]:
+        # Handle non-503 non-200 statuses with existing health/restart flow
+        if response.status_code != 200:
+            health_endpoint = f"{endpoint_url.replace('/mcp', '')}/health"
+            if response.status_code in [404, 502, 504]:
                 logger.warning(
-                    "⚠️ Initialized notification failed: %s", response.status_code
+                    "🚨 MCP server unreachable (status %d). Attempting automatic restart...",
+                    response.status_code,
                 )
+                if not await check_mcp_server_health(health_endpoint):
+                    logger.info(
+                        "🔄 Confirmed: MCP server is down. Initiating Windows VM service restart..."
+                    )
+                    if await restart_windows_vm_service():
+                        logger.info(
+                            "✅ VM service restart initiated. Waiting for MCP server recovery..."
+                        )
+                        if await wait_for_mcp_server_recovery(
+                            health_endpoint, max_wait_seconds=90
+                        ):
+                            # Try once more on a fresh connection
+                            import httpx
+                            await session_client.aclose()
+                            retry_client = httpx.AsyncClient(timeout=300.0)
+                            retry_response = await retry_client.post(
+                                endpoint_url,
+                                json=init_request,
+                                headers={"Accept": "application/json, text/event-stream"},
+                            )
+                            if retry_response.status_code == 200:
+                                session_client = retry_client
+                                response = retry_response
+                            else:
+                                await retry_client.aclose()
+                                raise Exception(
+                                    f"Failed to initialize MCP session after restart: {retry_response.status_code}"
+                                )
+                        else:
+                            await session_client.aclose()
+                            raise Exception(
+                                "MCP server did not recover after Windows VM service restart"
+                            )
+                    else:
+                        await session_client.aclose()
+                        raise Exception(
+                            "Failed to restart Windows VM service - MCP server remains unreachable"
+                        )
+                else:
+                    await session_client.aclose()
+                    raise Exception(
+                        f"Failed to initialize MCP session: {response.status_code}"
+                    )
             else:
-                logger.info("✅ Session initialized successfully")
+                await session_client.aclose()
+                raise Exception(
+                    f"Failed to initialize MCP session: {response.status_code}"
+                )
 
-            # Step 2: Execute the workflow
-            logger.info("🚀 Executing workflow: %s...", tool_name)
-            start_time = time.time()
+        # Extract session ID from response headers
+        session_id = response.headers.get("Mcp-Session-Id")
+        if not session_id:
+            # Close the session client before raising
+            try:
+                await session_client.aclose()
+            except Exception:
+                pass
+            raise Exception("No session ID received from MCP server")
 
-            tool_request = {
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/call",
-                "params": {"name": tool_name, "arguments": arguments},
-            }
+        logger.info(f"✅ MCP session initialized: {session_id}")
 
-            response = await client.post(
-                mcp_endpoint,
-                json=tool_request,
+        # Step 1.5: Send initialized notification (required by MCP protocol)
+        logger.info("📤 Sending initialized notification...")
+        initialized_request = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {},
+        }
+
+        async def _post_with_session(payload):
+            nonlocal session_client, session_id
+            resp = await session_client.post(
+                endpoint_url,
+                json=payload,
                 headers={
                     "Accept": "application/json, text/event-stream",
                     "Mcp-Session-Id": session_id,
                 },
             )
-
-            if response.status_code != 200:
-                raise Exception(
-                    f"Workflow execution failed: {response.status_code} - {response.text}"
+            if resp.status_code == 401:
+                # Session likely landed on a different VM. Re-initialize once.
+                try:
+                    await session_client.aclose()
+                except Exception:
+                    pass
+                session_client, response2 = await _initialize_session()
+                session_id2 = response2.headers.get("Mcp-Session-Id")
+                if not session_id2:
+                    raise Exception("Re-initialize failed: no session id")
+                session_id = session_id2
+                # Retry once with new session
+                resp = await session_client.post(
+                    endpoint_url,
+                    json=payload,
+                    headers={
+                        "Accept": "application/json, text/event-stream",
+                        "Mcp-Session-Id": session_id,
+                    },
                 )
+            return resp
 
+        response = await _post_with_session(initialized_request)
+        if response.status_code not in [200, 202]:
+            logger.warning(
+                "⚠️ Initialized notification failed: %s", response.status_code
+            )
+        else:
+            logger.info("✅ Session initialized successfully")
+
+        # Step 2: Execute the workflow
+        logger.info("🚀 Executing workflow: %s...", tool_name)
+        start_time = time.time()
+
+        tool_request = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": arguments},
+        }
+
+        response = await _post_with_session(tool_request)
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Workflow execution failed: {response.status_code} - {response.text}"
+            )
+        else:
             # Parse the response (handle SSE format)
             response_text = response.text
             if not response_text:
@@ -956,7 +1197,13 @@ async def execute_mcp_workflow(
                 executed_steps = []
 
                 if mcp_content:
-                    # --- MORE DETAILED LOGGING FOR PARSER ---
+                    # New: structured breakdown logging of groups/steps/errors
+                    try:
+                        log_mcp_execution_breakdown(mcp_content)
+                    except Exception as _e:
+                        logger.warning("Failed to log MCP breakdown: %s", _e)
+
+                # --- MORE DETAILED LOGGING FOR PARSER ---
                     logger.info(
                         "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
                     )
@@ -1318,6 +1565,17 @@ def execute_workflow(
                     "Received %d quotes from MCP workflow.",
                     len(results.get("quotes", [])),
                 )
+
+                # Optional AI enrichment step (delegated to helper module for clarity)
+                try:
+                    
+                    results = enrich_results_if_enabled(
+                        results=results,
+                        execution_params=execution_params,
+                        automation_sequence=automation_sequence,
+                    )
+                except Exception as enrich_err:
+                    logger.warning("⚠️ Enrichment step encountered an error but was ignored: %s", enrich_err)
             finally:
                 loop.close()
 
@@ -1839,8 +2097,9 @@ def health_check() -> Dict[str, Any]:
         # Test 1: Environment and configuration
         try:
             # Check if we have database configuration
-            if DB_CONFIG and all(
-                k in DB_CONFIG for k in ["host", "database", "user", "password"]
+            db_config = get_db_config()
+            if db_config and all(
+                k in db_config for k in ["host", "database", "user", "password"]
             ):
                 health_data["checks"]["configuration"] = {
                     "status": "pass",
@@ -1879,8 +2138,6 @@ def health_check() -> Dict[str, Any]:
 
         # Test 3: MCP endpoint availability (simple check)
         try:
-            import httpx
-
             # Just check if endpoint is reachable
             health_data["checks"]["mcp_endpoint"] = {
                 "status": "pass",
@@ -1964,9 +2221,10 @@ if __name__ == "__main__":
     print("  • PostgreSQL: Direct database access via psycopg2")
     print("  • Windows VM: Auto-restart capability via ngrok")
     print("\n🔧 Database Configuration:")
-    print(f"  • Host: {DB_CONFIG['host']}")
-    print(f"  • Database: {DB_CONFIG['database']}")
-    print(f"  • User: {DB_CONFIG['user']}")
+    db_config = get_db_config()
+    print(f"  • Host: {db_config['host']}")
+    print(f"  • Database: {db_config['database']}")
+    print(f"  • User: {db_config['user']}")
     print("  • Connection pooling: Optimized for performance")
     print("\n🔄 Auto-Restart Features:")
     print("  • Automatic MCP server health monitoring")
@@ -2004,6 +2262,8 @@ def check_and_process_queued_jobs():
     conn = None
     cur = None
     coordinator_id = f"global-scheduler-{uuid.uuid4().hex[:8]}-{int(time.time())}"
+    # Track all machine coordinator locks we create so we can release them reliably
+    acquired_locks: List[Tuple[str, str]] = []  # (user_id, processor_id)
 
     try:
         # Connect to database
@@ -2012,21 +2272,24 @@ def check_and_process_queued_jobs():
 
         # 🔒 GLOBAL SCHEDULER LOCK: Prevent multiple scheduler instances from racing
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
                 VALUES ('global-scheduler', 0, %s, 'in_progress', NOW() + INTERVAL '2 minutes')
                 ON CONFLICT (user_id, event_id) DO NOTHING
                 RETURNING id
-            """, (coordinator_id,))
-            
+                """,
+                (coordinator_id,),
+            )
+
             if not cur.fetchone():
                 logger.debug("⏸️  Another global scheduler is already running")
                 return {
                     "status": "skipped",
                     "reason": "scheduler_already_running",
-                    "coordinator_id": coordinator_id
+                    "coordinator_id": coordinator_id,
                 }
-            
+
             conn.commit()
             logger.debug("🔒 Acquired global scheduler lock: %s", coordinator_id)
         except Exception as lock_error:
@@ -2034,8 +2297,15 @@ def check_and_process_queued_jobs():
             return {
                 "status": "scheduler_lock_failed",
                 "error": str(lock_error),
-                "coordinator_id": coordinator_id
+                "coordinator_id": coordinator_id,
             }
+
+        # 🧹 Clean up stale coordinator locks before capacity checks (via helper)
+        try:
+            cleanup_stale_machine_locks(cur)
+            conn.commit()
+        except Exception as cleanup_err:
+            logger.warning("⚠️ Failed to cleanup stale coordinator locks: %s", cleanup_err)
 
         # Periodically clean up stale executions
         if int(time.time()) % 60 == 0:
@@ -2043,8 +2313,8 @@ def check_and_process_queued_jobs():
             if cleanup_count > 0:
                 logger.info("🧹 Enhanced cleanup: %d stale executions cleaned up", cleanup_count)
 
-        # 🎯 SIMPLIFIED MACHINE LOGIC: Find next queued job for an available machine
-        # Jobs already have assigned_machine_id and mcp_endpoint - just need to check availability
+        # 🎯 ENHANCED MACHINE LOGIC: Find next queued job for a machine with available capacity
+        # Jobs already have assigned_machine_id and mcp_endpoint - check against max_concurrent_executions
         cur.execute("""
             SELECT 
                 we.id,
@@ -2054,181 +2324,225 @@ def check_and_process_queued_jobs():
                 we.assigned_machine_id,
                 we.mcp_endpoint,
                 we.version_number,
-                we.created_at
+                we.created_at,
+                rm.max_concurrent_executions,
+                rm.name as machine_name
             FROM workflow_executions we
+            JOIN remote_machines rm ON we.assigned_machine_id = rm.id
             WHERE we.status = 'queued'
               AND we.assigned_machine_id IS NOT NULL
               AND we.mcp_endpoint IS NOT NULL
-              AND NOT EXISTS (
-                  -- Machine is not currently running anything
-                  SELECT 1 FROM workflow_executions running
+              AND rm.status = 'active'
+              AND (
+                  -- Machine has available capacity based on max_concurrent_executions
+                  SELECT COUNT(*)
+                  FROM workflow_executions running
                   WHERE running.assigned_machine_id = we.assigned_machine_id
                     AND running.status = 'running'
                     AND running.started_at > NOW() - INTERVAL '30 minutes'
-              )
-              AND NOT EXISTS (
-                  -- Machine doesn't have an active coordinator lock
-                  SELECT 1 FROM processing_locks pl
+              ) < rm.max_concurrent_executions
+              AND (
+                  -- Allow concurrent claiming by checking coordinator lock count vs capacity
+                  SELECT COUNT(*) 
+                  FROM processing_locks pl
                   WHERE pl.user_id = CONCAT('machine-', we.assigned_machine_id, '-coordinator')
                     AND pl.status = 'in_progress'
                     AND pl.expires_at > NOW()
-              )
+              ) < rm.max_concurrent_executions
             ORDER BY we.created_at ASC  -- Process oldest jobs first
-            LIMIT 1
             FOR UPDATE SKIP LOCKED
         """)
         
-        job_to_claim = cur.fetchone()
+        jobs_to_claim = cur.fetchall()
         
-        if not job_to_claim:
+        if not jobs_to_claim:
             logger.debug("⏸️ No available jobs found (all machines busy or no queued jobs)")
             return {
                 "status": "no_available_jobs",
                 "coordinator_id": coordinator_id
             }
         
-        execution_id = job_to_claim["id"]
-        machine_id = job_to_claim["assigned_machine_id"]
+        # Group jobs by machine to claim multiple jobs per machine up to capacity
+        jobs_by_machine = {}
+        for job in jobs_to_claim:
+            machine_id = job["assigned_machine_id"]
+            if machine_id not in jobs_by_machine:
+                jobs_by_machine[machine_id] = []
+            jobs_by_machine[machine_id].append(job)
         
-        logger.debug("🎯 Found available job %s for machine %s", execution_id, machine_id)
-
-        # 🔒 MACHINE-SPECIFIC COORDINATOR LOCK: Prevent race conditions for this machine
-        machine_coordinator_id = f"machine-{machine_id}-coordinator-{uuid.uuid4().hex[:8]}"
-        try:
+        # Limit jobs per machine to available capacity
+        jobs_to_process = []
+        for machine_id, machine_jobs in jobs_by_machine.items():
+            max_concurrent = machine_jobs[0]["max_concurrent_executions"]
+            
+            # Get current running count for this machine
             cur.execute("""
-                INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
-                VALUES (%s, 0, %s, 'in_progress', NOW() + INTERVAL '5 minutes')
-                ON CONFLICT (user_id, event_id) DO NOTHING
-                RETURNING id
-            """, (f"machine-{machine_id}-coordinator", machine_coordinator_id))
+                SELECT COUNT(*) as running_count
+                FROM workflow_executions 
+                WHERE assigned_machine_id = %s 
+                  AND status = 'running'
+                  AND started_at > NOW() - INTERVAL '30 minutes'
+            """, (machine_id,))
+            current_running = cur.fetchone()["running_count"]
             
-            if not cur.fetchone():
-                logger.debug("⏸️  Machine %s coordinator already running, skipping", machine_id)
-                return {
-                    "status": "skipped",
-                    "reason": "machine_coordinator_already_running",
-                    "machine_id": machine_id,
-                    "coordinator_id": coordinator_id
-                }
-            
-            conn.commit()
-            logger.debug("🔒 Acquired machine %s coordinator lock: %s", machine_id, machine_coordinator_id)
-        except Exception as lock_error:
-            logger.error("❌ Failed to acquire machine %s coordinator lock: %s", machine_id, lock_error)
-            return {
-                "status": "machine_coordinator_lock_failed",
-                "error": str(lock_error),
-                "machine_id": machine_id,
-                "coordinator_id": coordinator_id
-            }
-
-        # 🚫 WORKFLOW-SPECIFIC FAILURE PATTERN CHECK
-        workflow_id = job_to_claim["workflow_id"]
-        should_block, block_reason, check_duration_ms = check_failure_patterns_for_workflow(cur, conn, workflow_id)
+            # Calculate available slots
+            available_slots = max_concurrent - current_running
+            if available_slots > 0:
+                # Take only the jobs we can handle
+                jobs_for_this_machine = machine_jobs[:available_slots]
+                jobs_to_process.extend(jobs_for_this_machine)
+                logger.debug("🎯 Found %d jobs for machine %s (%s) - capacity %d/%d", 
+                           len(jobs_for_this_machine), machine_id, 
+                           machine_jobs[0]["machine_name"], current_running + len(jobs_for_this_machine), max_concurrent)
         
-        if should_block:
-            logger.warning("🚫 BLOCKED job claim for workflow %d on machine %s: %s", workflow_id, machine_id, block_reason)
+        if not jobs_to_process:
+            logger.debug("⏸️ No jobs can be claimed after capacity check")
             return {
-                "status": "blocked",
-                "reason": block_reason,
-                "workflow_id": workflow_id,
-                "machine_id": machine_id,
-                "check_duration_ms": check_duration_ms,
+                "status": "no_available_jobs", 
                 "coordinator_id": coordinator_id
             }
 
-        # 🎯 CLAIM THE PRE-ASSIGNED JOB: Update status to running
-        modal_call_id = f"modal-machine{machine_id}-{int(time.time())}-{random.randint(1000, 9999)}"
-
-        cur.execute(
-            """
-            UPDATE workflow_executions
-            SET
-                status = 'running',
-                started_at = NOW(),
-                modal_call_id = %s
-            WHERE id = %s
-              AND status = 'queued'
-            RETURNING
-                id, workflow_id, execution_params, client_id,
-                assigned_machine_id, mcp_endpoint, version_number;
-            """,
-            (modal_call_id, execution_id)
-        )
-
-        job_to_process = cur.fetchone()
-        conn.commit()
-
-        if not job_to_process:
-            logger.warning("⚠️ Failed to claim execution %s (may have been claimed by another process)", execution_id)
-            return {
-                "status": "claim_failed",
-                "execution_id": execution_id,
-                "machine_id": machine_id,
-                "coordinator_id": coordinator_id
-            }
-
-        # Successfully claimed the job
-        execution_id = job_to_process["id"]
-        workflow_id = job_to_process["workflow_id"]
-        execution_params = job_to_process["execution_params"] or {}
-        client_id = job_to_process["client_id"]
-        assigned_machine_id = job_to_process["assigned_machine_id"]
-        mcp_endpoint = job_to_process["mcp_endpoint"]
-        version_number = job_to_process["version_number"]
+        # 🎯 CLAIM ALL AVAILABLE JOBS: Process multiple jobs in parallel
+        claimed_jobs = []
         
-        logger.info(
-            "✅ Claimed execution ID %s for workflow %s on machine %s (endpoint: %s)",
-            execution_id,
-            workflow_id,
-            assigned_machine_id,
-            mcp_endpoint[:50] + "..." if len(mcp_endpoint) > 50 else mcp_endpoint
-        )
-
-        # Dispatch the job to Modal
-        try:
-            logger.info("🚀 Dispatching job %s to Modal for machine %s...", execution_id, assigned_machine_id)
+        for job in jobs_to_process:
+            execution_id = job["id"]
+            machine_id = job["assigned_machine_id"]
+            workflow_id = job["workflow_id"]
+            machine_name = job["machine_name"]
+            max_concurrent = job["max_concurrent_executions"]
             
-            modal_future = execute_workflow.remote(
-                workflow_id=workflow_id,
-                mcp_endpoint=mcp_endpoint,
-                execution_params=execution_params,
-                client_id=client_id,
-                execution_id=execution_id,
-                version_number=version_number,
-            )
+            # 🚫 WORKFLOW-SPECIFIC FAILURE PATTERN CHECK for each job
+            should_block, block_reason, check_duration_ms = check_failure_patterns_for_workflow(cur, conn, workflow_id)
             
-            logger.info("✅ Job %s successfully dispatched to Modal for machine %s", execution_id, assigned_machine_id)
+            if should_block:
+                logger.warning("🚫 BLOCKED job %d for workflow %d on machine %s: %s", execution_id, workflow_id, machine_id, block_reason)
+                continue  # Skip this job but continue with others
             
-            return {
-                "status": "job_claimed",
-                "execution_id": execution_id,
-                "workflow_id": workflow_id,
-                "machine_id": assigned_machine_id,
-                "modal_future": str(modal_future),
-                "coordinator_id": coordinator_id
-            }
-
-        except Exception as dispatch_error:
-            logger.error("❌ Failed to dispatch job %s to Modal: %s", execution_id, dispatch_error)
-            
-            # Revert the execution status back to queued since dispatch failed
+            # 🔒 CREATE COORDINATOR LOCK for this specific job
+            machine_coordinator_id = f"machine-{machine_id}-coordinator-{uuid.uuid4().hex[:8]}"
+            machine_user_id = f"machine-{machine_id}-coordinator"
             try:
-                cur.execute("""
-                    UPDATE workflow_executions 
-                    SET status = 'queued', started_at = NULL, modal_call_id = NULL
-                    WHERE id = %s
-                """, (execution_id,))
-                conn.commit()
-                logger.info("🔄 Reverted execution %s back to queued status", execution_id)
-            except Exception as revert_error:
-                logger.error("❌ Failed to revert execution status: %s", revert_error)
+                cur.execute(
+                    """
+                    INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
+                    VALUES (%s, %s, %s, 'in_progress', NOW() + INTERVAL '5 minutes')
+                    """,
+                    (machine_user_id, execution_id, machine_coordinator_id),
+                )
+                # Track for guaranteed release after commit
+                record_acquired_lock(acquired_locks, machine_user_id, machine_coordinator_id)
+            except Exception as lock_error:
+                logger.error("❌ Failed to create coordinator lock for job %d: %s", execution_id, lock_error)
+                continue  # Skip this job but continue with others
             
+            # 🎯 CLAIM THIS JOB: Update status to running
+            modal_call_id = f"modal-machine{machine_id}-{int(time.time())}-{random.randint(1000, 9999)}-{execution_id}"
+
+            cur.execute(
+                """
+                UPDATE workflow_executions
+                SET
+                    status = 'running',
+                    started_at = NOW(),
+                    modal_call_id = %s
+                WHERE id = %s
+                  AND status = 'queued'
+                RETURNING
+                    id, workflow_id, execution_params, client_id,
+                    assigned_machine_id, mcp_endpoint, version_number;
+                """,
+                (modal_call_id, execution_id)
+            )
+
+            job_to_process = cur.fetchone()
+
+            if not job_to_process:
+                logger.warning("⚠️ Failed to claim execution %s (may have been claimed by another process)", execution_id)
+                continue  # Skip this job but continue with others
+            
+            # Successfully claimed the job
+            claimed_jobs.append(job_to_process)
+            
+            logger.info(
+                "✅ Claimed execution ID %s for workflow %s on machine %s (%s) - capacity %d",
+                execution_id,
+                job_to_process["workflow_id"],
+                machine_id,
+                machine_name,
+                max_concurrent
+            )
+        
+        # Commit all job claims at once
+        conn.commit()
+        
+        if not claimed_jobs:
+            logger.warning("⚠️ No jobs were successfully claimed")
+            return {
+                "status": "no_jobs_claimed",
+                "coordinator_id": coordinator_id
+            }
+        
+        # 🚀 DISPATCH ALL CLAIMED JOBS TO MODAL IN PARALLEL
+        dispatched_jobs = []
+        for job_to_process in claimed_jobs:
+            execution_id = job_to_process["id"]
+            workflow_id = job_to_process["workflow_id"]
+            execution_params = job_to_process["execution_params"] or {}
+            client_id = job_to_process["client_id"]
+            assigned_machine_id = job_to_process["assigned_machine_id"]
+            mcp_endpoint = job_to_process["mcp_endpoint"]
+            version_number = job_to_process["version_number"]
+            
+            try:
+                logger.info("🚀 Dispatching job %s to Modal for machine %s...", execution_id, assigned_machine_id)
+                
+                modal_future = execute_workflow.remote(
+                    workflow_id=workflow_id,
+                    mcp_endpoint=mcp_endpoint,
+                    execution_params=execution_params,
+                    client_id=client_id,
+                    execution_id=execution_id,
+                    version_number=version_number,
+                )
+                
+                dispatched_jobs.append({
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                    "machine_id": assigned_machine_id,
+                    "modal_future": str(modal_future)
+                })
+                
+                logger.info("✅ Job %s successfully dispatched to Modal for machine %s", execution_id, assigned_machine_id)
+                
+            except Exception as dispatch_error:
+                logger.error("❌ Failed to dispatch job %s to Modal: %s", execution_id, dispatch_error)
+                
+                # Revert the execution status back to queued since dispatch failed
+                try:
+                    cur.execute("""
+                        UPDATE workflow_executions 
+                        SET status = 'queued', started_at = NULL, modal_call_id = NULL
+                        WHERE id = %s
+                    """, (execution_id,))
+                    conn.commit()
+                    logger.info("🔄 Reverted execution %s back to queued status", execution_id)
+                except Exception as revert_error:
+                    logger.error("❌ Failed to revert execution status: %s", revert_error)
+        
+        # Return summary of all dispatched jobs
+        if dispatched_jobs:
+            logger.info("🎉 Successfully dispatched %d jobs in parallel!", len(dispatched_jobs))
+            return {
+                "status": "jobs_claimed",
+                "dispatched_jobs": dispatched_jobs,
+                "total_dispatched": len(dispatched_jobs),
+                "coordinator_id": coordinator_id
+            }
+        else:
             return {
                 "status": "dispatch_failed",
-                "error": str(dispatch_error),
-                "execution_id": execution_id,
-                "machine_id": assigned_machine_id,
+                "error": "No jobs were successfully dispatched",
                 "coordinator_id": coordinator_id
             }
 
@@ -2245,20 +2559,19 @@ def check_and_process_queued_jobs():
         try:
             if cur and conn and 'coordinator_id' in locals():
                 # Release global scheduler lock
-                cur.execute("""
+                cur.execute(
+                    """
                     DELETE FROM processing_locks 
                     WHERE user_id = 'global-scheduler' AND event_id = 0 AND processor_id = %s
-                """, (coordinator_id,))
-                
-                # Release machine-specific coordinator lock if it was acquired
-                if 'machine_coordinator_id' in locals() and 'machine_id' in locals():
-                    cur.execute("""
-                        DELETE FROM processing_locks 
-                        WHERE user_id = %s AND event_id = 0 AND processor_id = %s
-                    """, (f"machine-{machine_id}-coordinator", machine_coordinator_id))
-                
+                    """,
+                    (coordinator_id,),
+                )
+
+                # Release all machine-specific coordinator locks we created (via helper)
+                release_acquired_locks(cur, acquired_locks)
+
                 conn.commit()
-                logger.debug("🔓 Released coordinator locks: %s", coordinator_id)
+                logger.debug("🔓 Released coordinator locks: %s (count=%d)", coordinator_id, len(acquired_locks))
         except Exception as unlock_error:
             logger.error("❌ Failed to release coordinator locks %s: %s", coordinator_id, unlock_error)
         

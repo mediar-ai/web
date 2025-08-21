@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { LowLevelEvent } from '@/types';
-import { useAuth, SignIn } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
+import type { LowLevelEvent } from '@/types';
+import { SignIn, useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 export default function LowLevelSessionClient({ sessionId }: { sessionId: string }) {
   const [events, setEvents] = useState<LowLevelEvent[]>([]);
@@ -48,7 +48,7 @@ export default function LowLevelSessionClient({ sessionId }: { sessionId: string
 
   if (!userId) {
     return (
-      <div className="container mx-auto py-4 flex justify-center">
+      <div className="container mx-auto max-w-7xl py-4 flex justify-center">
         <SignIn />
       </div>
     );
@@ -76,7 +76,7 @@ export default function LowLevelSessionClient({ sessionId }: { sessionId: string
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto max-w-7xl py-8">
       <h1 className="text-2xl font-bold mb-4">Low-Level Session: {sessionId}</h1>
       <div className="flex items-center gap-4 mb-4">
         <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
@@ -89,7 +89,7 @@ export default function LowLevelSessionClient({ sessionId }: { sessionId: string
         </div>
         {events.length >= 1000 && (
           <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded">
-            ⚠️ Only showing most recent 1000 events
+            [WARN] Only showing most recent 1000 events
           </div>
         )}
       </div>

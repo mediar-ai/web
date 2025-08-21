@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
       deletedCount += annotationCount || 0;
 
-      console.log(`✅ Cleaned up ${deletedCount} draft timeline annotations for session: ${synthesis_session_id}`);
+      console.log(`[SUCCESS] Cleaned up ${deletedCount} draft timeline annotations for session: ${synthesis_session_id}`);
     } else {
       // Fallback: delete all draft annotations for user (no session tracking)
       const { count: rawCount, error: rawError } = await supabase
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
 
       deletedCount += annotationCount || 0;
 
-      console.log(`✅ Cleaned up ${deletedCount} draft timeline annotations for user: ${userId}`);
+      console.log(`[SUCCESS] Cleaned up ${deletedCount} draft timeline annotations for user: ${userId}`);
     }
 
     return NextResponse.json({

@@ -175,7 +175,7 @@ export function AIChatExample() {
           
           {client && (
             <p className="text-sm text-green-600 dark:text-green-400">
-              ✅ Client initialized successfully
+              [SUCCESS] Client initialized successfully
             </p>
           )}
         </div>

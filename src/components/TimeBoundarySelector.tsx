@@ -21,8 +21,10 @@ interface QuickOption {
 interface TimeBoundarySelectorProps {
   selectedBoundary: TimeBoundary;
   onBoundaryChange: (boundary: TimeBoundary) => void;
+  onClear?: () => void; // Add this optional prop
   disabled?: boolean;
   userId?: string; // Added userId prop
+  required?: boolean; // Added required prop for validation
 }
 
 interface UserDataRange {
@@ -42,8 +44,10 @@ const QUICK_OPTIONS: QuickOption[] = [
 export function TimeBoundarySelector({ 
   selectedBoundary, 
   onBoundaryChange,
+  onClear,
   disabled = false,
-  userId 
+  userId,
+  required = false
 }: TimeBoundarySelectorProps) {
   const [selectedQuickOption, setSelectedQuickOption] = useState<number | null>(null);
   const [useCustomRange, setUseCustomRange] = useState(false);
@@ -59,7 +63,7 @@ export function TimeBoundarySelector({
         .then(data => {
           if (data.earliestTimestamp && data.latestTimestamp) {
             setUserDataRange(data);
-            console.log(`📊 User data range: ${data.earliestTimestamp} to ${data.latestTimestamp} (${data.totalRangeHours}h total)`);
+            console.log(`[STATS] User data range: ${data.earliestTimestamp} to ${data.latestTimestamp} (${data.totalRangeHours}h total)`);
           } else {
             console.warn('No data range found for user:', userId);
             setUserDataRange(null);
@@ -153,10 +157,13 @@ export function TimeBoundarySelector({
     setSelectedQuickOption(null);
     setUseCustomRange(false);
     onBoundaryChange({ startDate: null, endDate: null });
+    onClear?.(); // Call the onClear prop if provided
   };
 
+  const isInvalid = required && (!selectedBoundary.startDate || !selectedBoundary.endDate);
+
   return (
-    <Card className="w-full border-black">
+    <Card className={cn("w-full border-black", isInvalid && "border-red-500 border-2")}>
       <CardContent className="p-3">
         {/* Everything in one line */}
         <div className="flex items-center gap-3 flex-wrap mb-2">
@@ -243,6 +250,13 @@ export function TimeBoundarySelector({
               compact={true}
               className="w-full"
             />
+          </div>
+        )}
+        
+        {/* Validation message */}
+        {isInvalid && (
+          <div className="mt-2 text-sm text-red-600">
+            Please select a timeframe to proceed with timeline annotations.
           </div>
         )}
       </CardContent>

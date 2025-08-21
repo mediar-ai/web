@@ -1,33 +1,33 @@
 'use client';
 
-import { useState, useEffect, use, useCallback, useRef, useMemo } from 'react';
-import { type LowLevelEvent } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { JsonBlock } from '@/components/ui/code-block';
-import { ChevronDown, ChevronUp, Clipboard, Check, RefreshCw, ArrowUp, ArrowDown, Database, HardDrive, Download, Calendar } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { AnimatePresence, motion } from 'framer-motion';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { getRawEventsStorage } from '@/lib/rawEventsStorage';
 import { TimeBoundarySelector } from '@/components/TimeBoundarySelector';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { JsonBlock } from '@/components/ui/code-block';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import { Input } from '@/components/ui/input';
+import { getRawEventsStorage } from '@/lib/rawEventsStorage';
 import { formatDateWithTimezone } from '@/lib/timezoneUtils';
+import { type LowLevelEvent } from '@/types';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowDown, ArrowUp, Calendar, Check, ChevronDown, ChevronUp, Clipboard, Database, Download, HardDrive, RefreshCw } from 'lucide-react';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Helper function to estimate memory usage of events data
 const estimateMemoryUsage = (events: LowLevelEvent[]): number => {
@@ -469,6 +469,24 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     }
   }, [userId, sortOrder, selectedEventType, displayEvents, currentDisplayLimit, loadEventsForDisplay, addNewEventsToUI]);
 
+  // Auto-load more data progressively
+  const autoLoadMore = useCallback(async (currentCount: number) => {
+    if (currentCount >= AUTO_LOAD_LIMIT) {
+      setAutoLoadingComplete(true);
+      return;
+    }
+    
+    const nextChunkSize = Math.min(AUTO_LOAD_CHUNK_SIZE, AUTO_LOAD_LIMIT - currentCount);
+    const result = await fetchRawEvents(nextChunkSize, currentCount, false, true);
+    
+    if (result.hasMore && (currentCount + result.events.length) < AUTO_LOAD_LIMIT) {
+      // Continue auto-loading with a small delay
+      setTimeout(() => autoLoadMore(currentCount + result.events.length), 100);
+    } else {
+      setAutoLoadingComplete(true);
+    }
+  }, [fetchRawEvents]);
+
   // Initial fetch - smart loading that respects IndexedDB
   useEffect(() => {
     const initialLoad = async () => {
@@ -502,25 +520,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     };
     
     initialLoad();
-  }, [fetchRawEvents]);
-
-  // Auto-load more data progressively
-  const autoLoadMore = useCallback(async (currentCount: number) => {
-    if (currentCount >= AUTO_LOAD_LIMIT) {
-      setAutoLoadingComplete(true);
-      return;
-    }
-    
-    const nextChunkSize = Math.min(AUTO_LOAD_CHUNK_SIZE, AUTO_LOAD_LIMIT - currentCount);
-    const result = await fetchRawEvents(nextChunkSize, currentCount, false, true);
-    
-    if (result.hasMore && (currentCount + result.events.length) < AUTO_LOAD_LIMIT) {
-      // Continue auto-loading with a small delay
-      setTimeout(() => autoLoadMore(currentCount + result.events.length), 100);
-    } else {
-      setAutoLoadingComplete(true);
-    }
-  }, [fetchRawEvents]);
+  }, [fetchRawEvents, autoLoadMore]);
 
   // Track latest timestamp for smart polling (persists across renders)
   const latestPollingTimestampRef = useRef<string | null>(null);
@@ -614,7 +614,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         pollingIntervalRef.current = null;
       }
     };
-  }, [fetchRawEvents, loading, userId, addNewEventsToUI]); // Removed displayEvents from deps to prevent recreation
+  }, [fetchRawEvents, loading, userId, addNewEventsToUI, displayEvents.length]);
 
 
   // Manual load more function - loads from IndexedDB cache (much faster!)
@@ -678,7 +678,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     
     if (remaining > 50000) {
       alert(
-        `⚠️ EXTREME DANGER ⚠️\n\n` +
+        `[WARN] EXTREME DANGER [WARN]\n\n` +
         `You're trying to load ${remaining.toLocaleString()} events (${estimatedMemoryMB.toFixed(1)}MB).\n` +
         `This WILL crash your browser and could freeze your computer.\n\n` +
         `Consider using filters or Load More instead.`
@@ -688,7 +688,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     
     if (estimatedMemoryMB > 100) {
       const confirmed = confirm(
-        `⚠️ WARNING ⚠️\n\n` +
+        `[WARN] WARNING [WARN]\n\n` +
         `Loading ${remaining.toLocaleString()} events will use ~${estimatedMemoryMB.toFixed(1)}MB of memory.\n` +
         `This could slow down or crash your browser.\n\n` +
         `Are you absolutely sure you want to continue?`
@@ -727,7 +727,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     } finally {
     setLoadAllProgress(null);
     }
-  }, [fetchRawEvents, loadEventsForDisplay, totalAvailable, displayEvents.length, memoryUsage, loadAllProgress, storageInfo]);
+  }, [fetchRawEvents, loadEventsForDisplay, totalAvailable, displayEvents, memoryUsage, loadAllProgress, storageInfo]);
 
   // Clear new event indicators after 30 seconds
   useEffect(() => {
@@ -858,7 +858,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
 
   const clearIndexedDB = async () => {
     const confirmed = confirm(
-      '⚠️ Clear IndexedDB Storage\n\n' +
+      '[WARN] Clear IndexedDB Storage\n\n' +
       'This will completely delete all cached events and metadata from this browser.\n' +
       'This is useful for fixing corrupted data or transaction errors.\n\n' +
       'Continue?'
@@ -885,16 +885,16 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       const info = await storageRef.current.getStorageInfo();
       setStorageInfo(info);
       
-      console.log('[RawEvents] ✅ Successfully cleared IndexedDB storage');
-      alert('✅ IndexedDB storage cleared successfully!\n\nFresh data will be loaded automatically.');
+      console.log('[RawEvents] [SUCCESS] Successfully cleared IndexedDB storage');
+      alert('[SUCCESS] IndexedDB storage cleared successfully!\n\nFresh data will be loaded automatically.');
       
       // Trigger a fresh fetch after clearing
       await fetchRawEvents(INITIAL_CHUNK_SIZE, 0);
       
     } catch (error) {
-      console.error('[RawEvents] ❌ Failed to clear IndexedDB:', error);
+      console.error('[RawEvents] [ERROR] Failed to clear IndexedDB:', error);
       alert(
-        '❌ Failed to clear IndexedDB storage.\n\n' +
+        '[ERROR] Failed to clear IndexedDB storage.\n\n' +
         'Error: ' + (error instanceof Error ? error.message : String(error)) + '\n\n' +
         'Try refreshing the page or closing other tabs with this app open.'
       );

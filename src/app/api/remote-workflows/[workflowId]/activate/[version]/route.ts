@@ -103,12 +103,12 @@ export async function POST(
       }
     };
 
-    console.log(`✅ Activated version ${version} for workflow ${workflowIdNum} (${workflow.name})`);
+    console.log(`[SUCCESS] Activated version ${version} for workflow ${workflowIdNum} (${workflow.name})`);
 
     return NextResponse.json(response);
 
   } catch (error) {
-    console.error('❌ Error activating workflow version:', error);
+    console.error('[ERROR] Error activating workflow version:', error);
     
     return NextResponse.json(
       {

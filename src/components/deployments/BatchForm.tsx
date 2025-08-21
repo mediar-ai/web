@@ -1,14 +1,26 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X, CornerDownLeft } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { CornerDownLeft, X } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
-type JsonValue = string | number | boolean | { [x: string]: JsonValue } | Array<JsonValue> | null;
-type JsonObject = { [x:string]: JsonValue };
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | { [x: string]: JsonValue }
+  | Array<JsonValue>
+  | null;
+type JsonObject = { [x: string]: JsonValue };
 
 interface SchemaItem {
   type?: string;
@@ -24,29 +36,47 @@ interface SchemaItem {
 interface BatchFormProps {
   schema: JsonObject;
   initialValues: JsonObject;
-  onSpecChange: (spec: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> }, isValid: boolean) => void;
+  onSpecChange: (
+    spec: {
+      static_parameters: JsonObject;
+      dynamic_parameters: Record<string, JsonValue[]>;
+    },
+    isValid: boolean
+  ) => void;
   onCombinationsChange: (count: number) => void;
-  initialSpec?: { static_parameters: JsonObject; dynamic_parameters: Record<string, JsonValue[]> };
+  initialSpec?: {
+    static_parameters: JsonObject;
+    dynamic_parameters: Record<string, JsonValue[]>;
+  };
 }
 
-function flattenSchema(schema: JsonObject, path = '', acc: Record<string, SchemaItem> = {}): Record<string, SchemaItem> {
+function flattenSchema(
+  schema: JsonObject,
+  path = '',
+  acc: Record<string, SchemaItem> = {}
+): Record<string, SchemaItem> {
   for (const key in schema) {
     const newPath = path ? `${path}.${key}` : key;
     const value = schema[key] as JsonObject;
-    if (value && typeof value === 'object' && !Array.isArray(value) && !value.type) {
-        flattenSchema(value, newPath, acc);
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      !value.type
+    ) {
+      flattenSchema(value, newPath, acc);
     } else {
-        acc[newPath] = value as SchemaItem;
+      acc[newPath] = value as SchemaItem;
     }
   }
   return acc;
 }
 
-const CheckboxListField = ({ 
-  options, 
-  selectedValues, 
+const CheckboxListField = ({
+  options,
+  selectedValues,
   onToggle,
-  disabled = false 
+  disabled = false,
 }: {
   options: Array<{ value: string; label: string }>;
   selectedValues: JsonValue[];
@@ -54,7 +84,7 @@ const CheckboxListField = ({
   disabled?: boolean;
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const filteredOptions = options.filter(opt => 
+  const filteredOptions = options.filter(opt =>
     opt.label.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -72,13 +102,13 @@ const CheckboxListField = ({
       onToggle(String(value), false);
     });
   };
-  
+
   return (
     <div className="w-56">
       <Input
         placeholder="Search options..."
         value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
+        onChange={e => setSearchTerm(e.target.value)}
         className="mb-2 h-6 text-xs border-black"
         disabled={disabled}
       />
@@ -110,26 +140,32 @@ const CheckboxListField = ({
         </div>
         {filteredOptions.length > 0 ? (
           filteredOptions.map(option => {
-            const isSelected = selectedValues.some(v => String(v) === option.value);
+            const isSelected = selectedValues.some(
+              v => String(v) === option.value
+            );
             return (
-              <label 
-                key={option.value} 
+              <label
+                key={option.value}
                 className="flex items-center gap-2 p-1 hover:bg-gray-100 cursor-pointer text-xs rounded"
               >
                 <input
                   type="checkbox"
                   checked={isSelected}
-                  onChange={(e) => onToggle(option.value, e.target.checked)}
+                  onChange={e => onToggle(option.value, e.target.checked)}
                   disabled={disabled}
                   className="h-3 w-3"
                 />
-                <span className={isSelected ? 'font-medium' : ''}>{option.label}</span>
+                <span className={isSelected ? 'font-medium' : ''}>
+                  {option.label}
+                </span>
               </label>
             );
           })
         ) : (
           <div className="text-xs text-gray-500 p-2 text-center">
-            {searchTerm ? 'No options match your search' : 'No options available'}
+            {searchTerm
+              ? 'No options match your search'
+              : 'No options available'}
           </div>
         )}
       </div>
@@ -175,7 +211,7 @@ const ParameterField = ({
     if (inputError) {
       setInputError(undefined);
     }
-  }
+  };
 
   const handleSelectAndAdd = (val: string) => {
     if (!val || disabled) return;
@@ -188,7 +224,7 @@ const ParameterField = ({
   };
 
   const renderDynamicInput = () => {
-    const placeholder = schema.default ? `${schema.default}` : "Add a value...";
+    const placeholder = schema.default ? `${schema.default}` : 'Add a value...';
 
     if (schema.type === 'checkbox-list' && schema.options) {
       return (
@@ -210,38 +246,54 @@ const ParameterField = ({
     }
 
     if (schema.type === 'select' && schema.options) {
-      const unselectedOptions = schema.options.filter((option: { value: string; label: string }) => 
-        !values.some(v => String(v) === option.value)
+      const unselectedOptions = schema.options.filter(
+        (option: { value: string; label: string }) =>
+          !values.some(v => String(v) === option.value)
       );
 
       const handleSelectAllAvailable = () => {
-        unselectedOptions.forEach((option: { value: string; label: string }) => {
-          const err = onAddValue(path, option.value);
-          if (err) setInputError(err);
-        });
+        unselectedOptions.forEach(
+          (option: { value: string; label: string }) => {
+            const err = onAddValue(path, option.value);
+            if (err) setInputError(err);
+          }
+        );
       };
 
       return (
         <div className="w-56">
           <div className="flex gap-1 mb-1">
-            <Select onValueChange={handleSelectAndAdd} value="" disabled={disabled}>
-              <SelectTrigger className="flex-1 h-6 text-xs font-mono border-black" size="sm">
+            <Select
+              onValueChange={handleSelectAndAdd}
+              value=""
+              disabled={disabled}
+            >
+              <SelectTrigger
+                className="flex-1 h-6 text-xs font-mono border-black"
+                size="sm"
+              >
                 <SelectValue placeholder="Select a value..." />
               </SelectTrigger>
               <SelectContent>
-                {schema.options.map((option: { value: string; label: string }) => {
-                  const isSelected = values.some(v => String(v) === option.value);
-                  return (
-                    <SelectItem
-                      key={option.value}
-                      value={option.value}
-                      disabled={isSelected}
-                      className={isSelected ? 'text-muted-foreground line-through' : ''}
-                    >
-                      {option.label}
-                    </SelectItem>
-                  );
-                })}
+                {schema.options.map(
+                  (option: { value: string; label: string }, index: number) => {
+                    const isSelected = values.some(
+                      v => String(v) === option.value
+                    );
+                    return (
+                      <SelectItem
+                        key={`${path}-option-${option.value}-${index}`}
+                        value={option.value}
+                        disabled={isSelected}
+                        className={
+                          isSelected ? 'text-muted-foreground line-through' : ''
+                        }
+                      >
+                        {option.label}
+                      </SelectItem>
+                    );
+                  }
+                )}
               </SelectContent>
             </Select>
             <Button
@@ -264,13 +316,19 @@ const ParameterField = ({
         <Input
           type={schema.type === 'number' ? 'number' : 'text'}
           value={inputValue}
-          onChange={(e) => handleInputChange(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAddValue()}
+          onChange={e => handleInputChange(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAddValue()}
           className="flex-1 h-6 text-xs font-mono border-black"
           placeholder={placeholder}
           disabled={disabled}
         />
-        <Button size="icon" variant="outline" onClick={handleAddValue} className="h-6 w-6 flex-shrink-0 border-black p-1" disabled={disabled}>
+        <Button
+          size="icon"
+          variant="outline"
+          onClick={handleAddValue}
+          className="h-6 w-6 flex-shrink-0 border-black p-1"
+          disabled={disabled}
+        >
           <CornerDownLeft className="h-3 w-3" />
         </Button>
       </div>
@@ -281,7 +339,12 @@ const ParameterField = ({
   if (schema.type === 'checkbox-list') {
     return (
       <div className="grid grid-cols-3 gap-3 items-start">
-        <Label htmlFor={path} className="text-sm font-medium text-gray-700 pt-0.5 col-span-1">{label}:</Label>
+        <Label
+          htmlFor={path}
+          className="text-sm font-medium text-gray-700 pt-0.5 col-span-1"
+        >
+          {label}:
+        </Label>
         <div className="col-span-2 flex flex-col items-start gap-1.5">
           {renderDynamicInput()}
           {inputError && <p className="text-red-500 text-xs">{inputError}</p>}
@@ -292,32 +355,45 @@ const ParameterField = ({
 
   return (
     <div className="grid grid-cols-3 gap-3 items-start">
-      <Label htmlFor={path} className="text-sm font-medium text-gray-700 pt-0.5 col-span-1">{label}:</Label>
+      <Label
+        htmlFor={path}
+        className="text-sm font-medium text-gray-700 pt-0.5 col-span-1"
+      >
+        {label}:
+      </Label>
       <div className="col-span-2 flex flex-col items-end gap-1.5">
         <div className="w-full flex-1 flex items-center gap-2">
-            <div className="flex flex-wrap gap-1 flex-1">
-                {values.map((val, index) => (
-                <div key={index} className={`relative group flex items-center gap-1 bg-gray-100 hover:bg-gray-200 rounded-md px-1.5 py-0.5 text-xs transition-colors border ${error ? 'border-red-500' : 'border-black'}`}>
-                    <span>{String(val)}</span>
-                    <button onClick={() => onRemoveValue(path, index)} className="text-gray-500 hover:text-black" disabled={disabled}>
-                    <X className="h-3 w-3" />
-                    </button>
-                    {error && (
-                      <div className="absolute bottom-full mb-2 w-max bg-black text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {error}
-                      </div>
-                    )}
-                </div>
-                ))}
-            </div>
-            {renderDynamicInput()}
+          <div className="flex flex-wrap gap-1 flex-1">
+            {values.map((val, index) => (
+              <div
+                key={`${path}-${val}-${index}`}
+                className={`relative group flex items-center gap-1 bg-gray-100 hover:bg-gray-200 rounded-md px-1.5 py-0.5 text-xs transition-colors border ${error ? 'border-red-500' : 'border-black'}`}
+              >
+                <span>{String(val)}</span>
+                <button
+                  onClick={() => onRemoveValue(path, index)}
+                  className="text-gray-500 hover:text-black"
+                  disabled={disabled}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+                {error && (
+                  <div className="absolute bottom-full mb-2 w-max bg-black text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {error}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {renderDynamicInput()}
         </div>
-        {inputError && <p className="text-red-500 text-xs text-right w-full">{inputError}</p>}
+        {inputError && (
+          <p className="text-red-500 text-xs text-right w-full">{inputError}</p>
+        )}
       </div>
     </div>
   );
 };
-
 
 const ParameterRow = ({
   path,
@@ -348,27 +424,36 @@ const ParameterRow = ({
           schema={schemaItem}
         />
         <div className="pl-6 mt-2 space-y-3">
-          {Object.entries(schemaItem.controls).map(([branchValue, branchControls]) => {
-            const isSelected = selectedValues.includes(branchValue);
-            return (
-              <div key={branchValue}>
-                <h4 className={`text-sm font-medium mb-1.5 ${isSelected ? 'text-gray-800' : 'text-gray-400'}`}>{branchValue}</h4>
-                <div className="pl-3 space-y-3">
-                {isSelected && Object.entries(branchControls).map(([branchParamName, branchParamDef]) => (
-                    <ParameterRow
-                      key={branchParamName}
-                      path={branchParamName}
-                      schemaItem={branchParamDef}
-                      dynamicValues={dynamicValues}
-                      errors={errors}
-                      onAddDynamicValue={onAddDynamicValue}
-                      onRemoveDynamicValue={onRemoveDynamicValue}
-                    />
-                  ))}
+          {Object.entries(schemaItem.controls).map(
+            ([branchValue, branchControls]) => {
+              const isSelected = selectedValues.includes(branchValue);
+              return (
+                <div key={`${path}-branch-${branchValue}`}>
+                  <h4
+                    className={`text-sm font-medium mb-1.5 ${isSelected ? 'text-gray-800' : 'text-gray-400'}`}
+                  >
+                    {branchValue}
+                  </h4>
+                  <div className="pl-3 space-y-3">
+                    {isSelected &&
+                      Object.entries(branchControls).map(
+                        ([branchParamName, branchParamDef]) => (
+                          <ParameterRow
+                            key={`${path}-${branchValue}-${branchParamName}`}
+                            path={branchParamName}
+                            schemaItem={branchParamDef}
+                            dynamicValues={dynamicValues}
+                            errors={errors}
+                            onAddDynamicValue={onAddDynamicValue}
+                            onRemoveDynamicValue={onRemoveDynamicValue}
+                          />
+                        )
+                      )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            }
+          )}
         </div>
       </div>
     );
@@ -378,7 +463,7 @@ const ParameterRow = ({
   // This logic needs access to the full schema, which isn't ideal here.
   // A better approach would be to pre-filter the schema before mapping.
   // For now, this will have to do.
-  
+
   return (
     <ParameterField
       path={path}
@@ -392,21 +477,30 @@ const ParameterRow = ({
   );
 };
 
-
-export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsChange, initialSpec }: BatchFormProps) {
+export function BatchForm({
+  schema,
+  initialValues,
+  onSpecChange,
+  onCombinationsChange,
+  initialSpec,
+}: BatchFormProps) {
   const initializeDynamicValues = useCallback(() => {
     if (initialSpec && Object.keys(initialSpec.dynamic_parameters).length > 0) {
       return initialSpec.dynamic_parameters;
     }
-    
+
     const initialDynamic: Record<string, JsonValue[]> = {};
     const flatInitialValues = flattenSchema(initialValues);
 
     // Initialize all parameters with their defaults
     for (const path in schema) {
-      const initialValue = flatInitialValues[path]?.default ?? (schema[path] as SchemaItem)?.default;
+      const initialValue =
+        flatInitialValues[path]?.default ??
+        (schema[path] as SchemaItem)?.default;
       if (initialValue !== undefined && initialValue !== null) {
-        initialDynamic[path] = Array.isArray(initialValue) ? initialValue : [initialValue];
+        initialDynamic[path] = Array.isArray(initialValue)
+          ? initialValue
+          : [initialValue];
       }
     }
 
@@ -415,13 +509,22 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
       const schemaItem = schema[path] as SchemaItem;
       const selectedBranches = initialDynamic[path];
 
-      if (schemaItem.controls && selectedBranches && selectedBranches.length > 0) {
+      if (
+        schemaItem.controls &&
+        selectedBranches &&
+        selectedBranches.length > 0
+      ) {
         selectedBranches.forEach(branchValue => {
           const branchControls = schemaItem.controls?.[branchValue as string];
           if (branchControls) {
             for (const controlPath in branchControls) {
               const controlSchema = branchControls[controlPath];
-              if ((!initialDynamic[controlPath] || initialDynamic[controlPath].length === 0) && controlSchema.default !== undefined && controlSchema.default !== null) {
+              if (
+                (!initialDynamic[controlPath] ||
+                  initialDynamic[controlPath].length === 0) &&
+                controlSchema.default !== undefined &&
+                controlSchema.default !== null
+              ) {
                 initialDynamic[controlPath] = [controlSchema.default];
               }
             }
@@ -429,35 +532,40 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
         });
       }
     }
-    
+
     return initialDynamic;
   }, [schema, initialValues, initialSpec]);
 
-  const [dynamicValues, setDynamicValues] = useState<Record<string, JsonValue[]>>(initializeDynamicValues);
+  const [dynamicValues, setDynamicValues] = useState<
+    Record<string, JsonValue[]>
+  >(initializeDynamicValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const validateValue = useCallback((path: string, value: string): string | undefined => {
-    const flatSchema = flattenSchema(schema);
-    const schemaItem = flatSchema[path];
-    if (!schemaItem) return;
+  const validateValue = useCallback(
+    (path: string, value: string): string | undefined => {
+      const flatSchema = flattenSchema(schema);
+      const schemaItem = flatSchema[path];
+      if (!schemaItem) return;
 
-    if (schemaItem.type === 'number' && isNaN(Number(value))) {
-      return schemaItem.validation_message || 'Must be a number.';
-    }
-
-    if (schemaItem.regex) {
-      try {
-        const regex = new RegExp(schemaItem.regex);
-        if (!regex.test(value)) {
-          return schemaItem.validation_message || `Invalid format.`;
-        }
-      } catch {
-        console.error("Invalid regex in schema:", schemaItem.regex);
-        return schemaItem.validation_message || `Invalid regex in schema.`;
+      if (schemaItem.type === 'number' && isNaN(Number(value))) {
+        return schemaItem.validation_message || 'Must be a number.';
       }
-    }
-    return undefined;
-  }, [schema]);
+
+      if (schemaItem.regex) {
+        try {
+          const regex = new RegExp(schemaItem.regex);
+          if (!regex.test(value)) {
+            return schemaItem.validation_message || `Invalid format.`;
+          }
+        } catch {
+          console.error('Invalid regex in schema:', schemaItem.regex);
+          return schemaItem.validation_message || `Invalid regex in schema.`;
+        }
+      }
+      return undefined;
+    },
+    [schema]
+  );
 
   useEffect(() => {
     const newErrors: Record<string, string> = {};
@@ -465,7 +573,7 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
       (dynamicValues[path] || []).forEach(val => {
         const error = validateValue(path, String(val));
         if (error) {
-          if(!newErrors[path]) newErrors[path] = error;
+          if (!newErrors[path]) newErrors[path] = error;
         }
       });
     });
@@ -478,18 +586,26 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     if (error) {
       return error;
     }
-    
+
     setDynamicValues(prev => {
-      const newDynamicValues = { ...prev, [path]: [...(prev[path] || []), value] };
+      const newDynamicValues = {
+        ...prev,
+        [path]: [...(prev[path] || []), value],
+      };
 
       const schemaItem = schema[path] as SchemaItem;
       if (schemaItem?.controls?.[value]) {
         const branchControls = schemaItem.controls[value];
-        
+
         for (const controlPath in branchControls) {
           const controlSchema = branchControls[controlPath];
-          
-          if ((!newDynamicValues[controlPath] || newDynamicValues[controlPath].length === 0) && controlSchema.default !== undefined && controlSchema.default !== null) {
+
+          if (
+            (!newDynamicValues[controlPath] ||
+              newDynamicValues[controlPath].length === 0) &&
+            controlSchema.default !== undefined &&
+            controlSchema.default !== null
+          ) {
             newDynamicValues[controlPath] = [controlSchema.default];
           }
         }
@@ -498,43 +614,47 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
     });
 
     return undefined;
-  }
+  };
 
   const handleRemoveDynamicValue = (path: string, index: number) => {
     setDynamicValues(prev => {
-        const newDynamic = {...prev};
-        const values = (newDynamic[path] || []);
-        const valueToRemove = values[index];
-        const updatedValues = values.filter((_, i) => i !== index);
-        
-        if (updatedValues.length > 0) {
-          newDynamic[path] = updatedValues;
-        } else {
-          const schemaItem = schema[path] as SchemaItem;
-          if (schemaItem && schemaItem.default !== undefined && schemaItem.default !== null) {
-            newDynamic[path] = [schemaItem.default];
-          } else {
-             delete newDynamic[path];
-          }
-        }
-        
-        const schemaItem = schema[path] as SchemaItem;
-        if (schemaItem?.controls?.[valueToRemove as string]) {
-            const branchControls = schemaItem.controls[valueToRemove as string];
-            for (const controlPath in branchControls) {
-                delete newDynamic[controlPath];
-            }
-        }
+      const newDynamic = { ...prev };
+      const values = newDynamic[path] || [];
+      const valueToRemove = values[index];
+      const updatedValues = values.filter((_, i) => i !== index);
 
-        return newDynamic;
+      if (updatedValues.length > 0) {
+        newDynamic[path] = updatedValues;
+      } else {
+        const schemaItem = schema[path] as SchemaItem;
+        if (
+          schemaItem &&
+          schemaItem.default !== undefined &&
+          schemaItem.default !== null
+        ) {
+          newDynamic[path] = [schemaItem.default];
+        } else {
+          delete newDynamic[path];
+        }
+      }
+
+      const schemaItem = schema[path] as SchemaItem;
+      if (schemaItem?.controls?.[valueToRemove as string]) {
+        const branchControls = schemaItem.controls[valueToRemove as string];
+        for (const controlPath in branchControls) {
+          delete newDynamic[controlPath];
+        }
+      }
+
+      return newDynamic;
     });
-  }
+  };
 
   useEffect(() => {
     const filtered_dynamic_parameters: Record<string, JsonValue[]> = {};
-    
+
     console.log('🔍 BatchForm: Processing dynamic values:', dynamicValues);
-    
+
     for (const path in dynamicValues) {
       const values = dynamicValues[path];
       if (values && values.length > 0) {
@@ -542,37 +662,44 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
         if (path === 'quote_parser' || path === 'products_parser') {
           continue;
         }
-        
+
         let isControlled = false;
         let isActive = false;
 
         for (const sKey in schema) {
           const sValue = schema[sKey] as SchemaItem;
-          if(sValue.controls) {
+          if (sValue.controls) {
             const selectedBranches = dynamicValues[sKey] || [];
             for (const branchKey in sValue.controls) {
               if (sValue.controls[branchKey][path]) {
                 isControlled = true;
-                if(selectedBranches.includes(branchKey)) {
+                if (selectedBranches.includes(branchKey)) {
                   isActive = true;
                 }
               }
             }
           }
         }
-        
+
         if (!isControlled || isActive) {
           filtered_dynamic_parameters[path] = values;
         }
       }
     }
-    
-    console.log('✅ BatchForm: Filtered dynamic parameters:', filtered_dynamic_parameters);
 
-    const calculateConditionalCombinations = (params: Record<string, JsonValue[]>): number => {
+    console.log(
+      '[SUCCESS] BatchForm: Filtered dynamic parameters:',
+      filtered_dynamic_parameters
+    );
+
+    const calculateConditionalCombinations = (
+      params: Record<string, JsonValue[]>
+    ): number => {
       let totalCombinations = 0;
-      const controlVariables = Object.keys(schema).filter(k => (schema[k] as SchemaItem).controls);
-      
+      const controlVariables = Object.keys(schema).filter(
+        k => (schema[k] as SchemaItem).controls
+      );
+
       if (controlVariables.length > 0) {
         const controlVar = controlVariables[0];
         const controlValues = params[controlVar] || [];
@@ -581,18 +708,20 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
 
         // Find all parameters that are controlled by any branch
         const allControlledParams = new Set<string>();
-        for (const branch of Object.values((schema[controlVar] as SchemaItem).controls!)) {
+        for (const branch of Object.values(
+          (schema[controlVar] as SchemaItem).controls!
+        )) {
           Object.keys(branch).forEach(key => allControlledParams.add(key));
         }
 
         // Find global parameters (not controlled by any branch)
-        const globalParams = Object.keys(params).filter(key => 
-          key !== controlVar && !allControlledParams.has(key)
+        const globalParams = Object.keys(params).filter(
+          key => key !== controlVar && !allControlledParams.has(key)
         );
 
         controlValues.forEach(cVal => {
           let branchCombinations = 1;
-          
+
           // Multiply by global parameters (parameters not controlled by any branch)
           globalParams.forEach(key => {
             const values = params[key];
@@ -600,36 +729,50 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
               const schemaItem = schema[key] as SchemaItem;
               // Checkbox fields contribute 1 combination (all selected values are one parameter)
               // Other field types contribute values.length combinations (each value is separate)
-              if (schemaItem.type === 'checkbox-list') {
+              if (schemaItem && schemaItem.type === 'checkbox-list') {
                 branchCombinations *= 1;
-                console.log(`🔍 Global checkbox field ${key}: contributing 1 combination (${values.length} selected values)`);
+                console.log(
+                  `🔍 Global checkbox field ${key}: contributing 1 combination (${values.length} selected values)`
+                );
               } else {
-              branchCombinations *= values.length;
-                console.log(`🔍 Global ${schemaItem.type || 'field'} ${key}: contributing ${values.length} combinations`);
+                branchCombinations *= values.length;
+                console.log(
+                  `🔍 Global ${schemaItem?.type || 'field'} ${key}: contributing ${values.length} combinations`
+                );
               }
             }
           });
-          
+
           // Multiply by this branch's specific parameters
-          const branchParams = (schema[controlVar] as SchemaItem).controls![cVal as string];
-          Object.keys(branchParams).forEach(bpKey => {
-            const values = params[bpKey];
-            if (values && values.length > 0) {
-              const branchSchemaItem = branchParams[bpKey];
-              // Checkbox fields contribute 1 combination (all selected values are one parameter)
-              // Other field types contribute values.length combinations (each value is separate)
-              if (branchSchemaItem.type === 'checkbox-list') {
-                branchCombinations *= 1;
-                console.log(`🔍 Branch checkbox field ${bpKey}: contributing 1 combination (${values.length} selected values)`);
-              } else {
-              branchCombinations *= values.length;
-                console.log(`🔍 Branch ${branchSchemaItem.type || 'field'} ${bpKey}: contributing ${values.length} combinations`);
+          const branchParams = (schema[controlVar] as SchemaItem).controls![
+            cVal as string
+          ];
+          if (branchParams) {
+            Object.keys(branchParams).forEach(bpKey => {
+              const values = params[bpKey];
+              if (values && values.length > 0) {
+                const branchSchemaItem = branchParams[bpKey];
+                // Checkbox fields contribute 1 combination (all selected values are one parameter)
+                // Other field types contribute values.length combinations (each value is separate)
+                if (
+                  branchSchemaItem &&
+                  branchSchemaItem.type === 'checkbox-list'
+                ) {
+                  branchCombinations *= 1;
+                  console.log(
+                    `🔍 Branch checkbox field ${bpKey}: contributing 1 combination (${values.length} selected values)`
+                  );
+                } else {
+                  branchCombinations *= values.length;
+                  console.log(
+                    `🔍 Branch ${branchSchemaItem?.type || 'field'} ${bpKey}: contributing ${values.length} combinations`
+                  );
+                }
               }
-            }
-          });
+            });
+          }
           totalCombinations += branchCombinations;
         });
-
       } else {
         totalCombinations = 1;
         Object.keys(params).forEach(key => {
@@ -638,23 +781,35 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
             const schemaItem = schema[key] as SchemaItem;
             // Checkbox fields contribute 1 combination (all selected values are one parameter)
             // Other field types contribute values.length combinations (each value is separate)
-            if (schemaItem.type === 'checkbox-list') {
+            if (schemaItem && schemaItem.type === 'checkbox-list') {
               totalCombinations *= 1;
-              console.log(`🔍 Checkbox field ${key}: contributing 1 combination (${values.length} selected values)`);
+              console.log(
+                `🔍 Checkbox field ${key}: contributing 1 combination (${values.length} selected values)`
+              );
             } else {
-            totalCombinations *= values.length;
-              console.log(`🔍 ${schemaItem.type || 'Field'} ${key}: contributing ${values.length} combinations`);
+              totalCombinations *= values.length;
+              console.log(
+                `🔍 ${schemaItem?.type || 'Field'} ${key}: contributing ${values.length} combinations`
+              );
             }
           }
         });
       }
       return totalCombinations;
     };
-    
-    const totalCombinations = calculateConditionalCombinations(filtered_dynamic_parameters);
-    
+
+    const totalCombinations = calculateConditionalCombinations(
+      filtered_dynamic_parameters
+    );
+
     const isValid = Object.keys(errors).length === 0;
-    onSpecChange({ static_parameters: {}, dynamic_parameters: filtered_dynamic_parameters }, isValid);
+    onSpecChange(
+      {
+        static_parameters: {},
+        dynamic_parameters: filtered_dynamic_parameters,
+      },
+      isValid
+    );
     onCombinationsChange(totalCombinations);
   }, [dynamicValues, schema, errors, onSpecChange, onCombinationsChange]);
 
@@ -670,24 +825,133 @@ export function BatchForm({ schema, initialValues, onSpecChange, onCombinationsC
       }
     }
   }
-  
+
   // Remove internal-only parameters that shouldn't be exposed in the UI
   delete topLevelSchema.quote_parser;
   delete topLevelSchema.products_parser;
 
+  // Split parameters into enrichment vs regular for a clearer layout
+  const entries = Object.entries(topLevelSchema);
+  const enrichmentEntries = entries.filter(
+    ([p]) => p.startsWith('enrichment.') || p === 'mediar_parser.schema'
+  );
+  const regularEntries = entries.filter(
+    ([p]) => !p.startsWith('enrichment.') && p !== 'mediar_parser.schema'
+  );
+
+  // Helper: set a single string value (used for custom editors)
+  const setSingleValue = (path: string, value: string) => {
+    setDynamicValues(prev => ({ ...prev, [path]: [value] }));
+  };
+
   return (
-    <div className="space-y-3 px-6 pb-6">
-      {Object.entries(topLevelSchema).map(([path, schemaItem]) => (
-        <ParameterRow
-          key={path}
-          path={path}
-          schemaItem={schemaItem as SchemaItem}
-          dynamicValues={dynamicValues}
-          errors={errors}
-          onAddDynamicValue={handleAddDynamicValue}
-          onRemoveDynamicValue={handleRemoveDynamicValue}
-        />
-      ))}
+    <div className="space-y-4 px-6 pb-6">
+      {/* Regular parameters */}
+      <div className="space-y-3">
+        {regularEntries.map(([path, schemaItem]) => (
+          <ParameterRow
+            key={path}
+            path={path}
+            schemaItem={schemaItem as SchemaItem}
+            dynamicValues={dynamicValues}
+            errors={errors}
+            onAddDynamicValue={handleAddDynamicValue}
+            onRemoveDynamicValue={handleRemoveDynamicValue}
+          />
+        ))}
+      </div>
+
+      {/* AI Enrichment section with visual separator and no-code editors */}
+      {enrichmentEntries.length > 0 && (
+        <div className="pt-4 mt-2 border-t border-black">
+          <h4 className="text-sm font-semibold mb-3">AI Enrichment</h4>
+          <div className="space-y-3">
+            {enrichmentEntries.map(([path, schemaItemRaw]) => {
+              const schemaItem = schemaItemRaw as SchemaItem;
+              // Custom multiline JSON editor for mediar_parser.schema (preferred)
+              if (
+                path === 'mediar_parser.schema' ||
+                path === 'enrichment.schema'
+              ) {
+                const current = (dynamicValues[path] &&
+                  dynamicValues[path][0]) as string | undefined;
+                return (
+                  <div
+                    key={path}
+                    className="grid grid-cols-3 gap-3 items-start"
+                  >
+                    <Label
+                      htmlFor={path}
+                      className="text-sm font-medium text-gray-700 pt-0.5 col-span-1"
+                    >
+                      {(schemaItem && schemaItem.label) || 'Schema (JSON)'}:
+                    </Label>
+                    <div className="col-span-2 space-y-2">
+                      <textarea
+                        id={path}
+                        className="w-full h-28 font-mono text-xs border border-black rounded p-2"
+                        placeholder="Paste JSON Schema here or leave blank and use Fields to extract"
+                        value={current || ''}
+                        onChange={e => setSingleValue(path, e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 border-black"
+                          onClick={() => {
+                            try {
+                              const formatted = JSON.stringify(
+                                JSON.parse(current || '{}'),
+                                null,
+                                2
+                              );
+                              setSingleValue(path, formatted);
+                            } catch {}
+                          }}
+                        >
+                          Format JSON
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 border-black"
+                          onClick={() => {
+                            try {
+                              JSON.parse(current || '{}');
+                              alert('Schema is valid JSON');
+                            } catch (e: any) {
+                              alert(
+                                'Invalid JSON: ' + (e?.message || 'parse error')
+                              );
+                            }
+                          }}
+                        >
+                          Validate
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Remove old enrichment.fields editor – schema is the single source of truth
+
+              return (
+                <ParameterRow
+                  key={path}
+                  path={path}
+                  schemaItem={schemaItem as SchemaItem}
+                  dynamicValues={dynamicValues}
+                  errors={errors}
+                  onAddDynamicValue={handleAddDynamicValue}
+                  onRemoveDynamicValue={handleRemoveDynamicValue}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+}

@@ -1,6 +1,6 @@
-import { 
-  WorkflowStepAnalysisWithJSONB, 
-  FlattenedWorkflowAnalysis, 
+import {
+    FlattenedWorkflowAnalysis,
+    WorkflowStepAnalysisWithJSONB,
 } from '@/types';
 
 /**
@@ -17,6 +17,7 @@ export function flattenWorkflowAnalysis(analysis: WorkflowStepAnalysisWithJSONB)
     session_id: analysis.session_id,
     client_timestamp: analysis.client_timestamp,
     created_at: analysis.created_at,
+    source_ui_tree_event_id: analysis.source_ui_tree_event_id,
     
     // Map V2 fields to the flattened structure
     workflow: jsonbData.workflow || 'Not available', // Still here in case it's ever used

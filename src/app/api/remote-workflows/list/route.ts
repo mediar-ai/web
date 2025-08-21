@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { cacheResponse } from '@/lib/responseCache';
+import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue>;
 type JSONObject = { [x: string]: JSONValue };
@@ -387,7 +387,6 @@ export async function GET(request: NextRequest) {
 
     // Fetch automation sequences for the workflows (needed for input parameter detection)
     const workflowIds = (workflows || []).map(w => w.id);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const automationSequences: Record<number, any> = {};
     
     if (workflowIds.length > 0) {
@@ -404,7 +403,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch all settings workflows for the execution workflows we just fetched
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     let settingsWorkflows: any[] = [];
     
     if (workflowIds.length > 0) {
@@ -439,7 +438,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Helper function to process workflow schema (shared logic for all workflow types)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const processWorkflowSchema = (workflow: any) => {
       let executionSchema: JSONObject = {};
       let sampleInputs: JSONObject = {};
@@ -473,7 +472,7 @@ export async function GET(request: NextRequest) {
     const processedSettingsWorkflows = settingsWorkflows.map(processWorkflowSchema);
 
     // Group processed settings workflows by parent_workflow_id
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const settingsByParent = processedSettingsWorkflows.reduce((acc: Record<number, any[]>, settings) => {
       const parentId = settings.parent_workflow_id;
       if (parentId && !acc[parentId]) {
@@ -587,7 +586,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(responseData);
 
   } catch (error) {
-    console.error('❌ Error listing workflows:', error);
+    console.error('[ERROR] Error listing workflows:', error);
     
     return NextResponse.json(
       {

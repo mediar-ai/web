@@ -120,11 +120,11 @@ export async function POST(req: NextRequest) {
         console.error('Error updating timeline annotation status:', annotationError);
         // Don't fail the whole operation, just log the error
       } else {
-        console.log(`✅ Updated timeline annotations to saved status for session: ${sessionId}`);
+        console.log(`[SUCCESS] Updated timeline annotations to saved status for session: ${sessionId}`);
       }
     }
 
-    console.log(`✅ Saved complete synthesis: ${updatedWorkflows.length} workflows with full process data (ID: ${savedSynthesisRecord.id})`);
+    console.log(`[SUCCESS] Saved complete synthesis: ${updatedWorkflows.length} workflows with full process data (ID: ${savedSynthesisRecord.id})`);
 
     return NextResponse.json({
       success: true,

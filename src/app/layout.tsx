@@ -1,14 +1,21 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
+import { ThemeProvider } from "next-themes";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "next-themes";
-import { ClerkProvider } from "@clerk/nextjs";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Browser Workflow Capture",
   description: "Capture and analyze browser workflows with AI",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" }
+    ],
+    apple: { url: "/icon.svg", type: "image/svg+xml" }
+  }
 };
 
 export default function RootLayout({
@@ -25,7 +32,7 @@ export default function RootLayout({
             defaultTheme="light"
             disableTransitionOnChange
           >
-            <main className="min-h-screen flex flex-col items-center pt-4">
+            <main className="min-h-screen stable-container pt-4">
               {children}
             </main>
           </ThemeProvider>

@@ -1,17 +1,34 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Loader2, Server } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { BatchForm } from '@/components/deployments/BatchForm';
 import { Workflow } from '@/lib/workflow-types';
 
-type JsonValue = string | number | boolean | { [x: string]: JsonValue } | Array<JsonValue> | null;
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | { [x: string]: JsonValue }
+  | Array<JsonValue>
+  | null;
 type JsonObject = { [x: string]: JsonValue };
 
 interface BatchSpec {
@@ -49,34 +66,48 @@ interface BatchTestDialogProps {
   onSubmit?: () => void;
 }
 
-export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: BatchTestDialogProps) {
+export function BatchTestDialog({
+  workflow,
+  open,
+  onOpenChange,
+  onSubmit,
+}: BatchTestDialogProps) {
   const [batchSpec, setBatchSpec] = useState<BatchSpec>({
     static_parameters: {},
-    dynamic_parameters: {}
+    dynamic_parameters: {},
   });
   const [totalCombinations, setTotalCombinations] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSpecValid, setIsSpecValid] = useState(true);
-  
+
   // Machine selection state
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
-  const [selectedMachineId, setSelectedMachineId] = useState<string>('1'); // Default to VM (machine 1)
+  const [selectedMachineId, setSelectedMachineId] = useState<string>('1'); // Will be updated based on workflow assignments
   const [loadingMachines, setLoadingMachines] = useState(false);
 
   // Version selection state
-  const [availableVersions, setAvailableVersions] = useState<WorkflowVersion[]>([]);
-  const [selectedVersionNumber, setSelectedVersionNumber] = useState<string>('__ACTIVE__');
-  
+  const [availableVersions, setAvailableVersions] = useState<WorkflowVersion[]>(
+    []
+  );
+  const [selectedVersionNumber, setSelectedVersionNumber] =
+    useState<string>('');
+
+  // Version-specific schema state - stores schema for the selected version
+  const [versionSchema, setVersionSchema] = useState<{
+    input_parameters: JsonObject;
+    sample_inputs: JsonObject;
+    version_number: string;
+  } | null>(null);
+
   // Version-specific validation state (for safety, but we still use workflow.input_parameters for UI)
   const [versionValidation, setVersionValidation] = useState<{
     version_number: string;
     is_valid: boolean;
     error?: string;
   } | null>(null);
-  const [loadingVersionValidation, setLoadingVersionValidation] = useState(false); // Default to active version
+  const [loadingVersionValidation, setLoadingVersionValidation] =
+    useState(false); // Default to active version
   const [loadingVersions, setLoadingVersions] = useState(false);
-
-
 
   // Create a storage key specific to this workflow
   const storageKey = workflow ? `test-run-${workflow.id}` : '';
@@ -84,7 +115,7 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
   const resetBatchSpec = useCallback(() => {
     setBatchSpec({
       static_parameters: {},
-      dynamic_parameters: {}
+      dynamic_parameters: {},
     });
     setTotalCombinations(0);
     if (storageKey) {
@@ -98,39 +129,92 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
       const fetchMachines = async () => {
         setLoadingMachines(true);
         try {
-          const response = await fetch('/api/machines?status=active&include_load=true');
+          const response = await fetch(
+            '/api/machines?status=active&include_load=true'
+          );
           const data = await response.json();
-          
+
           if (data.success) {
             setAvailableMachines(data.machines);
             console.log('📋 Loaded machines for testing:', data.machines);
+
+            // After loading machines, fetch optimal machine to set preferred default
+            await fetchOptimalMachine(data.machines);
           } else {
-            console.error('❌ Failed to load machines:', data.error);
+            console.error('[ERROR] Failed to load machines:', data.error);
           }
         } catch (error) {
-          console.error('❌ Error fetching machines:', error);
+          console.error('[ERROR] Error fetching machines:', error);
         } finally {
           setLoadingMachines(false);
+        }
+      };
+
+      const fetchOptimalMachine = async (_machines: Machine[]) => {
+        try {
+          // Use the same logic as backend execution routes
+          const response = await fetch(
+            `/api/remote-workflows/${workflow.id}/optimal-machine`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ execution_params: {} }),
+            }
+          );
+          const data = await response.json();
+
+          if (data.success && data.machine_id) {
+            console.log(
+              '🎯 Optimal machine assignment:',
+              data.machine_id,
+              data.machine_name,
+              data.assignment_reason
+            );
+            setSelectedMachineId(data.machine_id.toString());
+          } else {
+            console.log(
+              '🎯 No optimal machine found, using fallback machine 1'
+            );
+            setSelectedMachineId('1'); // Fallback to machine 1 if no optimal machine
+          }
+        } catch (error) {
+          console.error('[ERROR] Error fetching optimal machine:', error);
+          setSelectedMachineId('1'); // Fallback to machine 1 on error
         }
       };
 
       const fetchVersions = async () => {
         setLoadingVersions(true);
         try {
-          const response = await fetch(`/api/remote-workflows/${workflow.id}/versions`);
+          const response = await fetch(
+            `/api/remote-workflows/${workflow.id}/versions`
+          );
           const data = await response.json();
-          
+
           if (data.success) {
             setAvailableVersions(data.versions);
             console.log('📋 Loaded versions for testing:', data.versions);
-            
-            // Set default to active version 
-            setSelectedVersionNumber('__ACTIVE__');
+
+            // Set default to the actual active version from the list
+            const activeVersion = data.versions.find(
+              (v: WorkflowVersion) => v.is_active
+            );
+            if (activeVersion) {
+              setSelectedVersionNumber(activeVersion.version_number);
+              console.log(
+                '📋 Auto-selected active version:',
+                activeVersion.version_number
+              );
+            } else {
+              // Fallback to empty string if no active version found (will use 'active' in API calls)
+              setSelectedVersionNumber('');
+              console.warn('⚠️ No active version found in version list');
+            }
           } else {
-            console.error('❌ Failed to load versions:', data.error);
+            console.error('[ERROR] Failed to load versions:', data.error);
           }
         } catch (error) {
-          console.error('❌ Error fetching versions:', error);
+          console.error('[ERROR] Error fetching versions:', error);
         } finally {
           setLoadingVersions(false);
         }
@@ -140,8 +224,6 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
       fetchVersions();
     }
   }, [open, workflow?.id]);
-
-
 
   // Load saved batch spec when dialog opens
   useEffect(() => {
@@ -159,49 +241,77 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
         resetBatchSpec();
       }
     }
-    }, [open, workflow?.id, storageKey, resetBatchSpec]);
+  }, [open, workflow?.id, storageKey, resetBatchSpec]);
 
-  // Validate version-specific data when version changes (for safety)
+  // Load version-specific schema when version changes
   useEffect(() => {
     if (!workflow || !selectedVersionNumber) return;
-    
-    const validateVersion = async () => {
+
+    const loadVersionSchema = async () => {
       setLoadingVersionValidation(true);
+      setVersionSchema(null); // Clear previous schema
+      resetBatchSpec(); // Reset form values when switching versions
+
       try {
-        const versionParam = selectedVersionNumber === '__ACTIVE__' ? 'active' : selectedVersionNumber;
-        const response = await fetch(`/api/remote-workflows/${workflow.id}/schema?version=${versionParam}`);
+        // Use 'active' if no version selected, otherwise use the specific version
+        const versionParam = !selectedVersionNumber
+          ? 'active'
+          : selectedVersionNumber;
+        const response = await fetch(
+          `/api/remote-workflows/${workflow.id}/schema?version=${versionParam}`
+        );
         const data = await response.json();
-        
+
         if (data.success) {
+          // Set both validation state and schema
           setVersionValidation({
             version_number: data.workflow.version,
-            is_valid: true
+            is_valid: true,
           });
-          console.log('✅ Version validated:', data.workflow.version);
+
+          // Store the complete schema for the selected version
+          setVersionSchema({
+            input_parameters: data.schema?.input_parameters || {},
+            sample_inputs: data.schema?.sample_request || {},
+            version_number: data.workflow.version,
+          });
+
+          console.log(
+            '[SUCCESS] Version schema loaded:',
+            data.workflow.version
+          );
+          console.log('[DEBUG] Full data object:', data);
+          console.log('[DEBUG] Schema object:', data.schema);
+          console.log(
+            '[DEBUG] Input parameters object:',
+            data.schema?.input_parameters
+          );
+          console.log(
+            '[DEBUG] Schema parameters:',
+            Object.keys(data.schema?.input_parameters || {})
+          );
         } else {
           setVersionValidation({
             version_number: selectedVersionNumber,
             is_valid: false,
-            error: data.error
+            error: data.error,
           });
-          console.warn('⚠️ Version validation failed:', data.error);
+          console.warn('[WARN] Version schema loading failed:', data.error);
         }
       } catch (error) {
-        console.error('❌ Error validating version:', error);
+        console.error('[ERROR] Error loading version schema:', error);
         setVersionValidation({
           version_number: selectedVersionNumber,
           is_valid: false,
-          error: 'Network error'
+          error: 'Network error',
         });
       } finally {
         setLoadingVersionValidation(false);
       }
     };
 
-    validateVersion();
+    loadVersionSchema();
   }, [workflow?.id, selectedVersionNumber]);
-
- 
 
   // Save batch spec to localStorage whenever it changes
   useEffect(() => {
@@ -217,50 +327,64 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
 
   const handleBatchSubmit = async () => {
     if (!workflow || !batchSpec || totalCombinations === 0) return;
-    
+
     console.log('🚀 BatchTestDialog: Submitting batch with spec:', batchSpec);
     console.log('🔢 BatchTestDialog: Total combinations:', totalCombinations);
     console.log('🎯 BatchTestDialog: Selected machine ID:', selectedMachineId);
-    console.log('📋 BatchTestDialog: Selected version:', selectedVersionNumber === '__ACTIVE__' ? 'active version' : selectedVersionNumber || 'active version');
-    
+    console.log(
+      '📋 BatchTestDialog: Selected version:',
+      selectedVersionNumber || 'active version'
+    );
+
     setIsSubmitting(true);
     try {
       // Include machine_id and version_number in the request body
       const requestBody = {
         ...batchSpec,
         machine_id: parseInt(selectedMachineId),
-        version_number: selectedVersionNumber === '__ACTIVE__' ? undefined : selectedVersionNumber || undefined, // Send version or undefined for active
+        version_number: selectedVersionNumber || undefined, // Send version or undefined for active
       };
 
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/batch-execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
+      const response = await fetch(
+        `/api/remote-workflows/${workflow.id}/batch-execute`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        }
+      );
 
       const data = await response.json();
       console.log('📡 BatchTestDialog: Server response:', data);
-      
+
       if (data.success) {
-        console.log('✅ BatchTestDialog: Batch submission successful');
+        console.log('[SUCCESS] BatchTestDialog: Batch submission successful');
         console.log('🎯 BatchTestDialog: Execution IDs:', data.execution_ids);
         onOpenChange(false);
         if (onSubmit) {
           onSubmit();
         }
       } else {
-        console.error('❌ BatchTestDialog: Failed to submit test run:', data.error);
+        console.error(
+          '[ERROR] BatchTestDialog: Failed to submit test run:',
+          data.error
+        );
         alert(`Failed to submit test run: ${data.error}`);
       }
     } catch (error) {
-      console.error('❌ BatchTestDialog: Error submitting test run:', error);
+      console.error(
+        '[ERROR] BatchTestDialog: Error submitting test run:',
+        error
+      );
       alert('Failed to submit test run execution');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const selectedMachine = availableMachines.find(m => m.id.toString() === selectedMachineId);
+  const selectedMachine = availableMachines.find(
+    m => m.id.toString() === selectedMachineId
+  );
 
   if (!workflow) return null;
 
@@ -285,7 +409,8 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                 Execution Settings
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Choose which machine to run the test on. Defaults to development machine.
+                Choose which machine to run the test on. Defaults to development
+                machine.
               </p>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-6">
@@ -297,27 +422,43 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                     Loading machines...
                   </div>
                 ) : (
-                  <Select value={selectedMachineId} onValueChange={setSelectedMachineId}>
+                  <Select
+                    value={selectedMachineId}
+                    onValueChange={setSelectedMachineId}
+                  >
                     <SelectTrigger id="machine-select">
                       <SelectValue placeholder="Select a machine" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableMachines.map((machine) => (
-                        <SelectItem key={`machine-${machine.id}`} value={machine.id.toString()}>
+                      {availableMachines.map(machine => (
+                        <SelectItem
+                          key={`machine-${machine.id}`}
+                          value={machine.id.toString()}
+                        >
                           <div className="flex items-center justify-between w-full">
                             <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${
-                                machine.health_status === 'healthy' ? 'bg-green-500' : 
-                                machine.health_status === 'unhealthy' ? 'bg-red-500' : 'bg-yellow-500'
-                              }`} />
-                              <span className="font-medium">{machine.name}</span>
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  machine.health_status === 'healthy'
+                                    ? 'bg-green-500'
+                                    : machine.health_status === 'unhealthy'
+                                      ? 'bg-red-500'
+                                      : 'bg-yellow-500'
+                                }`}
+                              />
+                              <span className="font-medium">
+                                {machine.name}
+                              </span>
                               <span className="text-xs text-muted-foreground">
                                 ({machine.machine_type})
                               </span>
                             </div>
                             {machine.load_info && (
                               <span className="text-xs text-muted-foreground ml-2">
-                                {machine.load_info.current_executions}/{machine.load_info.available_capacity + machine.load_info.current_executions} jobs
+                                {machine.load_info.current_executions}/
+                                {machine.load_info.available_capacity +
+                                  machine.load_info.current_executions}{' '}
+                                jobs
                               </span>
                             )}
                           </div>
@@ -326,20 +467,16 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                     </SelectContent>
                   </Select>
                 )}
-                
+
                 {selectedMachine && (
                   <div className="text-xs text-muted-foreground flex items-center gap-4">
-                    <span>
-                      {selectedMachine.health_status}
-                    </span>
+                    <span>{selectedMachine.health_status}</span>
                     {selectedMachine.load_info && (
                       <span>
                         Load: {selectedMachine.load_info.load_percentage}%
                       </span>
                     )}
-                    <span className="capitalize">
-                      {selectedMachine.status}
-                    </span>
+                    <span className="capitalize">{selectedMachine.status}</span>
                   </div>
                 )}
               </div>
@@ -352,28 +489,31 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                     Loading versions...
                   </div>
                 ) : (
-                  <Select value={selectedVersionNumber} onValueChange={setSelectedVersionNumber}>
+                  <Select
+                    value={selectedVersionNumber}
+                    onValueChange={setSelectedVersionNumber}
+                  >
                     <SelectTrigger id="version-select">
                       <SelectValue placeholder="Active version" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__ACTIVE__">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-green-500" />
-                          <span className="font-medium">Active Version</span>
-                          <span className="text-xs text-muted-foreground">
-                            (Production)
-                          </span>
-                        </div>
-                      </SelectItem>
-                      {availableVersions.map((version) => (
-                        <SelectItem key={`version-${version.version_id}`} value={version.version_number}>
+                      {availableVersions.map(version => (
+                        <SelectItem
+                          key={`version-${version.version_id}`}
+                          value={version.version_number}
+                        >
                           <div className="flex items-center justify-between w-full">
                             <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${
-                                version.is_active ? 'bg-green-500' : 'bg-gray-400'
-                              }`} />
-                              <span className="font-medium">v{version.version_number}</span>
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  version.is_active
+                                    ? 'bg-green-500'
+                                    : 'bg-gray-400'
+                                }`}
+                              />
+                              <span className="font-medium">
+                                v{version.version_number}
+                              </span>
                               {version.is_active && (
                                 <span className="text-xs text-green-600 font-medium">
                                   (Active)
@@ -381,7 +521,9 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                               )}
                             </div>
                             <span className="text-xs text-muted-foreground ml-2">
-                              {new Date(version.created_at).toLocaleDateString()}
+                              {new Date(
+                                version.created_at
+                              ).toLocaleDateString()}
                             </span>
                           </div>
                         </SelectItem>
@@ -389,20 +531,31 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                     </SelectContent>
                   </Select>
                 )}
-                
+
                 {selectedVersionNumber ? (
-                  <div key="version-selected" className="text-xs text-muted-foreground">
-                    Testing with version: <span className="font-mono">{selectedVersionNumber}</span>
-                    {loadingVersionValidation && <span className="ml-2">loading...</span>}
+                  <div
+                    key="version-selected"
+                    className="text-xs text-muted-foreground"
+                  >
+                    Testing with version:{' '}
+                    <span className="font-mono">{selectedVersionNumber}</span>
+                    {loadingVersionValidation && (
+                      <span className="ml-2">loading...</span>
+                    )}
                     {versionValidation && !versionValidation.is_valid && (
-                      <span className="ml-2 text-yellow-600">{versionValidation.error}</span>
+                      <span className="ml-2 text-yellow-600">
+                        {versionValidation.error}
+                      </span>
                     )}
                     {versionValidation && versionValidation.is_valid && (
                       <span className="ml-2 text-green-600">validated</span>
                     )}
                   </div>
                 ) : (
-                  <div key="version-active" className="text-xs text-muted-foreground">
+                  <div
+                    key="version-active"
+                    className="text-xs text-muted-foreground"
+                  >
                     Using active/production version
                   </div>
                 )}
@@ -417,8 +570,12 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                 <div className="flex items-center gap-6">
                   <h3 className="text-base font-semibold">Test Run Summary</h3>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs uppercase text-muted-foreground">Total Combinations:</span>
-                    <span className="text-2xl font-bold">{totalCombinations}</span>
+                    <span className="font-mono text-xs uppercase text-muted-foreground">
+                      Total Combinations:
+                    </span>
+                    <span className="text-2xl font-bold">
+                      {totalCombinations}
+                    </span>
                     {totalCombinations > 5000 && (
                       <span className="text-red-500 text-xs font-semibold">
                         (Exceeds limit of 5000)
@@ -426,10 +583,16 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
                     )}
                   </div>
                 </div>
-                <Button 
-                  className="ml-4" 
-                  size="default" 
-                  disabled={totalCombinations === 0 || isSubmitting || totalCombinations > 5000 || !isSpecValid || !selectedMachineId}
+                <Button
+                  className="ml-4"
+                  size="default"
+                  disabled={
+                    totalCombinations === 0 ||
+                    isSubmitting ||
+                    totalCombinations > 5000 ||
+                    !isSpecValid ||
+                    !selectedMachineId
+                  }
                   onClick={handleBatchSubmit}
                 >
                   {isSubmitting ? (
@@ -450,27 +613,47 @@ export function BatchTestDialog({ workflow, open, onOpenChange, onSubmit }: Batc
             <CardHeader className="py-3">
               <CardTitle className="text-base">Variable Configurator</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Define static values or iterate over multiple dynamic values for each parameter.
+                Define static values or iterate over multiple dynamic values for
+                each parameter.
               </p>
             </CardHeader>
             <CardContent className="p-0">
-              {workflow.input_parameters && Object.keys(workflow.input_parameters).length > 0 ? (
-                <div className="max-h-[50vh] overflow-y-auto">
-                  <BatchForm
-                    schema={workflow.input_parameters as JsonObject}
-                    initialValues={workflow.sample_inputs as JsonObject}
-                    onSpecChange={handleSpecChange}
-                    onCombinationsChange={setTotalCombinations}
-                    initialSpec={batchSpec}
-                  />
-                </div>
-              ) : (
-                <p className="p-6">This workflow has no configurable parameters.</p>
-              )}
+              {(() => {
+                // Use version-specific schema if available, otherwise fall back to workflow schema
+                const currentSchema =
+                  versionSchema?.input_parameters || workflow.input_parameters;
+                const currentSampleInputs =
+                  versionSchema?.sample_inputs || workflow.sample_inputs;
+
+                return currentSchema &&
+                  Object.keys(currentSchema).length > 0 ? (
+                  <div className="max-h-[50vh] overflow-y-auto">
+                    {loadingVersionValidation && (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        Loading version schema...
+                      </div>
+                    )}
+                    <BatchForm
+                      key={versionSchema?.version_number || 'default'} // Force re-render on version change
+                      schema={currentSchema as JsonObject}
+                      initialValues={currentSampleInputs as JsonObject}
+                      onSpecChange={handleSpecChange}
+                      onCombinationsChange={setTotalCombinations}
+                      initialSpec={batchSpec}
+                    />
+                  </div>
+                ) : (
+                  <p className="p-6">
+                    {loadingVersionValidation
+                      ? 'Loading parameters...'
+                      : 'This workflow has no configurable parameters.'}
+                  </p>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>
       </DialogContent>
     </Dialog>
   );
-} 
+}

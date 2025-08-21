@@ -1,7 +1,6 @@
 ---
-description: 
-globs: 
-alwaysApply: true
+description: When working with Nextjs route
+alwaysApply: false
 ---
 # Next.js: Dynamic Route Parameter Patterns
 

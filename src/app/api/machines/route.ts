@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(responseData);
 
   } catch (error) {
-    console.error('❌ Error fetching machines:', error);
+    console.error('[ERROR] Error fetching machines:', error);
     return NextResponse.json(
       {
         success: false,
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    console.log('🔧 Registering new machine:', body.name);
+    console.log('[FIX] Registering new machine:', body.name);
 
     // Validate required fields
     const requiredFields = ['name', 'mcp_endpoint', 'management_endpoint'];
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
       throw new Error(`Database insertion failed: ${error.message}`);
     }
 
-    console.log(`✅ Machine ${machine.name} registered successfully with ID ${machine.id}`);
+    console.log(`[SUCCESS] Machine ${machine.name} registered successfully with ID ${machine.id}`);
 
     // Add default configurations if provided
     if (body.default_configurations && Array.isArray(body.default_configurations)) {
@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error('❌ Error registering machine:', error);
+    console.error('[ERROR] Error registering machine:', error);
     return NextResponse.json(
       {
         success: false,

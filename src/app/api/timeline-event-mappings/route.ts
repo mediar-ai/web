@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
 
     const { workflow_mappings, unrelated_events }: AnalysisResult = analysis_result;
 
-    console.log(`💾 [DEPRECATED] Saving timeline mappings: ${workflow_mappings.length} mapped events, ${unrelated_events.length} unrelated events`);
+    console.log(`[DB] [DEPRECATED] Saving timeline mappings: ${workflow_mappings.length} mapped events, ${unrelated_events.length} unrelated events`);
 
     // Prepare records for database insertion
     const records = [];
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    console.log(`✅ [DEPRECATED] Successfully saved ${data?.length || 0} timeline annotations with IDs`);
+    console.log(`[SUCCESS] [DEPRECATED] Successfully saved ${data?.length || 0} timeline annotations with IDs`);
     
     return NextResponse.json({ 
       success: true, 
@@ -264,15 +264,25 @@ export async function GET(req: NextRequest) {
         .eq('user_id', user_id)
         .order('created_at', { ascending: false });
 
-      // Filter by synthesis session (for current session annotations)
+      // FIXED FILTERING LOGIC: Ensure proper separation between TOP and Saved sections
       if (synthesis_session_id) {
-        query = query.eq('synthesis_session_id', synthesis_session_id);
+        // TOP section: Only draft annotations for the specific session
+        // Never include saved annotations in TOP section regardless of session
+        query = query
+          .eq('synthesis_session_id', synthesis_session_id)
+          .eq('annotation_status', 'draft');
       } else if (!include_saved) {
-        // If no session specified and not including saved, only show current draft annotations
-        query = query.eq('annotation_status', 'draft');
+        // Fallback: Only draft annotations when no session specified
+        // Exclude NULL sessions by requiring a valid session ID
+        query = query
+          .eq('annotation_status', 'draft')
+          .not('synthesis_session_id', 'is', null);
       } else {
-        // Include both draft and saved annotations
-        query = query.in('annotation_status', ['draft', 'saved']);
+        // Saved section: Include both draft and saved annotations
+        // But still exclude NULL sessions to prevent orphaned data issues
+        query = query
+          .in('annotation_status', ['draft', 'saved'])
+          .not('synthesis_session_id', 'is', null);
       }
 
       // Filter by workflow relation if requested

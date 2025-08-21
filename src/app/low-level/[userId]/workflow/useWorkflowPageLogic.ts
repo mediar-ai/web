@@ -2,20 +2,21 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 
+import type { TimelineAnnotation } from '@/components/low-level/types';
 import { useUser } from '@/context/UserContext';
 import type { Session, UserSessionData } from '@/lib/db';
 import type { LowLevelEvent } from '@/types';
 import { createRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
-    CanvasContent,
-    DatabaseWorkflow,
-    DetailedSynthesizedWorkflow,
-    FinalAnalysisData,
-    Message,
-    SynthesisSession,
-    SynthesisStep,
-    WorkflowBoundaries,
-    WorkflowContext
+  CanvasContent,
+  DatabaseWorkflow,
+  DetailedSynthesizedWorkflow,
+  FinalAnalysisData,
+  Message,
+  SynthesisSession,
+  SynthesisStep,
+  WorkflowBoundaries,
+  WorkflowContext
 } from './types';
 
 // Updated to match admin dashboard stats format using session metadata
@@ -81,50 +82,7 @@ interface ExtendedUnrelatedEvent extends UnrelatedEvent {
   batch_timestamp: string;
 }
 
-interface TimelineAnnotation {
-  id: number;
-  raw_event_id: number;
-  analysis_id: number;
-  is_workflow_related: boolean;
-  user_action: string;
-  ui_element_interacted: string | null;
-  content_change: string | null;
-  synthesized_workflow_step: string | null;
-  confidence_score: number;
-  batch_timestamp: string;
-  unrelated_reason?: string;
-  created_at: string;
-  // Additional properties needed by EditableTimelineMappings
-  user_id?: string;
-  model_used?: string;
-  workflow_id?: number | null;
-  workflow_type_id?: number | null;
-  workflow_instance_id?: number | null;
-  workflow_step_id?: number | null;
-  workflow_substep_id?: number | null;
-  template_name?: string;
-  type_name?: string;
-  instance_name?: string;
-  step_name?: string;
-  substep_name?: string;
-  event_type?: string;
-  step_title?: string;
-  user_intent?: string;
-  step_summary?: string;
-  events_that_happened?: string;
-  how_content_changed?: string;
-  results_if_any?: string;
-  what_was_clicked?: string;
-  what_was_typed?: string;
-  window_title?: string;
-  inputs?: string | string[] | null;
-  outputs?: string | string[] | null;
-  business_logics?: string | null;
-  event_payload?: Record<string, unknown>;
-  event_created_at?: string;
-  selected_labels?: string[];
-  suggested_labels?: string[];
-}
+
 
 export function useWorkflowPageLogic(userId: string) {
   const { setUserId } = useUser();
@@ -143,8 +101,9 @@ export function useWorkflowPageLogic(userId: string) {
   const [itemRefs, setItemRefs] = useState<Record<string, React.RefObject<HTMLTextAreaElement | null>[]>>({});
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [synthesisStep, setSynthesisStep] = useState<SynthesisStep>('idle');
-  const [draftWorkflowNames, setDraftWorkflowNames] = useState<string[]>([]);
+  const [workflowNames, setWorkflowNames] = useState<string[]>([]);
   const [identifiedWorkflowNames, setIdentifiedWorkflowNames] = useState<string[]>([]);
+  const [draftWorkflowNames, setDraftWorkflowNames] = useState<string[]>([]);
   const [workflowBoundaries, setWorkflowBoundaries] = useState<WorkflowBoundaries>({});
   const [collapsedSections, setCollapsedSections] = useState({
     inputs: true,
@@ -187,7 +146,21 @@ export function useWorkflowPageLogic(userId: string) {
   const [timelineMappingProgress, setTimelineMappingProgress] = useState(0);
   const [timelineMappingElapsedTime, setTimelineMappingElapsedTime] = useState(0);
   const timelineMappingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [timelineMappingBatch, setTimelineMappingBatch] = useState<{current: number, total: number} | null>(null);
+  const [timelineMappingBatch, setTimelineMappingBatch] = useState<{
+    current: number, 
+    total: number,
+    mode?: 'sequential' | 'parallel'
+  } | null>(null);
+
+  // Batch status list for timeline mapping
+  const [batchList, setBatchList] = useState<Array<{
+    id: number;
+    timeWindow: string;
+    status: string;
+    processingTime?: number;
+    eventCount?: number;
+    mappingCount?: number;
+  }>>([]);
   
   // Orchestration state for the new full process
   const [isOrchestrating, setIsOrchestrating] = useState(false);
@@ -203,6 +176,9 @@ export function useWorkflowPageLogic(userId: string) {
     startDate: null,
     endDate: null
   });
+
+  // Storage key for time boundary persistence
+  const TIME_BOUNDARY_STORAGE_KEY = useMemo(() => `workflow-time-boundary-${userId}`, [userId]);
   
   // Data is now fetched directly by backend APIs - frontend only handles stats and UI state
 
@@ -294,21 +270,21 @@ export function useWorkflowPageLogic(userId: string) {
         const session: SynthesisSession = result.data;
 
         if (session) {
-          const loadedMessages = Array.isArray(session.messages) ? session.messages : [];
+          const sessionState = session.session_state || {};
+          const loadedMessages = Array.isArray(sessionState.messages) ? sessionState.messages : [];
           if (loadedMessages.length > 0) setMessages(loadedMessages);
           
-          setSynthesisStep(session.synthesis_step || 'idle');
-          setIdentifiedWorkflowNames(session.identified_workflow_names || []);
-          setDraftWorkflowNames(session.identified_workflow_names || []); // Using identified_workflow_names since draft_workflow_names doesn't exist in interface
-          setSynthesisSessionId(session.synthesis_session_id);
+          setSynthesisStep(sessionState.synthesis_step || 'idle');
+          setWorkflowNames(sessionState.identified_workflow_names || []);
+          setSynthesisSessionId(session.id.toString());
 
-          if (session.workflow_context) {
-            setWorkflowContext(session.workflow_context);
-            setEditableContext(session.workflow_context);
+          if (sessionState.workflow_context) {
+            setWorkflowContext(sessionState.workflow_context);
+            setEditableContext(sessionState.workflow_context);
           }
           
-          if (session.workflow_boundaries) {
-            setWorkflowBoundaries(session.workflow_boundaries);
+          if (sessionState.workflow_boundaries) {
+            setWorkflowBoundaries(sessionState.workflow_boundaries);
           }
         }
       } else if (response.status !== 404) {
@@ -322,7 +298,6 @@ export function useWorkflowPageLogic(userId: string) {
   useEffect(() => {
     setUserId(userId);
     loadSynthesisSession();
-    fetchCompleteWorkflows(); // Load complete workflows with detailed data
 
     const fetchUserStats = async () => {
       if (!userId) return;
@@ -359,14 +334,43 @@ export function useWorkflowPageLogic(userId: string) {
           console.error("Failed to fetch session data");
         }
       } catch (error) {
-        console.error("Error fetching user stats:", error);
+        console.error('[WORKFLOW_DEBUG] Error fetching user stats:', error);
       }
     };
 
-    // Data fetching moved to backend APIs - frontend only loads stats
+    // Data fetching moved to backend APIs - frontend only handles stats
     setIsFetchingEvents(false);
     fetchUserStats();
-  }, [userId, setUserId, loadSynthesisSession]);
+
+    // Load time boundary from localStorage
+    if (userId) {
+      const storedBoundary = localStorage.getItem(TIME_BOUNDARY_STORAGE_KEY);
+      if (storedBoundary) {
+        try {
+          const parsed = JSON.parse(storedBoundary);
+          if (parsed.startDate && parsed.endDate) {
+            setTimeBoundary({
+              startDate: new Date(parsed.startDate),
+              endDate: new Date(parsed.endDate)
+            });
+          }
+        } catch (e) {
+          console.error("Failed to parse time boundary from localStorage", e);
+        }
+      }
+    }
+  }, [userId, loadSynthesisSession, TIME_BOUNDARY_STORAGE_KEY]);
+
+  // Save time boundary to localStorage when it changes
+  useEffect(() => {
+    if (userId && timeBoundary.startDate && timeBoundary.endDate) {
+      const toStore = {
+        startDate: timeBoundary.startDate.toISOString(),
+        endDate: timeBoundary.endDate.toISOString()
+      };
+      localStorage.setItem(TIME_BOUNDARY_STORAGE_KEY, JSON.stringify(toStore));
+    }
+  }, [timeBoundary, userId, TIME_BOUNDARY_STORAGE_KEY]);
 
   useEffect(() => {
     const newRefs: Record<string, React.RefObject<HTMLTextAreaElement | null>[]> = {};
@@ -395,48 +399,18 @@ export function useWorkflowPageLogic(userId: string) {
     // (e.g., loadSynthesisSession, handleSendMessage) and should not be overwritten by the generic workflows list loading.
   }, [workflows]);
 
-  const fetchWorkflows = useCallback(async (skipLoadingState = false) => {
-    if(!userId) return;
-    try {
-      const response = await fetch(`/api/workflows?userId=${userId}`);
-      if (response.ok) {
-        const result = await response.json();
-        const regularWorkflows = result.data
-          .filter((d: DatabaseWorkflow) => d.title !== '__CONVERSATION__')
-          .map((workflow: DatabaseWorkflow) => {
-            // Transform to CanvasContent format for component compatibility
-            if (workflow.detailed_workflow_data) {
-              return {
-                ...workflow.detailed_workflow_data, // Spread to top level for direct access
-                id: workflow.id, // Override with database workflow ID
-                chat_history: workflow.chat_history || []
-              };
-            } else {
-              // Handle case where detailed_workflow_data is null (shouldn't happen for new workflows)
-              console.warn('Workflow missing detailed_workflow_data:', workflow.id);
-              return {
-                id: workflow.id,
-                title: workflow.title || 'Untitled Workflow',
-                description: 'Workflow data unavailable',
-                steps: [],
-                workflow_types: [],
-                workflow_instances: [],
-                chat_history: workflow.chat_history || []
-              };
-            }
-          });
-        setWorkflows(regularWorkflows);
-      }
-    } catch (error) {
-      console.error('[WORKFLOW_DEBUG] Failed to fetch workflows:', error);
-    }
-  }, [userId, synthesisStep]);
+  // Removed old fetchWorkflows function - replaced by fetchCompleteWorkflows with session filtering
   
-  useEffect(() => {
-    fetchWorkflows();
-  }, [fetchWorkflows]);
+  // Removed: This useEffect was causing race condition by fetching all workflows before synthesis session loaded
+  // Now fetchCompleteWorkflows() handles fetching with proper session filtering
 
   const runInitialAnalysis = async () => {
+    // 🔧 NEW: Require timeframe selection for workflow analysis initiation
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before initiating workflow analysis. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
+
     setIsAnalyzingEvents(true);
     setAnalysisStatus("Analyzing context and drafting workflows...");
     setAnalysisProgress(0);
@@ -451,10 +425,8 @@ export function useWorkflowPageLogic(userId: string) {
         body: JSON.stringify({ 
           userId: userId,
           model: selectedModel,
-          ...(timeBoundary.startDate && timeBoundary.endDate && {
-            startDate: timeBoundary.startDate.toISOString(),
-            endDate: timeBoundary.endDate.toISOString()
-          })
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString()
         }),
       });
 
@@ -520,7 +492,7 @@ export function useWorkflowPageLogic(userId: string) {
       };
       setWorkflowContext(preservedContext);
       setEditableContext(preservedContext);
-      setDraftWorkflowNames(finalData.workflowNames || []);
+      setWorkflowNames(finalData.workflowNames || []);
       setSynthesisStep('context_editing');
 
       await saveSynthesisSession(
@@ -553,6 +525,12 @@ export function useWorkflowPageLogic(userId: string) {
   };
   
   const refineAndIdentifyWorkflows = async () => {
+    // 🔧 NEW: Require timeframe selection for workflow refinement
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before refining workflow lists. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
+
     setSynthesisStep('identifying');
 
     try {
@@ -563,11 +541,9 @@ export function useWorkflowPageLogic(userId: string) {
           model: selectedModel,
           userId: userId,
           workflow_context: editableContext,
-          draft_workflow_names: draftWorkflowNames,
-          ...(timeBoundary.startDate && timeBoundary.endDate && {
-            startDate: timeBoundary.startDate.toISOString(),
-            endDate: timeBoundary.endDate.toISOString()
-          })
+          draft_workflow_names: workflowNames,
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString()
         }),
       });
 
@@ -576,7 +552,7 @@ export function useWorkflowPageLogic(userId: string) {
       }
 
       const result = await response.json();
-      setIdentifiedWorkflowNames(result.refined_workflow_names || []);
+      setWorkflowNames(result.refined_workflow_names || []);
       setSynthesisStep('workflow_editing');
 
       await saveSynthesisSession(
@@ -585,7 +561,7 @@ export function useWorkflowPageLogic(userId: string) {
         result.refined_workflow_names || [],
         workflowContext,
         workflowBoundaries,
-        draftWorkflowNames
+        workflowNames
       );
     } catch (error) {
       console.error('Error refining workflows:', error);
@@ -595,11 +571,17 @@ export function useWorkflowPageLogic(userId: string) {
   };
 
   const processAllWorkflows = async (approvedWorkflows: string[]) => {
+    // 🔧 NEW: Require timeframe selection for boundary definition
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before defining workflow boundaries. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
+
     setSynthesisStep('defining_boundaries');
     const thinkingId = `ai-thinking-${Date.now()}`;
     const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
     setMessages(updatedMessages);
-    await saveSynthesisSession(updatedMessages, 'defining_boundaries', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
+    await saveSynthesisSession(updatedMessages, 'defining_boundaries', approvedWorkflows, workflowContext, workflowBoundaries, workflowNames);
 
     try {
       const response = await fetch('/api/define-workflow-boundaries', {
@@ -613,10 +595,8 @@ export function useWorkflowPageLogic(userId: string) {
             userContext: workflowContext,
             userInstructions: workflowContext?.user_instructions,
           },
-          ...(timeBoundary.startDate && timeBoundary.endDate && {
-            startDate: timeBoundary.startDate.toISOString(),
-            endDate: timeBoundary.endDate.toISOString()
-          })
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString()
         })
       });
 
@@ -653,12 +633,12 @@ export function useWorkflowPageLogic(userId: string) {
         id: `${Date.now()}`, sender: 'ai', text: "I've defined boundaries for your workflows. Please review and approve them above."
       };
       setMessages(prev => [...prev.slice(0, -1), boundariesMessage]);
-      await saveSynthesisSession(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, transformedBoundaries, draftWorkflowNames);
+      await saveSynthesisSession(messages.slice(0, -1).concat([boundariesMessage]), 'boundaries_editing', approvedWorkflows, workflowContext, transformedBoundaries, workflowNames);
 
     } catch (error) {
       console.error("Error defining workflow boundaries:", error);
       setMessages(prev => [...prev.slice(0, -1), { id: `error-${Date.now()}`, sender: 'ai', text: "Sorry, an error occurred while defining boundaries." }]);
-      await saveSynthesisSession(messages, 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries, draftWorkflowNames);
+      await saveSynthesisSession(messages, 'workflow_editing', approvedWorkflows, workflowContext, workflowBoundaries, workflowNames);
     }
   };
 
@@ -668,16 +648,72 @@ export function useWorkflowPageLogic(userId: string) {
       return;
     }
 
+    // 🔧 NEW: Require timeframe selection
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before processing timeline annotations. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
+
+    // 🔄 ADD: Clean up existing draft annotations first (following workflow synthesis pattern)
+    if (synthesisSessionId) {
+      setTimelineMappingStatus("Cleaning up previous annotations...");
+      setTimelineMappingProgress(0);
+      
+      try {
+        console.log(`🧹 Cleaning up existing draft annotations for session: ${synthesisSessionId}`);
+        
+        const cleanupResponse = await fetch('/api/timeline-event-mappings/cleanup-drafts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            userId: userId, 
+            synthesis_session_id: synthesisSessionId 
+          })
+        });
+        
+        if (!cleanupResponse.ok) {
+          const errorData = await cleanupResponse.json().catch(() => ({}));
+          throw new Error(errorData.details || `Cleanup failed: ${cleanupResponse.status} ${cleanupResponse.statusText}`);
+        }
+        
+        const cleanupResult = await cleanupResponse.json();
+        console.log(`✅ Cleaned up ${cleanupResult.deletedCount || 0} draft annotations`);
+        
+        if (cleanupResult.deletedCount > 0) {
+          setTimelineMappingStatus(`Cleaned up ${cleanupResult.deletedCount} previous annotations. Starting fresh mapping...`);
+        } else {
+          setTimelineMappingStatus("No previous annotations to clean. Starting fresh mapping...");
+        }
+      } catch (cleanupError) {
+        console.error("Cleanup failed:", cleanupError);
+        // Don't fail the entire process - just warn and continue
+        setTimelineMappingStatus("Warning: Cleanup failed, but continuing with mapping...");
+      }
+    }
+
     // Transition to done state when user clicks timeline mapping
     setSynthesisStep('done');
 
-    // Initialize empty array instead of null to show table immediately
-    setTimelineAnnotations([]);
-    setIsMappingTimeline(true);
+    // 🔧 FIX: Ensure clean UI state IMMEDIATELY and prevent race conditions
+    setTimelineAnnotations([]); // Clear UI state first
+    setIsMappingTimeline(true);  // Set mapping flag to prevent useEffect interference
+    setSynthesisStep('done');
+    
+    // 🔧 FIX: Persist synthesis step to database to prevent state loss on page refresh
+    await saveSynthesisSession(
+      messages, 
+      'done', 
+      workflowNames, 
+      workflowContext, 
+      workflowBoundaries, 
+      workflowNames
+    );
+    
     setTimelineMappingStatus("Initializing timeline mapping...");
     setTimelineMappingProgress(0);
     setTimelineMappingElapsedTime(0);
     setTimelineMappingBatch(null);
+    setBatchList([]); // Reset batch list for new mapping
     
     // Start timer for elapsed time tracking
     timelineMappingTimerRef.current = setInterval(() => 
@@ -723,17 +759,62 @@ export function useWorkflowPageLogic(userId: string) {
               throw new Error(parsed.details || parsed.error);
             }
             
+            // Handle batch list initialization
+            if (parsed.type === 'batch_init' && parsed.data?.batches) {
+              setBatchList(parsed.data.batches);
+            }
+            
+            // Handle individual batch status updates
+            if (parsed.type === 'batch_update' && parsed.data?.batchIndex) {
+              setBatchList(prev => prev.map(batch => 
+                batch.id === parsed.data.batchIndex 
+                  ? { 
+                      ...batch, 
+                      status: parsed.data.batchStatus || batch.status,
+                      processingTime: parsed.data.processingTimeMs,
+                      eventCount: parsed.data.eventCount,
+                      mappingCount: parsed.data.mappingCount
+                    }
+                  : batch
+              ));
+            }
+            
             // Handle initial table setup
             if (parsed.data?.initializeTable) {
               setTimelineAnnotations([]);
             }
             
-            // Handle batch information for better progress tracking
-            if (parsed.data?.currentBatch && parsed.data?.totalBatches) {
-              const batchInfo = { current: parsed.data.currentBatch, total: parsed.data.totalBatches };
+            // Handle batch information for parallel vs sequential processing
+            if (parsed.data?.parallelMode) {
+              // Parallel processing: Use completion-based progress
+              if (parsed.data?.completedCount && parsed.data?.totalBatches) {
+                const completedBatches = parsed.data.completedCount;
+                const totalBatches = parsed.data.totalBatches;
+                const batchInfo = { 
+                  current: completedBatches, 
+                  total: totalBatches,
+                  mode: 'parallel' as const
+                };
+                setTimelineMappingBatch(batchInfo);
+                
+                // Enhanced status message for parallel processing
+                if (parsed.status) {
+                  setTimelineMappingStatus(parsed.status);
+                }
+              } else if (parsed.status) {
+                // Handle parallel processing status without batch counts
+                setTimelineMappingStatus(parsed.status);
+              }
+            } else if (parsed.data?.currentBatch && parsed.data?.totalBatches) {
+              // Sequential processing: Use sequential batch progress
+              const batchInfo = { 
+                current: parsed.data.currentBatch, 
+                total: parsed.data.totalBatches,
+                mode: 'sequential' as const
+              };
               setTimelineMappingBatch(batchInfo);
               
-              // Calculate more accurate progress based on batch info
+              // Calculate sequential progress based on batch info
               const batchProgress = (parsed.data.currentBatch - 1) / parsed.data.totalBatches * 100;
               setTimelineMappingProgress(Math.round(batchProgress));
               
@@ -744,7 +825,11 @@ export function useWorkflowPageLogic(userId: string) {
             } else {
               // Fallback to original behavior if no batch info
               if (parsed.status) setTimelineMappingStatus(parsed.status);
-              if (typeof parsed.progress === 'number') setTimelineMappingProgress(parsed.progress);
+            }
+            
+            // Always update progress if provided (works for both modes)
+            if (typeof parsed.progress === 'number') {
+              setTimelineMappingProgress(parsed.progress);
             }
             
             // Always process annotations array (even if empty) to ensure UI updates
@@ -752,13 +837,15 @@ export function useWorkflowPageLogic(userId: string) {
               const newAnnotations = parsed.data.annotations || [];
               if (newAnnotations.length > 0) {
                 allAnnotations.push(...newAnnotations);
-                // Update UI with incremental results
+                // 🔧 FIX: Always use fresh array reference to ensure React re-renders
                 setTimelineAnnotations([...allAnnotations]);
-                console.log(`📊 Updated UI with ${newAnnotations.length} new annotations. Total: ${allAnnotations.length}`);
+                const mode = parsed.data?.parallelMode ? 'parallel' : 'sequential';
+                console.log(`📊 [${mode.toUpperCase()}] Updated UI with ${newAnnotations.length} new annotations. Total: ${allAnnotations.length}`);
               } else {
                 // Even for empty batches, update the UI to show the processing is active
                 setTimelineAnnotations([...allAnnotations]);
-                console.log(`📊 Processed empty batch. Total annotations: ${allAnnotations.length}`);
+                const mode = parsed.data?.parallelMode ? 'parallel' : 'sequential';
+                console.log(`📊 [${mode.toUpperCase()}] Processed empty batch. Total annotations: ${allAnnotations.length}`);
               }
             }
           } catch (parseError) {
@@ -788,6 +875,9 @@ export function useWorkflowPageLogic(userId: string) {
       setTimelineMappingBatch(null);
       console.log(`🎉 Timeline mapping completed! Total mappings: ${allAnnotations.length}`);
 
+      // Transition to timeline_complete state to follow consistent step pattern
+      setSynthesisStep('timeline_complete');
+
     } catch (error) {
       console.error("Error during timeline mapping:", error);
       let errorMessage = "Timeline mapping failed. Please try again.";
@@ -816,12 +906,70 @@ export function useWorkflowPageLogic(userId: string) {
     }
   };
 
+  const fetchCompleteWorkflows = useCallback(async () => {
+    if (!userId) return;
+    
+    try {
+      // Build URL with optional synthesis session filter
+      const baseUrl = `/api/workflows?userId=${userId}`;
+      const url = synthesisSessionId 
+        ? `${baseUrl}&synthesis_session_id=${synthesisSessionId}`
+        : baseUrl;
+        
+      const response = await fetch(url);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.data && Array.isArray(result.data)) {
+          // Transform database records to CanvasContent format
+          const transformedWorkflows = result.data
+            .filter((d: DatabaseWorkflow) => d.title !== "__CONVERSATION__")
+            .map((workflow: DatabaseWorkflow) => {
+              if (workflow.detailed_workflow_data) {
+                // Spread detailed_workflow_data to top level for component access
+                return {
+                  ...workflow.detailed_workflow_data, // Extract steps, workflow_types, etc. to top level
+                  id: workflow.id, // Override with database workflow ID
+                  chat_history: workflow.chat_history || []
+                };
+              } else {
+                // Handle case where detailed_workflow_data is null
+                console.warn("Workflow missing detailed_workflow_data:", workflow.id);
+                return {
+                  id: workflow.id,
+                  title: workflow.title || "Untitled Workflow",
+                  description: "Workflow data unavailable",
+                  steps: [],
+                  workflow_types: [],
+                  workflow_instances: [],
+                  chat_history: workflow.chat_history || []
+                };
+              }
+            });
+          setWorkflows(transformedWorkflows);
+        }
+      } else {
+        console.error("Failed to fetch complete workflows:", response.status);
+      }
+    } catch (error) {
+      console.error("Error fetching complete workflows:", error);
+    }
+  }, [userId, synthesisSessionId]);
+
   const proceedToSynthesis = async (approvedBoundaries: WorkflowBoundaries) => {
+    // 🔧 NEW: Require timeframe selection for synthesis
+    if (!timeBoundary.startDate || !timeBoundary.endDate) {
+      alert('Please select a timeframe before synthesizing workflows. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      return;
+    }
+
     setSynthesisStep('synthesizing');
     const thinkingId = `ai-thinking-${Date.now()}`;
     const updatedMessages: Message[] = [...messages, { id: thinkingId, sender: 'ai-thinking', text: '...' }];
     setMessages(updatedMessages);
-    await saveSynthesisSession(updatedMessages, 'synthesizing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
+    
+    // Use the workflow names from approved boundaries to ensure consistency with step 3
+    const boundaryWorkflowNames = Object.keys(approvedBoundaries);
+    await saveSynthesisSession(updatedMessages, 'synthesizing', boundaryWorkflowNames, workflowContext, approvedBoundaries, boundaryWorkflowNames);
 
     try {
       // STEP 1: Call the original /api/synthesize-workflow endpoint
@@ -831,7 +979,7 @@ export function useWorkflowPageLogic(userId: string) {
         body: JSON.stringify({
           model: selectedModel,
           context: {
-            workflows: identifiedWorkflowNames.map(name => ({
+            workflows: Object.keys(approvedBoundaries).map(name => ({
               name: name,
               trigger: approvedBoundaries[name]?.trigger || '',
               terminator: approvedBoundaries[name]?.terminator || '',
@@ -840,11 +988,9 @@ export function useWorkflowPageLogic(userId: string) {
             workflowContext: workflowContext,
             userInstructions: workflowContext?.user_instructions,
           },
-          // Add time boundaries if they exist
-          ...(timeBoundary.startDate && timeBoundary.endDate && {
-            startDate: timeBoundary.startDate.toISOString(),
-            endDate: timeBoundary.endDate.toISOString()
-          })
+          // Add time boundaries (now required)
+          startDate: timeBoundary.startDate.toISOString(),
+          endDate: timeBoundary.endDate.toISOString()
         }),
       });
 
@@ -875,7 +1021,7 @@ export function useWorkflowPageLogic(userId: string) {
       };
       const finalMessages = [...updatedMessages.slice(0, -1), synthesizedMessage];
       setMessages(finalMessages);
-      await saveSynthesisSession(finalMessages, 'synthesis_complete', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
+      await saveSynthesisSession(finalMessages, 'synthesis_complete', boundaryWorkflowNames, workflowContext, approvedBoundaries, boundaryWorkflowNames);
 
     } catch (error) {
       console.error("Error during workflow synthesis:", error);
@@ -885,52 +1031,11 @@ export function useWorkflowPageLogic(userId: string) {
         text: `Sorry, I encountered an error during workflow synthesis: ${error instanceof Error ? error.message : 'Unknown error'}` 
       }]);
       setSynthesisStep('boundaries_editing');
-      await saveSynthesisSession(messages, 'boundaries_editing', identifiedWorkflowNames, workflowContext, approvedBoundaries, draftWorkflowNames);
+      await saveSynthesisSession(messages, 'boundaries_editing', boundaryWorkflowNames, workflowContext, approvedBoundaries, boundaryWorkflowNames);
     }
   };
 
-  const fetchCompleteWorkflows = async () => {
-    if (!userId) return;
-    
-    try {
-      const response = await fetch(`/api/workflows?userId=${userId}`);
-      if (response.ok) {
-        const result = await response.json();
-        if (result.data && Array.isArray(result.data)) {
-          // Transform database records to CanvasContent format
-          const transformedWorkflows = result.data
-            .filter((d: DatabaseWorkflow) => d.title !== '__CONVERSATION__')
-            .map((workflow: DatabaseWorkflow) => {
-              if (workflow.detailed_workflow_data) {
-                // Spread detailed_workflow_data to top level for component access
-                return {
-                  ...workflow.detailed_workflow_data, // Extract steps, workflow_types, etc. to top level
-                  id: workflow.id, // Override with database workflow ID
-                  chat_history: workflow.chat_history || []
-                };
-              } else {
-                // Handle case where detailed_workflow_data is null
-                console.warn('Workflow missing detailed_workflow_data:', workflow.id);
-                return {
-                  id: workflow.id,
-                  title: workflow.title || 'Untitled Workflow',
-                  description: 'Workflow data unavailable',
-                  steps: [],
-                  workflow_types: [],
-                  workflow_instances: [],
-                  chat_history: workflow.chat_history || []
-                };
-              }
-            });
-          setWorkflows(transformedWorkflows);
-        }
-      } else {
-        console.error('Failed to fetch complete workflows:', response.status);
-      }
-    } catch (error) {
-      console.error('Error fetching complete workflows:', error);
-    }
-  };
+  // Removed duplicate - function will be defined earlier in file
 
   const saveSynthesizedWorkflows = async (synthesizedWorkflows: DetailedSynthesizedWorkflow[]) => {
     if (!userId || synthesizedWorkflows.length === 0) return [];
@@ -960,6 +1065,13 @@ export function useWorkflowPageLogic(userId: string) {
       return [];
     }
   };
+
+  // Re-fetch workflows when synthesis session changes to show only current session workflows
+  useEffect(() => {
+    if (userId && synthesisSessionId) {
+      fetchCompleteWorkflows();
+    }
+  }, [synthesisSessionId]);
 
   useEffect(() => {
     if (workflowContext) {
@@ -1042,14 +1154,34 @@ export function useWorkflowPageLogic(userId: string) {
     }
   }, [userId, synthesisSessionId, messages, synthesisStep, identifiedWorkflowNames, workflowContext, workflowBoundaries, draftWorkflowNames, saveSynthesisSession]);
 
-  const handleTimelineAnnotationsChange = useCallback(async (updatedAnnotations: TimelineAnnotation[]) => {
-    setTimelineAnnotations(updatedAnnotations);
+  const handleTimelineAnnotationsChange = useCallback(async (changedAnnotations: TimelineAnnotation[]) => {
+    // Merge changed annotations into existing state instead of replacing all
+    setTimelineAnnotations(current => {
+      if (!current) return changedAnnotations;
+      
+      const updated = [...current];
+      changedAnnotations.forEach(changedAnnotation => {
+        const index = updated.findIndex(a => a.id === changedAnnotation.id);
+        if (index !== -1) {
+          updated[index] = changedAnnotation;
+        } else {
+          // If annotation doesn't exist, add it (edge case)
+          updated.push(changedAnnotation);
+        }
+      });
+      return updated;
+    });
     
-    // Auto-save the updated timeline annotations to the database
+    // Auto-save only the changed timeline annotations to the database
     try {
-      // Update each annotation in the database
-      const updatePromises = updatedAnnotations.map(async (annotation) => {
-        const response = await fetch(`/api/timeline-event-mappings/${annotation.analysis_id}`, {
+      // Update each changed annotation in the database by individual annotation ID
+      const updatePromises = changedAnnotations.map(async (annotation) => {
+        if (!annotation.id) {
+          console.error('Annotation missing ID, cannot update:', annotation);
+          return false;
+        }
+        
+        const response = await fetch(`/api/timeline-event-mappings/annotation/${annotation.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1059,7 +1191,7 @@ export function useWorkflowPageLogic(userId: string) {
         });
         
         if (!response.ok) {
-          console.error(`Failed to update timeline annotation ${annotation.analysis_id}:`, response.status);
+          console.error(`Failed to update timeline annotation ${annotation.id}:`, response.status);
         }
         
         return response.ok;
@@ -1068,7 +1200,7 @@ export function useWorkflowPageLogic(userId: string) {
       const results = await Promise.all(updatePromises);
       const successCount = results.filter(Boolean).length;
       
-      console.log(`Auto-saved ${successCount}/${updatedAnnotations.length} timeline annotations`);
+      console.log(`Auto-saved ${successCount}/${changedAnnotations.length} changed timeline annotations`);
       
     } catch (error) {
       console.error('Error auto-saving timeline annotations:', error);
@@ -1120,8 +1252,9 @@ export function useWorkflowPageLogic(userId: string) {
       await saveSynthesisSession(initialMessages, 'idle', [], emptyContext, null, []);
     }
     
-    setSynthesisSessionId(null);
-    await fetchCompleteWorkflows();
+    // FIX: Don't clear session ID after creating new session - let saveSynthesisSession set it
+    // setSynthesisSessionId(null);
+    // Note: fetchCompleteWorkflows() will be called automatically by useEffect when synthesisSessionId changes
     setIsAiThinking(false);
   };
 
@@ -1214,7 +1347,7 @@ export function useWorkflowPageLogic(userId: string) {
       console.log(`Saved synthesis: ${result.message}`);
       
       // Refresh workflows to show updated status
-      await fetchWorkflows(true);
+      await fetchCompleteWorkflows();
       
       return { success: true, message: result.message };
     } catch (error) {
@@ -1234,6 +1367,12 @@ export function useWorkflowPageLogic(userId: string) {
   // Load existing timeline annotations for current session
   useEffect(() => {
     const loadExistingTimelineAnnotations = async () => {
+      // 🔧 FIX: DON'T load annotations while mapping is in progress to prevent race conditions
+      if (isMappingTimeline) {
+        console.log('⏸️ Skipping annotation load - mapping in progress');
+        return;
+      }
+      
       try {
         console.log('Loading timeline annotations for current session...');
         
@@ -1257,7 +1396,7 @@ export function useWorkflowPageLogic(userId: string) {
           const data = await response.json();
           if (data.annotations && data.annotations.length > 0) {
             setTimelineAnnotations(data.annotations);
-            console.log('Loaded timeline annotations for current session:', data.annotations.length);
+            console.log('✅ Loaded timeline annotations for current session:', data.annotations.length);
           } else {
             console.log('ℹ️ No timeline annotations found for current session');
             setTimelineAnnotations([]);
@@ -1272,10 +1411,10 @@ export function useWorkflowPageLogic(userId: string) {
       }
     };
     
-    if (userId) {
+    if (userId && !isMappingTimeline) { // 🔧 FIX: Added isMappingTimeline check
       loadExistingTimelineAnnotations();
     }
-  }, [userId, synthesisSessionId]); // Re-load when session changes
+  }, [userId, synthesisSessionId, isMappingTimeline]); // 🔧 FIX: Added isMappingTimeline dependency
 
   // Load existing synthesis session on page load
   useEffect(() => {
@@ -1365,7 +1504,7 @@ export function useWorkflowPageLogic(userId: string) {
 
             // Check for completion or error
             if (data.success) {
-              setSynthesisStep('done');
+              setSynthesisStep('timeline_complete');
               setTimeout(() => setIsOrchestrating(false), 2000);
               break;
             }
@@ -1392,6 +1531,11 @@ export function useWorkflowPageLogic(userId: string) {
     }
   };
 
+  const clearTimeBoundary = () => {
+    setTimeBoundary({ startDate: null, endDate: null });
+    localStorage.removeItem(TIME_BOUNDARY_STORAGE_KEY);
+  };
+
   return {
     // Core State
     workflows,
@@ -1412,8 +1556,7 @@ export function useWorkflowPageLogic(userId: string) {
     // Data & Context
     workflowContext,
     editableContext,
-    identifiedWorkflowNames,
-    draftWorkflowNames,
+    workflowNames,
     workflowBoundaries,
     timelineAnnotations,
     userStats,
@@ -1433,8 +1576,7 @@ export function useWorkflowPageLogic(userId: string) {
     // Setters & Handlers
     setWorkflows,
     setSynthesisStep,
-    setIdentifiedWorkflowNames,
-    setDraftWorkflowNames,
+    setWorkflowNames,
     setWorkflowBoundaries,
     handleContextChange,
     handleWorkflowsChange,
@@ -1456,9 +1598,11 @@ export function useWorkflowPageLogic(userId: string) {
     timelineMappingBatch,
     timelineMappingMode,
     setTimelineMappingMode,
+    batchList, // Added batchList to the return object
     
     // Time boundary state
     timeBoundary,
     setTimeBoundary,
+    clearTimeBoundary,
   };
 } 

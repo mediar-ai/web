@@ -73,7 +73,7 @@ export default function MCPAPIDocsPage() {
   // Set app domain on client side
   useEffect(() => {
     const domain = getAppDomain();
-    console.log('🔧 [MCP Docs] Setting domain:', domain);
+    console.log('[FIX] [MCP Docs] Setting domain:', domain);
     setAppDomain(domain);
   }, []);
 
@@ -159,10 +159,10 @@ export default function MCPAPIDocsPage() {
           setMcpWorkflows(workflowsData.workflows || []);
         }
         
-        console.log(`✅ Successfully loaded ${tools.length} MCP tools`);
+        console.log(`[SUCCESS] Successfully loaded ${tools.length} MCP tools`);
         setToolsError(null);
       } catch (error) {
-        console.error('❌ Failed to fetch MCP tools:', error);
+        console.error('[ERROR] Failed to fetch MCP tools:', error);
         setToolsError(error instanceof Error ? error.message : 'Unknown error');
       } finally {
         setLoadingTools(false);
@@ -360,7 +360,7 @@ graph TB
           
           {toolsError && (
             <div className="mb-4 p-3 bg-gray-100 border border-black rounded-lg">
-              <p className="text-gray-800 text-sm">⚠️ Could not load MCP tools: {toolsError}</p>
+              <p className="text-gray-800 text-sm">[WARN] Could not load MCP tools: {toolsError}</p>
             </div>
           )}
 
@@ -503,7 +503,7 @@ const client = new Client(
 );
 
 await client.connect(transport);
-console.log('✅ Connected to MCP server');`}
+console.log('[SUCCESS] Connected to MCP server');`}
                   </CodeBlock>
                 </TabsContent>
                 
@@ -519,8 +519,8 @@ async def test_connection():
         async with ClientSession(read_stream, write_stream) as session:
             # Test connection by listing tools
             tools = await session.list_tools()
-            print(f'✅ Connected to MCP server')
-            print(f'📊 Tools available: {len(tools.tools)}')
+            print(f'[SUCCESS] Connected to MCP server')
+            print(f'[STATS] Tools available: {len(tools.tools)}')
 
 # Run the test
 asyncio.run(test_connection())`}
@@ -871,7 +871,7 @@ console.log('Quote Result:', quote);`}
             </div>
           ) : toolsError ? (
             <div className="p-4 bg-gray-100 border border-black rounded-lg">
-              <p className="text-gray-800">⚠️ Error loading tools: {toolsError}</p>
+              <p className="text-gray-800">[WARN] Error loading tools: {toolsError}</p>
             </div>
           ) : (
             <div className="space-y-6">

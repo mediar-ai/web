@@ -1,15 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ analysisId: string }> }
+  { params }: { params: Promise<{ annotationId: string }> }
 ) {
   try {
-    const { analysisId } = await params;
+    const { annotationId } = await params;
     const { userId, annotation } = await request.json();
 
     if (!userId || !annotation) {
@@ -21,7 +21,7 @@ export async function PUT(
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Update the annotation in the database
+    // Update the specific annotation by ID (not all annotations with same analysis_id)
     const { error } = await supabaseAdmin
       .from('raw_timeline_event_annotations')
       .update({
@@ -39,7 +39,7 @@ export async function PUT(
         updated_at: new Date().toISOString(),
       })
       .eq('user_id', userId)
-      .eq('analysis_id', analysisId);
+      .eq('id', annotationId); // Target specific annotation ID, not analysis_id
 
     if (error) {
       console.error('Error updating timeline annotation:', error);
@@ -55,7 +55,7 @@ export async function PUT(
     });
 
   } catch (error) {
-    console.error('Error in timeline mapping update:', error);
+    console.error('Error in timeline annotation update:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

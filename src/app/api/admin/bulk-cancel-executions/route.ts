@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
-      console.error('❌ Database error during bulk cancellation:', error);
+      console.error('[ERROR] Database error during bulk cancellation:', error);
       throw new Error(`Database operation failed: ${error.message}`);
     }
 
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     const cancelledCount = result?.cancelled_count || 0;
     const affectedWorkflows = result?.affected_workflows || [];
 
-    console.log('✅ Bulk cancellation completed:', {
+    console.log('[SUCCESS] Bulk cancellation completed:', {
       cancelled_count: cancelledCount,
       affected_workflows: affectedWorkflows
     });
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Error in bulk cancellation:', error);
+    console.error('[ERROR] Error in bulk cancellation:', error);
     
     return NextResponse.json(
       {
@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Error in bulk cancellation preview:', error);
+    console.error('[ERROR] Error in bulk cancellation preview:', error);
     
     return NextResponse.json(
       {

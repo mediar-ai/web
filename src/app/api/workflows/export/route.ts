@@ -108,7 +108,7 @@ async function fetchSampleWorkflows(): Promise<ExampleWorkflow[]> {
   const fetchTime = Date.now() - startTime;
 
   if (error) {
-    console.warn('⚠️ [EXPORT] Warning: Could not fetch sample workflows:', {
+    console.warn('[WARN] [EXPORT] Warning: Could not fetch sample workflows:', {
       error: error.message,
       code: error.code,
       details: error.details,
@@ -128,7 +128,7 @@ async function fetchSampleWorkflows(): Promise<ExampleWorkflow[]> {
     category: w.category
   }));
 
-  console.log('✅ [EXPORT] Sample workflows fetched successfully:', {
+  console.log('[SUCCESS] [EXPORT] Sample workflows fetched successfully:', {
     count: transformedWorkflows.length,
     fetchTimeMs: fetchTime,
     workflows: transformedWorkflows.map(w => ({
@@ -155,7 +155,7 @@ async function generateEnhancedExportWithLLM(
   savedSynthesis: SavedSynthesis | null,
   sampleWorkflows: ExampleWorkflow[]
 ): Promise<string> {
-  console.log('🤖 [EXPORT] Starting enhanced export with Gemini LLM...');
+  console.log('[LLM] [EXPORT] Starting enhanced export with Gemini LLM...');
   const startTime = Date.now();
 
   // Extract workflow data from detailed_workflow_data if available
@@ -209,7 +209,7 @@ async function generateEnhancedExportWithLLM(
     } : null
   };
 
-  console.log('📊 [EXPORT] LLM Context Size Analysis:', {
+  console.log('[STATS] [EXPORT] LLM Context Size Analysis:', {
     contextSizeBreakdown: {
       totalSize: JSON.stringify(llmContext).length,
       targetWorkflowSize: JSON.stringify(llmContext.targetWorkflow).length,
@@ -254,7 +254,7 @@ ${JSON.stringify(llmContext, null, 2)}
 
 Please generate an enhanced YAML workflow sequence based on this data and the sample workflows provided.`;
 
-    console.log('🤖 [EXPORT] Calling Vertex AI with context data...', {
+    console.log('[LLM] [EXPORT] Calling Vertex AI with context data...', {
       model: 'gemini-2.5-pro',
       promptLength: prompt.length,
       temperature: 0.3
@@ -273,7 +273,7 @@ Please generate an enhanced YAML workflow sequence based on this data and the sa
       const enhancedYaml = response.candidates[0].content.parts[0].text;
       const totalTime = Date.now() - startTime;
       
-      console.log('✅ [EXPORT] Enhanced YAML generated successfully with LLM:', {
+      console.log('[SUCCESS] [EXPORT] Enhanced YAML generated successfully with LLM:', {
         llmResponseTimeMs: llmTime,
         totalTimeMs: totalTime,
         outputLength: enhancedYaml.length,
@@ -287,7 +287,7 @@ Please generate an enhanced YAML workflow sequence based on this data and the sa
 
   } catch (error) {
     const errorTime = Date.now() - startTime;
-    console.error('❌ [EXPORT] LLM enhancement failed, falling back to basic generation:', {
+    console.error('[ERROR] [EXPORT] LLM enhancement failed, falling back to basic generation:', {
       error: error instanceof Error ? error.message : 'Unknown error',
       errorTimeMs: errorTime,
       fallbackUsed: true
@@ -336,7 +336,7 @@ async function fetchMcpServerImplementation(): Promise<{
     ]);
 
     if (!serverResponse.ok || !mainResponse.ok) {
-      console.warn('⚠️ [EXPORT] Failed to fetch MCP server files:', {
+      console.warn('[WARN] [EXPORT] Failed to fetch MCP server files:', {
         serverStatus: serverResponse.status,
         mainStatus: mainResponse.status
       });
@@ -348,14 +348,14 @@ async function fetchMcpServerImplementation(): Promise<{
       mainResponse.text()
     ]);
 
-    console.log('✅ [EXPORT] MCP server files fetched successfully:', {
+    console.log('[SUCCESS] [EXPORT] MCP server files fetched successfully:', {
       serverSize: serverRs.length,
       mainSize: mainRs.length
     });
 
     return { serverRs, mainRs };
   } catch (error) {
-    console.warn('⚠️ [EXPORT] Error fetching MCP server files:', error);
+    console.warn('[WARN] [EXPORT] Error fetching MCP server files:', error);
     return null;
   }
 }
@@ -380,7 +380,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!userId || !workflowId) {
-      console.error('❌ [EXPORT] Missing required parameters:', {
+      console.error('[ERROR] [EXPORT] Missing required parameters:', {
         requestId,
         hasUserId: !!userId,
         hasWorkflowId: !!workflowId
@@ -418,7 +418,7 @@ export async function POST(req: NextRequest) {
     const workflowFetchTime = Date.now() - workflowFetchStart;
 
     if (workflowError || !targetWorkflow) {
-      console.error('❌ [EXPORT] Workflow not found:', {
+      console.error('[ERROR] [EXPORT] Workflow not found:', {
         requestId,
         workflowId,
         userId,
@@ -428,7 +428,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
     }
 
-    console.log('✅ [EXPORT] Target workflow fetched successfully:', {
+    console.log('[SUCCESS] [EXPORT] Target workflow fetched successfully:', {
       requestId,
       workflowId: targetWorkflow.id,
       workflowTitle: targetWorkflow.title,
@@ -461,7 +461,7 @@ export async function POST(req: NextRequest) {
         savedSynthesis = synthesis;
         synthesisContext = synthesis.workflow_context;
         
-        console.log('✅ [EXPORT] Synthesis context found:', {
+        console.log('[SUCCESS] [EXPORT] Synthesis context found:', {
           requestId,
           synthesisId: synthesis.id,
           synthesisTitle: synthesis.title,
@@ -469,7 +469,7 @@ export async function POST(req: NextRequest) {
           fetchTimeMs: synthesisTime
         });
       } else {
-        console.log('⚠️ [EXPORT] No synthesis context found:', {
+        console.log('[WARN] [EXPORT] No synthesis context found:', {
           requestId,
           synthesisSessionId: targetWorkflow.synthesis_session_id,
           error: synthesisError?.message,
@@ -511,7 +511,7 @@ export async function POST(req: NextRequest) {
     const annotationsTime = Date.now() - annotationsStart;
 
     if (timelineError) {
-      console.warn('⚠️ [EXPORT] Error fetching timeline annotations:', {
+      console.warn('[WARN] [EXPORT] Error fetching timeline annotations:', {
         requestId,
         error: timelineError.message,
         code: timelineError.code,
@@ -618,7 +618,7 @@ export async function POST(req: NextRequest) {
     const workflowTitle = selectedWorkflowName || targetWorkflow.title || 'Exported Workflow';
     
     // Log comprehensive LLM context analysis before making the call
-    console.log('🤖 [EXPORT] LLM Context Content Analysis:', {
+    console.log('[LLM] [EXPORT] LLM Context Content Analysis:', {
       requestId,
       
       // Context breakdown
@@ -700,7 +700,7 @@ export async function POST(req: NextRequest) {
     const exportTime = Date.now() - exportStart;
     const totalTime = Date.now() - requestStartTime;
 
-    console.log(`✅ [EXPORT] YAML export generation completed successfully:`, {
+    console.log(`[SUCCESS] [EXPORT] YAML export generation completed successfully:`, {
       requestId,
       workflowTitle,
       workflowId: targetWorkflow.id,
@@ -731,7 +731,7 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    console.log('🎉 [EXPORT] Request completed successfully:', {
+    console.log('[COMPLETE] [EXPORT] Request completed successfully:', {
       requestId,
       totalTimeMs: totalTime,
       success: true
