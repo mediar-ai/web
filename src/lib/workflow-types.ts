@@ -48,6 +48,15 @@ export interface Workflow {
   failed_runs: number;
   cancelled_runs: number;
   total_executions: number;
+  // Cron scheduling fields
+  cron_expression?: string | null;
+  cron_timezone?: string;
+  cron_enabled?: boolean;
+  last_scheduled_execution?: string | null;
+  next_scheduled_execution?: string | null;
+  cron_max_concurrent?: number;
+  cron_retry_on_failure?: boolean;
+  cron_retry_count?: number;
   success_rate: number | null;
   // Version-specific statistics
   current_version_stats?: {
@@ -112,6 +121,9 @@ export interface Execution {
   error_message?: string;
   client_id?: string;
   execution_params?: Record<string, unknown>;
+  // Version information
+  version_number?: string;
+  workflow_version_id?: number;
   results?: ExecutionResult;
   formatted_output?: string;
   raw_logs?: string;
@@ -155,6 +167,9 @@ export interface LiveExecutionStatus {
   created_at: string;
   execution_duration_seconds: number | null;
   modal_call_id: string;
+  // Version information
+  version_number?: string;
+  workflow_version_id?: number;
   client_id: string;
   estimated_seconds_remaining: number | null;
   steps_per_minute: number | null;

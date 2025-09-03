@@ -1,0 +1,115 @@
+name: "Example Standardized Success/Failure Workflow"
+description: "Demonstrates the new standardized output parser response format"
+tool_name: "mcp_terminator-mcp-agent_execute_sequence"
+arguments:
+  steps:
+    - tool_name: "navigate_browser"
+      arguments:
+        url: "https://example-insurance.com"
+
+    - tool_name: "type_into_element"
+      arguments:
+        selector: "role:Edit|name:Age"
+        text_to_type: "35"
+
+    - tool_name: "click_element"
+      arguments:
+        selector: "role:Button|name:Get Quote"
+
+    - tool_name: "wait_for_output_parser"
+      arguments:
+        output_parser:
+          javascript_code: |
+            // =============================================================================
+            // STANDARDIZED OUTPUT PARSER - NEW FORMAT
+            // =============================================================================
+
+            // Check for failures first
+            const hasError = tree && (
+              tree.attributes?.name?.includes("error") ||
+              tree.attributes?.name?.includes("Error") ||
+              tree.text?.includes("Something went wrong")
+            );
+
+            // Extract data from the page
+            const quotes = [];
+
+            // Look for quote elements (example selectors)
+            const quoteElements = tree?.children?.filter(child => 
+              child.role === "group" && 
+              child.attributes?.name?.includes("quote")
+            ) || [];
+
+            // Extract quote data
+            for (const quoteEl of quoteElements) {
+              const priceEl = quoteEl.children?.find(c => 
+                c.role === "text" && c.text?.includes("$")
+              );
+              const planEl = quoteEl.children?.find(c => 
+                c.role === "text" && c.attributes?.name?.includes("plan")
+              );
+              
+              if (priceEl && planEl) {
+                quotes.push({
+                  plan_name: planEl.text || "Unknown Plan",
+                  monthly_premium: priceEl.text || "$0",
+                  provider: "Example Insurance Co",
+                  coverage_type: "Health Insurance"
+                });
+              }
+            }
+
+            // Determine business logic success
+            const businessSuccess = !hasError && quotes.length > 0;
+
+            // Create validation information
+            const validation = {
+              quotes_found: quotes.length,
+              has_error: hasError,
+              page_loaded: tree !== null,
+              quote_elements_detected: quoteElements.length
+            };
+
+            // =============================================================================
+            // RETURN STANDARDIZED FORMAT
+            // =============================================================================
+            return {
+              success: businessSuccess,                    // Business logic success
+              data: quotes,                               // Extracted data (empty on failure)
+              message: businessSuccess ? 
+                `Successfully found ${quotes.length} insurance quotes` :
+                hasError ? "Page shows error - unable to get quotes" :
+                "No quotes found - may not qualify for coverage",
+              error: hasError ? "Error detected on insurance quote page" : null,
+              validation: validation                      // Validation details
+            };
+
+  # Example inputs for the workflow
+  inputs:
+    applicant_age: 35
+    coverage_type: "health"
+    zip_code: "12345"
+
+  # Variable schema for UI generation
+  variables:
+    applicant_age:
+      type: "number"
+      label: "Applicant Age"
+      description: "Age of the primary applicant"
+      required: true
+      default: 35
+    coverage_type:
+      type: "enum"
+      label: "Coverage Type"
+      description: "Type of insurance coverage needed"
+      options: ["health", "auto", "home", "life"]
+      required: true
+      default: "health"
+    zip_code:
+      type: "string"
+      label: "ZIP Code"
+      description: "ZIP code for coverage area"
+      required: true
+      regex: "^[0-9]{5}$"
+      default: "12345"
+

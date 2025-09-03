@@ -5,6 +5,15 @@
     },
     "src/app/api/suggest-workflow-labels/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/cron/scheduler/route.ts": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/scheduler",
+      "schedule": "* * * * *"
+    }
+  ]
 } 

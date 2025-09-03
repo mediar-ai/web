@@ -1,0 +1,29 @@
+---
+# Test workflow created via UI
+# Simple echo commands to verify functionality
+tool_name: execute_sequence
+arguments:
+  variables:
+    message:
+      type: string
+      label: Message
+      description: Message to echo
+      default: "Hello from new workflow!"
+
+  inputs:
+    message: "Hello from new workflow!"
+
+  steps:
+    - tool_name: run_command
+      arguments:
+        unix_command: "echo 'Starting test workflow...'"
+
+    - tool_name: run_command
+      arguments:
+        unix_command: "echo '${{message}}'"
+
+    - tool_name: run_command
+      arguments:
+        unix_command: "echo 'Test workflow completed successfully!'"
+
+stop_on_error: true

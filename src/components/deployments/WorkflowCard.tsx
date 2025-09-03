@@ -1,6 +1,7 @@
 'use client';
 
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
+import { DeleteWorkflowDialog } from '@/components/deployments/DeleteWorkflowDialog';
 import { VersionUploadDialog } from '@/components/deployments/VersionUploadDialog';
 import { WorkflowSettingsModal } from '@/components/deployments/WorkflowSettingsModal';
 import {
@@ -21,6 +22,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { CronScheduleBadge } from '@/components/ui/cron-schedule-badge';
 import {
   Execution,
   LiveExecutionStatus,
@@ -57,6 +59,7 @@ interface WorkflowCardProps {
   loadingExecutions?: boolean;
   onBatchSubmit?: () => void;
   isNested?: boolean; // For styling nested settings workflows
+  isAdmin?: boolean; // Admin role for delete permissions
 }
 
 const getStatusBadge = (status: string) => {
@@ -112,6 +115,7 @@ export function WorkflowCard({
   loadingExecutions = false,
   onBatchSubmit,
   isNested,
+  isAdmin = false,
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [connectedWorkflowsExpanded, setConnectedWorkflowsExpanded] =
@@ -128,6 +132,9 @@ export function WorkflowCard({
     executionId: number;
   } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [cronToggling, setCronToggling] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingWorkflow, setDeletingWorkflow] = useState(false);
 
   // Cache-related state for showing preview results for pending executions
   const [executionCacheResults, setExecutionCacheResults] = useState<
@@ -353,6 +360,89 @@ export function WorkflowCard({
     }
   };
 
+  const handleCronToggle = async (enabled: boolean) => {
+    setCronToggling(true);
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/cron`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Update the workflow state locally
+        workflow.cron_enabled = enabled;
+        console.log(`✅ Cron schedule ${enabled ? 'enabled' : 'disabled'} for ${workflow.name}`);
+        
+        // You might want to trigger a refresh of the workflows list here
+        // onFetchWorkflowDetails?.(workflow.id);
+      } else {
+        console.error('Failed to toggle cron schedule:', result.error);
+        alert(`Failed to ${enabled ? 'enable' : 'disable'} cron schedule: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error toggling cron schedule:', error);
+      alert(`Error ${enabled ? 'enabling' : 'disabling'} cron schedule`);
+    } finally {
+      setCronToggling(false);
+    }
+  };
+
+  const handleCronClick = () => {
+    // Show detailed cron information
+    alert(`Cron Schedule Details:
+Expression: ${workflow.cron_expression}
+Timezone: ${workflow.cron_timezone || 'UTC'}
+Status: ${workflow.cron_enabled ? 'Enabled' : 'Disabled'}
+Last Run: ${workflow.last_scheduled_execution || 'Never'}
+Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
+  };
+
+     const handleDeleteWorkflow = async (workflowId: number) => {
+     setDeletingWorkflow(true);
+     try {
+       console.log(`🗑️ Deleting workflow: ${workflow.name} (ID: ${workflowId})`);
+       
+       const response = await fetch(`/api/remote-workflows/${workflowId}/delete`, {
+         method: 'DELETE',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+       });
+ 
+       const result = await response.json();
+       
+       if (result.success) {
+         console.log(`✅ Successfully deleted workflow: ${workflow.name}`);
+         
+         // Show success feedback
+         alert(`✅ Workflow "${workflow.name}" deleted successfully!`);
+         
+         // Close the dialog first
+         setDeleteDialogOpen(false);
+         
+         // Refresh the workflows list immediately
+         if (onBatchSubmit) {
+           console.log('🔄 Triggering workflows list refresh...');
+           onBatchSubmit();
+         }
+         
+       } else {
+         console.error('Failed to delete workflow:', result.error);
+         alert(`❌ Failed to delete workflow: ${result.error}`);
+       }
+     } catch (error) {
+       console.error('Error deleting workflow:', error);
+       alert('❌ Error deleting workflow. Please try again.');
+     } finally {
+       setDeletingWorkflow(false);
+     }
+   };
+
   const handleConfirm = async () => {
     if (!pendingAction) return;
     setActionLoading(true);
@@ -447,6 +537,8 @@ export function WorkflowCard({
     formatted_output?: string | null;
     progress_percentage?: number;
     current_step_description?: string | null;
+    version_number?: string | null;
+    workflow_version_id?: number | null;
     isLive: boolean;
   };
 
@@ -464,6 +556,8 @@ export function WorkflowCard({
       formatted_output: null,
       progress_percentage: exec.progress_percentage,
       current_step_description: exec.current_step_description,
+      version_number: exec.version_number || null,
+      workflow_version_id: exec.workflow_version_id || null,
       isLive: true,
     })),
     // Add recent executions with isLive flag
@@ -479,6 +573,8 @@ export function WorkflowCard({
       formatted_output: exec.formatted_output || null,
       progress_percentage: exec.progress_percentage,
       current_step_description: null,
+      version_number: exec.version_number || null,
+      workflow_version_id: exec.workflow_version_id || null,
       isLive: false,
     })),
   ]
@@ -524,6 +620,27 @@ export function WorkflowCard({
                     </span>
                   )}
                 </div>
+
+                {/* Cron Schedule Badge */}
+                {workflow.cron_expression && (
+                  <div className="flex items-center gap-2">
+                    <CronScheduleBadge
+                      cronExpression={workflow.cron_expression}
+                      cronEnabled={workflow.cron_enabled}
+                      cronTimezone={workflow.cron_timezone}
+                      lastExecution={workflow.last_scheduled_execution}
+                      nextExecution={workflow.next_scheduled_execution}
+                      className="text-xs"
+                      onClick={handleCronClick}
+                      onToggleEnabled={cronToggling ? undefined : handleCronToggle}
+                    />
+                    {workflow.cron_enabled && (
+                      <Badge variant="outline" className="text-xs text-green-600 border-green-300">
+                        AUTO
+                      </Badge>
+                    )}
+                  </div>
+                )}
 
                 {/* Current Version Stats */}
                 {workflow.current_version_stats &&
@@ -578,14 +695,28 @@ export function WorkflowCard({
               </Badge>
 
               {/* Action buttons */}
-              <Button
-                onClick={() => setShowBatchTestDialog(true)}
-                className="bg-black text-white hover:bg-gray-800 hover:shadow-lg font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 transform hover:scale-105 rounded-lg font-bold"
-                size="lg"
-              >
-                <PlayCircle className="w-5 h-5 mr-2" />
-                TEST RUN
-              </Button>
+              {workflow.cron_expression && workflow.cron_enabled ? (
+                // Cron workflows show automated status instead of manual run button
+                <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                  <span className="text-blue-700 font-mono text-sm">
+                    AUTOMATED SCHEDULE
+                  </span>
+                  <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">
+                    No manual execution
+                  </Badge>
+                </div>
+              ) : (
+                // Regular workflows show the test run button
+                <Button
+                  onClick={() => setShowBatchTestDialog(true)}
+                  className="bg-black text-white hover:bg-gray-800 hover:shadow-lg font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 transform hover:scale-105 rounded-lg font-bold"
+                  size="lg"
+                >
+                  <PlayCircle className="w-5 h-5 mr-2" />
+                  TEST RUN
+                </Button>
+              )}
 
               <VersionUploadDialog
                 workflowId={workflow.id}
@@ -630,9 +761,41 @@ export function WorkflowCard({
               >
                 <Settings className="w-5 h-5" />
               </Button>
+
+                             {/* Delete button - Admin only */}
+               {!isNested && (
+                 <Button
+                   onClick={() => setDeleteDialogOpen(true)}
+                   variant="outline"
+                   size="lg"
+                   disabled={deletingWorkflow}
+                   className="font-mono text-base h-10 px-4 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg rounded-lg font-bold border-2 border-red-500 text-red-600 hover:bg-red-50 hover:border-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                   title={deletingWorkflow ? "Deleting..." : `Delete Workflow (Debug: isAdmin=${isAdmin})`}
+                 >
+                   {deletingWorkflow ? (
+                     <Loader2 className="w-5 h-5 animate-spin" />
+                   ) : (
+                     <Trash2 className="w-5 h-5" />
+                   )}
+                 </Button>
+               )}
             </div>
 
             <p className="text-black text-base mb-2">{workflow.description}</p>
+            
+            {/* Cron workflow notice */}
+            {workflow.cron_expression && workflow.cron_enabled && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2 text-blue-700">
+                  <Clock className="w-4 h-4" />
+                  <span className="font-semibold text-sm">Automated Workflow</span>
+                </div>
+                <p className="text-blue-600 text-xs mt-1">
+                  This workflow runs automatically on schedule. Manual execution is disabled.
+                  Use the cron badge above to view schedule details or pause automation.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -777,14 +940,23 @@ export function WorkflowCard({
                             </span>
                           </div>
                         ) : (
-                          <Badge
-                            className={`${getStatusBadge(execution.status)} h-7 px-3 text-sm`}
-                          >
-                            {getStatusIcon(execution.status)}
-                            <span className="ml-0.5">
-                              {execution.status.toUpperCase()}
-                            </span>
-                          </Badge>
+                          <>
+                            <Badge
+                              className={`${getStatusBadge(execution.status)} h-7 px-3 text-sm`}
+                            >
+                              {getStatusIcon(execution.status)}
+                              <span className="ml-0.5">
+                                {execution.status.toUpperCase()}
+                              </span>
+                            </Badge>
+                            
+                            {/* Version Badge */}
+                            {execution.version_number && (
+                              <Badge variant="outline" className="text-xs px-2 py-0.5">
+                                v{execution.version_number}
+                              </Badge>
+                            )}
+                          </>
                         )}
                         <div className="flex items-center gap-1.5 text-sm text-muted-foreground flex-wrap">
                           {execution.isLive ? (
@@ -1224,6 +1396,15 @@ export function WorkflowCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+             {/* Delete Workflow Dialog - Admin only */}
+       <DeleteWorkflowDialog
+         workflow={workflow}
+         open={deleteDialogOpen}
+         onOpenChange={setDeleteDialogOpen}
+         onConfirm={handleDeleteWorkflow}
+         isDeleting={deletingWorkflow}
+       />
     </Card>
   );
 }

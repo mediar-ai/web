@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
+import { NextRequest, NextResponse } from 'next/server';
 
 interface WorkflowVersion {
   version_id: number;
@@ -129,6 +129,7 @@ export async function POST(
     let yamlContent: string | null = null;
     let jsonbContent = null; 
     let sequence_format: string;
+    let cronConfig = null;
 
     if (typeof automation_sequence === 'string') {
       // Raw YAML or JSON string - detect and store as-is
@@ -136,6 +137,18 @@ export async function POST(
       if (detectedFormat === 'yaml') {
         yamlContent = automation_sequence;
         sequence_format = 'yaml';
+        
+        // Extract cron configuration from YAML
+        try {
+          const { extractCronConfigFromYAML } = await import('@/lib/cronParser');
+          cronConfig = extractCronConfigFromYAML(automation_sequence);
+          if (cronConfig) {
+            console.log(`📅 Extracted cron config: ${cronConfig.expression} (${cronConfig.timezone})`);
+          }
+        } catch (error) {
+          console.warn('⚠️  Failed to extract cron config from YAML:', error);
+        }
+        
         // [FIX] FIX: Convert YAML to JSON for automation_sequence column (NOT NULL constraint)
         try {
           jsonbContent = yaml.load(automation_sequence);
@@ -258,6 +271,22 @@ export async function POST(
       change_notes: change_notes || `Version ${newVersionNumber} created via API (${sequence_format} format)`
     };
 
+    // Update parent workflow with cron configuration if present
+    const workflowUpdateData: any = {
+      total_versions: workflow.total_versions + 1,
+      updated_at: new Date().toISOString()
+    };
+
+    if (cronConfig) {
+      workflowUpdateData.cron_expression = cronConfig.expression;
+      workflowUpdateData.cron_timezone = cronConfig.timezone || 'UTC';
+      workflowUpdateData.cron_enabled = cronConfig.enabled !== false;
+      workflowUpdateData.cron_max_concurrent = cronConfig.maxConcurrent || 1;
+      workflowUpdateData.cron_retry_on_failure = cronConfig.retryOnFailure !== false;
+      workflowUpdateData.cron_retry_count = cronConfig.retryCount || 3;
+      console.log(`📅 Updating workflow cron settings: ${cronConfig.expression}`);
+    }
+
     const { data: newVersion, error: versionError } = await supabase
       .from('deployed_workflow_versions')
       .insert(versionData)
@@ -268,13 +297,10 @@ export async function POST(
       throw new Error(`Failed to create version: ${versionError.message}`);
     }
 
-    // Update workflow metadata
+    // Update workflow metadata (including cron config if present)
     const { error: updateError } = await supabase
       .from('deployed_workflows')
-      .update({
-        total_versions: workflow.total_versions + 1,
-        updated_at: new Date().toISOString()
-      })
+      .update(workflowUpdateData)
       .eq('id', workflowIdNum);
 
     if (updateError) {
