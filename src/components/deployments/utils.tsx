@@ -13,8 +13,8 @@ export const getStatusBadge = (status: string) => {
     pending: 'bg-gray-200 text-black',
     error: 'bg-red-800 text-white',
     running: 'bg-black text-white',
-    completed: 'bg-black text-white',
-    completed_with_errors: 'bg-orange-600 text-white', // Success but with warnings
+    completed: 'bg-green-600 text-white',
+    completed_with_errors: 'bg-yellow-600 text-white', // Success but with warnings
     failed: 'bg-red-600 text-white',
     cancelled: 'bg-gray-600 text-white',
     queued: 'bg-gray-400 text-white',
