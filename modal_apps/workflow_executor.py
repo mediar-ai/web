@@ -1,32 +1,30 @@
-import modal
+import asyncio
+import collections.abc
+import io
 import json
-import time
+import logging
+import os
 import random
 import re
-import asyncio
+import sys
+import time
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List, Tuple
-import os
-import logging
-import psycopg2
-from psycopg2.extras import RealDictCursor
-import io
-import sys
-import collections.abc
+from typing import Any, Dict, List, Optional, Tuple
 
+import modal
+import psycopg2
 import yaml  # For YAML sequence loading
-from modal_apps.output_enrichment import enrich_results_if_enabled
-from modal_apps.lib.db import (
-    get_database_connection,
-    get_db_config,
-)
+from psycopg2.extras import RealDictCursor
+
+from modal_apps.lib.db import get_database_connection, get_db_config
 from modal_apps.lib.locks import (
     cleanup_stale_machine_locks,
     record_acquired_lock,
     release_acquired_locks,
 )
 from modal_apps.lib.mcp_client import normalize_endpoint, post_with_503_backoff
+from modal_apps.output_enrichment import enrich_results_if_enabled
 
 # Configure logging to capture everything
 logging.basicConfig(
@@ -38,24 +36,25 @@ logger = logging.getLogger(__name__)
 # SequenceLoader: Dual-Format Workflow Support (YAML + JSONB)
 # =============================================================================
 
+
 class SequenceLoader:
     """Handles both YAML and JSONB sequence loading with auto-detection"""
-    
+
     @staticmethod
     def load_workflow_sequence(workflow_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Load sequence with YAML priority, JSONB fallback
-        
+
         Args:
             workflow_data: Database record from deployed_workflows_with_sequence view
-            
+
         Returns:
             List of automation sequence steps (normalized format)
-            
+
         Raises:
             ValueError: If no valid sequence found in either format
         """
-        
+
         # Priority 1: Use YAML column if available
         yaml_sequence = workflow_data.get("automation_sequence_yaml")
         if yaml_sequence and yaml_sequence.strip():
@@ -65,7 +64,7 @@ class SequenceLoader:
                 return SequenceLoader._ensure_list_format(parsed)
             except yaml.YAMLError as e:
                 logger.warning(f"⚠️ YAML parsing failed, falling back to JSONB: {e}")
-        
+
         # Priority 2: Fallback to JSONB column (legacy)
         jsonb_sequence = workflow_data.get("automation_sequence")
         if jsonb_sequence:
@@ -75,9 +74,9 @@ class SequenceLoader:
             else:
                 parsed = jsonb_sequence
             return SequenceLoader._ensure_list_format(parsed)
-        
+
         raise ValueError("No automation sequence found in either YAML or JSONB columns")
-    
+
     @staticmethod
     def _ensure_list_format(sequence: Any) -> List[Dict[str, Any]]:
         """Ensure sequence is in expected list format"""
@@ -87,79 +86,80 @@ class SequenceLoader:
             return sequence
         else:
             raise ValueError(f"Invalid sequence format: {type(sequence)}")
-    
-    @staticmethod  
+
+    @staticmethod
     def get_sequence_info(workflow_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Get information about the sequence format and content
-        
+
         Args:
             workflow_data: Database record from deployed_workflows_with_sequence view
-            
+
         Returns:
             Dictionary with sequence information
         """
         info = {
-            'has_yaml': bool(workflow_data.get('automation_sequence_yaml')),
-            'has_jsonb': bool(workflow_data.get('automation_sequence')),
-            'format_used': workflow_data.get('sequence_format', 'unknown'),
-            'preferred_format': workflow_data.get('preferred_format', 'jsonb'),
-            'is_valid': False,
-            'step_count': 0,
-            'has_variables': False,
-            'has_steps': False
+            "has_yaml": bool(workflow_data.get("automation_sequence_yaml")),
+            "has_jsonb": bool(workflow_data.get("automation_sequence")),
+            "format_used": workflow_data.get("sequence_format", "unknown"),
+            "preferred_format": workflow_data.get("preferred_format", "jsonb"),
+            "is_valid": False,
+            "step_count": 0,
+            "has_variables": False,
+            "has_steps": False,
         }
-        
+
         try:
             sequence = SequenceLoader.load_workflow_sequence(workflow_data)
-            info['is_valid'] = SequenceLoader.validate_sequence_structure(sequence)
-            
-            if info['is_valid'] and len(sequence) > 0:
-                arguments = sequence[0].get('arguments', {})
-                info['step_count'] = len(arguments.get('steps', []))
-                info['has_variables'] = bool(arguments.get('variables'))
-                info['has_steps'] = bool(arguments.get('steps'))
-                
+            info["is_valid"] = SequenceLoader.validate_sequence_structure(sequence)
+
+            if info["is_valid"] and len(sequence) > 0:
+                arguments = sequence[0].get("arguments", {})
+                info["step_count"] = len(arguments.get("steps", []))
+                info["has_variables"] = bool(arguments.get("variables"))
+                info["has_steps"] = bool(arguments.get("steps"))
+
         except Exception as e:
             logger.warning(f"Failed to analyze sequence: {e}")
-            
+
         return info
 
     @staticmethod
     def validate_sequence_structure(sequence: List[Dict[str, Any]]) -> bool:
         """
         Validate that sequence has the expected structure
-        
+
         Args:
             sequence: Parsed sequence data
-            
+
         Returns:
             True if valid, False otherwise
         """
         try:
             if not isinstance(sequence, list) or len(sequence) == 0:
                 return False
-            
+
             # Check first element has required structure
             first_element = sequence[0]
             if not isinstance(first_element, dict):
                 return False
-            
+
             # Must have tool_name and arguments
-            if 'tool_name' not in first_element:
+            if "tool_name" not in first_element:
                 return False
-            
-            if 'arguments' not in first_element:
+
+            if "arguments" not in first_element:
                 return False
-            
+
             # Arguments should be a dict
-            if not isinstance(first_element['arguments'], dict):
+            if not isinstance(first_element["arguments"], dict):
                 return False
-            
+
             return True
-            
+
         except Exception:
             return False
+
 
 # Create a string buffer to capture all logs
 log_buffer = io.StringIO()
@@ -183,8 +183,7 @@ app = modal.App("workflow-executor")
 # Create image with MCP dependencies for browser automation
 # Note: MCP might need to be installed differently or might not be available via pip
 image = (
-    modal.Image.debian_slim()
-    .pip_install(
+    modal.Image.debian_slim().pip_install(
         [
             "psycopg2-binary",  # Direct database connection
             "httpx",  # HTTP client
@@ -209,77 +208,99 @@ secrets = [
 ]
 
 
-
 # Configuration for auto-cancellation
 CONSECUTIVE_FAILURE_THRESHOLD = 3  # Number of identical failures
 
 # Auto-cancellation logic
 
+
 def cancel_queued_jobs(cur, conn, workflow_id, original_error_message):
     """Cancel all queued jobs for workflow, return count cancelled"""
-    cancellation_message = f"Auto-cancelled: 3 consecutive identical failures - {original_error_message}"
-    
-    cur.execute("""
+    cancellation_message = (
+        f"Auto-cancelled: 3 consecutive identical failures - {original_error_message}"
+    )
+
+    cur.execute(
+        """
         UPDATE workflow_executions 
         SET status = 'cancelled', 
             error_message = %s,
             completed_at = NOW()
         WHERE workflow_id = %s AND status = 'queued'
         RETURNING id
-    """, (cancellation_message, workflow_id))
-    
+    """,
+        (cancellation_message, workflow_id),
+    )
+
     cancelled_ids = [row[0] for row in cur.fetchall()]
-    
+
     # Update workflow status to 'paused' to prevent new executions
-    cur.execute("""
+    cur.execute(
+        """
         UPDATE deployed_workflows 
         SET status = 'paused',
             updated_at = NOW()
         WHERE id = %s AND status = 'deployed'
-    """, (workflow_id,))
-    
+    """,
+        (workflow_id,),
+    )
+
     conn.commit()
-    
+
     return len(cancelled_ids), cancelled_ids
 
 
 def check_failure_patterns_for_workflow(cur, conn, workflow_id):
     """
     🚫 WORKFLOW-SPECIFIC FAILURE PATTERN CHECK: Prevents claiming jobs for a specific workflow with recent consecutive failures.
-    
+
     Checks if the last 3 executions (completed/failed) for the workflow are ALL failures with identical error messages.
     Ignores cancelled jobs since they never actually executed. If pattern found, cancels all queued jobs.
-    
+
     Returns: (should_block: bool, reason: str, check_duration_ms: int)
     """
     start_time = time.time()
-    
+
     try:
         # Check if we should skip cancellation check for this workflow (manual resume)
-        cur.execute("""
+        cur.execute(
+            """
             SELECT skip_next_cancellation_check 
             FROM deployed_workflows 
             WHERE id = %s
-        """, (workflow_id,))
-        
+        """,
+            (workflow_id,),
+        )
+
         result = cur.fetchone()
         if result and result[0]:  # skip_next_cancellation_check is True
             # Reset the flag and allow this execution to proceed
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE deployed_workflows 
                 SET skip_next_cancellation_check = false,
                     updated_at = NOW()
                 WHERE id = %s
-            """, (workflow_id,))
+            """,
+                (workflow_id,),
+            )
             conn.commit()
-            
+
             check_duration_ms = int((time.time() - start_time) * 1000)
-            logger.info("✅ Skipping cancellation check for workflow %d (manual resume) (took %dms)", 
-                       workflow_id, check_duration_ms)
-            return False, "Skipped cancellation check - manual resume", check_duration_ms
-        
+            logger.info(
+                "✅ Skipping cancellation check for workflow %d (manual resume) (took %dms)",
+                workflow_id,
+                check_duration_ms,
+            )
+            return (
+                False,
+                "Skipped cancellation check - manual resume",
+                check_duration_ms,
+            )
+
         # Check the last 3 executions that actually ran (completed or failed), ignoring cancelled jobs
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id, status, error_message, completed_at
             FROM workflow_executions 
             WHERE workflow_id = %s 
@@ -287,48 +308,74 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
             AND completed_at > NOW() - INTERVAL '10 minutes'
             ORDER BY completed_at DESC
             LIMIT %s
-        """, (workflow_id, CONSECUTIVE_FAILURE_THRESHOLD))
-        
+        """,
+            (workflow_id, CONSECUTIVE_FAILURE_THRESHOLD),
+        )
+
         recent_executions = cur.fetchall()
         check_duration_ms = int((time.time() - start_time) * 1000)
-        
+
         if len(recent_executions) < CONSECUTIVE_FAILURE_THRESHOLD:
-            logger.debug("🔍 Pre-claim check for workflow %d: %d recent executions, proceeding (took %dms)", 
-                        workflow_id, len(recent_executions), check_duration_ms)
+            logger.debug(
+                "🔍 Pre-claim check for workflow %d: %d recent executions, proceeding (took %dms)",
+                workflow_id,
+                len(recent_executions),
+                check_duration_ms,
+            )
             return False, "", check_duration_ms
-        
+
         # Check if ALL 3 most recent executions are failures with identical error messages
-        all_failed = all(row['status'] == 'failed' for row in recent_executions)
-        
+        all_failed = all(row["status"] == "failed" for row in recent_executions)
+
         if not all_failed:
-            logger.debug("🔍 Pre-claim check for workflow %d: Not all recent executions failed, proceeding (took %dms)", 
-                        workflow_id, check_duration_ms)
+            logger.debug(
+                "🔍 Pre-claim check for workflow %d: Not all recent executions failed, proceeding (took %dms)",
+                workflow_id,
+                check_duration_ms,
+            )
             return False, "", check_duration_ms
-        
+
         # All 3 are failures - check if they have identical error messages
-        error_messages = [row['error_message'] for row in recent_executions if row['error_message']]
-        
-        if len(error_messages) == CONSECUTIVE_FAILURE_THRESHOLD and all(msg == error_messages[0] for msg in error_messages):
+        error_messages = [
+            row["error_message"] for row in recent_executions if row["error_message"]
+        ]
+
+        if len(error_messages) == CONSECUTIVE_FAILURE_THRESHOLD and all(
+            msg == error_messages[0] for msg in error_messages
+        ):
             # Found problematic pattern - cancel remaining queued jobs for this workflow
             cancelled_count, cancelled_ids = cancel_queued_jobs(
                 cur, conn, workflow_id, error_messages[0]
             )
-            
+
             reason = f"Blocked job claim: Workflow {workflow_id} has {len(recent_executions)} consecutive identical failures. Cancelled {cancelled_count} queued jobs and paused workflow."
             logger.warning("🚫 %s (took %dms)", reason, check_duration_ms)
             if cancelled_ids:
                 logger.warning("🚫 Cancelled execution IDs: %s", cancelled_ids)
-            logger.warning("⏸️ Workflow %d status changed to 'paused' to prevent new executions", workflow_id)
-            
+            logger.warning(
+                "⏸️ Workflow %d status changed to 'paused' to prevent new executions",
+                workflow_id,
+            )
+
             return True, reason, check_duration_ms
-        
-        logger.debug("🔍 Pre-claim check for workflow %d: No blocking patterns found (took %dms)", workflow_id, check_duration_ms)
+
+        logger.debug(
+            "🔍 Pre-claim check for workflow %d: No blocking patterns found (took %dms)",
+            workflow_id,
+            check_duration_ms,
+        )
         return False, "", check_duration_ms
-        
+
     except Exception as e:
         check_duration_ms = int((time.time() - start_time) * 1000)
-        logger.error("❌ Error in pre-claim failure pattern check for workflow %d: %s (took %dms)", workflow_id, e, check_duration_ms)
+        logger.error(
+            "❌ Error in pre-claim failure pattern check for workflow %d: %s (took %dms)",
+            workflow_id,
+            e,
+            check_duration_ms,
+        )
         return False, f"Check error: {e}", check_duration_ms
+
 
 # Windows VM service management endpoints (from our ngrok-powered system)
 VM_MANAGEMENT_ENDPOINT = "https://vm-windows-1.ngrok.dev"
@@ -357,8 +404,6 @@ class CaptureOutput:
         sys.stdout = self._stdout
         if self.include_stderr and self._stderr:
             sys.stderr = self._stderr
-
-
 
 
 def execute_workflow_by_version(
@@ -457,9 +502,7 @@ def resolve_workflow_id_for_version(
         if len(rows) == 0:
             raise ValueError(
                 f"No workflows found with version {version_number}"
-                + (
-                    f" (status={status})" if status else ""
-                )
+                + (f" (status={status})" if status else "")
                 + (f" (category={category})" if category else "")
                 + (
                     f" (name contains '{workflow_name_contains}')"
@@ -685,6 +728,7 @@ def deep_merge(d, u):
             d[k] = v
     return d
 
+
 def extract_defaults_recursive(schema_node: Dict[str, Any]) -> Dict[str, Any]:
     """
     Recursively traverses a schema dictionary and extracts the default values.
@@ -692,9 +736,9 @@ def extract_defaults_recursive(schema_node: Dict[str, Any]) -> Dict[str, Any]:
     defaults = {}
     for key, value in schema_node.items():
         if isinstance(value, dict):
-            if 'default' in value:
+            if "default" in value:
                 # This is a leaf node with a default value
-                defaults[key] = value['default']
+                defaults[key] = value["default"]
             else:
                 # This is a nested group of parameters, recurse
                 nested_defaults = extract_defaults_recursive(value)
@@ -709,24 +753,23 @@ async def check_mcp_server_health(health_endpoint: str) -> bool:
     Returns True if healthy, False otherwise.
     """
     import httpx
-    
+
     try:
         logger.info("🏥 Checking MCP server health at: %s", health_endpoint)
-        
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             # Check MCP health endpoint
             response = await client.get(
-                health_endpoint,
-                headers={"ngrok-skip-browser-warning": "true"}
+                health_endpoint, headers={"ngrok-skip-browser-warning": "true"}
             )
-            
+
             if response.status_code == 200:
                 logger.info("✅ MCP server is healthy")
                 return True
             else:
                 logger.warning("⚠️ MCP server returned status %d", response.status_code)
                 return False
-                
+
     except Exception as e:
         logger.warning("❌ MCP server health check failed: %s", e)
         return False
@@ -738,61 +781,74 @@ async def restart_windows_vm_service() -> bool:
     Returns True if restart was successful, False otherwise.
     """
     import httpx
-    
+
     try:
         logger.info("🔄 Attempting to restart Windows VM service...")
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             # Call the VM management endpoint to restart the service
             response = await client.post(
                 f"{VM_MANAGEMENT_ENDPOINT}/restart",
-                headers={"ngrok-skip-browser-warning": "true"}
+                headers={"ngrok-skip-browser-warning": "true"},
             )
-            
+
             if response.status_code == 200:
                 result = response.json()
                 if result.get("success", False):
                     logger.info("✅ Windows VM service restarted successfully")
-                    logger.info("📋 Service status: %s", result.get("service_status", {}).get("status", "Unknown"))
+                    logger.info(
+                        "📋 Service status: %s",
+                        result.get("service_status", {}).get("status", "Unknown"),
+                    )
                     return True
                 else:
-                    logger.error("❌ VM service restart failed: %s", result.get("error", "Unknown error"))
+                    logger.error(
+                        "❌ VM service restart failed: %s",
+                        result.get("error", "Unknown error"),
+                    )
                     return False
             else:
-                logger.error("❌ VM management endpoint returned status %d", response.status_code)
+                logger.error(
+                    "❌ VM management endpoint returned status %d", response.status_code
+                )
                 return False
-                
+
     except Exception as e:
         logger.error("❌ Failed to restart Windows VM service: %s", e)
         return False
 
 
-async def wait_for_mcp_server_recovery(health_endpoint: str, max_wait_seconds: int = 60) -> bool:
+async def wait_for_mcp_server_recovery(
+    health_endpoint: str, max_wait_seconds: int = 60
+) -> bool:
     """
     Wait for the MCP server to come back online after a restart.
     Returns True if server is back online, False if timeout.
     """
     import asyncio
-    
+
     logger.info("⏳ Waiting for MCP server to come back online...")
-    
+
     start_time = time.time()
     retry_count = 0
-    
+
     while (time.time() - start_time) < max_wait_seconds:
         retry_count += 1
         logger.info("🔍 Health check attempt %d...", retry_count)
-        
+
         if await check_mcp_server_health(health_endpoint):
             recovery_time = int(time.time() - start_time)
             logger.info("✅ MCP server is back online after %d seconds", recovery_time)
             return True
-        
+
         # Wait 5 seconds before next check
         await asyncio.sleep(5)
-    
-    logger.error("❌ MCP server did not come back online within %d seconds", max_wait_seconds)
+
+    logger.error(
+        "❌ MCP server did not come back online within %d seconds", max_wait_seconds
+    )
     return False
+
 
 def log_merge_details(original, merged, path=""):
     """Recursively compares two dictionaries and logs the changes."""
@@ -804,7 +860,9 @@ def log_merge_details(original, merged, path=""):
         elif isinstance(merged.get(key), dict) and isinstance(original.get(key), dict):
             log_merge_details(original[key], merged[key], path=new_path)
         elif original.get(key) != merged.get(key):
-            logger.info(f"  🔄 Changed '{new_path}': '{original.get(key)}' -> '{merged.get(key)}'")
+            logger.info(
+                f"  🔄 Changed '{new_path}': '{original.get(key)}' -> '{merged.get(key)}'"
+            )
 
 
 def _truncate_middle(text: str, max_length: int = 400) -> str:
@@ -832,8 +890,13 @@ def log_mcp_execution_breakdown(mcp_content: Dict[str, Any]) -> None:
         total_tools = mcp_content.get("total_tools")
         executed_tools = mcp_content.get("executed_tools")
         total_duration_ms = mcp_content.get("total_duration_ms")
-        logger.info("🧩 MCP Summary | status=%s | total_tools=%s | executed_tools=%s | total_duration_ms=%s",
-                    status, total_tools, executed_tools, total_duration_ms)
+        logger.info(
+            "🧩 MCP Summary | status=%s | total_tools=%s | executed_tools=%s | total_duration_ms=%s",
+            status,
+            total_tools,
+            executed_tools,
+            total_duration_ms,
+        )
 
         results = mcp_content.get("results", [])
         if not isinstance(results, list):
@@ -849,23 +912,42 @@ def log_mcp_execution_breakdown(mcp_content: Dict[str, Any]) -> None:
             group_status = group.get("status", "unknown")
             group_duration = group.get("duration_ms", 0)
             group_results = group.get("results", [])
-            logger.info("   ▸ Group %d: %s | status=%s | duration_ms=%s | steps=%d",
-                        group_index, group_name, group_status, group_duration, len(group_results) if isinstance(group_results, list) else 0)
+            logger.info(
+                "   ▸ Group %d: %s | status=%s | duration_ms=%s | steps=%d",
+                group_index,
+                group_name,
+                group_status,
+                group_duration,
+                len(group_results) if isinstance(group_results, list) else 0,
+            )
 
             if not isinstance(group_results, list):
-                logger.info("     ↳ Group results is not a list; type=%s", type(group_results).__name__)
+                logger.info(
+                    "     ↳ Group results is not a list; type=%s",
+                    type(group_results).__name__,
+                )
                 continue
 
             for step_index, step in enumerate(group_results):
                 tool = step.get("tool_name", f"step_{step_index}")
                 step_status = step.get("status", "unknown")
                 step_duration = step.get("duration_ms", 0)
-                logger.info("     - Step %d.%d | tool=%s | status=%s | duration_ms=%s",
-                            group_index, step_index, tool, step_status, step_duration)
+                logger.info(
+                    "     - Step %d.%d | tool=%s | status=%s | duration_ms=%s",
+                    group_index,
+                    step_index,
+                    tool,
+                    step_status,
+                    step_duration,
+                )
 
                 if step_status == "error":
                     error_payload = step.get("error")
-                    logger.error("       ✖ Error in %s: %s", tool, _truncate_middle(error_payload, 600))
+                    logger.error(
+                        "       ✖ Error in %s: %s",
+                        tool,
+                        _truncate_middle(error_payload, 600),
+                    )
                     if not first_error_logged:
                         try:
                             # Attempt to extract an error_type if the payload embeds JSON
@@ -874,19 +956,304 @@ def log_mcp_execution_breakdown(mcp_content: Dict[str, Any]) -> None:
                                 # Try to find a JSON fragment in the string
                                 json_start = error_payload.find("{")
                                 json_end = error_payload.rfind("}")
-                                if json_start != -1 and json_end != -1 and json_end > json_start:
+                                if (
+                                    json_start != -1
+                                    and json_end != -1
+                                    and json_end > json_start
+                                ):
                                     import json as _json
-                                    fragment = error_payload[json_start:json_end + 1]
+
+                                    fragment = error_payload[json_start : json_end + 1]
                                     parsed = _json.loads(fragment)
-                                    error_type = parsed.get("error_type") or parsed.get("type")
-                            logger.error("       ✖ First error summary | group=%s | step=%s | tool=%s | error_type=%s",
-                                         group_name, f"{group_index}.{step_index}", tool, error_type or "Unknown")
+                                    error_type = parsed.get("error_type") or parsed.get(
+                                        "type"
+                                    )
+                            logger.error(
+                                "       ✖ First error summary | group=%s | step=%s | tool=%s | error_type=%s",
+                                group_name,
+                                f"{group_index}.{step_index}",
+                                tool,
+                                error_type or "Unknown",
+                            )
                         except Exception:
-                            logger.error("       ✖ Failed to parse error payload for %s", tool)
+                            logger.error(
+                                "       ✖ Failed to parse error payload for %s", tool
+                            )
                         first_error_logged = True
 
     except Exception as breakdown_err:
         logger.error("Failed to log MCP execution breakdown: %s", breakdown_err)
+
+
+# =============================================================================
+# Standardized Success/Failure Indication System
+# =============================================================================
+
+
+def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse MCP workflow execution result and determine success/failure status.
+
+    This implements the standardized success/failure indication system that matches
+    the Rust CLI implementation.
+
+    Args:
+        mcp_response: Raw MCP response from execute_sequence call
+
+    Returns:
+        Dict containing:
+        - success: bool - Business logic success (did we achieve the goal?)
+        - execution_status: str - Technical execution status
+        - message: str - Human readable success/failure message
+        - data: Any - Extracted data (null/empty on failure)
+        - error: str|None - Error information if failed
+        - duration_ms: int - Execution time
+        - steps_executed: int - Number of steps executed
+        - validation: Dict - What checks passed/failed
+    """
+    try:
+        # Extract basic execution info
+        execution_status = mcp_response.get("status", "unknown")
+        total_duration_ms = mcp_response.get("total_duration_ms", 0)
+        executed_tools = mcp_response.get("executed_tools", 0)
+        parsed_output = mcp_response.get("parsed_output")
+
+        # Initialize result structure
+        result = {
+            "success": False,
+            "execution_status": execution_status,
+            "message": "Unknown status",
+            "data": None,
+            "error": None,
+            "duration_ms": total_duration_ms,
+            "steps_executed": executed_tools,
+            "validation": {},
+        }
+
+        # Check if we have business logic output from parser
+        if parsed_output and isinstance(parsed_output, dict):
+            logger.info("📊 Found parsed_output from workflow parser")
+
+            # Use business logic success from parser
+            result["success"] = bool(parsed_output.get("success", False))
+            result["message"] = parsed_output.get("message", "No message from parser")
+            result["data"] = parsed_output.get("data")
+            result["error"] = parsed_output.get("error")
+            result["validation"] = parsed_output.get("validation", {})
+
+            logger.info(
+                "✅ Business logic result: %s - %s",
+                "SUCCESS" if result["success"] else "FAILURE",
+                result["message"],
+            )
+        else:
+            logger.info("📊 No parsed_output found, using execution status")
+
+            # No parser - use execution status as fallback
+            result["success"] = execution_status == "success"
+            result["message"] = f"Workflow {execution_status}"
+            result["error"] = mcp_response.get("debug_info_on_failure")
+
+            # Add basic validation info
+            result["validation"] = {
+                "execution_completed": execution_status
+                in ["success", "completed_with_errors"],
+                "tools_executed": executed_tools,
+            }
+
+        return result
+
+    except Exception as e:
+        logger.error("❌ Failed to parse workflow result: %s", e)
+        return {
+            "success": False,
+            "execution_status": "parse_error",
+            "message": f"Failed to parse workflow result: {str(e)}",
+            "data": None,
+            "error": str(e),
+            "duration_ms": 0,
+            "steps_executed": 0,
+            "validation": {"parse_error": True},
+        }
+
+
+def display_workflow_result(result: Dict[str, Any]) -> int:
+    """
+    Display workflow execution result with proper formatting.
+
+    Args:
+        result: Parsed workflow result from parse_workflow_result()
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure)
+    """
+    try:
+        # Main status line
+        if result["success"]:
+            logger.info("✅ SUCCESS: %s", result["message"])
+        else:
+            logger.error("❌ FAILURE: %s", result["message"])
+
+        # Execution details
+        logger.info("📊 Execution: %s", result["execution_status"])
+        logger.info("   Duration: %dms", result["duration_ms"])
+        logger.info("   Steps: %d", result["steps_executed"])
+
+        # Data output (if present)
+        if result["data"]:
+            if isinstance(result["data"], (list, dict)):
+                logger.info(
+                    "📦 Data: %s",
+                    (
+                        json.dumps(result["data"], indent=2)[:500] + "..."
+                        if len(json.dumps(result["data"])) > 500
+                        else json.dumps(result["data"], indent=2)
+                    ),
+                )
+            else:
+                logger.info(
+                    "📦 Data: %s",
+                    (
+                        str(result["data"])[:500] + "..."
+                        if len(str(result["data"])) > 500
+                        else str(result["data"])
+                    ),
+                )
+
+        # Error details (if present)
+        if result["error"]:
+            logger.error("⚠️ Error: %s", result["error"])
+
+        # Validation details (if present)
+        if result["validation"]:
+            logger.info("🔍 Validation:")
+            for key, value in result["validation"].items():
+                logger.info("   %s: %s", key, value)
+
+        # Return appropriate exit code
+        return 0 if result["success"] else 1
+
+    except Exception as e:
+        logger.error("❌ Failed to display workflow result: %s", e)
+        return 1
+
+
+def extract_legacy_quotes_from_mcp_response(
+    mcp_content: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """
+    Legacy function to extract quotes from MCP response for backward compatibility.
+
+    This maintains compatibility with existing quote extraction logic while we
+    transition to the new standardized format.
+    """
+    quotes = []
+
+    try:
+        logger.info("🔍 DEBUG: Searching for quotes in MCP response structure...")
+
+        if "results" in mcp_content and isinstance(mcp_content["results"], list):
+            logger.info(
+                "🔍 DEBUG: Found %d top-level results", len(mcp_content["results"])
+            )
+            for i, step_result in enumerate(mcp_content["results"]):
+                logger.info(
+                    "🔍 DEBUG: Step %d status: %s", i, step_result.get("status")
+                )
+
+                # Check if this is the "Set Coverage and Generate Quote" group
+                if step_result.get("status") == "success" and "results" in step_result:
+                    logger.info(
+                        "🔍 DEBUG: Found %d sub-results in step %d",
+                        len(step_result["results"]),
+                        i,
+                    )
+                    for j, sub_result in enumerate(step_result["results"]):
+                        tool_name = sub_result.get("tool_name")
+                        logger.info(
+                            "🔍 DEBUG: Sub-result %d tool_name: %s", j, tool_name
+                        )
+
+                        if tool_name == "wait_for_output_parser":
+                            logger.info("🔍 DEBUG: Found wait_for_output_parser step!")
+                            if (
+                                "result" in sub_result
+                                and "content" in sub_result["result"]
+                            ):
+                                logger.info(
+                                    "🔍 DEBUG: Found content in wait_for_output_parser result"
+                                )
+                                for content_item in sub_result["result"]["content"]:
+                                    if content_item.get("type") == "text":
+                                        logger.info(
+                                            "🔍 DEBUG: Found text content, attempting to parse..."
+                                        )
+                                        try:
+                                            parser_result = json.loads(
+                                                content_item.get("text", "{}")
+                                            )
+                                            logger.info(
+                                                "🔍 DEBUG: Parser result keys: %s",
+                                                list(parser_result.keys()),
+                                            )
+                                            if "extracted_data" in parser_result:
+                                                quotes = parser_result["extracted_data"]
+                                                logger.info(
+                                                    "✅ Found %d quotes from wait_for_output_parser step",
+                                                    len(quotes),
+                                                )
+                                                break
+                                        except json.JSONDecodeError as e:
+                                            logger.warning(
+                                                "Failed to parse wait_for_output_parser result: %s",
+                                                e,
+                                            )
+                        if quotes:
+                            break
+                    if quotes:
+                        break
+                if quotes:
+                    break
+        else:
+            logger.info("🔍 DEBUG: No 'results' field found in mcp_content")
+            logger.info(
+                "🔍 DEBUG: MCP content keys: %s",
+                list(mcp_content.keys()) if mcp_content else "None",
+            )
+
+        # Fallback: check for parsed_output field (legacy support)
+        if not quotes and "parsed_output" in mcp_content:
+            parsed_output = mcp_content.get("parsed_output", [])
+            if not parsed_output:
+                logger.warning(
+                    "⚠️ 'parsed_output' field exists but is empty. The UI tree may not have matched the parsing rules."
+                )
+            else:
+                logger.info(
+                    "✅ Found 'parsed_output' field with %d items. Using it for quotes.",
+                    len(parsed_output),
+                )
+            quotes = parsed_output
+
+        if not quotes:
+            logger.warning(
+                "⚠️ No quotes found in MCP response. Check for parser errors or if the workflow produced a UI tree."
+            )
+            logger.info("🔍 DEBUG: Final MCP content structure for troubleshooting:")
+            logger.info(
+                "🔍 DEBUG: %s",
+                (
+                    json.dumps(mcp_content, indent=2)[:2000] + "..."
+                    if mcp_content
+                    else "None"
+                ),
+            )
+
+    except Exception as e:
+        logger.error("❌ Failed to extract legacy quotes: %s", e)
+
+    return quotes
+
 
 async def execute_mcp_workflow(
     workflow_data: Dict[str, Any], execution_params: Dict[str, Any], mcp_endpoint: str
@@ -899,7 +1266,7 @@ async def execute_mcp_workflow(
     try:
         # Use the smart sequence loader for dual-format support
         automation_sequence_list = SequenceLoader.load_workflow_sequence(workflow_data)
-        
+
         if not automation_sequence_list or len(automation_sequence_list) == 0:
             raise ValueError("No valid automation sequence found in workflow data")
 
@@ -911,19 +1278,19 @@ async def execute_mcp_workflow(
         # --- PARAMETER OVERRIDE LOGIC ---
         if execution_params:
             logger.info("⚡️ Merging execution parameters into workflow inputs:")
-            
+
             # --- FINAL CORRECTED LOGIC ---
             # 1. Use the `inputs` block as the source for default values.
-            default_inputs = arguments.get('inputs', {})
+            default_inputs = arguments.get("inputs", {})
 
             # 2. For logging, show the changes between defaults and user overrides
             log_merge_details(default_inputs, execution_params)
 
             # 3. Create the final runtime values by merging overrides onto defaults
             final_runtime_inputs = deep_merge(default_inputs, execution_params)
-            
+
             # 4. Update ONLY the 'inputs' block. The 'variables' schema is not touched.
-            arguments['inputs'] = final_runtime_inputs
+            arguments["inputs"] = final_runtime_inputs
             # --- END FINAL CORRECTED LOGIC ---
 
         else:
@@ -939,11 +1306,16 @@ async def execute_mcp_workflow(
         # --- MORE DETAILED LOGGING ---
         logger.info("--- DETAILED LOGGING: Payload being sent to MCP ---")
         # For clarity, we log the two main parts of the arguments separately
-        if 'inputs' in arguments:
-             logger.info("   Runtime Inputs (for execution): %s", json.dumps(arguments['inputs'], indent=2))
+        if "inputs" in arguments:
+            logger.info(
+                "   Runtime Inputs (for execution): %s",
+                json.dumps(arguments["inputs"], indent=2),
+            )
 
         log_string = json.dumps(arguments)
-        logger.info(f"Full Arguments Payload (truncated): {log_string[:200]}{'...' if len(log_string) > 200 else ''}")
+        logger.info(
+            f"Full Arguments Payload (truncated): {log_string[:200]}{'...' if len(log_string) > 200 else ''}"
+        )
         logger.info("--- END DETAILED LOGGING ---")
 
         # Ensure we always target the gatekeeper's /mcp path
@@ -968,6 +1340,7 @@ async def execute_mcp_workflow(
         # Initialize MCP session using helper with 503 backoff
         def _client_factory():
             import httpx
+
             return httpx.AsyncClient(timeout=300.0)
 
         async def _initialize_session():
@@ -1002,12 +1375,15 @@ async def execute_mcp_workflow(
                         ):
                             # Try once more on a fresh connection
                             import httpx
+
                             await session_client.aclose()
                             retry_client = httpx.AsyncClient(timeout=300.0)
                             retry_response = await retry_client.post(
                                 endpoint_url,
                                 json=init_request,
-                                headers={"Accept": "application/json, text/event-stream"},
+                                headers={
+                                    "Accept": "application/json, text/event-stream"
+                                },
                             )
                             if retry_response.status_code == 200:
                                 session_client = retry_client
@@ -1158,7 +1534,9 @@ async def execute_mcp_workflow(
                     "--- DETAILED LOGGING: Full content from RAW MCP response ---"
                 )
                 log_string = json.dumps(result_data)
-                logger.info(f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}")
+                logger.info(
+                    f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}"
+                )
                 logger.info("--- END DETAILED LOGGING ---")
 
                 # Extract the actual content from the MCP response
@@ -1187,7 +1565,9 @@ async def execute_mcp_workflow(
                     "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
                 )
                 log_string = json.dumps(mcp_content)
-                logger.info(f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}")
+                logger.info(
+                    f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}"
+                )
                 logger.info("--- END DETAILED LOGGING ---")
 
                 # Extract quotes and metrics from the MCP response
@@ -1203,89 +1583,51 @@ async def execute_mcp_workflow(
                     except Exception as _e:
                         logger.warning("Failed to log MCP breakdown: %s", _e)
 
-                # --- MORE DETAILED LOGGING FOR PARSER ---
+                    # --- MORE DETAILED LOGGING FOR PARSER ---
                     logger.info(
                         "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
                     )
                     log_string = json.dumps(mcp_content)
-                    logger.info(f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}")
+                    logger.info(
+                        f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}"
+                    )
                     logger.info("--- END DETAILED LOGGING ---")
 
-                    # Check for parser errors first
-                    if "parser_error" in mcp_content:
-                        logger.error(
-                            "❌ Output parser failed in MCP agent: %s",
-                            mcp_content["parser_error"],
-                        )
+                    # =============================================================================
+                    # NEW: Use Standardized Success/Failure Indication System
+                    # =============================================================================
 
-                    # Extract quotes from the step results
-                    # Look for the wait_for_output_parser step which contains extracted_data
+                    # Parse workflow result using the new standardized system
+                    workflow_result = parse_workflow_result(mcp_content)
+
+                    # Display the standardized result
+                    display_workflow_result(workflow_result)
+
+                    # Extract data for backward compatibility
                     quotes = []
-                    logger.info("🔍 DEBUG: Searching for quotes in MCP response structure...")
-                    
-                    if "results" in mcp_content and isinstance(mcp_content["results"], list):
-                        logger.info("🔍 DEBUG: Found %d top-level results", len(mcp_content["results"]))
-                        for i, step_result in enumerate(mcp_content["results"]):
-                            logger.info("🔍 DEBUG: Step %d status: %s", i, step_result.get("status"))
-                            
-                            # Check if this is the "Set Coverage and Generate Quote" group
-                            if step_result.get("status") == "success" and "results" in step_result:
-                                logger.info("🔍 DEBUG: Found %d sub-results in step %d", len(step_result["results"]), i)
-                                for j, sub_result in enumerate(step_result["results"]):
-                                    tool_name = sub_result.get("tool_name")
-                                    logger.info("🔍 DEBUG: Sub-result %d tool_name: %s", j, tool_name)
-                                    
-                                    if tool_name == "wait_for_output_parser":
-                                        logger.info("🔍 DEBUG: Found wait_for_output_parser step!")
-                                        if "result" in sub_result and "content" in sub_result["result"]:
-                                            logger.info("🔍 DEBUG: Found content in wait_for_output_parser result")
-                                            for content_item in sub_result["result"]["content"]:
-                                                if content_item.get("type") == "text":
-                                                    logger.info("🔍 DEBUG: Found text content, attempting to parse...")
-                                                    try:
-                                                        parser_result = json.loads(content_item.get("text", "{}"))
-                                                        logger.info("🔍 DEBUG: Parser result keys: %s", list(parser_result.keys()))
-                                                        if "extracted_data" in parser_result:
-                                                            quotes = parser_result["extracted_data"]
-                                                            logger.info(
-                                                                "✅ Found %d quotes from wait_for_output_parser step",
-                                                                len(quotes)
-                                                            )
-                                                            break
-                                                    except json.JSONDecodeError as e:
-                                                        logger.warning("Failed to parse wait_for_output_parser result: %s", e)
-                                    if quotes:
-                                        break
-                                if quotes:
-                                    break
-                            if quotes:
-                                break
-                    else:
-                        logger.info("🔍 DEBUG: No 'results' field found in mcp_content")
-                        logger.info("🔍 DEBUG: MCP content keys: %s", list(mcp_content.keys()) if mcp_content else "None")
-                    
-                    # Fallback: check for parsed_output field (legacy support)
-                    if not quotes and "parsed_output" in mcp_content:
-                        parsed_output = mcp_content.get("parsed_output", [])
-                        if not parsed_output:
-                            logger.warning(
-                                "⚠️ 'parsed_output' field exists but is empty. The UI tree may not have matched the parsing rules."
+                    if workflow_result["data"]:
+                        # Handle different data formats
+                        if isinstance(workflow_result["data"], list):
+                            quotes = workflow_result["data"]
+                        elif isinstance(workflow_result["data"], dict):
+                            # Look for quotes in various possible fields
+                            quotes = (
+                                workflow_result["data"].get("quotes")
+                                or workflow_result["data"].get("extracted_data")
+                                or workflow_result["data"].get("items")
+                                or []
                             )
-                        else:
-                            logger.info(
-                                "✅ Found 'parsed_output' field with %d items. Using it for quotes.",
-                                len(parsed_output),
-                            )
-                        quotes = parsed_output
-                    
-                    if not quotes:
-                        logger.warning(
-                            "⚠️ No quotes found in MCP response. Check for parser errors or if the workflow produced a UI tree."
-                        )
-                        logger.info("🔍 DEBUG: Final MCP content structure for troubleshooting:")
-                        logger.info("🔍 DEBUG: %s", json.dumps(mcp_content, indent=2)[:2000] + "..." if mcp_content else "None")
 
-                    # Extract execution step details for metrics
+                    # Fallback to legacy extraction if no standardized data found
+                    if not quotes and mcp_content:
+                        logger.info("🔄 Falling back to legacy quote extraction...")
+                        quotes = extract_legacy_quotes_from_mcp_response(mcp_content)
+
+                    # Extract execution step details for metrics (backward compatibility)
+                    successful_steps = 0
+                    failed_steps = 0
+                    executed_steps = []
+
                     if "results" in mcp_content and isinstance(
                         mcp_content["results"], list
                     ):
@@ -1302,7 +1644,7 @@ async def execute_mcp_workflow(
                             else:
                                 failed_steps += 1
 
-                # Build execution results in the expected format
+                # Build execution results in the expected format (enhanced with new data)
                 execution_results = {
                     "execution_type": "real_browser_automation",
                     "workflow_name": workflow_data.get(
@@ -1322,14 +1664,25 @@ async def execute_mcp_workflow(
                     "step_details": (
                         mcp_content.get("results", []) if mcp_content else []
                     ),
+                    # NEW: Add standardized workflow result
+                    "workflow_result": workflow_result,
+                    "business_success": workflow_result["success"],
+                    "execution_status": workflow_result["execution_status"],
+                    "result_message": workflow_result["message"],
+                    "validation_info": workflow_result["validation"],
                 }
 
-                logger.info("📋 Sequence Execution Result:")
+                # Enhanced logging with standardized information
+                logger.info("📋 Enhanced Sequence Execution Result:")
                 logger.info("Tool: %s", tool_name)
-                logger.info("Status: ✅ Completed")
-                logger.info("Result length: %d characters", len(json_text))
-                logger.info("🎉 %s executed successfully!", tool_name)
-                logger.info("Found %d quotes.", len(quotes))
+                logger.info(
+                    "Business Success: %s", "✅" if workflow_result["success"] else "❌"
+                )
+                logger.info("Execution Status: %s", workflow_result["execution_status"])
+                logger.info("Message: %s", workflow_result["message"])
+                logger.info("Duration: %dms", workflow_result["duration_ms"])
+                logger.info("Steps Executed: %d", workflow_result["steps_executed"])
+                logger.info("Quotes Found: %d", len(quotes))
 
                 return execution_results
 
@@ -1360,7 +1713,7 @@ async def execute_mcp_workflow(
             or "500" in str(e)
         ):
             error_context["error_category"] = "mcp_http_error"
-            
+
             # Check if this was a restart-related error
             if "restart" in str(e).lower():
                 error_context["restart_attempted"] = True
@@ -1415,7 +1768,7 @@ def execute_workflow(
     - Process each automation step through real browser
     - Update progress in database
     - Return final results
-    
+
     Args:
         version_number: Optional specific version to execute. If None, uses active version.
     """
@@ -1431,7 +1784,11 @@ def execute_workflow(
         # The job is already marked as 'running' by the queue worker.
         # This function's first job is to fetch the workflow, calculate steps,
         # and update the execution record with that info.
-        logger.info("🚀 Executing workflow ID %s for execution record %s", workflow_id, execution_id)
+        logger.info(
+            "🚀 Executing workflow ID %s for execution record %s",
+            workflow_id,
+            execution_id,
+        )
         if version_number:
             logger.info("🎯 Using specific version: %s", version_number)
         else:
@@ -1446,8 +1803,13 @@ def execute_workflow(
         # 🎯 NEW: Query specific version or active version
         if version_number:
             # Query specific version from versions table
-            logger.info("📋 Querying specific version %s for workflow %s", version_number, workflow_id)
-            cur.execute("""
+            logger.info(
+                "📋 Querying specific version %s for workflow %s",
+                version_number,
+                workflow_id,
+            )
+            cur.execute(
+                """
                 SELECT 
                     w.id, w.name, w.description, w.status, w.category,
                     w.successful_runs, w.failed_runs, w.cancelled_runs, w.total_executions,
@@ -1467,28 +1829,41 @@ def execute_workflow(
                 FROM deployed_workflows w
                 JOIN deployed_workflow_versions v ON v.workflow_id = w.id
                 WHERE w.id = %s AND v.version_number = %s
-            """, (workflow_id, version_number))
-            
+            """,
+                (workflow_id, version_number),
+            )
+
             workflow = cur.fetchone()
-            
+
             if not workflow:
-                raise Exception(f"Workflow {workflow_id} version {version_number} not found")
-                
+                raise Exception(
+                    f"Workflow {workflow_id} version {version_number} not found"
+                )
+
         else:
             # Use active version (existing logic)
             logger.info("📋 Querying active version for workflow %s", workflow_id)
-            cur.execute("SELECT * FROM deployed_workflows_with_sequence WHERE id = %s", (workflow_id,))
+            cur.execute(
+                "SELECT * FROM deployed_workflows_with_sequence WHERE id = %s",
+                (workflow_id,),
+            )
             workflow = cur.fetchone()
-            
+
             if not workflow:
                 raise Exception(f"Workflow {workflow_id} not found")
 
         # Validate we have an automation sequence
-        if not workflow.get("automation_sequence") and not workflow.get("automation_sequence_yaml"):
+        if not workflow.get("automation_sequence") and not workflow.get(
+            "automation_sequence_yaml"
+        ):
             if version_number:
-                raise Exception(f"Workflow {workflow_id} version {version_number} has no automation sequence")
+                raise Exception(
+                    f"Workflow {workflow_id} version {version_number} has no automation sequence"
+                )
             else:
-                raise Exception(f"Workflow {workflow_id} has no active version or automation_sequence")
+                raise Exception(
+                    f"Workflow {workflow_id} has no active version or automation_sequence"
+                )
 
         # Calculate total steps using the smart sequence loader
         try:
@@ -1497,17 +1872,22 @@ def execute_workflow(
             arguments = automation_sequence.get("arguments", {})
             # The canonical key for the list of execution groups is now 'steps'.
             steps_list = arguments.get("steps", [])
-            
+
             # Log which format was used for debugging
             sequence_info = SequenceLoader.get_sequence_info(workflow)
-            logger.info("📋 Loaded sequence using %s format (%d steps)", 
-                       sequence_info['format_used'], sequence_info['step_count'])
-            
+            logger.info(
+                "📋 Loaded sequence using %s format (%d steps)",
+                sequence_info["format_used"],
+                sequence_info["step_count"],
+            )
+
         except Exception as e:
             logger.error("❌ Failed to load workflow sequence: %s", e)
-            raise Exception(f"Invalid workflow sequence for workflow {workflow_id}: {e}")
+            raise Exception(
+                f"Invalid workflow sequence for workflow {workflow_id}: {e}"
+            )
         total_steps = len(steps_list)
-        
+
         # Update execution with total steps and version information for traceability
         cur.execute(
             """
@@ -1517,7 +1897,12 @@ def execute_workflow(
                 workflow_version_number = %s
             WHERE id = %s
             """,
-            (total_steps, workflow.get("version_id") or workflow.get("current_version_id"), workflow.get("version"), execution_id)
+            (
+                total_steps,
+                workflow.get("version_id") or workflow.get("current_version_id"),
+                workflow.get("version"),
+                execution_id,
+            ),
         )
         conn.commit()
 
@@ -1552,7 +1937,9 @@ def execute_workflow(
                 # Handle empty height parameter to avoid overriding defaults
                 params_for_mcp = execution_params.copy() if execution_params else {}
                 if params_for_mcp.get("applicant", {}).get("height") == "":
-                    logger.info("Removing empty 'height' parameter from applicant to allow workflow default to be used.")
+                    logger.info(
+                        "Removing empty 'height' parameter from applicant to allow workflow default to be used."
+                    )
                     del params_for_mcp["applicant"]["height"]
                     # If the applicant object becomes empty after removing height, remove it too
                     if not params_for_mcp["applicant"]:
@@ -1568,14 +1955,17 @@ def execute_workflow(
 
                 # Optional AI enrichment step (delegated to helper module for clarity)
                 try:
-                    
+
                     results = enrich_results_if_enabled(
                         results=results,
                         execution_params=execution_params,
                         automation_sequence=automation_sequence,
                     )
                 except Exception as enrich_err:
-                    logger.warning("⚠️ Enrichment step encountered an error but was ignored: %s", enrich_err)
+                    logger.warning(
+                        "⚠️ Enrichment step encountered an error but was ignored: %s",
+                        enrich_err,
+                    )
             finally:
                 loop.close()
 
@@ -1616,64 +2006,110 @@ def execute_workflow(
         end_time = time.time()
         execution_duration = int(end_time - start_time)
 
-        # Generate execution summary
+        # =============================================================================
+        # NEW: Enhanced Workflow Completion Logic with Standardized System
+        # =============================================================================
+
+        # Get standardized workflow result if available
+        workflow_result = results.get("workflow_result")
+        quotes_found = len(results.get("quotes", []))
+
+        # Calculate traditional success rate for backward compatibility
         success_rate = (
             results["performance_metrics"]["successful_steps"] / max(total_steps, 1)
         ) * 100
-        quotes_found = len(results.get("quotes", []))
 
-        # A workflow is only truly successful if:
-        # 1. ALL steps completed (100% success rate)
-        # 2. AND it achieved its business goal (found at least one quote)
-        workflow_completed = success_rate == 100 and quotes_found > 0
+        # Determine workflow completion using new standardized system
+        if workflow_result:
+            # Use business logic success from standardized system
+            workflow_completed = workflow_result["success"]
+            error_message_for_db = (
+                workflow_result["error"] if not workflow_result["success"] else None
+            )
 
-        # --- Enhanced Error Message Extraction ---
-        error_message_for_db = None
-        if not workflow_completed:
-            # Case 1: The workflow ran perfectly but found no quotes.
-            if quotes_found == 0 and success_rate == 100:
-                error_message_for_db = "Workflow incomplete - No quotes found"
-            # Case 2: An actual error occurred during MCP execution.
-            elif raw_mcp_response and 'result' in raw_mcp_response:
-                try:
-                    mcp_result_text = raw_mcp_response['result']['content'][0]['text']
-                    mcp_result = json.loads(mcp_result_text)
-                    
-                    if mcp_result.get('status') != 'success':
-                        failed_step = None
-                        # Find the first step with a status of 'error'
-                        if 'results' in mcp_result and isinstance(mcp_result['results'], list):
-                            for group in mcp_result['results']:
-                                if 'results' in group and isinstance(group['results'], list):
-                                    for step in group['results']:
-                                        if step.get('status') == 'error':
-                                            failed_step = step
-                                            break
-                                if failed_step:
-                                    break
-                        
-                        if failed_step:
-                            tool_name = failed_step.get('tool_name', 'Unknown Tool')
-                            error_details = failed_step.get('error', 'Unknown error')
-                            
-                            # Extract the high-level error type for a concise message
-                            match = re.search(r'\{\\\"error_type\\\":\\\"(.*?)\\\"', error_details)
-                            error_type = match.group(1) if match else "Unknown"
-                            
-                            # Create a more informative high-level message, e.g., "type_into_element failed: ElementNotFound"
-                            error_message_for_db = f"{tool_name} failed: {error_type}"
-                        else:
-                            # Fallback if no specific failed step is found
-                            error_message_for_db = "MCP Execution Failed: See logs for details"
+            # Override with business logic message if available
+            if not workflow_result["success"] and workflow_result["message"]:
+                error_message_for_db = workflow_result["message"]
 
-                except (json.JSONDecodeError, KeyError, IndexError) as e:
-                    logger.error(f"Failed to parse MCP error from response: {e}")
-                    error_message_for_db = "MCP Execution Failed: Unable to parse error"
-            else:
-                # Fallback for other unknown errors
-                error_message_for_db = "Workflow failed: Unknown error"
+            logger.info(
+                "🎯 Using standardized business logic result: %s",
+                "SUCCESS" if workflow_completed else "FAILURE",
+            )
+        else:
+            # Fallback to legacy logic for backward compatibility
+            logger.info(
+                "🔄 Using legacy completion logic (no standardized result found)"
+            )
 
-        results["execution_summary"] = {
+            # A workflow is only truly successful if:
+            # 1. ALL steps completed (100% success rate)
+            # 2. AND it achieved its business goal (found at least one quote)
+            workflow_completed = success_rate == 100 and quotes_found > 0
+
+            # --- Enhanced Error Message Extraction ---
+            error_message_for_db = None
+            if not workflow_completed:
+                # Case 1: The workflow ran perfectly but found no quotes.
+                if quotes_found == 0 and success_rate == 100:
+                    error_message_for_db = "Workflow incomplete - No quotes found"
+                # Case 2: An actual error occurred during MCP execution.
+                elif raw_mcp_response and "result" in raw_mcp_response:
+                    try:
+                        mcp_result_text = raw_mcp_response["result"]["content"][0][
+                            "text"
+                        ]
+                        mcp_result = json.loads(mcp_result_text)
+
+                        if mcp_result.get("status") != "success":
+                            failed_step = None
+                            # Find the first step with a status of 'error'
+                            if "results" in mcp_result and isinstance(
+                                mcp_result["results"], list
+                            ):
+                                for group in mcp_result["results"]:
+                                    if "results" in group and isinstance(
+                                        group["results"], list
+                                    ):
+                                        for step in group["results"]:
+                                            if step.get("status") == "error":
+                                                failed_step = step
+                                                break
+                                    if failed_step:
+                                        break
+
+                            if failed_step:
+                                tool_name = failed_step.get("tool_name", "Unknown Tool")
+                                error_details = failed_step.get(
+                                    "error", "Unknown error"
+                                )
+
+                                # Extract the high-level error type for a concise message
+                                match = re.search(
+                                    r"\{\\\"error_type\\\":\\\"(.*?)\\\"", error_details
+                                )
+                                error_type = match.group(1) if match else "Unknown"
+
+                                # Create a more informative high-level message, e.g., "type_into_element failed: ElementNotFound"
+                                error_message_for_db = (
+                                    f"{tool_name} failed: {error_type}"
+                                )
+                            else:
+                                # Fallback if no specific failed step is found
+                                error_message_for_db = (
+                                    "MCP Execution Failed: See logs for details"
+                                )
+
+                    except (json.JSONDecodeError, KeyError, IndexError) as e:
+                        logger.error(f"Failed to parse MCP error from response: {e}")
+                        error_message_for_db = (
+                            "MCP Execution Failed: Unable to parse error"
+                        )
+                else:
+                    # Fallback for other unknown errors
+                    error_message_for_db = "Workflow failed: Unknown error"
+
+        # Enhanced execution summary with standardized information
+        execution_summary = {
             "workflow_completed": workflow_completed,
             "success_rate_percentage": round(success_rate, 2),
             "total_execution_time": execution_duration,
@@ -1681,21 +2117,41 @@ def execute_workflow(
             "execution_message": f"Found {quotes_found} insurance quotes",
         }
 
+        # Add standardized workflow result information if available
+        if workflow_result:
+            execution_summary.update(
+                {
+                    "business_success": workflow_result["success"],
+                    "execution_status": workflow_result["execution_status"],
+                    "result_message": workflow_result["message"],
+                    "duration_ms": workflow_result["duration_ms"],
+                    "steps_executed": workflow_result["steps_executed"],
+                    "validation_info": workflow_result["validation"],
+                    "standardized_system_used": True,
+                }
+            )
+        else:
+            execution_summary["standardized_system_used"] = False
+
+        results["execution_summary"] = execution_summary
+
         # Generate formatted summary for successful executions
         formatted_output = None
         if results.get("quotes") is not None:  # If we have quotes data (even if empty)
             try:
                 quotes_output = results.get("quotes", [])
-                
+
                 if not workflow_completed and quotes_found == 0:
                     # Specific handling for "failed" state due to no quotes
-                    logger.warning("Workflow failed: No quotes found. Generating failure summary.")
-                    
+                    logger.warning(
+                        "Workflow failed: No quotes found. Generating failure summary."
+                    )
+
                     execution_metrics = results.get("performance_metrics", {})
-                    
+
                     summary_lines = [
                         f"❌ {error_message_for_db}",
-                        "-"*30,
+                        "-" * 30,
                         f"All {execution_metrics.get('successful_steps', 0)} automation steps completed successfully, but no insurance quotes were extracted from the final page.",
                         "This usually means the applicant's criteria (e.g., age, health) did not result in any available products from the provider.",
                     ]
@@ -1924,16 +2380,16 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
     This handles two types of stuck jobs:
     1. Jobs that started but Modal containers crashed/timed out (25+ minutes)
     2. Jobs that were dispatched to Modal but never started (30+ minutes with NULL logs)
-    
+
     CRITICAL FIX: Default threshold reduced to 25 minutes (from 45) to close the gap
     that allowed job #1444 to stay stuck for 7+ hours.
-    
+
     Timeline:
     - Modal timeout: 30 minutes
     - This cleanup: 25 minutes (catches stuck jobs BEFORE Modal timeout)
     - NULL logs cleanup: 30 minutes (catches jobs that never started)
     - Smart check: 30 minutes (matches Modal timeout exactly)
-    
+
     Returns the total number of executions cleaned up.
     """
     try:
@@ -1949,21 +2405,24 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                 AND started_at < NOW() - INTERVAL '%s minutes'
             ORDER BY started_at ASC
             """,
-            (stale_threshold_minutes,)
+            (stale_threshold_minutes,),
         )
-        
+
         stale_jobs = cur.fetchall()
-        
+
         if not stale_jobs:
             return 0
-            
+
         # Log details about each stale job before cleanup
         for job in stale_jobs:
             logger.warning(
                 "🚨 Detected stale execution ID %s (workflow %s): running for %.1f minutes, modal_call_id: %s",
-                job[0], job[1], job[3], job[4] or "None"
+                job[0],
+                job[1],
+                job[3],
+                job[4] or "None",
             )
-        
+
         # Now perform the cleanup
         cur.execute(
             """
@@ -1978,29 +2437,30 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                 AND started_at < NOW() - INTERVAL '%s minutes'
             RETURNING id, workflow_id, EXTRACT(EPOCH FROM (NOW() - started_at))/60 as minutes_stuck
             """,
-            (stale_threshold_minutes, stale_threshold_minutes)
+            (stale_threshold_minutes, stale_threshold_minutes),
         )
-        
+
         cleaned_jobs = cur.fetchall()
         conn.commit()
-        
+
         if cleaned_jobs:
             stale_ids = [job[0] for job in cleaned_jobs]
             total_minutes = sum(job[2] for job in cleaned_jobs)
             avg_minutes = total_minutes / len(cleaned_jobs)
-            
+
             logger.warning(
                 "🧹 Smart cleanup completed: %d stale executions cleaned up",
-                len(stale_ids)
+                len(stale_ids),
             )
             logger.warning(
                 "   📊 Average stuck time: %.1f minutes | IDs: %s",
-                avg_minutes, stale_ids
+                avg_minutes,
+                stale_ids,
             )
             logger.warning(
                 "   🔧 This prevents the queue-blocking issue that affected job #1444"
             )
-        
+
         # ENHANCED: Also clean up jobs that never started (NULL raw_logs)
         # These are jobs that were dispatched to Modal but never actually executed
         cur.execute(
@@ -2016,17 +2476,20 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
             ORDER BY started_at ASC
             """,
         )
-        
+
         null_logs_jobs = cur.fetchall()
-        
+
         if null_logs_jobs:
             # Log details about each null-logs job before cleanup
             for job in null_logs_jobs:
                 logger.warning(
                     "🚨 Detected job with NULL logs ID %s (workflow %s): running for %.1f minutes, modal_call_id: %s",
-                    job[0], job[1], job[3], job[4] or "None"
+                    job[0],
+                    job[1],
+                    job[3],
+                    job[4] or "None",
                 )
-            
+
             # Clean up jobs with NULL raw_logs (never started execution)
             cur.execute(
                 """
@@ -2043,28 +2506,31 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                 RETURNING id, workflow_id, EXTRACT(EPOCH FROM (NOW() - started_at))/60 as minutes_stuck
                 """,
             )
-            
+
             null_logs_cleaned = cur.fetchall()
             conn.commit()
-            
+
             if null_logs_cleaned:
                 null_logs_ids = [job[0] for job in null_logs_cleaned]
                 total_null_minutes = sum(job[2] for job in null_logs_cleaned)
                 avg_null_minutes = total_null_minutes / len(null_logs_cleaned)
-                
+
                 logger.warning(
                     "🧹 NULL logs cleanup completed: %d executions cleaned up",
-                    len(null_logs_ids)
+                    len(null_logs_ids),
                 )
                 logger.warning(
                     "   📊 Average stuck time: %.1f minutes | IDs: %s",
-                    avg_null_minutes, null_logs_ids
+                    avg_null_minutes,
+                    null_logs_ids,
                 )
                 logger.warning(
                     "   🔧 These jobs were dispatched to Modal but never actually started"
                 )
-        
-        total_cleaned = len(cleaned_jobs) + (len(null_logs_cleaned) if null_logs_jobs else 0)
+
+        total_cleaned = len(cleaned_jobs) + (
+            len(null_logs_cleaned) if null_logs_jobs else 0
+        )
         return total_cleaned
     except Exception as e:
         logger.error("Failed to cleanup stale executions: %s", e)
@@ -2213,7 +2679,9 @@ if __name__ == "__main__":
     print("\n📋 Available Functions:")
     print("  • execute_workflow() - Real browser automation execution")
     print("  • health_check() - Infrastructure and MCP health monitoring")
-    print("  • check_and_process_queued_jobs() - Atomic job processing with auto-restart")
+    print(
+        "  • check_and_process_queued_jobs() - Atomic job processing with auto-restart"
+    )
     print("\n⚡ Hybrid Architecture:")
     print("  • Vercel: Fast database queries and status checks")
     print("  • Modal: Real browser automation with MCP")
@@ -2233,7 +2701,9 @@ if __name__ == "__main__":
     print("  • Retry logic after successful restart")
 
     # Also log to logger so it's captured
-    logger.info("Modal app initialized with enhanced logging and auto-restart capability")
+    logger.info(
+        "Modal app initialized with enhanced logging and auto-restart capability"
+    )
     logger.info("MCP endpoints configured dynamically per execution")
     logger.info("Using VM management endpoint: %s", VM_MANAGEMENT_ENDPOINT)
 
@@ -2245,7 +2715,7 @@ if __name__ == "__main__":
     timeout=300,  # 5 minutes max per check
     max_containers=1,  # ENSURE ONLY ONE INSTANCE
     min_containers=0,  # Do not keep warm, prevent queueing
-    retries=0         # Do not retry on failure/skip
+    retries=0,  # Do not retry on failure/skip
 )
 def check_and_process_queued_jobs():
     """
@@ -2253,9 +2723,9 @@ def check_and_process_queued_jobs():
 
     This function processes jobs that come with pre-assigned machine IDs and MCP endpoints.
     It ensures only one execution runs per machine while allowing multiple machines to work in parallel.
-    
+
     SIMPLIFIED LOGIC: No machine discovery needed - jobs already have assigned_machine_id and mcp_endpoint.
-    
+
     MACHINE-SPECIFIC COORDINATION: Uses machine-based coordinator locks to prevent
     race conditions while enabling true multi-machine parallelization.
     """
@@ -2305,17 +2775,24 @@ def check_and_process_queued_jobs():
             cleanup_stale_machine_locks(cur)
             conn.commit()
         except Exception as cleanup_err:
-            logger.warning("⚠️ Failed to cleanup stale coordinator locks: %s", cleanup_err)
+            logger.warning(
+                "⚠️ Failed to cleanup stale coordinator locks: %s", cleanup_err
+            )
 
         # Periodically clean up stale executions
         if int(time.time()) % 60 == 0:
-            cleanup_count = cleanup_stale_executions(cur, conn, stale_threshold_minutes=25)
+            cleanup_count = cleanup_stale_executions(
+                cur, conn, stale_threshold_minutes=25
+            )
             if cleanup_count > 0:
-                logger.info("🧹 Enhanced cleanup: %d stale executions cleaned up", cleanup_count)
+                logger.info(
+                    "🧹 Enhanced cleanup: %d stale executions cleaned up", cleanup_count
+                )
 
         # 🎯 ENHANCED MACHINE LOGIC: Find next queued job for a machine with available capacity
         # Jobs already have assigned_machine_id and mcp_endpoint - check against max_concurrent_executions
-        cur.execute("""
+        cur.execute(
+            """
             SELECT 
                 we.id,
                 we.workflow_id,
@@ -2351,17 +2828,17 @@ def check_and_process_queued_jobs():
               ) < rm.max_concurrent_executions
             ORDER BY we.created_at ASC  -- Process oldest jobs first
             FOR UPDATE SKIP LOCKED
-        """)
-        
+        """
+        )
+
         jobs_to_claim = cur.fetchall()
-        
+
         if not jobs_to_claim:
-            logger.debug("⏸️ No available jobs found (all machines busy or no queued jobs)")
-            return {
-                "status": "no_available_jobs",
-                "coordinator_id": coordinator_id
-            }
-        
+            logger.debug(
+                "⏸️ No available jobs found (all machines busy or no queued jobs)"
+            )
+            return {"status": "no_available_jobs", "coordinator_id": coordinator_id}
+
         # Group jobs by machine to claim multiple jobs per machine up to capacity
         jobs_by_machine = {}
         for job in jobs_to_claim:
@@ -2369,58 +2846,73 @@ def check_and_process_queued_jobs():
             if machine_id not in jobs_by_machine:
                 jobs_by_machine[machine_id] = []
             jobs_by_machine[machine_id].append(job)
-        
+
         # Limit jobs per machine to available capacity
         jobs_to_process = []
         for machine_id, machine_jobs in jobs_by_machine.items():
             max_concurrent = machine_jobs[0]["max_concurrent_executions"]
-            
+
             # Get current running count for this machine
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT COUNT(*) as running_count
                 FROM workflow_executions 
                 WHERE assigned_machine_id = %s 
                   AND status = 'running'
                   AND started_at > NOW() - INTERVAL '30 minutes'
-            """, (machine_id,))
+            """,
+                (machine_id,),
+            )
             current_running = cur.fetchone()["running_count"]
-            
+
             # Calculate available slots
             available_slots = max_concurrent - current_running
             if available_slots > 0:
                 # Take only the jobs we can handle
                 jobs_for_this_machine = machine_jobs[:available_slots]
                 jobs_to_process.extend(jobs_for_this_machine)
-                logger.debug("🎯 Found %d jobs for machine %s (%s) - capacity %d/%d", 
-                           len(jobs_for_this_machine), machine_id, 
-                           machine_jobs[0]["machine_name"], current_running + len(jobs_for_this_machine), max_concurrent)
-        
+                logger.debug(
+                    "🎯 Found %d jobs for machine %s (%s) - capacity %d/%d",
+                    len(jobs_for_this_machine),
+                    machine_id,
+                    machine_jobs[0]["machine_name"],
+                    current_running + len(jobs_for_this_machine),
+                    max_concurrent,
+                )
+
         if not jobs_to_process:
             logger.debug("⏸️ No jobs can be claimed after capacity check")
-            return {
-                "status": "no_available_jobs", 
-                "coordinator_id": coordinator_id
-            }
+            return {"status": "no_available_jobs", "coordinator_id": coordinator_id}
 
         # 🎯 CLAIM ALL AVAILABLE JOBS: Process multiple jobs in parallel
         claimed_jobs = []
-        
+
         for job in jobs_to_process:
             execution_id = job["id"]
             machine_id = job["assigned_machine_id"]
             workflow_id = job["workflow_id"]
             machine_name = job["machine_name"]
             max_concurrent = job["max_concurrent_executions"]
-            
+
             # 🚫 WORKFLOW-SPECIFIC FAILURE PATTERN CHECK for each job
-            should_block, block_reason, check_duration_ms = check_failure_patterns_for_workflow(cur, conn, workflow_id)
-            
+            should_block, block_reason, check_duration_ms = (
+                check_failure_patterns_for_workflow(cur, conn, workflow_id)
+            )
+
             if should_block:
-                logger.warning("🚫 BLOCKED job %d for workflow %d on machine %s: %s", execution_id, workflow_id, machine_id, block_reason)
+                logger.warning(
+                    "🚫 BLOCKED job %d for workflow %d on machine %s: %s",
+                    execution_id,
+                    workflow_id,
+                    machine_id,
+                    block_reason,
+                )
                 continue  # Skip this job but continue with others
-            
+
             # 🔒 CREATE COORDINATOR LOCK for this specific job
-            machine_coordinator_id = f"machine-{machine_id}-coordinator-{uuid.uuid4().hex[:8]}"
+            machine_coordinator_id = (
+                f"machine-{machine_id}-coordinator-{uuid.uuid4().hex[:8]}"
+            )
             machine_user_id = f"machine-{machine_id}-coordinator"
             try:
                 cur.execute(
@@ -2431,11 +2923,17 @@ def check_and_process_queued_jobs():
                     (machine_user_id, execution_id, machine_coordinator_id),
                 )
                 # Track for guaranteed release after commit
-                record_acquired_lock(acquired_locks, machine_user_id, machine_coordinator_id)
+                record_acquired_lock(
+                    acquired_locks, machine_user_id, machine_coordinator_id
+                )
             except Exception as lock_error:
-                logger.error("❌ Failed to create coordinator lock for job %d: %s", execution_id, lock_error)
+                logger.error(
+                    "❌ Failed to create coordinator lock for job %d: %s",
+                    execution_id,
+                    lock_error,
+                )
                 continue  # Skip this job but continue with others
-            
+
             # 🎯 CLAIM THIS JOB: Update status to running
             modal_call_id = f"modal-machine{machine_id}-{int(time.time())}-{random.randint(1000, 9999)}-{execution_id}"
 
@@ -2452,37 +2950,37 @@ def check_and_process_queued_jobs():
                     id, workflow_id, execution_params, client_id,
                     assigned_machine_id, mcp_endpoint, version_number;
                 """,
-                (modal_call_id, execution_id)
+                (modal_call_id, execution_id),
             )
 
             job_to_process = cur.fetchone()
 
             if not job_to_process:
-                logger.warning("⚠️ Failed to claim execution %s (may have been claimed by another process)", execution_id)
+                logger.warning(
+                    "⚠️ Failed to claim execution %s (may have been claimed by another process)",
+                    execution_id,
+                )
                 continue  # Skip this job but continue with others
-            
+
             # Successfully claimed the job
             claimed_jobs.append(job_to_process)
-            
+
             logger.info(
                 "✅ Claimed execution ID %s for workflow %s on machine %s (%s) - capacity %d",
                 execution_id,
                 job_to_process["workflow_id"],
                 machine_id,
                 machine_name,
-                max_concurrent
+                max_concurrent,
             )
-        
+
         # Commit all job claims at once
         conn.commit()
-        
+
         if not claimed_jobs:
             logger.warning("⚠️ No jobs were successfully claimed")
-            return {
-                "status": "no_jobs_claimed",
-                "coordinator_id": coordinator_id
-            }
-        
+            return {"status": "no_jobs_claimed", "coordinator_id": coordinator_id}
+
         # 🚀 DISPATCH ALL CLAIMED JOBS TO MODAL IN PARALLEL
         dispatched_jobs = []
         for job_to_process in claimed_jobs:
@@ -2493,10 +2991,14 @@ def check_and_process_queued_jobs():
             assigned_machine_id = job_to_process["assigned_machine_id"]
             mcp_endpoint = job_to_process["mcp_endpoint"]
             version_number = job_to_process["version_number"]
-            
+
             try:
-                logger.info("🚀 Dispatching job %s to Modal for machine %s...", execution_id, assigned_machine_id)
-                
+                logger.info(
+                    "🚀 Dispatching job %s to Modal for machine %s...",
+                    execution_id,
+                    assigned_machine_id,
+                )
+
                 modal_future = execute_workflow.remote(
                     workflow_id=workflow_id,
                     mcp_endpoint=mcp_endpoint,
@@ -2505,45 +3007,64 @@ def check_and_process_queued_jobs():
                     execution_id=execution_id,
                     version_number=version_number,
                 )
-                
-                dispatched_jobs.append({
-                    "execution_id": execution_id,
-                    "workflow_id": workflow_id,
-                    "machine_id": assigned_machine_id,
-                    "modal_future": str(modal_future)
-                })
-                
-                logger.info("✅ Job %s successfully dispatched to Modal for machine %s", execution_id, assigned_machine_id)
-                
+
+                dispatched_jobs.append(
+                    {
+                        "execution_id": execution_id,
+                        "workflow_id": workflow_id,
+                        "machine_id": assigned_machine_id,
+                        "modal_future": str(modal_future),
+                    }
+                )
+
+                logger.info(
+                    "✅ Job %s successfully dispatched to Modal for machine %s",
+                    execution_id,
+                    assigned_machine_id,
+                )
+
             except Exception as dispatch_error:
-                logger.error("❌ Failed to dispatch job %s to Modal: %s", execution_id, dispatch_error)
-                
+                logger.error(
+                    "❌ Failed to dispatch job %s to Modal: %s",
+                    execution_id,
+                    dispatch_error,
+                )
+
                 # Revert the execution status back to queued since dispatch failed
                 try:
-                    cur.execute("""
+                    cur.execute(
+                        """
                         UPDATE workflow_executions 
                         SET status = 'queued', started_at = NULL, modal_call_id = NULL
                         WHERE id = %s
-                    """, (execution_id,))
+                    """,
+                        (execution_id,),
+                    )
                     conn.commit()
-                    logger.info("🔄 Reverted execution %s back to queued status", execution_id)
+                    logger.info(
+                        "🔄 Reverted execution %s back to queued status", execution_id
+                    )
                 except Exception as revert_error:
-                    logger.error("❌ Failed to revert execution status: %s", revert_error)
-        
+                    logger.error(
+                        "❌ Failed to revert execution status: %s", revert_error
+                    )
+
         # Return summary of all dispatched jobs
         if dispatched_jobs:
-            logger.info("🎉 Successfully dispatched %d jobs in parallel!", len(dispatched_jobs))
+            logger.info(
+                "🎉 Successfully dispatched %d jobs in parallel!", len(dispatched_jobs)
+            )
             return {
                 "status": "jobs_claimed",
                 "dispatched_jobs": dispatched_jobs,
                 "total_dispatched": len(dispatched_jobs),
-                "coordinator_id": coordinator_id
+                "coordinator_id": coordinator_id,
             }
         else:
             return {
                 "status": "dispatch_failed",
                 "error": "No jobs were successfully dispatched",
-                "coordinator_id": coordinator_id
+                "coordinator_id": coordinator_id,
             }
 
     except Exception as e:
@@ -2551,13 +3072,13 @@ def check_and_process_queued_jobs():
         return {
             "status": "processing_error",
             "error": str(e),
-            "coordinator_id": coordinator_id
+            "coordinator_id": coordinator_id,
         }
 
     finally:
         # 🔓 RELEASE COORDINATOR LOCKS
         try:
-            if cur and conn and 'coordinator_id' in locals():
+            if cur and conn and "coordinator_id" in locals():
                 # Release global scheduler lock
                 cur.execute(
                     """
@@ -2571,10 +3092,18 @@ def check_and_process_queued_jobs():
                 release_acquired_locks(cur, acquired_locks)
 
                 conn.commit()
-                logger.debug("🔓 Released coordinator locks: %s (count=%d)", coordinator_id, len(acquired_locks))
+                logger.debug(
+                    "🔓 Released coordinator locks: %s (count=%d)",
+                    coordinator_id,
+                    len(acquired_locks),
+                )
         except Exception as unlock_error:
-            logger.error("❌ Failed to release coordinator locks %s: %s", coordinator_id, unlock_error)
-        
+            logger.error(
+                "❌ Failed to release coordinator locks %s: %s",
+                coordinator_id,
+                unlock_error,
+            )
+
         if cur:
             cur.close()
         if conn:
@@ -2590,6 +3119,3 @@ def trigger_job_check():
     """
     logger.info("🔄 Manually triggering job check...")
     return check_and_process_queued_jobs.local()
-
-
-
