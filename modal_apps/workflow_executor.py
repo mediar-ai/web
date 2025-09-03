@@ -2180,9 +2180,9 @@ def execute_workflow(
         """,
             (
                 (
-                    # Set status based on workflow result
-                    # If we have a workflow_result with execution_status, use that for more granularity
-                    workflow_result.get("execution_status", "completed")
+                    # Database only accepts specific status values, so map completed_with_errors to completed
+                    # The granular status is preserved in the results JSON
+                    "completed"
                     if results["execution_summary"]["workflow_completed"]
                     else "failed"
                 ),
