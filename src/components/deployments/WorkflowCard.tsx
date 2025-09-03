@@ -70,6 +70,7 @@ const getStatusBadge = (status: string) => {
     error: 'bg-white text-black border border-black font-bold', // Bold text for emphasis
     running: 'bg-black text-white border border-black', // Active status - filled black
     completed: 'bg-white text-black border border-black', // Default outline
+    completed_with_errors: 'bg-yellow-100 text-black border border-yellow-600', // Warning style
     failed: 'bg-white text-black border border-black font-bold', // Bold text for emphasis
     cancelled: 'bg-gray-100 text-gray-600 border border-black', // Slightly muted
     queued: 'bg-white text-black border border-black', // Default outline
@@ -84,6 +85,8 @@ const getStatusIcon = (status: string) => {
       return <Loader2 className="w-3.5 h-3.5 animate-spin" />;
     case 'completed':
       return <CheckCircle className="w-3.5 h-3.5" />;
+    case 'completed_with_errors':
+      return <AlertCircle className="w-3.5 h-3.5" />; // Warning icon for partial success
     case 'failed':
     case 'error':
       return <XCircle className="w-3.5 h-3.5" />;
