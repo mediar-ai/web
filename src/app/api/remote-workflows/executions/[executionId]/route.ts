@@ -202,7 +202,7 @@ export async function GET(
           workflow?.description || 'No description available',
         workflow_version: workflow?.version || '1.0.0',
         workflow_category: workflow?.category || 'general',
-        
+
         // Execution version info (the actual version that was executed)
         version_number: execution.version_number,
         workflow_version_id: execution.workflow_version_id,
@@ -210,7 +210,8 @@ export async function GET(
         // Status info
         status: execution.status,
         // Granular execution status from results (e.g., completed_with_errors)
-        execution_status: execution.results?.execution_status || execution.status,
+        execution_status:
+          execution.results?.execution_status || execution.status,
         is_running: isRunning,
         is_completed: isCompleted,
         is_successful: isSuccessful,
