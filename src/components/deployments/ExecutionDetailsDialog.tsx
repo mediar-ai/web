@@ -156,9 +156,13 @@ export function ExecutionDetailsDialog({
                           </dd>
                         </div>
                         <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Workflow Version:</dt>
+                          <dt className="text-muted-foreground">
+                            Workflow Version:
+                          </dt>
                           <dd className="font-mono text-sm font-semibold">
-                            {execution.version_number ? `v${execution.version_number}` : 'v1.0.0 (default)'}
+                            {execution.version_number
+                              ? `v${execution.version_number}`
+                              : 'v1.0.0 (default)'}
                           </dd>
                         </div>
                       </dl>
