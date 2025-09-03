@@ -202,6 +202,10 @@ export async function GET(
           workflow?.description || 'No description available',
         workflow_version: workflow?.version || '1.0.0',
         workflow_category: workflow?.category || 'general',
+        
+        // Execution version info (the actual version that was executed)
+        version_number: execution.version_number,
+        workflow_version_id: execution.workflow_version_id,
 
         // Status info
         status: execution.status,
