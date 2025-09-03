@@ -1,4 +1,8 @@
-import { describeCronExpression, parseCronExpression, shouldExecuteAt } from '@/lib/cronParser';
+import {
+  describeCronExpression,
+  parseCronExpression,
+  shouldExecuteAt,
+} from '@/lib/cronParser';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -36,14 +40,15 @@ interface ExecutionResult {
 export async function POST(_request: NextRequest) {
   const startTime = Date.now();
   const currentTime = new Date();
-  
+
   console.log(`🕐 [${currentTime.toISOString()}] Cron scheduler started`);
 
   try {
     // 1. Get all active cron jobs
     const { data: workflows, error: fetchError } = await supabase
       .from('deployed_workflows')
-      .select(`
+      .select(
+        `
         id,
         name,
         cron_expression,
@@ -54,9 +59,10 @@ export async function POST(_request: NextRequest) {
         cron_max_concurrent,
         cron_retry_on_failure,
         cron_retry_count
-      `)
+      `
+      )
       .eq('cron_enabled', true)
-      .eq('status', 'active')
+      .in('status', ['active', 'deployed'])
       .not('cron_expression', 'is', null);
 
     if (fetchError) {
@@ -73,7 +79,7 @@ export async function POST(_request: NextRequest) {
         success: true,
         message: 'No active cron workflows',
         executionsTriggered: 0,
-        processingTimeMs: Date.now() - startTime
+        processingTimeMs: Date.now() - startTime,
       });
     }
 
@@ -81,36 +87,44 @@ export async function POST(_request: NextRequest) {
 
     // 2. Check which workflows should execute now
     const workflowsToExecute: ScheduledWorkflow[] = [];
-    const workflowUpdates: Array<{ id: number; next_scheduled_execution: string }> = [];
+    const workflowUpdates: Array<{
+      id: number;
+      next_scheduled_execution: string;
+    }> = [];
 
     for (const workflow of workflows as ScheduledWorkflow[]) {
       try {
         const cronExpression = workflow.cron_expression;
         const timezone = workflow.cron_timezone || 'UTC';
-        
+
         // Validate cron expression
         const parsed = parseCronExpression(cronExpression);
         if (!parsed.isValid) {
-          console.error(`❌ Invalid cron expression for workflow ${workflow.id} (${workflow.name}): ${parsed.error}`);
+          console.error(
+            `❌ Invalid cron expression for workflow ${workflow.id} (${workflow.name}): ${parsed.error}`
+          );
           continue;
         }
 
         // Check if workflow should execute at current time
         if (shouldExecuteAt(cronExpression, currentTime, timezone)) {
           // Check if we haven't already executed this minute
-          const lastExecution = workflow.last_scheduled_execution 
+          const lastExecution = workflow.last_scheduled_execution
             ? new Date(workflow.last_scheduled_execution)
             : null;
 
           const currentMinute = new Date(currentTime);
           currentMinute.setSeconds(0, 0); // Round down to minute
 
-          const shouldSkip = lastExecution && 
-            lastExecution >= currentMinute && 
+          const shouldSkip =
+            lastExecution &&
+            lastExecution >= currentMinute &&
             lastExecution < new Date(currentMinute.getTime() + 60000);
 
           if (shouldSkip) {
-            console.log(`⏭️  Workflow ${workflow.name} already executed this minute, skipping`);
+            console.log(
+              `⏭️  Workflow ${workflow.name} already executed this minute, skipping`
+            );
             continue;
           }
 
@@ -121,13 +135,20 @@ export async function POST(_request: NextRequest) {
             .eq('workflow_id', workflow.id)
             .in('status', ['queued', 'running']);
 
-          if (runningExecutions && runningExecutions >= workflow.cron_max_concurrent) {
-            console.log(`🚦 Workflow ${workflow.name} has ${runningExecutions} running executions (max: ${workflow.cron_max_concurrent}), skipping`);
+          if (
+            runningExecutions &&
+            runningExecutions >= workflow.cron_max_concurrent
+          ) {
+            console.log(
+              `🚦 Workflow ${workflow.name} has ${runningExecutions} running executions (max: ${workflow.cron_max_concurrent}), skipping`
+            );
             continue;
           }
 
           workflowsToExecute.push(workflow);
-          console.log(`✅ Workflow ${workflow.name} scheduled for execution (${describeCronExpression(cronExpression)})`);
+          console.log(
+            `✅ Workflow ${workflow.name} scheduled for execution (${describeCronExpression(cronExpression)})`
+          );
         }
 
         // Calculate next execution time (simplified - just add 1 minute for now)
@@ -135,34 +156,39 @@ export async function POST(_request: NextRequest) {
         const nextExecution = new Date(currentTime.getTime() + 60000);
         workflowUpdates.push({
           id: workflow.id,
-          next_scheduled_execution: nextExecution.toISOString()
+          next_scheduled_execution: nextExecution.toISOString(),
         });
-
       } catch (error) {
-        console.error(`❌ Error processing workflow ${workflow.id} (${workflow.name}):`, error);
+        console.error(
+          `❌ Error processing workflow ${workflow.id} (${workflow.name}):`,
+          error
+        );
       }
     }
 
     // 3. Execute workflows
     const executionResults: ExecutionResult[] = [];
-    
+
     for (const workflow of workflowsToExecute) {
       try {
         console.log(`🚀 Triggering execution for workflow: ${workflow.name}`);
-        
+
         // Call the existing workflow execution API
-        const executionResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/remote-workflows/${workflow.id}/execute`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-            'X-Cron-Execution': 'true'
-          },
-          body: JSON.stringify({
-            execution_params: {},
-            client_id: 'cron-scheduler'
-          })
-        });
+        const executionResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/remote-workflows/${workflow.id}/execute`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+              'X-Cron-Execution': 'true',
+            },
+            body: JSON.stringify({
+              parameters: {}, // Changed from execution_params to parameters
+              client_id: 'cron-scheduler',
+            }),
+          }
+        );
 
         if (executionResponse.ok) {
           const executionData = await executionResponse.json();
@@ -171,28 +197,32 @@ export async function POST(_request: NextRequest) {
             workflowName: workflow.name,
             success: true,
             executionId: executionData.execution?.id,
-            scheduledAt: currentTime.toISOString()
+            scheduledAt: currentTime.toISOString(),
           });
 
           // Update last execution timestamp
           await supabase
             .from('deployed_workflows')
-            .update({ 
-              last_scheduled_execution: currentTime.toISOString()
+            .update({
+              last_scheduled_execution: currentTime.toISOString(),
             })
             .eq('id', workflow.id);
 
-          console.log(`✅ Successfully triggered execution for ${workflow.name} (execution ID: ${executionData.execution?.id})`);
+          console.log(
+            `✅ Successfully triggered execution for ${workflow.name} (execution ID: ${executionData.execution?.id})`
+          );
         } else {
           const errorText = await executionResponse.text();
-          console.error(`❌ Failed to trigger execution for ${workflow.name}: ${executionResponse.status} ${errorText}`);
-          
+          console.error(
+            `❌ Failed to trigger execution for ${workflow.name}: ${executionResponse.status} ${errorText}`
+          );
+
           executionResults.push({
             workflowId: workflow.id,
             workflowName: workflow.name,
             success: false,
             error: `HTTP ${executionResponse.status}: ${errorText}`,
-            scheduledAt: currentTime.toISOString()
+            scheduledAt: currentTime.toISOString(),
           });
         }
       } catch (error) {
@@ -202,7 +232,7 @@ export async function POST(_request: NextRequest) {
           workflowName: workflow.name,
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
-          scheduledAt: currentTime.toISOString()
+          scheduledAt: currentTime.toISOString(),
         });
       }
     }
@@ -222,7 +252,9 @@ export async function POST(_request: NextRequest) {
     const failedExecutions = executionResults.filter(r => !r.success).length;
 
     console.log(`🏁 Cron scheduler completed in ${processingTime}ms`);
-    console.log(`📊 Results: ${successfulExecutions} successful, ${failedExecutions} failed executions`);
+    console.log(
+      `📊 Results: ${successfulExecutions} successful, ${failedExecutions} failed executions`
+    );
 
     return NextResponse.json({
       success: true,
@@ -232,17 +264,16 @@ export async function POST(_request: NextRequest) {
       executionsTriggered: executionResults.length,
       successfulExecutions,
       failedExecutions,
-      results: executionResults
+      results: executionResults,
     });
-
   } catch (error) {
     console.error('❌ Cron scheduler error:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: currentTime.toISOString(),
-        processingTimeMs: Date.now() - startTime
+        processingTimeMs: Date.now() - startTime,
       },
       { status: 500 }
     );
@@ -267,14 +298,14 @@ export async function GET() {
     return NextResponse.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      activeCronJobs: count || 0
+      activeCronJobs: count || 0,
     });
   } catch (error) {
     return NextResponse.json(
-      { 
-        status: 'unhealthy', 
+      {
+        status: 'unhealthy',
         error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );

@@ -113,6 +113,7 @@ export interface Execution {
   workflow_id: number;
   workflow_name: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'error';
+  execution_status?: string; // Granular status like 'completed_with_errors'
   created_at: string;
   started_at?: string;
   completed_at?: string;

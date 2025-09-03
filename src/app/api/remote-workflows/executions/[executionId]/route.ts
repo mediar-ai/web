@@ -209,6 +209,8 @@ export async function GET(
 
         // Status info
         status: execution.status,
+        // Granular execution status from results (e.g., completed_with_errors)
+        execution_status: execution.results?.execution_status || execution.status,
         is_running: isRunning,
         is_completed: isCompleted,
         is_successful: isSuccessful,

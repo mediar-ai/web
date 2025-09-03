@@ -87,10 +87,10 @@ export function ExecutionDetailsDialog({
               {execution ? (
                 <>
                   Execution #{execution.execution_id}
-                  <Badge className={getStatusBadge(execution.status)}>
-                    {getStatusIcon(execution.status)}
+                  <Badge className={getStatusBadge(execution.execution_status || execution.status)}>
+                    {getStatusIcon(execution.execution_status || execution.status)}
                     <span className="ml-1">
-                      {execution.status.toUpperCase()}
+                      {(execution.execution_status || execution.status).toUpperCase()}
                     </span>
                   </Badge>
                 </>
