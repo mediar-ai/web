@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     // Check authentication
     const { auth } = await import('@clerk/nextjs/server');
     const { userId } = await auth();
-    
+
     if (!userId) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
@@ -41,13 +41,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body: CreateWorkflowRequest = await request.json();
-    
+
     // Validate required fields
     if (!body.name || !body.automation_sequence) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Missing required fields: name and automation_sequence are required' 
+        {
+          success: false,
+          error:
+            'Missing required fields: name and automation_sequence are required',
         },
         { status: 400 }
       );
@@ -58,22 +59,26 @@ export async function POST(request: NextRequest) {
     // Detect and parse automation sequence format
     function detectSequenceFormat(content: string): 'yaml' | 'json' {
       const trimmed = content.trim();
-      
+
       // JSON detection
-      if ((trimmed.startsWith('[') && trimmed.endsWith(']')) ||
-          (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+      if (
+        (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+        (trimmed.startsWith('{') && trimmed.endsWith('}'))
+      ) {
         return 'json';
       }
-      
+
       // YAML detection - more comprehensive
-      if (trimmed.includes('tool_name:') || 
-          trimmed.includes('arguments:') || 
-          trimmed.includes('cron:') ||
-          trimmed.includes('steps:') ||
-          trimmed.startsWith('---')) {
+      if (
+        trimmed.includes('tool_name:') ||
+        trimmed.includes('arguments:') ||
+        trimmed.includes('cron:') ||
+        trimmed.includes('steps:') ||
+        trimmed.startsWith('---')
+      ) {
         return 'yaml';
       }
-      
+
       return 'yaml'; // Default to YAML
     }
 
@@ -90,7 +95,7 @@ export async function POST(request: NextRequest) {
       if (sequenceFormat === 'yaml') {
         yamlContent = body.automation_sequence;
         parsedSequence = yaml.load(body.automation_sequence);
-        
+
         // Extract cron configuration
         cronConfig = extractCronConfigFromYAML(body.automation_sequence);
         if (cronConfig) {
@@ -102,9 +107,9 @@ export async function POST(request: NextRequest) {
       }
     } catch (parseError) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: `Invalid ${sequenceFormat} format: ${parseError instanceof Error ? parseError.message : 'Parse error'}` 
+        {
+          success: false,
+          error: `Invalid ${sequenceFormat} format: ${parseError instanceof Error ? parseError.message : 'Parse error'}`,
         },
         { status: 400 }
       );
@@ -129,9 +134,9 @@ export async function POST(request: NextRequest) {
       cron_max_concurrent: cronConfig?.maxConcurrent || 1,
       cron_retry_on_failure: cronConfig?.retryOnFailure !== false,
       cron_retry_count: cronConfig?.retryCount || 3,
-      // Metadata  
+      // Metadata
       created_by: null, // Clerk user IDs are not compatible with UUID format
-      total_versions: 1
+      total_versions: 1,
     };
 
     // Insert main workflow
@@ -144,9 +149,9 @@ export async function POST(request: NextRequest) {
     if (workflowError) {
       console.error('❌ Error creating workflow:', workflowError);
       return NextResponse.json(
-        { 
-          success: false, 
-          error: `Failed to create workflow: ${workflowError.message}` 
+        {
+          success: false,
+          error: `Failed to create workflow: ${workflowError.message}`,
         },
         { status: 500 }
       );
@@ -162,7 +167,7 @@ export async function POST(request: NextRequest) {
       automation_sequence: jsonbContent || parsedSequence,
       preferred_format: sequenceFormat,
       is_active: body.set_as_active !== false, // Default to active
-      change_notes: 'Initial version created via UI'
+      change_notes: 'Initial version created via UI',
     };
 
     const { data: newVersion, error: versionError } = await supabase
@@ -174,12 +179,15 @@ export async function POST(request: NextRequest) {
     if (versionError) {
       console.error('❌ Error creating version:', versionError);
       // Try to clean up the workflow if version creation failed
-      await supabase.from('deployed_workflows').delete().eq('id', newWorkflow.id);
-      
+      await supabase
+        .from('deployed_workflows')
+        .delete()
+        .eq('id', newWorkflow.id);
+
       return NextResponse.json(
-        { 
-          success: false, 
-          error: `Failed to create workflow version: ${versionError.message}` 
+        {
+          success: false,
+          error: `Failed to create workflow version: ${versionError.message}`,
         },
         { status: 500 }
       );
@@ -193,19 +201,19 @@ export async function POST(request: NextRequest) {
       workflow: {
         ...newWorkflow,
         version_info: newVersion,
-        cron_config: cronConfig
+        cron_config: cronConfig,
       },
-      message: `Workflow "${body.name}" created successfully with version ${newVersion.version_number}`
+      message: `Workflow "${body.name}" created successfully with version ${newVersion.version_number}`,
     };
 
     return NextResponse.json(response, { status: 201 });
-
   } catch (error) {
     console.error('❌ Workflow creation error:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
       },
       { status: 500 }
     );
@@ -219,8 +227,8 @@ export async function GET() {
   try {
     const templates = {
       basic_automation: {
-        name: "Basic Automation Template",
-        description: "Simple automation workflow template",
+        name: 'Basic Automation Template',
+        description: 'Simple automation workflow template',
         automation_sequence: `---
 tool_name: execute_sequence
 arguments:
@@ -230,6 +238,50 @@ arguments:
       label: Target URL
       description: The URL to navigate to
       default: "https://example.com"
+    
+    navigation_parser:
+      type: object
+      label: Navigation Parser
+      default:
+        javascript_code: |
+          // =============================================================================
+          // STANDARDIZED OUTPUT PARSER - Basic Automation Template
+          // =============================================================================
+          
+          // Check for navigation errors
+          const hasError = tree && (
+            tree.attributes?.name?.includes("error") ||
+            tree.attributes?.name?.includes("404") ||
+            tree.attributes?.name?.includes("cannot be reached")
+          );
+          
+          // Extract page information
+          const pageTitle = tree?.attributes?.name || "";
+          const currentUrl = tree?.attributes?.description || "";
+          
+          // Validate navigation success
+          const validation = {
+            navigated: !!tree,
+            titlePresent: pageTitle.length > 0,
+            urlPresent: currentUrl.length > 0,
+            noErrors: !hasError
+          };
+          
+          const success = validation.navigated && validation.noErrors;
+          
+          return {
+            success: success,
+            data: {
+              pageTitle: pageTitle,
+              currentUrl: currentUrl,
+              windowTree: tree
+            },
+            message: success 
+              ? \`Successfully navigated to \${currentUrl}\`
+              : \`Failed to navigate to target URL\`,
+            error: hasError ? "Navigation error detected" : null,
+            validation: validation
+          };
   
   inputs:
     target_url: "https://example.com"
@@ -240,15 +292,17 @@ arguments:
         url: "\${{target_url}}"
     
     - tool_name: get_focused_window_tree
-      arguments: {}`,
-        category: "web_automation",
-        difficulty_level: "easy",
-        estimated_duration_seconds: 30
+      arguments: {}
+  
+  output_parser: "\${{navigation_parser}}"`,
+        category: 'web_automation',
+        difficulty_level: 'easy',
+        estimated_duration_seconds: 30,
       },
-      
+
       cron_scheduled: {
-        name: "Scheduled Task Template",
-        description: "Template for scheduled/cron workflows",
+        name: 'Scheduled Task Template',
+        description: 'Template for scheduled/cron workflows',
         automation_sequence: `---
 # Runs every 5 minutes
 cron: "0 */5 * * * *"
@@ -257,6 +311,53 @@ enabled: true
 
 tool_name: execute_sequence
 arguments:
+  variables:
+    task_parser:
+      type: object
+      label: Task Execution Parser
+      default:
+        javascript_code: |
+          // =============================================================================
+          // STANDARDIZED OUTPUT PARSER - Scheduled Task Template
+          // =============================================================================
+          
+          // The 'executionResults' variable contains the results from executed steps
+          const commandResults = executionResults || [];
+          
+          // Check if both commands executed successfully
+          const firstCommandResult = commandResults[0];
+          const secondCommandResult = commandResults[1];
+          
+          const validation = {
+            firstCommandExecuted: !!firstCommandResult,
+            secondCommandExecuted: !!secondCommandResult,
+            firstCommandSuccess: firstCommandResult?.success === true,
+            secondCommandSuccess: secondCommandResult?.success === true
+          };
+          
+          const success = validation.firstCommandExecuted && 
+                          validation.secondCommandExecuted && 
+                          validation.firstCommandSuccess && 
+                          validation.secondCommandSuccess;
+          
+          // Extract command outputs
+          const data = {
+            executionTimestamp: new Date().toISOString(),
+            firstCommandOutput: firstCommandResult?.output || null,
+            secondCommandOutput: secondCommandResult?.output || null,
+            totalCommands: commandResults.length
+          };
+          
+          return {
+            success: success,
+            data: data,
+            message: success 
+              ? \`Scheduled task completed successfully at \${data.executionTimestamp}\`
+              : "Scheduled task failed to complete",
+            error: !success ? "One or more commands failed to execute" : null,
+            validation: validation
+          };
+  
   steps:
     - tool_name: run_command
       arguments:
@@ -264,15 +365,17 @@ arguments:
     
     - tool_name: run_command
       arguments:
-        unix_command: "echo 'Task completed successfully'"`,
-        category: "scheduled_tasks",
-        difficulty_level: "easy",
-        estimated_duration_seconds: 10
+        unix_command: "echo 'Task completed successfully'"
+  
+  output_parser: "\${{task_parser}}"`,
+        category: 'scheduled_tasks',
+        difficulty_level: 'easy',
+        estimated_duration_seconds: 10,
       },
-      
+
       form_automation: {
-        name: "Form Automation Template", 
-        description: "Template for filling out forms and extracting data",
+        name: 'Form Automation Template',
+        description: 'Template for filling out forms and extracting data',
         automation_sequence: `---
 tool_name: execute_sequence
 arguments:
@@ -288,6 +391,76 @@ arguments:
       label: Name
       description: Name to enter in the form
       default: "John Doe"
+    
+    form_parser:
+      type: object
+      label: Form Submission Parser
+      default:
+        javascript_code: |
+          // =============================================================================
+          // STANDARDIZED OUTPUT PARSER - Form Automation Template
+          // =============================================================================
+          
+          // Check for form submission errors
+          const hasError = tree && (
+            tree.text?.includes("error") ||
+            tree.text?.includes("Error") ||
+            tree.text?.includes("failed") ||
+            tree.text?.includes("invalid")
+          );
+          
+          // Look for success indicators
+          const hasSuccessMessage = tree && (
+            tree.text?.includes("success") ||
+            tree.text?.includes("Success") ||
+            tree.text?.includes("submitted") ||
+            tree.text?.includes("complete") ||
+            tree.text?.includes("thank you")
+          );
+          
+          // Extract confirmation data
+          const confirmationMessage = tree?.children?.find(child => 
+            child.role === "Text" && 
+            (child.attributes?.name?.includes("Success") ||
+             child.attributes?.name?.includes("Confirmation"))
+          );
+          
+          // Extract any returned form data or confirmation number
+          const confirmationNumber = tree?.text?.match(/[A-Z0-9]{6,}/)?.[0] || null;
+          
+          // Validation checks
+          const validation = {
+            formNavigated: !!tree,
+            formSubmitted: true, // Assume true since click was successful
+            successMessageFound: hasSuccessMessage,
+            noErrors: !hasError,
+            confirmationPresent: !!confirmationMessage || !!confirmationNumber
+          };
+          
+          const success = validation.formNavigated && 
+                          validation.successMessageFound && 
+                          validation.noErrors;
+          
+          // Extract all relevant data
+          const data = {
+            submittedData: {
+              name: "John Doe" // Value submitted to the form
+            },
+            confirmationNumber: confirmationNumber,
+            confirmationMessage: confirmationMessage?.text || null,
+            pageContent: tree?.text || null,
+            timestamp: new Date().toISOString()
+          };
+          
+          return {
+            success: success,
+            data: data,
+            message: success 
+              ? \`Form submitted successfully\${confirmationNumber ? ' - Confirmation: ' + confirmationNumber : ''}\`
+              : "Form submission failed or could not be confirmed",
+            error: hasError ? "Form submission error detected" : null,
+            validation: validation
+          };
   
   inputs:
     form_url: "https://example.com/form"
@@ -302,18 +475,28 @@ arguments:
       arguments:
         url: "\${{form_url}}"
     
-    - tool_name: set_value
+    - tool_name: type_into_element
       arguments:
         selector: "\${{selectors.name_field}}"
-        value: "\${{name_value}}"
+        text_to_type: "\${{name_value}}"
     
     - tool_name: click_element
       arguments:
-        selector: "\${{selectors.submit_button}}"`,
-        category: "form_automation",
-        difficulty_level: "medium",
-        estimated_duration_seconds: 60
-      }
+        selector: "\${{selectors.submit_button}}"
+    
+    - tool_name: wait_for_element
+      arguments:
+        selector: "role:Text|name:Success"
+        condition: "visible"
+    
+    - tool_name: get_focused_window_tree
+      arguments: {}
+  
+  output_parser: "\${{form_parser}}"`,
+        category: 'form_automation',
+        difficulty_level: 'medium',
+        estimated_duration_seconds: 60,
+      },
     };
 
     return NextResponse.json({
@@ -321,16 +504,15 @@ arguments:
       templates,
       categories: [
         'web_automation',
-        'form_automation', 
+        'form_automation',
         'data_extraction',
         'scheduled_tasks',
         'system_monitoring',
         'api_testing',
-        'general'
+        'general',
       ],
-      difficulty_levels: ['easy', 'medium', 'hard', 'expert']
+      difficulty_levels: ['easy', 'medium', 'hard', 'expert'],
     });
-
   } catch (error) {
     console.error('❌ Error fetching templates:', error);
     return NextResponse.json(
