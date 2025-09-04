@@ -281,33 +281,10 @@ export async function POST(_request: NextRequest) {
 }
 
 /**
- * Health check endpoint for cron scheduler
+ * Cron endpoint - Vercel calls this with GET method
+ * We handle both GET and POST the same way to trigger workflows
  */
-export async function GET() {
-  try {
-    // Check database connectivity
-    const { count, error } = await supabase
-      .from('deployed_workflows')
-      .select('id', { count: 'exact', head: true })
-      .eq('cron_enabled', true);
-
-    if (error) {
-      throw error;
-    }
-
-    return NextResponse.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      activeCronJobs: count || 0,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        status: 'unhealthy',
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
-    );
-  }
+export async function GET(request: NextRequest) {
+  // Vercel cron uses GET, so we trigger workflows on GET too
+  return POST(request);
 }
