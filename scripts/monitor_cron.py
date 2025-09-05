@@ -1,93 +1,105 @@
 #!/usr/bin/env python3
+"""
+Monitor cron executions and their status
+"""
 
-import os
+import requests
 import time
-import psycopg2
-from datetime import datetime
-from dotenv import load_dotenv
+from datetime import datetime, timedelta
+import json
 
-# Load environment variables
-load_dotenv(".env.local")
+# Supabase credentials
+SUPABASE_URL = "https://lqnlxsvefdzljnugpmii.supabase.co"
+SUPABASE_KEY = "***REMOVED***"
 
-
-def get_db_connection():
-    """Get database connection using environment variables."""
-    try:
-        database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
-        if database_url:
-            conn = psycopg2.connect(database_url)
-        else:
-            conn = psycopg2.connect(
-                host=os.getenv("DB_HOST"),
-                database=os.getenv("DB_NAME"),
-                user=os.getenv("DB_USER"),
-                password=os.getenv("DB_PASSWORD"),
-                port=os.getenv("DB_PORT", 5432),
-            )
-        return conn
-    except Exception as e:
-        print(f"Database connection failed: {e}")
-        raise
-
-
-def monitor():
-    """Monitor for new cron executions"""
+def get_recent_executions():
+    """Get recent workflow executions from cron"""
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json"
+    }
     
-    print("\n" + "="*80)
-    print("🎉 FIX DEPLOYED!")
-    print("="*80)
-    print("\nThe fix has been pushed to GitHub.")
-    print("Vercel will auto-deploy in 1-2 minutes.")
-    print("\nOnce deployed, workflows will trigger every minute!")
-    print("\nMonitoring for new executions...")
-    print("Press Ctrl+C to stop\n")
+    # Get executions from the last 10 minutes
+    ten_minutes_ago = (datetime.utcnow() - timedelta(minutes=10)).isoformat()
     
-    last_count = 0
+    url = f"{SUPABASE_URL}/rest/v1/workflow_executions"
+    params = {
+        "select": "id,created_at,status,workflow_id,client_id,error_message,formatted_output",
+        "client_id": "eq.cron-scheduler",
+        "created_at": f"gte.{ten_minutes_ago}",
+        "order": "created_at.desc",
+        "limit": "20"
+    }
+    
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status()
+    return response.json()
+
+def get_workflow_name(workflow_id):
+    """Get workflow name by ID"""
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    url = f"{SUPABASE_URL}/rest/v1/deployed_workflows"
+    params = {
+        "select": "name",
+        "id": f"eq.{workflow_id}"
+    }
+    
+    response = requests.get(url, headers=headers, params=params)
+    workflows = response.json()
+    return workflows[0]["name"] if workflows else f"Workflow #{workflow_id}"
+
+def main():
+    print("🔍 Monitoring cron executions...")
+    print("=" * 60)
     
     while True:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
         try:
-            cursor.execute("""
-                SELECT COUNT(*) 
-                FROM workflow_executions 
-                WHERE client_id = 'cron-scheduler'
-            """)
+            executions = get_recent_executions()
             
-            total_count = cursor.fetchone()[0]
-            
-            if total_count > last_count:
-                print(f"✅ NEW EXECUTIONS! Total: {total_count} (+{total_count - last_count})")
+            if executions:
+                print(f"\n📊 Found {len(executions)} recent cron execution(s):")
+                print("-" * 60)
                 
-                # Get latest execution
-                cursor.execute("""
-                    SELECT id, workflow_id, status, created_at
-                    FROM workflow_executions 
-                    WHERE client_id = 'cron-scheduler'
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """)
+                for execution in executions:
+                    workflow_name = get_workflow_name(execution['workflow_id'])
+                    status_emoji = "✅" if execution['status'] == 'completed' else "❌"
+                    
+                    print(f"\n{status_emoji} Execution #{execution['id']}")
+                    print(f"   Workflow: {workflow_name}")
+                    print(f"   Status: {execution['status']}")
+                    print(f"   Created: {execution['created_at']}")
+                    
+                    if execution['error_message']:
+                        print(f"   Error: {execution['error_message']}")
+                    
+                    # Check formatted_output for partial_success
+                    if execution['formatted_output']:
+                        try:
+                            output = json.loads(execution['formatted_output'])
+                            if isinstance(output, dict) and output.get('status') == 'partial_success':
+                                print(f"   ⚠️ WARNING: Still showing partial_success!")
+                        except:
+                            pass
                 
-                latest = cursor.fetchone()
-                if latest:
-                    exec_id, wf_id, status, created = latest
-                    print(f"   Latest: Execution #{exec_id} - Status: {status}")
-                    print(f"   Created: {created}")
-                
-                last_count = total_count
+                print("\n" + "=" * 60)
             else:
-                print(f"   Waiting... (Total cron executions: {total_count}) - {datetime.now().strftime('%H:%M:%S')}", end='\r')
+                print("No recent cron executions found.")
             
-            cursor.close()
-            conn.close()
+            print(f"\n⏰ Next check in 30 seconds... (Press Ctrl+C to stop)")
+            time.sleep(30)
             
+        except KeyboardInterrupt:
+            print("\n\n✋ Monitoring stopped.")
+            break
         except Exception as e:
-            print(f"Error: {e}")
-            
-        time.sleep(10)  # Check every 10 seconds
-
+            print(f"\n❌ Error: {e}")
+            time.sleep(30)
 
 if __name__ == "__main__":
-    monitor()
-
+    main()

@@ -1050,16 +1050,17 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
             logger.info("📊 No parsed_output found, using execution status")
 
             # No parser - use execution status as fallback
-            # Consider both "success" and "completed_with_errors" as successful execution
+            # Consider "success", "completed_with_errors", and "partial_success" as successful execution
             # "completed_with_errors" means the workflow ran to completion but had non-critical issues
-            result["success"] = execution_status in ["success", "completed_with_errors"]
+            # "partial_success" means the workflow completed but may not have achieved full business goal
+            result["success"] = execution_status in ["success", "completed_with_errors", "partial_success"]
             result["message"] = f"Workflow {execution_status}"
             result["error"] = mcp_response.get("debug_info_on_failure")
 
             # Add basic validation info
             result["validation"] = {
                 "execution_completed": execution_status
-                in ["success", "completed_with_errors"],
+                in ["success", "completed_with_errors", "partial_success"],
                 "tools_executed": executed_tools,
             }
 
