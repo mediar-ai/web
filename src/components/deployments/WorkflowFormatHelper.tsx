@@ -24,7 +24,7 @@ interface WorkflowFormatHelperProps {
 }
 
 export function WorkflowFormatHelper({ 
-  formatInfo, 
+  formatInfo: _formatInfo, 
   executionResult,
   showAsDialog = false 
 }: WorkflowFormatHelperProps) {
