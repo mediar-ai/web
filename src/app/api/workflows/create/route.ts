@@ -102,28 +102,33 @@ export async function POST(request: NextRequest) {
         if (cronConfig) {
           console.log(`📅 Extracted cron config: ${cronConfig.expression}`);
         }
-        
-        // Validate output parser format
-        const parserValidation = validateWorkflowOutputParser(body.automation_sequence);
-        
+
+        // Validate output parser format (async)
+        const parserValidation = await validateWorkflowOutputParser(
+          body.automation_sequence
+        );
+
         if (parserValidation.hasParser) {
           console.log(`🔍 Validating output parser format...`);
-          
+
           if (parserValidation.parserValidation) {
-            const { isValid, errors, warnings, hasStandardFormat } = parserValidation.parserValidation;
-            
+            const { isValid, errors, warnings, hasStandardFormat } =
+              parserValidation.parserValidation;
+
             // Log validation results
             if (!hasStandardFormat) {
-              console.warn(`⚠️ Workflow parser may not follow standardized format`);
+              console.warn(
+                `⚠️ Workflow parser may not follow standardized format`
+              );
               warnings.forEach(w => console.warn(`  - ${w}`));
             }
-            
+
             if (!isValid) {
               console.error(`❌ Parser validation errors:`, errors);
               // Note: We don't block creation for backward compatibility
               // but we log warnings for monitoring
             }
-            
+
             // Add validation metadata to help with debugging
             if (!parsedSequence.metadata) {
               parsedSequence.metadata = {};
@@ -132,11 +137,13 @@ export async function POST(request: NextRequest) {
               hasStandardFormat,
               validationWarnings: warnings,
               validationErrors: errors,
-              validatedAt: new Date().toISOString()
+              validatedAt: new Date().toISOString(),
             };
           }
         } else {
-          console.log(`ℹ️ Workflow has no output parser (will use default behavior)`);
+          console.log(
+            `ℹ️ Workflow has no output parser (will use default behavior)`
+          );
         }
       } else {
         jsonbContent = JSON.parse(body.automation_sequence);
