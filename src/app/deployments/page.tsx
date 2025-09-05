@@ -481,55 +481,6 @@ function AuthenticatedWorkflowsPage({
             </div>
           </CardContent>
         </Card>
-
-        <Card className="border-black">
-          <CardContent className="p-4">
-            <div>
-              <p className="text-base font-mono text-black">
-                ACTIVE EXECUTIONS
-              </p>
-              <p className="relative inline-block text-4xl font-mono font-bold text-black">
-                {liveStats.total_active}
-                <FloatingDelta
-                  value={
-                    liveStats.total_active -
-                    previousLiveStats.current.total_active
-                  }
-                />
-              </p>
-              {liveStats.running > 0 && (
-                <p className="text-sm font-mono text-black mt-1">
-                  {liveStats.running} RUNNING •{' '}
-                  {Math.round(liveStats.average_progress)}% AVG
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-black">
-          <CardContent className="p-4">
-            <div>
-              <p className="text-base font-mono text-black">SUCCESS RATE</p>
-              <p className="relative inline-block text-4xl font-mono font-bold text-black">
-                {successRate}%
-                <FloatingDelta value={successRate - prevSuccessRate} />
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-black">
-          <CardContent className="p-4">
-            <div>
-              <p className="text-base font-mono text-black">TOTAL EXECUTIONS</p>
-              <p className="relative inline-block text-4xl font-mono font-bold text-black">
-                {totalExecutions}
-                <FloatingDelta value={totalExecutions - prevTotalExecutions} />
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Workflow Details Dialog */}
