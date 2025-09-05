@@ -675,10 +675,6 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
                           v{workflow.version_info?.current_version}:{' '}
                           {workflow.current_version_stats.total_executions}
                         </span>
-                        <span className="text-black flex items-center gap-1 font-bold">
-                          <CheckCircle className="w-4 h-4" />
-                          {workflow.current_version_stats.success_rate}%
-                        </span>
                       </div>
                     </>
                   )}
