@@ -118,7 +118,7 @@ export function WorkflowCard({
   loadingExecutions = false,
   onBatchSubmit,
   isNested,
-  isAdmin = false,
+  isAdmin: _isAdmin = false,
 }: WorkflowCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [connectedWorkflowsExpanded, setConnectedWorkflowsExpanded] =
