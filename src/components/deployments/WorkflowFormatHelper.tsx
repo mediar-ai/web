@@ -1,11 +1,24 @@
-import React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { createStandardizedParser } from '@/lib/workflow-validation';
 import { AlertTriangle, CheckCircle, Copy, Info, XCircle } from 'lucide-react';
+import React from 'react';
 
 interface ExecutionFormatInfo {
   hasStandardFormat: boolean;
@@ -23,30 +36,34 @@ interface WorkflowFormatHelperProps {
   showAsDialog?: boolean;
 }
 
-export function WorkflowFormatHelper({ 
-  formatInfo: _formatInfo, 
+export function WorkflowFormatHelper({
+  formatInfo: _formatInfo,
   executionResult,
-  showAsDialog = false 
+  showAsDialog = false,
 }: WorkflowFormatHelperProps) {
-  const [copiedTemplate, setCopiedTemplate] = React.useState<string | null>(null);
-  
+  const [copiedTemplate, setCopiedTemplate] = React.useState<string | null>(
+    null
+  );
+
   const copyTemplate = (type: 'quotes' | 'form' | 'navigation' | 'generic') => {
     const template = createStandardizedParser(type);
     navigator.clipboard.writeText(template);
     setCopiedTemplate(type);
     setTimeout(() => setCopiedTemplate(null), 2000);
   };
-  
+
   // Try to detect format from execution result
   let detectedFormat: 'standard' | 'legacy' | 'unknown' = 'unknown';
   let parsedOutput: any = null;
-  
+
   if (executionResult?.formatted_output) {
     try {
       parsedOutput = JSON.parse(executionResult.formatted_output);
-      if (parsedOutput.success !== undefined && 
-          parsedOutput.data !== undefined && 
-          parsedOutput.message !== undefined) {
+      if (
+        parsedOutput.success !== undefined &&
+        parsedOutput.data !== undefined &&
+        parsedOutput.message !== undefined
+      ) {
         detectedFormat = 'standard';
       } else {
         detectedFormat = 'legacy';
@@ -55,7 +72,7 @@ export function WorkflowFormatHelper({
       detectedFormat = 'legacy';
     }
   }
-  
+
   const content = (
     <div className="space-y-4">
       {/* Format Status */}
@@ -78,53 +95,66 @@ export function WorkflowFormatHelper({
           </Badge>
         )}
       </div>
-      
+
       {/* Format Details */}
       {parsedOutput && detectedFormat === 'standard' && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Standardized Output Detected</CardTitle>
+            <CardTitle className="text-sm">
+              Standardized Output Detected
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="text-xs space-y-1">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Business Success:</span>
-                <span className="font-mono">{String(parsedOutput.success)}</span>
+                <span className="font-mono">
+                  {String(parsedOutput.success)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Message:</span>
-                <span className="truncate max-w-[200px]" title={parsedOutput.message}>
+                <span
+                  className="truncate max-w-[200px]"
+                  title={parsedOutput.message}
+                >
                   {parsedOutput.message}
                 </span>
               </div>
               {parsedOutput.validation && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Validation Checks:</span>
-                  <span className="font-mono">{Object.keys(parsedOutput.validation).length}</span>
+                  <span className="text-muted-foreground">
+                    Validation Checks:
+                  </span>
+                  <span className="font-mono">
+                    {Object.keys(parsedOutput.validation).length}
+                  </span>
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
       )}
-      
+
       {/* Legacy Format Warning */}
       {detectedFormat === 'legacy' && (
         <Alert>
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Legacy Output Format</AlertTitle>
           <AlertDescription>
-            This workflow uses the legacy output format. Consider updating to the standardized format
-            for better error handling and consistency.
+            This workflow uses the legacy output format. Consider updating to
+            the standardized format for better error handling and consistency.
           </AlertDescription>
         </Alert>
       )}
-      
+
       {/* Template Examples */}
       {detectedFormat !== 'standard' && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Standardized Parser Templates</CardTitle>
+            <CardTitle className="text-sm">
+              Standardized Parser Templates
+            </CardTitle>
             <CardDescription className="text-xs">
               Copy a template to upgrade your workflow
             </CardDescription>
@@ -156,7 +186,9 @@ export function WorkflowFormatHelper({
                 className="justify-start"
               >
                 <Copy className="w-3 h-3 mr-2" />
-                {copiedTemplate === 'navigation' ? 'Copied!' : 'Navigation Parser'}
+                {copiedTemplate === 'navigation'
+                  ? 'Copied!'
+                  : 'Navigation Parser'}
               </Button>
               <Button
                 variant="outline"
@@ -171,7 +203,7 @@ export function WorkflowFormatHelper({
           </CardContent>
         </Card>
       )}
-      
+
       {/* Format Documentation */}
       <div className="text-xs text-muted-foreground">
         <div className="flex items-start gap-1">
@@ -192,7 +224,7 @@ export function WorkflowFormatHelper({
       </div>
     </div>
   );
-  
+
   if (showAsDialog) {
     return (
       <Dialog>
@@ -213,6 +245,6 @@ export function WorkflowFormatHelper({
       </Dialog>
     );
   }
-  
+
   return content;
 }
