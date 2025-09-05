@@ -173,12 +173,26 @@ export async function POST(_request: NextRequest) {
       try {
         console.log(`🚀 Triggering execution for workflow: ${workflow.name}`);
 
-        // Use localhost for internal API calls to bypass Vercel authentication
-        // Vercel's deployment protection blocks external calls to protected endpoints
-        const baseUrl = 'http://localhost:3000';
+        // Use public URL with service role key for authentication
+        // Add the Vercel bypass token if available, otherwise fall back to public URL
+        const vercelBypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+        
+        // In production, always use the production URL, not localhost
+        const isProduction = process.env.NODE_ENV === 'production' || 
+                           process.env.VERCEL_ENV === 'production' ||
+                           process.env.VERCEL;
+        
+        const publicUrl = isProduction 
+          ? 'https://app.mediar.ai'
+          : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
 
-        const executionUrl = `${baseUrl}/api/remote-workflows/${workflow.id}/execute`;
-        console.log(`   Calling: ${executionUrl} (internal)`);
+        let executionUrl = `${publicUrl}/api/remote-workflows/${workflow.id}/execute`;
+
+        // Add bypass token to URL if available  
+        if (vercelBypassToken) {
+          executionUrl += `?x-vercel-protection-bypass=${vercelBypassToken}`;
+        }
+        console.log(`   Calling: ${executionUrl}`);
 
         // Call the existing workflow execution API
         const executionResponse = await fetch(executionUrl, {
