@@ -610,9 +610,7 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
           <div className="flex-1">
             {/* First line: Workflow title and status */}
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xl font-bold font-mono">
-                {workflow.name}
-              </h3>
+              <h3 className="text-xl font-bold font-mono">{workflow.name}</h3>
               {/* Status badge - moved to title line */}
               <Badge
                 className={`${getStatusBadge(workflow.status)} text-xs h-6 px-2 font-mono`}
