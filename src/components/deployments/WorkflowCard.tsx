@@ -1267,7 +1267,24 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
                                       }
                                     >
                                       {(() => {
-                                        if (execution.error_message)
+                                        // Try to parse formatted_output if it's JSON (standardized format)
+                                        let standardizedError = null;
+                                        if (execution.formatted_output) {
+                                          try {
+                                            const parsed = JSON.parse(execution.formatted_output);
+                                            if (parsed.status === 'partial_success') {
+                                              standardizedError = `${parsed.message} - ${parsed.details?.description || ''}`;
+                                            } else if (!parsed.success && parsed.message) {
+                                              standardizedError = parsed.message;
+                                            }
+                                          } catch {
+                                            // Not JSON, use as-is
+                                          }
+                                        }
+                                        
+                                        if (standardizedError) {
+                                          return standardizedError;
+                                        } else if (execution.error_message)
                                           return execution.error_message;
                                         if (execution.formatted_output) {
                                           const lines =

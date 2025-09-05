@@ -1,4 +1,5 @@
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
+import { validateWorkflowOutputParser } from '@/lib/workflow-validation';
 import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
 import { NextRequest, NextResponse } from 'next/server';
@@ -100,6 +101,42 @@ export async function POST(request: NextRequest) {
         cronConfig = extractCronConfigFromYAML(body.automation_sequence);
         if (cronConfig) {
           console.log(`📅 Extracted cron config: ${cronConfig.expression}`);
+        }
+        
+        // Validate output parser format
+        const parserValidation = validateWorkflowOutputParser(body.automation_sequence);
+        
+        if (parserValidation.hasParser) {
+          console.log(`🔍 Validating output parser format...`);
+          
+          if (parserValidation.parserValidation) {
+            const { isValid, errors, warnings, hasStandardFormat } = parserValidation.parserValidation;
+            
+            // Log validation results
+            if (!hasStandardFormat) {
+              console.warn(`⚠️ Workflow parser may not follow standardized format`);
+              warnings.forEach(w => console.warn(`  - ${w}`));
+            }
+            
+            if (!isValid) {
+              console.error(`❌ Parser validation errors:`, errors);
+              // Note: We don't block creation for backward compatibility
+              // but we log warnings for monitoring
+            }
+            
+            // Add validation metadata to help with debugging
+            if (!parsedSequence.metadata) {
+              parsedSequence.metadata = {};
+            }
+            parsedSequence.metadata.parserValidation = {
+              hasStandardFormat,
+              validationWarnings: warnings,
+              validationErrors: errors,
+              validatedAt: new Date().toISOString()
+            };
+          }
+        } else {
+          console.log(`ℹ️ Workflow has no output parser (will use default behavior)`);
         }
       } else {
         jsonbContent = JSON.parse(body.automation_sequence);
