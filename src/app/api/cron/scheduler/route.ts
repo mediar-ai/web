@@ -173,10 +173,16 @@ export async function POST(_request: NextRequest) {
       try {
         console.log(`🚀 Triggering execution for workflow: ${workflow.name}`);
 
+        // Use the correct production URL for execution API
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                       process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+                       'https://app.mediar.ai';
+        
+        const executionUrl = `${baseUrl}/api/remote-workflows/${workflow.id}/execute`;
+        console.log(`   Calling: ${executionUrl}`);
+
         // Call the existing workflow execution API
-        const executionResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/remote-workflows/${workflow.id}/execute`,
-          {
+        const executionResponse = await fetch(executionUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -190,8 +196,11 @@ export async function POST(_request: NextRequest) {
           }
         );
 
+        console.log(`   Response status: ${executionResponse.status}`);
+
         if (executionResponse.ok) {
           const executionData = await executionResponse.json();
+          console.log(`   Execution created: ${JSON.stringify(executionData).substring(0, 200)}`);
           executionResults.push({
             workflowId: workflow.id,
             workflowName: workflow.name,
