@@ -164,7 +164,7 @@ export function shouldExecuteAt(cronExpression: string, time: Date, _timezone: s
   // Convert time to specified timezone
   const timeInTz = new Date(time.toLocaleString('en-US', { timeZone: _timezone }));
   
-  const second = timeInTz.getSeconds();
+  // Seconds are not checked - Vercel triggers at random seconds
   const minute = timeInTz.getMinutes();
   const hour = timeInTz.getHours();
   const day = timeInTz.getDate();
