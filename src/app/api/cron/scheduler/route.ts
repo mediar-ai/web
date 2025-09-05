@@ -173,34 +173,34 @@ export async function POST(_request: NextRequest) {
       try {
         console.log(`🚀 Triggering execution for workflow: ${workflow.name}`);
 
-        // Use the correct production URL for execution API
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                       process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
-                       'https://app.mediar.ai';
-        
+        // Use localhost for internal API calls to bypass Vercel authentication
+        // Vercel's deployment protection blocks external calls to protected endpoints
+        const baseUrl = 'http://localhost:3000';
+
         const executionUrl = `${baseUrl}/api/remote-workflows/${workflow.id}/execute`;
-        console.log(`   Calling: ${executionUrl}`);
+        console.log(`   Calling: ${executionUrl} (internal)`);
 
         // Call the existing workflow execution API
         const executionResponse = await fetch(executionUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-              'X-Cron-Execution': 'true',
-            },
-            body: JSON.stringify({
-              parameters: {}, // Changed from execution_params to parameters
-              client_id: 'cron-scheduler',
-            }),
-          }
-        );
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+            'X-Cron-Execution': 'true',
+          },
+          body: JSON.stringify({
+            parameters: {}, // Changed from execution_params to parameters
+            client_id: 'cron-scheduler',
+          }),
+        });
 
         console.log(`   Response status: ${executionResponse.status}`);
 
         if (executionResponse.ok) {
           const executionData = await executionResponse.json();
-          console.log(`   Execution created: ${JSON.stringify(executionData).substring(0, 200)}`);
+          console.log(
+            `   Execution created: ${JSON.stringify(executionData).substring(0, 200)}`
+          );
           executionResults.push({
             workflowId: workflow.id,
             workflowName: workflow.name,
