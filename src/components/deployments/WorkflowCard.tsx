@@ -612,11 +612,25 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xl font-bold font-mono">{workflow.name}</h3>
               {/* Status badge - moved to title line */}
-              <Badge
-                className={`${getStatusBadge(workflow.status)} text-xs h-6 px-2 font-mono`}
-              >
-                {workflow.status.toUpperCase()}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge
+                  className={`${getStatusBadge(workflow.status)} text-xs h-6 px-2 font-mono`}
+                >
+                  {workflow.status.toUpperCase()}
+                </Badge>
+                {workflow.cron_expression && (
+                  <Badge
+                    variant="outline"
+                    className={`text-xs h-6 px-2 font-mono ${
+                      workflow.cron_enabled
+                        ? 'text-green-600 border-green-300 bg-green-50'
+                        : 'text-gray-500 border-gray-300'
+                    }`}
+                  >
+                    {workflow.cron_enabled ? '⏰ CRON' : '⏰ CRON (OFF)'}
+                  </Badge>
+                )}
+              </div>
             </div>
 
             {/* Second line: stats, play button, and status */}
@@ -672,8 +686,7 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
                       <span className="text-gray-400">•</span>
                       <div className="flex items-center gap-2">
                         <span className="text-black font-semibold">
-                          v{workflow.version_info?.current_version}:{' '}
-                          {workflow.current_version_stats.total_executions}
+                          v{workflow.version_info?.current_version}
                         </span>
                       </div>
                     </>
