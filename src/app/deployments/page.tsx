@@ -27,16 +27,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Displays a floating badge that appears when values increase/decrease
  */
 const LiveValueChangeIndicator = ({ value }: { value: number }) => {
-  const [activeDeltas, setActiveDeltas] = useState<{ id: string; value: number }[]>([]);
+  const [activeDeltas, setActiveDeltas] = useState<
+    { id: string; value: number }[]
+  >([]);
 
   useEffect(() => {
     if (value !== 0) {
       const newDelta = { id: `${Date.now()}-${Math.random()}`, value };
       setActiveDeltas(currentDeltas => [...currentDeltas, newDelta]);
-      
+
       // Remove delta after animation completes
       setTimeout(() => {
-        setActiveDeltas(currentDeltas => 
+        setActiveDeltas(currentDeltas =>
           currentDeltas.filter(delta => delta.id !== newDelta.id)
         );
       }, 2000);
@@ -102,7 +104,7 @@ export default function WorkflowsPage() {
   // -------------------------------------------------------------------------
   const hasAdminRole = has({ role: 'org:admin' });
   const hasMemberRole = has({ role: 'org:member' });
-  
+
   // Debug: log all available user data
   console.log('🔍 User object:', user);
   console.log('🔍 User email addresses:', user?.emailAddresses);
@@ -176,11 +178,13 @@ function AuthenticatedDeploymentsPage({
   // -------------------------------------------------------------------------
   const [workflows, setWorkflows] = useState<WorkflowWithSettings[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
-  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
+  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>(
+    []
+  );
   const [executingWorkflows, setExecutingWorkflows] = useState<Set<number>>(
     new Set()
   );
-  
+
   // -------------------------------------------------------------------------
   // Live Statistics State
   // -------------------------------------------------------------------------
@@ -190,26 +194,29 @@ function AuthenticatedDeploymentsPage({
     queued: 0,
     average_progress: 0,
   });
-  
+
   // -------------------------------------------------------------------------
   // UI State - Dialogs and Loading
   // -------------------------------------------------------------------------
-  const [selectedWorkflow, setSelectedWorkflow] = 
+  const [selectedWorkflow, setSelectedWorkflow] =
     useState<WorkflowOverview | null>(null);
-  const [selectedExecution, setSelectedExecution] = 
-    useState<Execution | null>(null);
+  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(
+    null
+  );
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
-  
+
   // -------------------------------------------------------------------------
   // Loading States
   // -------------------------------------------------------------------------
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(null);
+  const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(
+    null
+  );
   const [loadingExecutions, setLoadingExecutions] = useState(true);
-  
+
   // -------------------------------------------------------------------------
   // Previous Values for Delta Calculations
   // -------------------------------------------------------------------------
@@ -340,7 +347,7 @@ function AuthenticatedDeploymentsPage({
       const response = await fetch(
         '/api/remote-workflows/executions/live?status=active&limit=200'
       );
-      
+
       if (!response.ok) {
         // API endpoint might not be available yet (migration not run)
         setLiveExecutions([]);
@@ -352,7 +359,7 @@ function AuthenticatedDeploymentsPage({
         });
         return;
       }
-      
+
       const liveData = await response.json();
       if (liveData.success && liveData.data) {
         setLiveExecutions(liveData.data.executions || []);
@@ -449,41 +456,12 @@ function AuthenticatedDeploymentsPage({
   // Computed Values and Statistics
   // =========================================================================
 
-  // Calculate stats using deployed version data (current_version_stats) 
-  // instead of overall historical data
-  const totalExecutions = workflows.reduce(
-    (total, workflow) =>
-      total + (workflow.current_version_stats?.total_executions || 0),
-    0
-  );
-  
-  const previousTotalExecutions = previousWorkflows.current.reduce(
-    (total, workflow) =>
-      total + (workflow.current_version_stats?.total_executions || 0),
-    0
-  );
+  // Note: These statistics are calculated for potential future use
+  // Currently only workflow count is displayed in the UI
 
-  const totalSuccessfulRuns = workflows.reduce(
-    (accumulator, workflow) => 
-      accumulator + (workflow.current_version_stats?.successful_runs || 0),
-    0
-  );
-  
-  const successRate =
-    totalExecutions > 0
-      ? Math.round((totalSuccessfulRuns / totalExecutions) * 100)
-      : 0;
-
-  const previousTotalSuccessfulRuns = previousWorkflows.current.reduce(
-    (accumulator, workflow) => 
-      accumulator + (workflow.current_version_stats?.successful_runs || 0),
-    0
-  );
-  
-  const previousSuccessRate =
-    previousTotalExecutions > 0
-      ? Math.round((previousTotalSuccessfulRuns / previousTotalExecutions) * 100)
-      : 0;
+  // =========================================================================
+  // Render
+  // =========================================================================
 
   if (loading) {
     return (
@@ -495,16 +473,21 @@ function AuthenticatedDeploymentsPage({
 
   return (
     <div className="stable-container p-6 space-y-6">
-      {/* Header */}
+      {/* ===================================================================
+          Page Header
+          =================================================================== */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
           <p className="text-muted-foreground text-lg">
             Execute and monitor automated workflows remotely
           </p>
+
           <div className="mt-2">
             <span
-              className={`text-sm font-medium ${isAdmin ? 'text-blue-600' : 'text-green-600'}`}
+              className={`text-sm font-medium ${
+                isAdmin ? 'text-blue-600' : 'text-green-600'
+              }`}
             >
               {isAdmin && organizationName
                 ? `Admin - ${organizationName}`
@@ -519,15 +502,18 @@ function AuthenticatedDeploymentsPage({
             )}
           </div>
         </div>
+
+        {/* Action Buttons */}
         <div className="flex gap-2">
           <Button
             onClick={() => setCreateWorkflowOpen(true)}
             size="default"
-            className=" text-white  text-base font-mono"
+            className="text-white text-base font-mono"
           >
             <span className="mr-2">+</span>
             Create New Workflow
           </Button>
+
           <Button
             onClick={() => window.open('/docs/api/remote-workflows', '_blank')}
             variant="outline"
@@ -536,6 +522,7 @@ function AuthenticatedDeploymentsPage({
           >
             API DOCS
           </Button>
+
           <Button
             onClick={() => window.open('/docs/api/mcp', '_blank')}
             variant="outline"
@@ -547,7 +534,9 @@ function AuthenticatedDeploymentsPage({
         </div>
       </div>
 
-      {/* Key Metrics */}
+      {/* ===================================================================
+          Key Metrics Dashboard
+          =================================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="border-black">
           <CardContent className="p-4">
@@ -557,7 +546,7 @@ function AuthenticatedDeploymentsPage({
               </p>
               <p className="relative inline-block text-4xl font-mono font-bold text-black">
                 {workflows.length}
-                <FloatingDelta
+                <LiveValueChangeIndicator
                   value={workflows.length - previousWorkflows.current.length}
                 />
               </p>
@@ -566,25 +555,29 @@ function AuthenticatedDeploymentsPage({
         </Card>
       </div>
 
-      {/* Workflow Details Dialog */}
+      {/* ===================================================================
+          Dialogs
+          =================================================================== */}
       <WorkflowDetailsDialog
         workflow={selectedWorkflow}
         open={workflowDetailsOpen}
         onOpenChange={setWorkflowDetailsOpen}
       />
 
-      {/* Execution Details Dialog */}
       <ExecutionDetailsDialog
         execution={selectedExecution}
         open={executionDetailsOpen}
         onOpenChange={setExecutionDetailsOpen}
       />
 
-      {/* Available Workflows */}
+      {/* ===================================================================
+          Workflows List
+          =================================================================== */}
       <div className="space-y-4">
         <h2 className="text-2xl font-bold font-mono mb-4">
           AVAILABLE WORKFLOWS
         </h2>
+
         <div className="grid gap-4">
           {workflows.map(workflow => (
             <WorkflowCard
@@ -609,7 +602,9 @@ function AuthenticatedDeploymentsPage({
         </div>
       </div>
 
-      {/* Create Workflow Dialog */}
+      {/* ===================================================================
+          Create Workflow Dialog
+          =================================================================== */}
       <CreateWorkflowDialog
         open={createWorkflowOpen}
         onOpenChange={setCreateWorkflowOpen}

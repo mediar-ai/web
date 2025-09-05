@@ -2046,9 +2046,9 @@ def execute_workflow(
             # Check if this is a quote extraction workflow (legacy detection)
             # Only quote extraction workflows should require quotes for success
             is_quote_workflow = (
-                "quote" in workflow_data.get("name", "").lower() or
-                "insurance" in workflow_data.get("name", "").lower() or
-                workflow_data.get("category") == "insurance_quotes"
+                "quote" in workflow.get("name", "").lower() or
+                "insurance" in workflow.get("name", "").lower() or
+                workflow.get("category") == "insurance_quotes"
             )
 
             if is_quote_workflow:
@@ -2154,9 +2154,9 @@ def execute_workflow(
         # Determine if this is a quote workflow (for formatting purposes)
         # Check both from workflow data and from standardized result
         is_quote_workflow = (
-            "quote" in workflow_data.get("name", "").lower() or
-            "insurance" in workflow_data.get("name", "").lower() or
-            workflow_data.get("category") == "insurance_quotes"
+            "quote" in workflow.get("name", "").lower() or
+            "insurance" in workflow.get("name", "").lower() or
+            workflow.get("category") == "insurance_quotes"
         )
 
         # Generate formatted summary for successful executions
