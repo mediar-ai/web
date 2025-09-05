@@ -56,22 +56,22 @@ export function DeleteWorkflowDialog({
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+          <AlertDialogTitle className="flex items-center gap-2 text-black">
             <AlertTriangle className="h-5 w-5" />
             Delete Workflow
           </AlertDialogTitle>
           <AlertDialogDescription className="space-y-4">
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="p-4 bg-gray-100 border-2 border-dashed border-gray-400 rounded-lg">
               <div className="flex items-start gap-2">
-                <Trash2 className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                <Trash2 className="h-5 w-5 text-gray-700 mt-0.5 flex-shrink-0" />
                 <div className="space-y-2">
-                  <p className="text-red-800 font-medium">
-                    This action cannot be undone!
+                  <p className="text-black font-bold">
+                    ⚠ This action cannot be undone!
                   </p>
-                  <p className="text-red-700 text-sm">
+                  <p className="text-gray-700 text-sm">
                     You are about to permanently delete:
                   </p>
-                  <ul className="text-red-700 text-sm space-y-1 ml-2">
+                  <ul className="text-gray-700 text-sm space-y-1 ml-2">
                     <li>
                       • Workflow: <strong>&quot;{workflow.name}&quot;</strong>
                     </li>
@@ -84,9 +84,9 @@ export function DeleteWorkflowDialog({
             </div>
 
             {workflow.total_executions > 0 && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="text-amber-800 text-sm">
-                  <strong>Warning:</strong> This workflow has{' '}
+              <div className="p-3 bg-gray-50 border border-gray-300 rounded-lg">
+                <p className="text-black text-sm">
+                  <strong>Note:</strong> This workflow has{' '}
                   <strong>{workflow.total_executions} execution(s)</strong> that
                   will be permanently deleted.
                 </p>
@@ -105,14 +105,14 @@ export function DeleteWorkflowDialog({
                 className={`${
                   confirmationText.length > 0
                     ? isConfirmationValid
-                      ? 'border-green-500 focus:ring-green-500'
-                      : 'border-red-500 focus:ring-red-500'
+                      ? 'border-black focus:ring-black border-2'
+                      : 'border-gray-400 focus:ring-gray-400 border-dashed'
                     : ''
                 }`}
                 disabled={isDeleting}
               />
               {confirmationText.length > 0 && !isConfirmationValid && (
-                <p className="text-xs text-red-600">
+                <p className="text-xs text-gray-600">
                   Please type &quot;{expectedText}&quot; exactly
                 </p>
               )}
@@ -129,7 +129,7 @@ export function DeleteWorkflowDialog({
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={!isConfirmationValid || isDeleting}
-            className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+            className="bg-black hover:bg-gray-800 focus:ring-black text-white border-2 border-black"
           >
             {isDeleting ? (
               <div className="flex items-center gap-2">
@@ -139,7 +139,7 @@ export function DeleteWorkflowDialog({
             ) : (
               <div className="flex items-center gap-2">
                 <Trash2 className="h-4 w-4" />
-                Delete Workflow
+                Confirm Delete
               </div>
             )}
           </AlertDialogAction>
