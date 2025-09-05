@@ -18,25 +18,36 @@ import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-// Floating Delta Component
-const FloatingDelta = ({ value }: { value: number }) => {
-  const [deltas, setDeltas] = useState<{ id: string; value: number }[]>([]);
+// ============================================================================
+// Components
+// ============================================================================
+
+/**
+ * Animated indicator showing real-time value changes
+ * Displays a floating badge that appears when values increase/decrease
+ */
+const LiveValueChangeIndicator = ({ value }: { value: number }) => {
+  const [activeDeltas, setActiveDeltas] = useState<{ id: string; value: number }[]>([]);
 
   useEffect(() => {
     if (value !== 0) {
       const newDelta = { id: `${Date.now()}-${Math.random()}`, value };
-      setDeltas(d => [...d, newDelta]);
+      setActiveDeltas(currentDeltas => [...currentDeltas, newDelta]);
+      
+      // Remove delta after animation completes
       setTimeout(() => {
-        setDeltas(d => d.filter(delta => delta.id !== newDelta.id));
-      }, 2000); // Corresponds to animation duration
+        setActiveDeltas(currentDeltas => 
+          currentDeltas.filter(delta => delta.id !== newDelta.id)
+        );
+      }, 2000);
     }
   }, [value]);
 
-  if (deltas.length === 0) return null;
+  if (activeDeltas.length === 0) return null;
 
   return (
     <>
-      {deltas.map(delta => (
+      {activeDeltas.map(delta => (
         <span
           key={delta.id}
           className={`absolute -top-2 -right-6 px-2 py-1 text-sm font-bold rounded-full animate-bounce-in-out ${
@@ -52,12 +63,21 @@ const FloatingDelta = ({ value }: { value: number }) => {
   );
 };
 
+// ============================================================================
+// Main Page Component
+// ============================================================================
+
 export default function WorkflowsPage() {
+  // -------------------------------------------------------------------------
+  // Authentication Hooks
+  // -------------------------------------------------------------------------
   const { isLoaded, userId, has } = useAuth();
   const { user } = useUser();
   const { organization, membership } = useOrganization();
 
-  // Show loading while Clerk is initializing
+  // -------------------------------------------------------------------------
+  // Loading State
+  // -------------------------------------------------------------------------
   if (!isLoaded) {
     return (
       <div className="stable-container py-4">
@@ -66,7 +86,9 @@ export default function WorkflowsPage() {
     );
   }
 
-  // Show sign-in if not authenticated
+  // -------------------------------------------------------------------------
+  // Authentication Check
+  // -------------------------------------------------------------------------
   if (!userId) {
     return (
       <div className="stable-container py-4 flex justify-center">
@@ -75,9 +97,12 @@ export default function WorkflowsPage() {
     );
   }
 
-  // Check if user has required role for deployment access
+  // -------------------------------------------------------------------------
+  // Authorization and Permissions
+  // -------------------------------------------------------------------------
   const hasAdminRole = has({ role: 'org:admin' });
   const hasMemberRole = has({ role: 'org:member' });
+  
   // Debug: log all available user data
   console.log('🔍 User object:', user);
   console.log('🔍 User email addresses:', user?.emailAddresses);
@@ -97,6 +122,9 @@ export default function WorkflowsPage() {
     `🔐 Current user: ${userEmail}, UserID: ${userId}, Can delete: ${canDeleteWorkflows}`
   );
 
+  // -------------------------------------------------------------------------
+  // Access Control
+  // -------------------------------------------------------------------------
   if (!hasAdminRole && !hasMemberRole) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -115,7 +143,7 @@ export default function WorkflowsPage() {
 
   // Pass authentication context to the main component
   return (
-    <AuthenticatedWorkflowsPage
+    <AuthenticatedDeploymentsPage
       isAdmin={hasAdminRole}
       canDelete={canDeleteWorkflows}
       userEmail={userEmail}
@@ -125,7 +153,11 @@ export default function WorkflowsPage() {
   );
 }
 
-interface AuthenticatedWorkflowsPageProps {
+// ============================================================================
+// Authenticated Deployments Page
+// ============================================================================
+
+interface AuthenticatedDeploymentsPageProps {
   isAdmin: boolean;
   canDelete: boolean;
   userEmail: string;
@@ -133,27 +165,54 @@ interface AuthenticatedWorkflowsPageProps {
   userRole?: string;
 }
 
-function AuthenticatedWorkflowsPage({
+function AuthenticatedDeploymentsPage({
   isAdmin,
   canDelete,
   organizationName,
   userRole,
-}: AuthenticatedWorkflowsPageProps) {
+}: AuthenticatedDeploymentsPageProps) {
+  // -------------------------------------------------------------------------
+  // Core State - Workflows and Executions
+  // -------------------------------------------------------------------------
   const [workflows, setWorkflows] = useState<WorkflowWithSettings[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
-  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>(
-    []
+  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
+  const [executingWorkflows, setExecutingWorkflows] = useState<Set<number>>(
+    new Set()
   );
+  
+  // -------------------------------------------------------------------------
+  // Live Statistics State
+  // -------------------------------------------------------------------------
   const [liveStats, setLiveStats] = useState({
     total_active: 0,
     running: 0,
     queued: 0,
     average_progress: 0,
   });
+  
+  // -------------------------------------------------------------------------
+  // UI State - Dialogs and Loading
+  // -------------------------------------------------------------------------
+  const [selectedWorkflow, setSelectedWorkflow] = 
+    useState<WorkflowOverview | null>(null);
+  const [selectedExecution, setSelectedExecution] = 
+    useState<Execution | null>(null);
+  const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
+  const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
+  const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
+  
+  // -------------------------------------------------------------------------
+  // Loading States
+  // -------------------------------------------------------------------------
   const [loading, setLoading] = useState(true);
-  const [executingWorkflows, setExecutingWorkflows] = useState<Set<number>>(
-    new Set()
-  );
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(null);
+  const [loadingExecutions, setLoadingExecutions] = useState(true);
+  
+  // -------------------------------------------------------------------------
+  // Previous Values for Delta Calculations
+  // -------------------------------------------------------------------------
   const previousWorkflows = useRef<WorkflowWithSettings[]>([]);
   const previousLiveStats = useRef({
     total_active: 0,
@@ -162,33 +221,22 @@ function AuthenticatedWorkflowsPage({
     average_progress: 0,
   });
 
-  // New state for enhanced UI
-  const [selectedWorkflow, setSelectedWorkflow] =
-    useState<WorkflowOverview | null>(null);
-  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(
-    null
-  );
-  const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
-  const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(
-    null
-  );
-  const [loadingExecutions, setLoadingExecutions] = useState(true);
-  const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
+  // =========================================================================
+  // Data Fetching Functions
+  // =========================================================================
 
-  // Simple polling implementation - no realtime dependencies needed
-
-  // Fetch workflows
+  /**
+   * Fetches the list of available workflows
+   */
   const fetchWorkflows = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) {
         setLoading(true);
       }
       const response = await fetch('/api/remote-workflows/list');
-      const data = await response.json();
-      if (data.success) {
-        setWorkflows(data.workflows || []);
+      const workflowData = await response.json();
+      if (workflowData.success) {
+        setWorkflows(workflowData.workflows || []);
       }
     } catch (error) {
       console.error('Failed to fetch workflows:', error);
@@ -199,7 +247,9 @@ function AuthenticatedWorkflowsPage({
     }
   }, []);
 
-  // Handle workflow creation
+  /**
+   * Handles successful workflow creation
+   */
   const handleWorkflowCreated = useCallback(
     (newWorkflow: any) => {
       console.log('🎉 New workflow created:', newWorkflow);
@@ -209,16 +259,18 @@ function AuthenticatedWorkflowsPage({
     [fetchWorkflows]
   );
 
-  // Fetch detailed workflow overview
+  /**
+   * Fetches detailed workflow overview for viewing
+   */
   const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
     try {
       setLoadingDetails(true);
       const response = await fetch(
         `/api/remote-workflows/${workflowId}/overview`
       );
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setSelectedWorkflow(data.workflow);
+      const overviewData = await response.json();
+      if (response.ok && overviewData.success) {
+        setSelectedWorkflow(overviewData.workflow);
         setWorkflowDetailsOpen(true);
       }
     } catch (error) {
@@ -228,7 +280,9 @@ function AuthenticatedWorkflowsPage({
     }
   }, []);
 
-  // Fetch detailed execution data
+  /**
+   * Fetches detailed execution data for a specific run
+   */
   const fetchExecutionDetails = useCallback(async (executionId: number) => {
     try {
       setLoadingDetails(true);
@@ -241,9 +295,9 @@ function AuthenticatedWorkflowsPage({
       const response = await fetch(
         `/api/remote-workflows/executions/${executionId}?full_detailed_response=true`
       );
-      const data = await response.json();
-      if (data.success) {
-        setSelectedExecution(data.execution);
+      const executionData = await response.json();
+      if (executionData.success) {
+        setSelectedExecution(executionData.execution);
       }
     } catch (error) {
       console.error('Failed to fetch execution details:', error);
@@ -255,16 +309,18 @@ function AuthenticatedWorkflowsPage({
     }
   }, []);
 
-  // Fetch executions
+  /**
+   * Fetches historical execution records
+   */
   const fetchExecutions = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) {
         setLoadingExecutions(true);
       }
       const response = await fetch('/api/remote-workflows/executions');
-      const data = await response.json();
-      if (data.success) {
-        setExecutions(data.executions || []);
+      const executionsData = await response.json();
+      if (executionsData.success) {
+        setExecutions(executionsData.executions || []);
       }
     } catch (error) {
       console.error('Failed to fetch executions:', error);
@@ -276,12 +332,15 @@ function AuthenticatedWorkflowsPage({
     }
   }, []);
 
-  // Fetch live executions
+  /**
+   * Fetches currently running/active executions
+   */
   const fetchLiveExecutions = useCallback(async () => {
     try {
       const response = await fetch(
         '/api/remote-workflows/executions/live?status=active&limit=200'
       );
+      
       if (!response.ok) {
         // API endpoint might not be available yet (migration not run)
         setLiveExecutions([]);
@@ -293,11 +352,12 @@ function AuthenticatedWorkflowsPage({
         });
         return;
       }
-      const data = await response.json();
-      if (data.success && data.data) {
-        setLiveExecutions(data.data.executions || []);
+      
+      const liveData = await response.json();
+      if (liveData.success && liveData.data) {
+        setLiveExecutions(liveData.data.executions || []);
         setLiveStats(
-          data.data.summary || {
+          liveData.data.summary || {
             total_active: 0,
             running: 0,
             queued: 0,
@@ -325,27 +385,36 @@ function AuthenticatedWorkflowsPage({
     }
   }, []);
 
-  // Initial load
+  // =========================================================================
+  // Effects and Lifecycle
+  // =========================================================================
+
+  /**
+   * Initial data load on component mount
+   */
   useEffect(() => {
     fetchWorkflows();
     fetchExecutions();
     fetchLiveExecutions();
   }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
 
-  // Simple 2-second polling for live execution updates
+  /**
+   * Real-time polling for execution status updates
+   * Polls every 2 seconds for live updates
+   */
   useEffect(() => {
     let pollTimer: NodeJS.Timeout | null = null;
 
     console.log('[POLLING] Starting 2-second polling for execution updates...');
 
-    const doPoll = () => {
+    const pollExecutionStatus = () => {
       // Only fetch live executions and executions (not workflows) to minimize load
       fetchLiveExecutions();
       fetchExecutions(false); // false = don't show loading spinner
     };
 
     // Set up 2-second interval polling
-    pollTimer = setInterval(doPoll, 2000);
+    pollTimer = setInterval(pollExecutionStatus, 2000);
 
     return () => {
       if (pollTimer) {
@@ -355,51 +424,65 @@ function AuthenticatedWorkflowsPage({
     };
   }, [fetchLiveExecutions, fetchExecutions]);
 
-  // Note: Removed complex realtime subscription setup - now using simple 2-second polling above
-
+  /**
+   * Track previous values for delta calculations
+   */
   useEffect(() => {
     previousWorkflows.current = workflows;
     previousLiveStats.current = liveStats;
   }, [workflows, liveStats]);
 
+  /**
+   * Update currently executing workflows set
+   */
   useEffect(() => {
     const currentlyExecuting = new Set<number>();
-    liveExecutions.forEach(exec => {
-      if (exec.status === 'running' || exec.status === 'queued') {
-        currentlyExecuting.add(exec.workflow_id);
+    liveExecutions.forEach(execution => {
+      if (execution.status === 'running' || execution.status === 'queued') {
+        currentlyExecuting.add(execution.workflow_id);
       }
     });
     setExecutingWorkflows(currentlyExecuting);
   }, [liveExecutions]);
 
-  // Calculate stats using deployed version data (current_version_stats) instead of overall historical data
+  // =========================================================================
+  // Computed Values and Statistics
+  // =========================================================================
+
+  // Calculate stats using deployed version data (current_version_stats) 
+  // instead of overall historical data
   const totalExecutions = workflows.reduce(
     (total, workflow) =>
       total + (workflow.current_version_stats?.total_executions || 0),
     0
   );
-  const prevTotalExecutions = previousWorkflows.current.reduce(
+  
+  const previousTotalExecutions = previousWorkflows.current.reduce(
     (total, workflow) =>
       total + (workflow.current_version_stats?.total_executions || 0),
     0
   );
 
   const totalSuccessfulRuns = workflows.reduce(
-    (acc, w) => acc + (w.current_version_stats?.successful_runs || 0),
+    (accumulator, workflow) => 
+      accumulator + (workflow.current_version_stats?.successful_runs || 0),
     0
   );
+  
   const successRate =
     totalExecutions > 0
       ? Math.round((totalSuccessfulRuns / totalExecutions) * 100)
       : 0;
 
-  const prevTotalSuccessfulRuns = previousWorkflows.current.reduce(
-    (acc, w) => acc + (w.current_version_stats?.successful_runs || 0),
+  const previousTotalSuccessfulRuns = previousWorkflows.current.reduce(
+    (accumulator, workflow) => 
+      accumulator + (workflow.current_version_stats?.successful_runs || 0),
     0
   );
-  const prevSuccessRate =
-    prevTotalExecutions > 0
-      ? Math.round((prevTotalSuccessfulRuns / prevTotalExecutions) * 100)
+  
+  const previousSuccessRate =
+    previousTotalExecutions > 0
+      ? Math.round((previousTotalSuccessfulRuns / previousTotalExecutions) * 100)
       : 0;
 
   if (loading) {
