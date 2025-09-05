@@ -1,4 +1,4 @@
-import { getVertexGenAI } from '@/lib/ai/vertex-genai';
+import { getVertexGenAI } from '@/lib/vertexai';
 import { NextRequest, NextResponse } from 'next/server';
 
 const VALIDATION_PROMPT = `You are a code validator for workflow output parsers. Analyze the JavaScript code and determine if it follows the standardized output format.
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         hasStandardFormat: validation.hasStandardFormat ?? false,
         explanation: validation.explanation,
       });
-    } catch (parseError) {
+    } catch {
       console.error('Failed to parse Gemini response:', text);
       // Fallback if JSON parsing fails
       return NextResponse.json({

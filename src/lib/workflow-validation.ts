@@ -3,14 +3,6 @@
  * Validates that workflows follow the standardized output format
  */
 
-interface StandardizedOutput {
-  success: boolean;
-  data: any;
-  message: string;
-  error: string | null;
-  validation: Record<string, any>;
-}
-
 /**
  * Validates if a JavaScript code string returns the standardized output format
  * Uses Gemini Flash for intelligent validation

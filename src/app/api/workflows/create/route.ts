@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     console.log(`📄 Detected format: ${sequenceFormat}`);
 
     // Parse automation sequence and extract cron config
-    let parsedSequence;
+    let parsedSequence: any;
     let cronConfig = null;
     let yamlContent: string | null = null;
     let jsonbContent = null;
