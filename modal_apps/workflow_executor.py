@@ -2043,16 +2043,30 @@ def execute_workflow(
                 "🔄 Using legacy completion logic (no standardized result found)"
             )
 
-            # A workflow is only truly successful if:
-            # 1. ALL steps completed (100% success rate)
-            # 2. AND it achieved its business goal (found at least one quote)
-            workflow_completed = success_rate == 100 and quotes_found > 0
+            # Check if this is a quote extraction workflow (legacy detection)
+            # Only quote extraction workflows should require quotes for success
+            is_quote_workflow = (
+                "quote" in workflow_data.get("name", "").lower() or
+                "insurance" in workflow_data.get("name", "").lower() or
+                workflow_data.get("category") == "insurance_quotes"
+            )
+
+            if is_quote_workflow:
+                # For quote extraction workflows:
+                # 1. ALL steps completed (100% success rate)
+                # 2. AND it achieved its business goal (found at least one quote)
+                workflow_completed = success_rate == 100 and quotes_found > 0
+                logger.info(f"📊 Quote extraction workflow: success={workflow_completed}, quotes_found={quotes_found}")
+            else:
+                # For non-quote workflows, success is based purely on technical execution
+                workflow_completed = success_rate == 100
+                logger.info(f"✅ Non-quote workflow: success based on execution (success_rate={success_rate}%)")
 
             # --- Enhanced Error Message Extraction ---
             error_message_for_db = None
             if not workflow_completed:
-                # Case 1: The workflow ran perfectly but found no quotes.
-                if quotes_found == 0 and success_rate == 100:
+                # Case 1: The workflow ran perfectly but found no quotes (only for quote workflows).
+                if quotes_found == 0 and success_rate == 100 and is_quote_workflow:
                     error_message_for_db = "Workflow incomplete - No quotes found"
                 # Case 2: An actual error occurred during MCP execution.
                 elif raw_mcp_response and "result" in raw_mcp_response:

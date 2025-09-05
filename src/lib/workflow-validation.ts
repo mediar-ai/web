@@ -13,60 +13,69 @@ interface StandardizedOutput {
 
 /**
  * Validates if a JavaScript code string returns the standardized output format
+ * Uses Gemini Flash for intelligent validation
  * @param code The JavaScript parser code to validate
  * @returns Validation result with warnings and errors
  */
-export function validateOutputParserCode(code: string): {
+export async function validateOutputParserCode(code: string): Promise<{
   isValid: boolean;
   errors: string[];
   warnings: string[];
   hasStandardFormat: boolean;
-} {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  
-  // Check for return statement
+}> {
+  // Quick check for return statement first
   if (!code.includes('return')) {
-    errors.push('Parser must have a return statement');
-    return { isValid: false, errors, warnings, hasStandardFormat: false };
+    return {
+      isValid: false,
+      errors: ['Parser must have a return statement'],
+      warnings: [],
+      hasStandardFormat: false,
+    };
   }
-  
-  // Check for required fields in the return object
-  const requiredFields = ['success', 'data', 'message', 'error', 'validation'];
-  const missingFields: string[] = [];
-  
-  for (const field of requiredFields) {
-    // Look for field in return object (basic regex check)
-    const fieldPattern = new RegExp(`${field}\\s*:`);
-    if (!fieldPattern.test(code)) {
-      missingFields.push(field);
+
+  try {
+    // Use Gemini Flash for intelligent validation
+    const response = await fetch('/api/validate-parser', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parserCode: code }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Validation service unavailable');
     }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    // Fallback to basic validation if API fails
+    console.warn('LLM validation failed, using basic validation:', error);
+
+    // Basic fallback validation
+    const hasSuccess = code.includes('success:');
+    const hasData = code.includes('data:');
+    const hasMessage = code.includes('message:');
+    const hasError = code.includes('error:');
+    const hasValidation = code.includes('validation:');
+
+    const hasStandardFormat =
+      hasSuccess && hasData && hasMessage && hasError && hasValidation;
+    const warnings: string[] = [];
+
+    if (!hasStandardFormat) {
+      warnings.push(
+        'Parser may not follow standardized format. ' +
+          'Standardized parsers should return: { success, data, message, error, validation }'
+      );
+    }
+
+    return {
+      isValid: true, // Don't block on validation failures
+      errors: [],
+      warnings,
+      hasStandardFormat,
+    };
   }
-  
-  // Determine if it follows standard format
-  const hasStandardFormat = missingFields.length === 0;
-  
-  if (missingFields.length > 0) {
-    warnings.push(
-      `Parser may not follow standardized format. Missing fields: ${missingFields.join(', ')}. ` +
-      'Standardized parsers should return: { success, data, message, error, validation }'
-    );
-  }
-  
-  // Check for common patterns that indicate old format (returning quotes directly)
-  if (code.includes('return quotes') || code.includes('return extractedQuotes')) {
-    warnings.push(
-      'Parser appears to return quotes directly. Consider using standardized format: ' +
-      '{ success: true, data: { quotes }, message: "...", error: null, validation: {...} }'
-    );
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors,
-    warnings,
-    hasStandardFormat
-  };
 }
 
 /**
@@ -74,45 +83,49 @@ export function validateOutputParserCode(code: string): {
  * @param yamlContent The YAML content of the workflow
  * @returns Validation result
  */
-export function validateWorkflowOutputParser(yamlContent: string): {
+export async function validateWorkflowOutputParser(
+  yamlContent: string
+): Promise<{
   hasParser: boolean;
-  parserValidation?: ReturnType<typeof validateOutputParserCode>;
+  parserValidation?: Awaited<ReturnType<typeof validateOutputParserCode>>;
   isBackwardCompatible: boolean;
-} {
+}> {
   try {
     // Check if workflow has output_parser defined
     const hasOutputParser = yamlContent.includes('output_parser:');
-    
+
     if (!hasOutputParser) {
-      return { 
-        hasParser: false, 
-        isBackwardCompatible: true // Old workflows without parsers are still supported
+      return {
+        hasParser: false,
+        isBackwardCompatible: true, // Old workflows without parsers are still supported
       };
     }
-    
+
     // Extract parser code (simplified extraction)
-    const parserMatch = yamlContent.match(/javascript_code:\s*\|\s*([\s\S]*?)(?=\n\s*\w+:|$)/);
-    
+    const parserMatch = yamlContent.match(
+      /javascript_code:\s*\|\s*([\s\S]*?)(?=\n\s*\w+:|$)/
+    );
+
     if (!parserMatch) {
-      return { 
+      return {
         hasParser: true,
         parserValidation: {
           isValid: false,
           errors: ['Could not extract parser code from YAML'],
           warnings: [],
-          hasStandardFormat: false
+          hasStandardFormat: false,
         },
-        isBackwardCompatible: false
+        isBackwardCompatible: false,
       };
     }
-    
+
     const parserCode = parserMatch[1];
-    const validation = validateOutputParserCode(parserCode);
-    
+    const validation = await validateOutputParserCode(parserCode);
+
     return {
       hasParser: true,
       parserValidation: validation,
-      isBackwardCompatible: true // System handles both old and new formats
+      isBackwardCompatible: true, // System handles both old and new formats
     };
   } catch (error) {
     return {
@@ -121,9 +134,9 @@ export function validateWorkflowOutputParser(yamlContent: string): {
         isValid: false,
         errors: [`Failed to parse workflow: ${error}`],
         warnings: [],
-        hasStandardFormat: false
+        hasStandardFormat: false,
       },
-      isBackwardCompatible: false
+      isBackwardCompatible: false,
     };
   }
 }
@@ -131,7 +144,9 @@ export function validateWorkflowOutputParser(yamlContent: string): {
 /**
  * Creates a standardized parser template for common use cases
  */
-export function createStandardizedParser(type: 'quotes' | 'form' | 'navigation' | 'generic'): string {
+export function createStandardizedParser(
+  type: 'quotes' | 'form' | 'navigation' | 'generic'
+): string {
   const templates = {
     quotes: `// =============================================================================
 // STANDARDIZED OUTPUT PARSER - Insurance Quote Extraction
@@ -267,8 +282,8 @@ return {
     : "Workflow execution failed or incomplete",
   error: null, // Update if errors detected
   validation: validation
-};`
+};`,
   };
-  
+
   return templates[type];
 }
