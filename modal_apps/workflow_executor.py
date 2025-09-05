@@ -2151,9 +2151,17 @@ def execute_workflow(
 
         results["execution_summary"] = execution_summary
 
+        # Determine if this is a quote workflow (for formatting purposes)
+        # Check both from workflow data and from standardized result
+        is_quote_workflow = (
+            "quote" in workflow_data.get("name", "").lower() or
+            "insurance" in workflow_data.get("name", "").lower() or
+            workflow_data.get("category") == "insurance_quotes"
+        )
+
         # Generate formatted summary for successful executions
         formatted_output = None
-        if results.get("quotes") is not None:  # If we have quotes data (even if empty)
+        if is_quote_workflow and results.get("quotes") is not None:  # Only format quotes for quote workflows
             try:
                 quotes_output = results.get("quotes", [])
 
@@ -2181,6 +2189,28 @@ def execute_workflow(
             except Exception as format_error:
                 logger.warning("Failed to serialize raw quote output: %s", format_error)
                 formatted_output = f"Error: Could not format results.\n{format_error}"
+        elif not is_quote_workflow:
+            # For non-quote workflows, format the output differently
+            if workflow_result:
+                # Use standardized result format
+                formatted_output = json.dumps({
+                    "success": workflow_result["success"],
+                    "message": workflow_result["message"],
+                    "data": workflow_result.get("data"),
+                    "validation": workflow_result.get("validation", {}),
+                    "execution_status": workflow_result["execution_status"],
+                }, indent=2)
+                logger.info("📋 Using standardized result format for non-quote workflow")
+            else:
+                # Fallback for non-quote workflows without standardized result
+                formatted_output = json.dumps({
+                    "success": workflow_completed,
+                    "message": f"Workflow {'completed successfully' if workflow_completed else 'failed'}",
+                    "execution_status": "completed" if workflow_completed else "failed",
+                    "steps_executed": total_steps,
+                    "success_rate": success_rate
+                }, indent=2)
+                logger.info("📋 Using fallback format for non-quote workflow")
 
         # Update execution with final results and raw data
         cur.execute(
