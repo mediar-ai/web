@@ -22,7 +22,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { CronScheduleBadge } from '@/components/ui/cron-schedule-badge';
 import {
   Execution,
   LiveExecutionStatus,
@@ -37,6 +36,7 @@ import {
   Clock,
   FileText,
   Loader2,
+  Pause,
   Play,
   PlayCircle,
   Settings,
@@ -135,7 +135,6 @@ export function WorkflowCard({
     executionId: number;
   } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [cronToggling, setCronToggling] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingWorkflow, setDeletingWorkflow] = useState(false);
 
@@ -363,7 +362,10 @@ export function WorkflowCard({
     }
   };
 
-  const handleCronToggle = async (enabled: boolean) => {
+  // Handle cron toggle (pause/resume)
+  const [cronToggling, setCronToggling] = useState(false);
+
+  const handleCronToggle = async () => {
     setCronToggling(true);
     try {
       const response = await fetch(
@@ -373,43 +375,107 @@ export function WorkflowCard({
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ enabled }),
+          body: JSON.stringify({ enabled: !workflow.cron_enabled }),
         }
       );
 
       const result = await response.json();
 
       if (result.success) {
-        // Update the workflow state locally
-        workflow.cron_enabled = enabled;
-        console.log(
-          `✅ Cron schedule ${enabled ? 'enabled' : 'disabled'} for ${workflow.name}`
-        );
-
-        // You might want to trigger a refresh of the workflows list here
-        // onFetchWorkflowDetails?.(workflow.id);
+        // Trigger a refresh of the workflow list
+        if (onBatchSubmit) {
+          onBatchSubmit();
+        }
       } else {
         console.error('Failed to toggle cron schedule:', result.error);
         alert(
-          `Failed to ${enabled ? 'enable' : 'disable'} cron schedule: ${result.error}`
+          `Failed to ${!workflow.cron_enabled ? 'enable' : 'disable'} schedule`
         );
       }
     } catch (error) {
       console.error('Error toggling cron schedule:', error);
-      alert(`Error ${enabled ? 'enabling' : 'disabling'} cron schedule`);
+      alert(
+        `Error ${!workflow.cron_enabled ? 'enabling' : 'disabling'} schedule`
+      );
     } finally {
       setCronToggling(false);
     }
   };
 
-  const handleCronClick = () => {
-    // Show detailed cron information
-    alert(`Cron Schedule Details:
-Expression: ${workflow.cron_expression}
-Timezone: ${workflow.cron_timezone || 'UTC'}
-Status: ${workflow.cron_enabled ? 'Enabled' : 'Disabled'}
-Last Run: ${workflow.last_scheduled_execution || 'Never'}
-Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
+  // Helper function to convert cron expression to human-readable format
+  const getCronDescription = (cronExpression: string): string => {
+    // Simple cron parser for common patterns
+    const parts = cronExpression.split(' ');
+    if (parts.length < 5) return cronExpression;
+
+    const [second, minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+
+    // Handle common patterns (with 6-field cron format)
+    if (
+      second === '0' &&
+      minute === '*/1' &&
+      hour === '*' &&
+      dayOfMonth === '*' &&
+      month === '*' &&
+      dayOfWeek === '*'
+    ) {
+      return 'every minute';
+    }
+    if (
+      second === '0' &&
+      minute === '*/5' &&
+      hour === '*' &&
+      dayOfMonth === '*' &&
+      month === '*' &&
+      dayOfWeek === '*'
+    ) {
+      return 'every 5 minutes';
+    }
+    if (
+      second === '0' &&
+      minute === '0' &&
+      hour === '0' &&
+      dayOfMonth === '*' &&
+      month === '*' &&
+      dayOfWeek === '*'
+    ) {
+      return 'daily at midnight';
+    }
+    if (
+      second === '0' &&
+      minute === '0' &&
+      hour === '9' &&
+      dayOfMonth === '*' &&
+      month === '*' &&
+      dayOfWeek === '1-5'
+    ) {
+      return 'weekdays at 9:00 AM';
+    }
+
+    // For other patterns, provide a basic description
+    let description = '';
+
+    if (minute !== '*') {
+      description += minute.includes('*/')
+        ? `every ${minute.replace('*/', '')} min`
+        : `at ${minute} min`;
+    }
+    if (hour !== '*') {
+      description += hour.includes('*/')
+        ? ` every ${hour.replace('*/', '')} hr`
+        : ` at ${hour}:00`;
+    }
+    if (dayOfWeek !== '*' && dayOfWeek !== '?') {
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      description +=
+        ' on ' +
+        dayOfWeek
+          .split(',')
+          .map(d => days[parseInt(d)] || d)
+          .join(', ');
+    }
+
+    return description.trim() || 'periodically';
   };
 
   const handleDeleteWorkflow = async (workflowId: number) => {
@@ -619,16 +685,47 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
                   {workflow.status.toUpperCase()}
                 </Badge>
                 {workflow.cron_expression && (
-                  <Badge
-                    variant="outline"
-                    className={`text-xs h-6 px-2 font-mono ${
-                      workflow.cron_enabled
-                        ? 'text-green-600 border-green-300 bg-green-50'
-                        : 'text-gray-500 border-gray-300'
-                    }`}
-                  >
-                    {workflow.cron_enabled ? '⏰ CRON' : '⏰ CRON (OFF)'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className="text-xs h-6 px-2 font-mono text-black border-black"
+                      title={`Runs ${getCronDescription(workflow.cron_expression)}`}
+                    >
+                      {workflow.cron_expression}
+                    </Badge>
+                    <button
+                      onClick={handleCronToggle}
+                      disabled={cronToggling}
+                      className={`px-2 py-1 border-2 border-black rounded font-mono text-xs font-bold transition-colors ${
+                        cronToggling
+                          ? 'bg-gray-100 cursor-not-allowed'
+                          : workflow.cron_enabled
+                            ? 'bg-black text-white hover:bg-gray-700 cursor-pointer'
+                            : 'bg-white text-black hover:bg-gray-100 cursor-pointer'
+                      }`}
+                      title={
+                        cronToggling
+                          ? 'Processing...'
+                          : workflow.cron_enabled
+                            ? 'Pause schedule'
+                            : 'Resume schedule'
+                      }
+                    >
+                      {cronToggling ? (
+                        <Loader2 className="w-4 h-4 animate-spin inline" />
+                      ) : workflow.cron_enabled ? (
+                        <>
+                          <Pause className="w-4 h-4 inline mr-1" />
+                          PAUSE
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4 inline mr-1" />
+                          START
+                        </>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -652,32 +749,6 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
                     </span>
                   )}
                 </div>
-
-                {/* Cron Schedule Badge */}
-                {workflow.cron_expression && (
-                  <div className="flex items-center gap-2">
-                    <CronScheduleBadge
-                      cronExpression={workflow.cron_expression}
-                      cronEnabled={workflow.cron_enabled}
-                      cronTimezone={workflow.cron_timezone}
-                      lastExecution={workflow.last_scheduled_execution}
-                      nextExecution={workflow.next_scheduled_execution}
-                      className="text-xs"
-                      onClick={handleCronClick}
-                      onToggleEnabled={
-                        cronToggling ? undefined : handleCronToggle
-                      }
-                    />
-                    {workflow.cron_enabled && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs text-green-600 border-green-300"
-                      >
-                        AUTO
-                      </Badge>
-                    )}
-                  </div>
-                )}
 
                 {/* Current Version Stats */}
                 {workflow.current_version_stats &&
@@ -722,26 +793,16 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
 
             {/* Third line: Action buttons in their own row */}
             <div className="flex items-center gap-2 mb-2">
-              {/* Test Run / Automated Schedule */}
+              {/* Test Run - shows automated status for active cron */}
               {workflow.cron_expression && workflow.cron_enabled ? (
-                // Cron workflows show automated status instead of manual run button
-                <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 border border-black rounded-lg">
-                  <Clock className="w-4 h-4 text-black" />
-                  <span className="text-black font-mono text-sm">
-                    AUTOMATED SCHEDULE
-                  </span>
-                  <Badge
-                    variant="outline"
-                    className="text-xs text-gray-600 border-gray-400"
-                  >
-                    No manual execution
-                  </Badge>
+                <div className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 border-2 border-black rounded-lg font-mono text-base font-bold">
+                  <Clock className="w-5 h-5" />
+                  AUTOMATED
                 </div>
               ) : (
-                // Regular workflows show the test run button
                 <Button
                   onClick={() => setShowBatchTestDialog(true)}
-                  className="bg-black text-white hover:bg-gray-800 hover:shadow-lg font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 transform hover:scale-105 rounded-lg font-bold"
+                  className="bg-black text-white hover:bg-gray-700 font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 rounded-lg font-bold"
                   size="lg"
                 >
                   <PlayCircle className="w-5 h-5 mr-2" />
@@ -763,7 +824,7 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
                 <Button
                   variant="black-outline"
                   size="lg"
-                  className="font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg rounded-lg font-bold border-2 border-black hover:bg-gray-50"
+                  className="font-mono text-base h-10 px-6 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-black hover:bg-gray-50"
                 >
                   <Upload className="w-5 h-5 mr-2" />
                   UPLOAD
@@ -775,7 +836,7 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
                 onClick={() => onFetchWorkflowDetails(workflow.id)}
                 variant="black-outline"
                 size="lg"
-                className="font-mono text-base h-10 px-6 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg rounded-lg font-bold border-2 border-black hover:bg-gray-50"
+                className="font-mono text-base h-10 px-6 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-black hover:bg-gray-50"
                 disabled={loadingDetails}
               >
                 {loadingDetails ? (
@@ -791,7 +852,7 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
                 onClick={() => setShowSettingsModal(true)}
                 variant="black-outline"
                 size="lg"
-                className="font-mono text-base h-10 px-4 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg rounded-lg font-bold border-2 border-black hover:bg-gray-50"
+                className="font-mono text-base h-10 px-4 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-black hover:bg-gray-50"
               >
                 <Settings className="w-5 h-5" />
               </Button>
@@ -806,7 +867,7 @@ Next Run: ${workflow.next_scheduled_execution || 'Not calculated'}`);
                   variant="outline"
                   size="lg"
                   disabled={deletingWorkflow}
-                  className="font-mono text-base h-10 px-4 cursor-pointer transition-all duration-200 transform hover:scale-105 hover:shadow-lg rounded-lg font-bold border-2 border-dashed border-gray-600 text-gray-700 hover:bg-gray-100 hover:border-black hover:text-black disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="font-mono text-base h-10 px-4 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-dashed border-gray-600 text-gray-700 hover:bg-gray-100 hover:border-black hover:text-black disabled:opacity-50 disabled:cursor-not-allowed"
                   title={deletingWorkflow ? 'Deleting...' : 'Delete Workflow'}
                 >
                   {deletingWorkflow ? (
