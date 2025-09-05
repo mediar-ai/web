@@ -171,8 +171,11 @@ export function shouldExecuteAt(cronExpression: string, time: Date, _timezone: s
   const month = timeInTz.getMonth() + 1; // JS months are 0-based
   const dayOfWeek = timeInTz.getDay(); // 0 = Sunday
 
+  // IMPORTANT: Skip second matching for Vercel cron compatibility
+  // Vercel cron triggers at random seconds, not at second=0
+  // So we ignore the seconds field to allow workflows to trigger
   return (
-    matchesCronField(parsed.second, second) &&
+    // matchesCronField(parsed.second, second) &&  // DISABLED for Vercel
     matchesCronField(parsed.minute, minute) &&
     matchesCronField(parsed.hour, hour) &&
     matchesCronField(parsed.day, day) &&
