@@ -324,7 +324,10 @@ function AuthenticatedDeploymentsPage({
       if (showLoading) {
         setLoadingExecutions(true);
       }
-      const response = await fetch('/api/remote-workflows/executions');
+      // Fetch more executions to avoid truncating history when multiple workflows are active
+      const response = await fetch(
+        '/api/remote-workflows/executions?limit=1000'
+      );
       const executionsData = await response.json();
       if (executionsData.success) {
         setExecutions(executionsData.executions || []);
@@ -345,7 +348,7 @@ function AuthenticatedDeploymentsPage({
   const fetchLiveExecutions = useCallback(async () => {
     try {
       const response = await fetch(
-        '/api/remote-workflows/executions/live?status=active&limit=200'
+        '/api/remote-workflows/executions/live?status=active&limit=500'
       );
 
       if (!response.ok) {
