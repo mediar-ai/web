@@ -365,8 +365,25 @@ arguments:
           // STANDARDIZED OUTPUT PARSER - Scheduled Task Template
           // =============================================================================
           
-          // The 'executionResults' variable contains the results from executed steps
-          const commandResults = executionResults || [];
+          // The execution results are available in the global context
+          // We need to handle cases where the variable might have different names
+          const commandResults = (typeof executionResults !== 'undefined' ? executionResults : 
+                                  typeof results !== 'undefined' ? results : 
+                                  typeof stepResults !== 'undefined' ? stepResults : 
+                                  []);
+          
+          // If no results are available, return an error
+          if (!commandResults || commandResults.length === 0) {
+            return {
+              success: false,
+              data: null,
+              message: "No execution results available",
+              error: "Parser could not access execution results",
+              validation: {
+                resultsAvailable: false
+              }
+            };
+          }
           
           // Check if both commands executed successfully
           const firstCommandResult = commandResults[0];
@@ -375,8 +392,8 @@ arguments:
           const validation = {
             firstCommandExecuted: !!firstCommandResult,
             secondCommandExecuted: !!secondCommandResult,
-            firstCommandSuccess: firstCommandResult?.success === true,
-            secondCommandSuccess: secondCommandResult?.success === true
+            firstCommandSuccess: firstCommandResult?.success === true || firstCommandResult?.status === 'success',
+            secondCommandSuccess: secondCommandResult?.success === true || secondCommandResult?.status === 'success'
           };
           
           const success = validation.firstCommandExecuted && 
@@ -387,8 +404,8 @@ arguments:
           // Extract command outputs
           const data = {
             executionTimestamp: new Date().toISOString(),
-            firstCommandOutput: firstCommandResult?.output || null,
-            secondCommandOutput: secondCommandResult?.output || null,
+            firstCommandOutput: firstCommandResult?.output || firstCommandResult?.result || null,
+            secondCommandOutput: secondCommandResult?.output || secondCommandResult?.result || null,
             totalCommands: commandResults.length
           };
           
@@ -405,11 +422,13 @@ arguments:
   steps:
     - tool_name: run_command
       arguments:
-        unix_command: "echo 'Scheduled task executed at \$(date)'"
+        unix_command: "echo 'Scheduled task executed at $(date)'"
+        windows_command: "echo Scheduled task executed at %date% %time%"
     
     - tool_name: run_command
       arguments:
         unix_command: "echo 'Task completed successfully'"
+        windows_command: "echo Task completed successfully"
   
   output_parser: "\${{task_parser}}"`,
         category: 'scheduled_tasks',
