@@ -55,7 +55,7 @@ async function checkVMHealth(vm: any): Promise<VMStatus> {
         },
       });
       statusData = await statusResponse.json();
-    } catch (e) {
+    } catch {
       // Status endpoint might not exist
     }
 
@@ -86,7 +86,7 @@ async function checkVMHealth(vm: any): Promise<VMStatus> {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
           };
           
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(log)}\n\n`));
-        } catch (error) {
+        } catch {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Log fetch failed' })}\n\n`));
         }
       }, 1000);

@@ -697,7 +697,7 @@ function HomeComponent() {
       streamRef.current = null;
       setMainStatus('Error starting share');
     }
-  }, [stream, logToUI, logError, captureSessionId, userId]);
+  }, [stream, logToUI, logError, captureSessionId]);
 
   useEffect(() => {
     if (selectedActivity) {
@@ -728,7 +728,7 @@ function HomeComponent() {
       setSelectedEvent(events[0]);
       logToUI('[Tab Switch] Auto-selected most recent event for Events tab');
     }
-  }, [selectedMainTab, activityItems, events]);
+  }, [selectedMainTab, activityItems, events, logToUI]);
 
   useEffect(() => {
     if (stream && !workflow) {

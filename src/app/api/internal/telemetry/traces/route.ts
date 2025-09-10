@@ -19,7 +19,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '20');
     const traceId = searchParams.get('traceId');
-    const machineId = searchParams.get('machineId');
 
     if (traceId) {
       // Get specific trace

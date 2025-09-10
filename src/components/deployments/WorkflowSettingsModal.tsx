@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { WorkflowWithSettings } from '@/lib/workflow-types';
 import { AlertCircle, Check, Loader2, Monitor, Package, Star, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface WorkflowVersion {
   version_number: string;
@@ -64,27 +64,7 @@ export function WorkflowSettingsModal({
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Load data when modal opens
-  useEffect(() => {
-    if (open && workflow) {
-      loadVersions();
-      loadMachines();
-      loadMachineAssignments();
-    }
-  }, [open, workflow]);
-
-  // Clear messages after 3 seconds
-  useEffect(() => {
-    if (successMessage || errorMessage) {
-      const timer = setTimeout(() => {
-        setSuccessMessage('');
-        setErrorMessage('');
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [successMessage, errorMessage]);
-
-  const loadVersions = async () => {
+  const loadVersions = useCallback(async () => {
     if (!workflow) return;
     
     setLoadingVersions(true);
@@ -104,9 +84,9 @@ export function WorkflowSettingsModal({
     } finally {
       setLoadingVersions(false);
     }
-  };
+  }, [workflow]);
 
-  const loadMachines = async () => {
+  const loadMachines = useCallback(async () => {
     setLoadingMachines(true);
     try {
       const response = await fetch('/api/machines?status=active&include_load=true');
@@ -124,9 +104,9 @@ export function WorkflowSettingsModal({
     } finally {
       setLoadingMachines(false);
     }
-  };
+  }, []);
 
-  const loadMachineAssignments = async () => {
+  const loadMachineAssignments = useCallback(async () => {
     if (!workflow) return;
     
     try {
@@ -144,7 +124,27 @@ export function WorkflowSettingsModal({
       console.error('Error loading machine assignments:', error);
       setErrorMessage(`Failed to load machine assignments: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  };
+  }, [workflow]);
+
+  // Load data when modal opens
+  useEffect(() => {
+    if (open && workflow) {
+      loadVersions();
+      loadMachines();
+      loadMachineAssignments();
+    }
+  }, [open, workflow, loadVersions, loadMachineAssignments, loadMachines]);
+
+  // Clear messages after 3 seconds
+  useEffect(() => {
+    if (successMessage || errorMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage('');
+        setErrorMessage('');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage, errorMessage]);
 
   const activateVersion = async (versionNumber: string) => {
     if (!workflow) return;

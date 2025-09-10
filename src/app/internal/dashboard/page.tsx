@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, CheckCircle, XCircle, RefreshCw, Activity, Server, Clock, AlertTriangle, Zap } from 'lucide-react';
+import { RefreshCw, Server, AlertTriangle, Zap } from 'lucide-react';
 
 interface VMStatus {
   id: string;
@@ -203,14 +203,6 @@ export default function InternalDashboard() {
     );
   }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'online': return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'offline': return <XCircle className="w-4 h-4 text-red-500" />;
-      case 'busy': return <Activity className="w-4 h-4 text-yellow-500" />;
-      default: return <AlertCircle className="w-4 h-4 text-gray-500" />;
-    }
-  };
 
   const getStatusBadge = (status: string) => {
     const variants: any = {
