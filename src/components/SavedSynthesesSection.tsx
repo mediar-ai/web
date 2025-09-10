@@ -6,7 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface SavedSynthesis {
   id: number;
@@ -74,26 +74,7 @@ export function SavedSynthesesSection({ userId, refreshTrigger }: SavedSyntheses
   const [timelineAnnotations, setTimelineAnnotations] = useState<TimelineAnnotation[] | null>(null);
   const [loadingAnnotations, setLoadingAnnotations] = useState(false);
 
-  useEffect(() => {
-    if (userId) {
-      fetchSavedSyntheses();
-    }
-  }, [userId, refreshTrigger]);
-
-  // Fetch timeline annotations when a synthesis is selected
-  useEffect(() => {
-    if (selectedSynthesis && selectedSynthesis.id) {
-      fetchTimelineAnnotations(selectedSynthesis);
-    } else {
-      setTimelineAnnotations(null);
-    }
-  }, [selectedSynthesis]);
-
-
-
-
-
-  const fetchSavedSyntheses = async () => {
+  const fetchSavedSyntheses = useCallback(async () => {
     try {
       const response = await fetch(`/api/workflows/saved-syntheses?userId=${userId}`);
       if (response.ok) {
@@ -107,21 +88,22 @@ export function SavedSynthesesSection({ userId, refreshTrigger }: SavedSyntheses
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
-  const fetchTimelineAnnotations = async (synthesis: SavedSynthesis) => {
+  const fetchTimelineAnnotations = useCallback(async (synthesis: SavedSynthesis) => {
     setLoadingAnnotations(true);
     try {
-      const response = await fetch(`/api/timeline-event-mappings?user_id=${userId}&raw_events=true&include_unrelated=true`);
+      const response = await fetch(`/api/workflows/${synthesis.id}/timeline-annotations?userId=${userId}`);
       if (response.ok) {
         const result = await response.json();
+        console.log('Timeline annotations fetched:', result);
         
-        // Filter annotations to those created around the synthesis time
-        // Use a broader time range to catch related annotations
-        const synthesisStart = synthesis.synthesisStartedAt || synthesis.createdAt;
-        const synthesisEnd = synthesis.synthesisCompletedAt || synthesis.createdAt;
-        
-        if (synthesisStart && synthesisEnd) {
+        // Filter annotations to include only those within the synthesis time range
+        if (synthesis.synthesisStartedAt && synthesis.synthesisCompletedAt) {
+          const synthesisStart = synthesis.synthesisStartedAt;
+          const synthesisEnd = synthesis.synthesisCompletedAt;
+          
+          // Parse the timestamps
           const startTime = new Date(synthesisStart);
           const endTime = new Date(synthesisEnd);
           
@@ -134,9 +116,9 @@ export function SavedSynthesesSection({ userId, refreshTrigger }: SavedSyntheses
             return annotationTime >= startTime && annotationTime <= endTime;
           }) || [];
           
+          console.log(`Filtered ${filteredAnnotations.length} annotations from ${result.annotations?.length || 0} total`);
           setTimelineAnnotations(filteredAnnotations);
         } else {
-          // If no synthesis dates, show all annotations for this user
           setTimelineAnnotations(result.annotations || []);
         }
       } else {
@@ -149,7 +131,24 @@ export function SavedSynthesesSection({ userId, refreshTrigger }: SavedSyntheses
     } finally {
       setLoadingAnnotations(false);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    if (userId) {
+      fetchSavedSyntheses();
+    }
+  }, [userId, refreshTrigger, fetchSavedSyntheses]);
+
+  // Fetch timeline annotations when a synthesis is selected
+  useEffect(() => {
+    if (selectedSynthesis && selectedSynthesis.id) {
+      fetchTimelineAnnotations(selectedSynthesis);
+    } else {
+      setTimelineAnnotations(null);
+    }
+  }, [selectedSynthesis, fetchTimelineAnnotations]);
+
+
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {

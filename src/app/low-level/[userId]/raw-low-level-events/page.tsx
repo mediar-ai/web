@@ -727,7 +727,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     } finally {
     setLoadAllProgress(null);
     }
-  }, [fetchRawEvents, loadEventsForDisplay, totalAvailable, displayEvents, memoryUsage, loadAllProgress, storageInfo]);
+  }, [fetchRawEvents, loadEventsForDisplay, totalAvailable, displayEvents, loadAllProgress, storageInfo]);
 
   // Clear new event indicators after 30 seconds
   useEffect(() => {

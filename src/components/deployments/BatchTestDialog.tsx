@@ -223,7 +223,7 @@ export function BatchTestDialog({
       fetchMachines();
       fetchVersions();
     }
-  }, [open, workflow?.id]);
+  }, [open, workflow]);
 
   // Load saved batch spec when dialog opens
   useEffect(() => {
@@ -241,7 +241,7 @@ export function BatchTestDialog({
         resetBatchSpec();
       }
     }
-  }, [open, workflow?.id, storageKey, resetBatchSpec]);
+  }, [open, workflow, storageKey, resetBatchSpec]);
 
   // Load version-specific schema when version changes
   useEffect(() => {
@@ -311,7 +311,7 @@ export function BatchTestDialog({
     };
 
     loadVersionSchema();
-  }, [workflow?.id, selectedVersionNumber]);
+  }, [workflow, selectedVersionNumber, resetBatchSpec]);
 
   // Save batch spec to localStorage whenever it changes
   useEffect(() => {

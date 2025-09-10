@@ -359,7 +359,7 @@ export function useWorkflowPageLogic(userId: string) {
         }
       }
     }
-  }, [userId, loadSynthesisSession, TIME_BOUNDARY_STORAGE_KEY]);
+  }, [userId, loadSynthesisSession, TIME_BOUNDARY_STORAGE_KEY, setUserId]);
 
   // Save time boundary to localStorage when it changes
   useEffect(() => {
@@ -1071,7 +1071,7 @@ export function useWorkflowPageLogic(userId: string) {
     if (userId && synthesisSessionId) {
       fetchCompleteWorkflows();
     }
-  }, [synthesisSessionId]);
+  }, [synthesisSessionId, fetchCompleteWorkflows, userId]);
 
   useEffect(() => {
     if (workflowContext) {

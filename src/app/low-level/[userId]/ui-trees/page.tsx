@@ -176,7 +176,7 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
     } finally {
       setLoading(false);
     }
-  }, [userId, sharedStorage]);
+  }, [userId, sharedStorage, events.length]);
 
   const loadMoreUITrees = useCallback(async () => {
     if (isLoadingMore || !hasMore) return;
