@@ -77,14 +77,26 @@ export default function InternalDashboard() {
     }
   };
 
-  // Fetch OTLP traces
+  // Fetch telemetry traces from Supabase
   const fetchOTLPTraces = async () => {
     try {
+      // First try Supabase if available
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      if (supabaseUrl) {
+        const response = await fetch('/api/internal/telemetry/traces');
+        const data = await response.json();
+        if (data.success && data.traces) {
+          setOtlpTraces(data.traces);
+          return;
+        }
+      }
+      
+      // Fallback to in-memory OTLP endpoint
       const response = await fetch('/api/internal/otlp/v1/traces?limit=20');
       const data = await response.json();
       setOtlpTraces(data.traces || []);
     } catch (error) {
-      console.error('Failed to fetch OTLP traces:', error);
+      console.error('Failed to fetch telemetry traces:', error);
     }
   };
 
