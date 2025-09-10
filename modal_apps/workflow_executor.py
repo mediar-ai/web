@@ -1815,9 +1815,10 @@ def execute_workflow(
             logger.info("🎯 Using active version")
 
         # 🎯 Use provided MCP endpoint (required parameter)
-        endpoint_base = mcp_endpoint
-        endpoint_full = f"{mcp_endpoint}/mcp"
-        endpoint_health = f"{mcp_endpoint}/health"
+        # Remove /mcp suffix if present to get base URL
+        endpoint_base = mcp_endpoint.rstrip('/').removesuffix('/mcp')
+        endpoint_full = f"{endpoint_base}/mcp"
+        endpoint_health = f"{endpoint_base}/health"
         logger.info("🔗 Using MCP endpoint: %s", endpoint_full)
 
         # 🎯 NEW: Query specific version or active version
