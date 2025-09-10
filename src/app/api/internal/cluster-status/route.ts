@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-// VM endpoints from your infrastructure
-const VM_ENDPOINTS = [
-  { id: 'vm1', name: 'Primary Windows VM', endpoint: 'https://mcp-server-1.ngrok.app' },
-  { id: 'vm2', name: 'Matt Test Machine', endpoint: 'https://willingly-settling-husky.ngrok-free.app' },
-  { id: 'vm3', name: 'Louis Computer', endpoint: 'https://select-merely-gelding.ngrok-free.app' },
-  { id: 'azure-lb', name: 'Azure Load Balancer', endpoint: 'http://172.203.20.145:8080' },
+// Fallback endpoints if Supabase is not available
+const FALLBACK_ENDPOINTS = [
+  { id: 4, name: 'Azure Load Balancer', mcp_endpoint: 'http://172.203.20.145:8080' },
 ];
 
 interface VMStatus {
@@ -24,10 +22,18 @@ interface VMStatus {
   recentLogs?: string[];
 }
 
-async function checkVMHealth(vm: typeof VM_ENDPOINTS[0]): Promise<VMStatus> {
+async function checkVMHealth(vm: any): Promise<VMStatus> {
+  const endpoint = vm.mcp_endpoint || vm.endpoint;
+  const id = vm.id?.toString() || 'unknown';
+  const name = vm.name || 'Unknown VM';
+  
   try {
+    // Parse endpoint to handle different formats
+    const url = new URL(endpoint);
+    const healthUrl = `${url.protocol}//${url.host}/health`;
+    
     // Try to hit the health endpoint
-    const healthResponse = await fetch(`${vm.endpoint}/health`, {
+    const healthResponse = await fetch(healthUrl, {
       method: 'GET',
       signal: AbortSignal.timeout(3000),
       headers: {
@@ -40,7 +46,8 @@ async function checkVMHealth(vm: typeof VM_ENDPOINTS[0]): Promise<VMStatus> {
     // Try to get status for active workflows
     let statusData: any = {};
     try {
-      const statusResponse = await fetch(`${vm.endpoint}/status`, {
+      const statusUrl = `${url.protocol}//${url.host}/status`;
+      const statusResponse = await fetch(statusUrl, {
         method: 'GET',
         signal: AbortSignal.timeout(3000),
         headers: {
@@ -53,24 +60,24 @@ async function checkVMHealth(vm: typeof VM_ENDPOINTS[0]): Promise<VMStatus> {
     }
 
     return {
-      id: vm.id,
-      name: vm.name,
-      endpoint: vm.endpoint,
+      id,
+      name,
+      endpoint,
       status: statusData.busy ? 'busy' : 'online',
       lastSeen: new Date().toISOString(),
       activeWorkflows: statusData.activeRequests || 0,
       health: {
-        cpu: Math.random() * 100, // These would come from actual metrics
+        cpu: Math.random() * 100, // Will be replaced with actual metrics from telemetry_metrics
         memory: Math.random() * 8192,
         uptime: healthData.uptime || 0,
       },
-      recentLogs: [], // Will be populated from execute_sequence logs
+      recentLogs: [],
     };
   } catch (error) {
     return {
-      id: vm.id,
-      name: vm.name,
-      endpoint: vm.endpoint,
+      id,
+      name,
+      endpoint,
       status: 'offline',
       lastSeen: new Date().toISOString(),
       activeWorkflows: 0,
@@ -81,14 +88,33 @@ async function checkVMHealth(vm: typeof VM_ENDPOINTS[0]): Promise<VMStatus> {
 
 export async function GET(request: NextRequest) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+    
+    // Get VM endpoints from Supabase remote_machines table
+    let vmEndpoints = FALLBACK_ENDPOINTS;
+    
+    if (supabaseUrl && supabaseServiceKey) {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      
+      // Fetch active machines from database
+      const { data: machines, error: machineError } = await supabase
+        .from('remote_machines')
+        .select('id, name, mcp_endpoint, status, region, machine_type')
+        .eq('status', 'active')
+        .order('priority', { ascending: true });
+      
+      if (!machineError && machines && machines.length > 0) {
+        vmEndpoints = machines;
+      }
+    }
+    
     // Check all VMs in parallel
     const vmStatuses = await Promise.all(
-      VM_ENDPOINTS.map(vm => checkVMHealth(vm))
+      vmEndpoints.map(vm => checkVMHealth(vm))
     );
 
     // Get recent workflow executions from Supabase for rollback info
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
     
     let recentExecutions: any[] = [];
     if (supabaseUrl && supabaseServiceKey) {
@@ -107,7 +133,7 @@ export async function GET(request: NextRequest) {
     // Calculate cluster health
     const onlineVMs = vmStatuses.filter(vm => vm.status !== 'offline').length;
     const totalWorkflows = vmStatuses.reduce((sum, vm) => sum + vm.activeWorkflows, 0);
-    const clusterHealth = (onlineVMs / VM_ENDPOINTS.length) * 100;
+    const clusterHealth = vmEndpoints.length > 0 ? (onlineVMs / vmEndpoints.length) * 100 : 0;
 
     return NextResponse.json({
       success: true,
@@ -115,7 +141,7 @@ export async function GET(request: NextRequest) {
       cluster: {
         health: clusterHealth,
         onlineVMs,
-        totalVMs: VM_ENDPOINTS.length,
+        totalVMs: vmEndpoints.length,
         activeWorkflows: totalWorkflows,
       },
       vms: vmStatuses,
@@ -149,7 +175,22 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { vmId, workflowId } = await request.json();
   
-  const vm = VM_ENDPOINTS.find(v => v.id === vmId);
+  // Get VM details from request or fetch from Supabase
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+  
+  let vm: any = null;
+  
+  if (supabaseUrl && supabaseServiceKey) {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { data } = await supabase
+      .from('remote_machines')
+      .select('*')
+      .eq('id', vmId)
+      .single();
+    vm = data;
+  }
+  
   if (!vm) {
     return NextResponse.json({ error: 'VM not found' }, { status: 404 });
   }
