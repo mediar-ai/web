@@ -47,6 +47,7 @@ export interface Workflow {
   successful_runs: number;
   failed_runs: number;
   cancelled_runs: number;
+  skipped_runs?: number;  // Optional for backward compatibility
   total_executions: number;
   // Cron scheduling fields
   cron_expression?: string | null;

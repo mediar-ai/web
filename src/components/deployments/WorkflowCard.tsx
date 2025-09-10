@@ -73,6 +73,7 @@ const getStatusBadge = (status: string) => {
     completed_with_errors: 'bg-gray-100 text-black border border-black', // Warning style
     failed: 'bg-white text-black border-2 border-black font-bold', // Bold text and border for emphasis
     cancelled: 'bg-gray-100 text-gray-600 border border-gray-400', // Muted
+    skipped: 'bg-blue-50 text-blue-700 border border-blue-300', // Distinct style for skipped
     queued: 'bg-white text-black border border-gray-400', // Lighter border
     paused: 'bg-gray-100 text-black border border-gray-400', // Muted
   };
@@ -92,6 +93,8 @@ const getStatusIcon = (status: string) => {
       return <XCircle className="w-3.5 h-3.5" />;
     case 'cancelled':
       return <AlertCircle className="w-3.5 h-3.5" />;
+    case 'skipped':
+      return <ChevronRight className="w-3.5 h-3.5" />; // Skip/forward icon
     case 'queued':
       return <Clock className="w-3.5 h-3.5" />;
     default:
@@ -748,6 +751,16 @@ export function WorkflowCard({
                       %
                     </span>
                   )}
+                  {/* Show skipped count if any */}
+                  {(workflow.skipped_runs || 0) > 0 && (
+                    <>
+                      <span className="text-gray-400">•</span>
+                      <span className="text-blue-600 flex items-center gap-1">
+                        <ChevronRight className="w-4 h-4" />
+                        {workflow.skipped_runs} skipped
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 {/* Current Version Stats */}
@@ -1321,6 +1334,33 @@ export function WorkflowCard({
                                         }
                                       })()}
                                     </div>
+                                  </>
+                                )}
+                              {execution.status === 'skipped' &&
+                                (execution.error_message ||
+                                  execution.formatted_output) && (
+                                  <>
+                                    <span className="text-gray-400">•</span>
+                                    <span
+                                      className="text-blue-600 truncate inline-block max-w-[450px] text-sm"
+                                      title={
+                                        execution.error_message ||
+                                        execution.formatted_output ||
+                                        'Workflow was skipped'
+                                      }
+                                    >
+                                      {execution.error_message || 
+                                       (execution.formatted_output ? 
+                                        (() => {
+                                          try {
+                                            const parsed = JSON.parse(execution.formatted_output);
+                                            return parsed.message || 'Workflow skipped';
+                                          } catch {
+                                            return execution.formatted_output.split('\n')[0];
+                                          }
+                                        })() : 
+                                        'Workflow skipped')}
+                                    </span>
                                   </>
                                 )}
                               {execution.status === 'failed' &&

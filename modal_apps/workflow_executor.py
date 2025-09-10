@@ -1034,16 +1034,31 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
         if parsed_output and isinstance(parsed_output, dict):
             logger.info("📊 Found parsed_output from workflow parser")
 
-            # Use business logic success from parser
-            result["success"] = bool(parsed_output.get("success", False))
+            # Check if workflow was skipped (new feature from terminator)
+            is_skipped = bool(parsed_output.get("skipped", False))
+            
+            # Add skipped state to result
+            result["skipped"] = is_skipped
+            
+            # Use business logic success from parser (skipped workflows are not successful)
+            if is_skipped:
+                result["success"] = False
+                result["state"] = "skipped"
+                logger.info("⏭️ Workflow was SKIPPED")
+            else:
+                result["success"] = bool(parsed_output.get("success", False))
+                result["state"] = "success" if result["success"] else "failure"
+            
             result["message"] = parsed_output.get("message", "No message from parser")
             result["data"] = parsed_output.get("data")
             result["error"] = parsed_output.get("error")
             result["validation"] = parsed_output.get("validation", {})
 
             logger.info(
-                "✅ Business logic result: %s - %s",
-                "SUCCESS" if result["success"] else "FAILURE",
+                "✅ Business logic result: state=%s, success=%s, skipped=%s - %s",
+                result.get("state", "unknown"),
+                result["success"],
+                result.get("skipped", False),
                 result["message"],
             )
         else:
@@ -1054,6 +1069,8 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
             # "completed_with_errors" means the workflow ran to completion but had non-critical issues
             # "partial_success" means the workflow completed but may not have achieved full business goal
             result["success"] = execution_status in ["success", "completed_with_errors", "partial_success"]
+            result["skipped"] = False  # Without parser output, we can't determine if skipped
+            result["state"] = "success" if result["success"] else "failure"
             result["message"] = f"Workflow {execution_status}"
             result["error"] = mcp_response.get("debug_info_on_failure")
 
@@ -2024,20 +2041,35 @@ def execute_workflow(
 
         # Determine workflow completion using new standardized system
         if workflow_result:
-            # Use business logic success from standardized system
-            workflow_completed = workflow_result["success"]
-            error_message_for_db = (
-                workflow_result["error"] if not workflow_result["success"] else None
-            )
+            # Check if workflow was skipped
+            is_skipped = workflow_result.get("skipped", False)
+            
+            if is_skipped:
+                # Skipped workflows get special handling
+                workflow_completed = False  # Not considered "completed" in success terms
+                workflow_status = "skipped"  # New status for database
+                error_message_for_db = workflow_result.get("message", "Workflow was skipped")
+                
+                logger.info(
+                    "⏭️ Workflow was SKIPPED: %s",
+                    workflow_result.get("message", "No skip reason provided")
+                )
+            else:
+                # Use business logic success from standardized system
+                workflow_completed = workflow_result["success"]
+                workflow_status = "completed" if workflow_completed else "failed"
+                error_message_for_db = (
+                    workflow_result["error"] if not workflow_result["success"] else None
+                )
 
-            # Override with business logic message if available
-            if not workflow_result["success"] and workflow_result["message"]:
-                error_message_for_db = workflow_result["message"]
+                # Override with business logic message if available
+                if not workflow_result["success"] and workflow_result["message"]:
+                    error_message_for_db = workflow_result["message"]
 
-            logger.info(
-                "🎯 Using standardized business logic result: %s",
-                "SUCCESS" if workflow_completed else "FAILURE",
-            )
+                logger.info(
+                    "🎯 Using standardized business logic result: %s",
+                    "SUCCESS" if workflow_completed else "FAILURE",
+                )
         else:
             # Fallback to legacy logic for backward compatibility
             logger.info(
@@ -2057,10 +2089,12 @@ def execute_workflow(
                 # 1. ALL steps completed (100% success rate)
                 # 2. AND it achieved its business goal (found at least one quote)
                 workflow_completed = success_rate == 100 and quotes_found > 0
+                workflow_status = "completed" if workflow_completed else "failed"
                 logger.info(f"📊 Quote extraction workflow: success={workflow_completed}, quotes_found={quotes_found}")
             else:
                 # For non-quote workflows, success is based purely on technical execution
                 workflow_completed = success_rate == 100
+                workflow_status = "completed" if workflow_completed else "failed"
                 logger.info(f"✅ Non-quote workflow: success based on execution (success_rate={success_rate}%)")
 
             # --- Enhanced Error Message Extraction ---
@@ -2224,13 +2258,7 @@ def execute_workflow(
             WHERE id = %s
         """,
             (
-                (
-                    # Database only accepts specific status values, so map completed_with_errors to completed
-                    # The granular status is preserved in the results JSON
-                    "completed"
-                    if results["execution_summary"]["workflow_completed"]
-                    else "failed"
-                ),
+                workflow_status,  # This is now always defined (either from standardized result or legacy path)
                 datetime.now(timezone.utc).isoformat(),
                 execution_duration,
                 json.dumps(results),
