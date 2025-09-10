@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, CheckCircle, XCircle, RefreshCw, Activity, Server, Clock, AlertTriangle } from 'lucide-react';
+import { AlertCircle, CheckCircle, XCircle, RefreshCw, Activity, Server, Clock, AlertTriangle, Zap } from 'lucide-react';
 
 interface VMStatus {
   id: string;
@@ -47,12 +47,22 @@ interface ExecutionHistory {
   };
 }
 
+interface OTLPTrace {
+  traceId: string;
+  spans: any[];
+  rootSpan: any;
+  spanCount: number;
+  startTime: string;
+  duration: number;
+}
+
 export default function InternalDashboard() {
   const [clusterData, setClusterData] = useState<any>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [selectedVM, setSelectedVM] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [otlpTraces, setOtlpTraces] = useState<OTLPTrace[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +74,17 @@ export default function InternalDashboard() {
       setClusterData(data);
     } catch (error) {
       console.error('Failed to fetch cluster status:', error);
+    }
+  };
+
+  // Fetch OTLP traces
+  const fetchOTLPTraces = async () => {
+    try {
+      const response = await fetch('/api/internal/otlp/v1/traces?limit=20');
+      const data = await response.json();
+      setOtlpTraces(data.traces || []);
+    } catch (error) {
+      console.error('Failed to fetch OTLP traces:', error);
     }
   };
 
@@ -146,9 +167,13 @@ export default function InternalDashboard() {
   // Auto-refresh
   useEffect(() => {
     fetchClusterStatus();
+    fetchOTLPTraces();
     
     if (autoRefresh) {
-      const interval = setInterval(fetchClusterStatus, 5000);
+      const interval = setInterval(() => {
+        fetchClusterStatus();
+        fetchOTLPTraces();
+      }, 5000);
       return () => clearInterval(interval);
     }
   }, [autoRefresh]);
@@ -262,6 +287,7 @@ export default function InternalDashboard() {
         <TabsList>
           <TabsTrigger value="vms">VM Status</TabsTrigger>
           <TabsTrigger value="logs">Live Logs</TabsTrigger>
+          <TabsTrigger value="traces">OpenTelemetry Traces</TabsTrigger>
           <TabsTrigger value="rollback">Rollback Console</TabsTrigger>
         </TabsList>
 
@@ -380,6 +406,100 @@ export default function InternalDashboard() {
                   </div>
                 )}
               </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* OpenTelemetry Traces Tab */}
+        <TabsContent value="traces">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-blue-500" />
+                OpenTelemetry Workflow Traces
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {otlpTraces.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <p>No OpenTelemetry traces received yet.</p>
+                    <p className="text-sm mt-2">Configure your Rust agents with:</p>
+                    <code className="block mt-2 p-2 bg-gray-100 rounded text-xs">
+                      OTEL_EXPORTER_OTLP_ENDPOINT=https://your-app.com/api/internal/otlp
+                    </code>
+                  </div>
+                ) : (
+                  otlpTraces.map((trace) => (
+                    <div key={trace.traceId} className="border rounded-lg p-4 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-semibold text-sm">
+                            {trace.rootSpan?.name || 'Unknown Workflow'}
+                          </h3>
+                          <p className="text-xs text-gray-500 font-mono">
+                            Trace ID: {trace.traceId.substring(0, 16)}...
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {new Date(trace.startTime).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant="outline">{trace.spanCount} spans</Badge>
+                          <p className="text-sm mt-1">
+                            {trace.duration ? `${trace.duration.toFixed(2)}ms` : 'In Progress'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Span timeline */}
+                      <div className="mt-3 space-y-1">
+                        {trace.spans.slice(0, 5).map((span: any) => (
+                          <div key={span.spanId} className="flex items-center gap-2 text-xs">
+                            <div className={`w-2 h-2 rounded-full ${
+                              span.status?.code === 2 ? 'bg-red-500' : 
+                              span.status?.code === 1 ? 'bg-green-500' : 
+                              'bg-gray-400'
+                            }`} />
+                            <span className="font-mono">{span.name}</span>
+                            <span className="text-gray-500">
+                              {span.duration ? `${span.duration.toFixed(0)}ms` : '...'}
+                            </span>
+                            {span.attributes?.['tool.name'] && (
+                              <Badge variant="secondary" className="text-xs py-0">
+                                {span.attributes['tool.name']}
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                        {trace.spans.length > 5 && (
+                          <p className="text-xs text-gray-500 pl-4">
+                            +{trace.spans.length - 5} more spans...
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* Workflow attributes */}
+                      {trace.rootSpan?.attributes && (
+                        <div className="mt-2 pt-2 border-t">
+                          <p className="text-xs font-medium mb-1">Attributes:</p>
+                          <div className="grid grid-cols-2 gap-1 text-xs">
+                            {Object.entries(trace.rootSpan.attributes)
+                              .filter(([key]) => key.startsWith('workflow.'))
+                              .slice(0, 4)
+                              .map(([key, value]) => (
+                                <div key={key} className="flex gap-1">
+                                  <span className="text-gray-500">{key.replace('workflow.', '')}:</span>
+                                  <span className="font-mono">{String(value)}</span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
