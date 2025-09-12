@@ -1,14 +1,19 @@
 'use client';
 
-import { supabase } from '@/lib/supabase';
+import { useClerkSupabase } from '@/lib/supabase-browser';
 import type { ActivityItem } from '@/types';
 import { useEffect, useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
 
 export default function WebSessionClient({ sessionId }: { sessionId: string }) {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const supabase = useClerkSupabase();
+  const { isLoaded } = useAuth();
 
   useEffect(() => {
+    if (!isLoaded) return; // Wait for Clerk to load
+    
     const fetchSessionData = async () => {
       setLoading(true);
       
@@ -25,7 +30,7 @@ export default function WebSessionClient({ sessionId }: { sessionId: string }) {
     };
     
     fetchSessionData();
-  }, [sessionId]);
+  }, [sessionId, supabase, isLoaded]);
 
   if (loading) {
     return <div>Loading session data...</div>;

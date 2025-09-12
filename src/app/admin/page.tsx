@@ -12,7 +12,7 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { type UserSessionData } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
+import { useClerkSupabase } from '@/lib/supabase-browser';
 import Link from 'next/link';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDebouncedCallback } from 'use-debounce';
