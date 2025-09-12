@@ -178,21 +178,21 @@ export default function InternalDashboard() {
 
   // Transform telemetry trace to workflow execution
   const transformTraceToWorkflow = (trace: TelemetryTrace): WorkflowExecution => {
-    const steps = trace.spans
+    const steps = (trace.spans || [])
       .filter(span => span.attributes?.['tool.name'])
       .map(span => ({
         id: span.spanId,
         name: span.name,
         toolName: span.attributes?.['tool.name'] || 'unknown',
-        status: span.status.code === 0 ? 'completed' : 
-                span.status.code === 2 ? 'failed' : 
+        status: span.status?.code === 0 ? 'completed' : 
+                span.status?.code === 2 ? 'failed' : 
                 span.endTime ? 'completed' : 'running',
         startedAt: span.startTime,
         completedAt: span.endTime,
         duration: span.duration,
         riskLevel: TOOL_RISK_LEVELS[span.attributes?.['tool.name']]?.level || 'medium',
         data: span.attributes,
-        error: span.status.message,
+        error: span.status?.message,
         canRevert: TOOL_RISK_LEVELS[span.attributes?.['tool.name']]?.level === 'high',
       })) as WorkflowStep[];
 
