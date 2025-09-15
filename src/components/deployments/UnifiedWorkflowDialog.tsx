@@ -13,9 +13,7 @@ import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, 
 import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
 import { WorkflowOverview, WorkflowWithSettings } from '@/lib/workflow-types';
 import { formatDuration } from './utils';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-yaml';
-import 'prismjs/themes/prism-tomorrow.css';
+import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
 
 interface WorkflowVersion {
   version_number: string;
@@ -107,26 +105,45 @@ export function UnifiedWorkflowDialog({
 
     setLoadingYaml(true);
     try {
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/yaml`);
-      if (!response.ok) throw new Error(`Failed to load workflow YAML: ${response.status}`);
+      // First try to get YAML from the workflow overview API
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/overview`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.workflow?.automation_sequence) {
+          setCurrentYaml(data.workflow.automation_sequence);
+          setLoadingYaml(false);
+          return;
+        }
+      }
 
-      const data = await response.json();
-      if (data.success && data.yaml) {
-        setCurrentYaml(data.yaml);
-      } else if (!data.success) {
-        throw new Error(data.error || 'Failed to load workflow YAML');
+      // If that doesn't work, try the versions API
+      const versionsResponse = await fetch(`/api/remote-workflows/${workflow.id}/versions`);
+      if (versionsResponse.ok) {
+        const versionsData = await versionsResponse.json();
+        if (versionsData.success && versionsData.versions) {
+          const activeVersion = versionsData.versions.find((v: any) => v.is_active);
+          if (activeVersion?.automation_sequence) {
+            setCurrentYaml(activeVersion.automation_sequence);
+            setLoadingYaml(false);
+            return;
+          }
+        }
+      }
+
+      // If still no YAML, try to construct from workflow data if available
+      if ('automation_sequence' in workflow && workflow.automation_sequence) {
+        setCurrentYaml(workflow.automation_sequence);
+      } else {
+        console.warn('No YAML content found for workflow');
+        setCurrentYaml('');
       }
     } catch (error) {
       console.error('Error loading workflow YAML:', error);
-      // Try to get from versions if direct fetch fails
-      const activeVersion = versions.find(v => v.is_active);
-      if (activeVersion?.automation_sequence) {
-        setCurrentYaml(activeVersion.automation_sequence);
-      }
+      setCurrentYaml('');
     } finally {
       setLoadingYaml(false);
     }
-  }, [workflow, versions]);
+  }, [workflow]);
 
   const loadMachines = useCallback(async () => {
     setLoadingMachines(true);
@@ -188,14 +205,6 @@ export function UnifiedWorkflowDialog({
     }
   }, [successMessage, errorMessage]);
 
-  // Highlight YAML when it changes
-  useEffect(() => {
-    if (currentYaml && typeof window !== 'undefined') {
-      setTimeout(() => {
-        Prism.highlightAll();
-      }, 0);
-    }
-  }, [currentYaml]);
 
   const activateVersion = async (versionNumber: string) => {
     if (!workflow) return;
@@ -405,11 +414,12 @@ export function UnifiedWorkflowDialog({
                 <span>Loading workflow YAML...</span>
               </div>
             ) : currentYaml ? (
-              <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-900">
-                <pre className="overflow-x-auto p-4">
-                  <code className="language-yaml text-sm">{currentYaml}</code>
-                </pre>
-              </div>
+              <YamlEditorWithHighlight
+                value={currentYaml}
+                onChange={() => {}}
+                readOnly={true}
+                minHeight="400px"
+              />
             ) : (
               <Alert>
                 <AlertCircle className="h-4 w-4" />

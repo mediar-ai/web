@@ -23,11 +23,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import * as yaml from 'js-yaml';
-import { AlertCircle, CheckCircle, Clock, Copy, FileCode, Loader2, Zap } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-yaml';
-import 'prismjs/themes/prism-tomorrow.css';
+import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
 
 interface WorkflowTemplate {
   name: string;
@@ -44,77 +42,6 @@ interface CreateWorkflowDialogProps {
   onWorkflowCreated?: (workflow: any) => void;
 }
 
-// YAML Editor Component with Syntax Highlighting
-function YamlEditor({
-  value,
-  onChange,
-  placeholder
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  const [isEditing, setIsEditing] = useState(true);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const preRef = useRef<HTMLPreElement>(null);
-
-  useEffect(() => {
-    if (!isEditing && value && typeof window !== 'undefined') {
-      setTimeout(() => {
-        Prism.highlightAll();
-      }, 0);
-    }
-  }, [value, isEditing]);
-
-  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
-    if (preRef.current) {
-      preRef.current.scrollTop = e.currentTarget.scrollTop;
-      preRef.current.scrollLeft = e.currentTarget.scrollLeft;
-    }
-  };
-
-  return (
-    <div className="relative">
-      <div className="absolute top-2 right-2 z-10 flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setIsEditing(!isEditing)}
-          className="h-7 px-2 text-xs"
-        >
-          <FileCode className="w-3 h-3 mr-1" />
-          {isEditing ? 'Preview' : 'Edit'}
-        </Button>
-      </div>
-
-      {isEditing ? (
-        <div className="relative">
-          <Textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            className="font-mono text-sm min-h-[500px] pr-24 resize-y"
-            onScroll={handleScroll}
-            spellCheck={false}
-          />
-        </div>
-      ) : (
-        <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-900 min-h-[500px]">
-          <pre
-            ref={preRef}
-            className="overflow-auto p-4 max-h-[600px]"
-          >
-            <code className="language-yaml text-sm">
-              {value || placeholder}
-            </code>
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function CreateWorkflowDialog({
   open,
@@ -457,7 +384,7 @@ export function CreateWorkflowDialog({
                   </Button>
                 </div>
 
-                <YamlEditor
+                <YamlEditorWithHighlight
                   value={automationSequence}
                   onChange={setAutomationSequence}
                   placeholder={`---
