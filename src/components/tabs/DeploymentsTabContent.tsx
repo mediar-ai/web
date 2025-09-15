@@ -21,6 +21,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { UnifiedWorkflowDialog } from '@/components/deployments/UnifiedWorkflowDialog';
+import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
 
 // Types for our workflow deployment system
 interface WorkflowRun {
@@ -288,6 +289,9 @@ export default function DeploymentsTabContent() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowDeployment | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [templateYaml, setTemplateYaml] = useState<string>('');
+  const [templateName, setTemplateName] = useState<string>('');
 
   const filteredWorkflows = useMemo(() => {
     return mockWorkflows.filter(workflow => {
@@ -755,6 +759,23 @@ export default function DeploymentsTabContent() {
         onSettingsUpdated={() => {
           // Refresh data if needed
           console.log('Settings updated');
+        }}
+        onUseAsTemplate={(yaml, name) => {
+          setTemplateYaml(yaml);
+          setTemplateName(name);
+          setCreateDialogOpen(true);
+        }}
+      />
+
+      {/* Create Workflow Dialog with Template */}
+      <CreateWorkflowDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        initialYaml={templateYaml}
+        initialName={templateName}
+        onWorkflowCreated={() => {
+          setCreateDialogOpen(false);
+          // Optionally refresh the workflow list
         }}
       />
     </div>

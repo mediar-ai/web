@@ -40,15 +40,19 @@ interface CreateWorkflowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onWorkflowCreated?: (workflow: any) => void;
+  initialYaml?: string;
+  initialName?: string;
 }
 
 
 export function CreateWorkflowDialog({
   open,
   onOpenChange,
-  onWorkflowCreated
+  onWorkflowCreated,
+  initialYaml,
+  initialName
 }: CreateWorkflowDialogProps) {
-  const [activeTab, setActiveTab] = useState('template');
+  const [activeTab, setActiveTab] = useState(initialYaml ? 'manual' : 'template');
   const [loading, setLoading] = useState(false);
   const [templates, setTemplates] = useState<Record<string, WorkflowTemplate>>({});
   const [categories, setCategories] = useState<string[]>([]);
@@ -65,12 +69,20 @@ export function CreateWorkflowDialog({
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
 
-  // Load templates when dialog opens
+  // Load templates when dialog opens and handle initial data
   useEffect(() => {
     if (open) {
       loadTemplates();
+      // If we have initial YAML, set it and switch to manual tab
+      if (initialYaml) {
+        setAutomationSequence(initialYaml);
+        setActiveTab('manual');
+        if (initialName) {
+          setName(initialName + ' (Copy)');
+        }
+      }
     }
-  }, [open]);
+  }, [open, initialYaml, initialName]);
 
   const loadTemplates = async () => {
     try {
@@ -165,7 +177,7 @@ export function CreateWorkflowDialog({
     setSelectedTemplate(null);
     setTags([]);
     setNewTag('');
-    setActiveTab('template');
+    setActiveTab(initialYaml ? 'manual' : 'template');
   };
 
   const copyTemplate = (templateContent: string) => {

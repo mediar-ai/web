@@ -4,6 +4,7 @@ import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { DeleteWorkflowDialog } from '@/components/deployments/DeleteWorkflowDialog';
 import { VersionUploadDialog } from '@/components/deployments/VersionUploadDialog';
 import { UnifiedWorkflowDialog } from '@/components/deployments/UnifiedWorkflowDialog';
+import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -130,6 +131,9 @@ export function WorkflowCard({
   );
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
   const [showUnifiedDialog, setShowUnifiedDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [templateYaml, setTemplateYaml] = useState<string>('');
+  const [templateName, setTemplateName] = useState<string>('');
   const [resumingWorkflow, setResumingWorkflow] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
@@ -1519,6 +1523,23 @@ export function WorkflowCard({
         open={showUnifiedDialog}
         onOpenChange={setShowUnifiedDialog}
         onSettingsUpdated={onBatchSubmit} // Refresh workflow data after settings change
+        onUseAsTemplate={(yaml, name) => {
+          setTemplateYaml(yaml);
+          setTemplateName(name);
+          setShowCreateDialog(true);
+        }}
+      />
+
+      {/* Create Workflow Dialog with Template */}
+      <CreateWorkflowDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        initialYaml={templateYaml}
+        initialName={templateName}
+        onWorkflowCreated={() => {
+          setShowCreateDialog(false);
+          onBatchSubmit?.(); // Refresh the workflow list
+        }}
       />
 
       {/* Confirm Dialog for Cancel/Delete */}
