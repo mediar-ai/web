@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
+import {
   ChevronDown,
   ChevronRight
 } from 'lucide-react';
@@ -20,6 +20,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { UnifiedWorkflowDialog } from '@/components/deployments/UnifiedWorkflowDialog';
 
 // Types for our workflow deployment system
 interface WorkflowRun {
@@ -285,6 +286,8 @@ export default function DeploymentsTabContent() {
   const [expandedWorkflows, setExpandedWorkflows] = useState<Set<string>>(new Set());
   const [filterStage, setFilterStage] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowDeployment | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const filteredWorkflows = useMemo(() => {
     return mockWorkflows.filter(workflow => {
@@ -307,6 +310,11 @@ export default function DeploymentsTabContent() {
   const moveWorkflowStage = (workflowId: string, newStage: 'idle' | 'human-in-loop' | 'autonomous') => {
     // In a real app, this would make an API call
     console.log(`Moving workflow ${workflowId} to stage: ${newStage}`);
+  };
+
+  const openWorkflowDialog = (workflow: WorkflowDeployment) => {
+    setSelectedWorkflow(workflow);
+    setDialogOpen(true);
   };
 
   const totalMetrics = useMemo(() => {
@@ -469,11 +477,8 @@ export default function DeploymentsTabContent() {
                       <DropdownMenuItem onClick={() => moveWorkflowStage(workflow.id, 'autonomous')}>
                         Move to Autonomous
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        Configure
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        View Details
+                      <DropdownMenuItem onClick={() => openWorkflowDialog(workflow)}>
+                        Settings & Details
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -741,6 +746,17 @@ export default function DeploymentsTabContent() {
           </Card>
         ))}
       </div>
+
+      {/* Unified Workflow Dialog */}
+      <UnifiedWorkflowDialog
+        workflow={selectedWorkflow as any}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSettingsUpdated={() => {
+          // Refresh data if needed
+          console.log('Settings updated');
+        }}
+      />
     </div>
   );
 } 

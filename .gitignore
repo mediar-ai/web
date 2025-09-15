@@ -116,3 +116,8 @@ modal.logs
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# MCP configuration (contains sensitive keys)
+.mcp.json
+mcp.json
+.cursor/mcp.json

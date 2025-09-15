@@ -1,6 +1,6 @@
 'use client';
 
-import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialog';
+import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
