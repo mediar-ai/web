@@ -20,6 +20,8 @@ export function YamlEditorWithHighlight({
   minHeight = '500px',
   readOnly = false
 }: YamlEditorWithHighlightProps) {
+  // Ensure value is always a string
+  const safeValue = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   const [Prism, setPrism] = useState<any>(null);
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export function YamlEditorWithHighlight({
   return (
     <div className={`border border-gray-300 rounded-lg overflow-hidden bg-gray-900 ${className}`}>
       <Editor
-        value={value}
+        value={safeValue}
         onValueChange={onChange}
         highlight={highlightCode}
         padding={16}
