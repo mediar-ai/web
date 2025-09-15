@@ -1,10 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Editor from 'react-simple-code-editor';
-import { highlight, languages } from 'prismjs';
-import 'prismjs/components/prism-yaml';
-import 'prismjs/themes/prism-tomorrow.css';
 
 interface YamlEditorWithHighlightProps {
   value: string;
@@ -23,9 +20,31 @@ export function YamlEditorWithHighlight({
   minHeight = '500px',
   readOnly = false
 }: YamlEditorWithHighlightProps) {
+  const [Prism, setPrism] = useState<any>(null);
+
+  useEffect(() => {
+    // Dynamically import Prism only on client side
+    const loadPrism = async () => {
+      const prismModule = await import('prismjs');
+      // @ts-expect-error - TypeScript doesn't have types for these imports
+      await import('prismjs/components/prism-yaml');
+      // @ts-expect-error - TypeScript doesn't have types for these imports
+      await import('prismjs/themes/prism-tomorrow.css');
+      setPrism(prismModule.default);
+    };
+
+    if (typeof window !== 'undefined') {
+      loadPrism();
+    }
+  }, []);
+
   const highlightCode = (code: string) => {
+    if (!Prism || !Prism.languages || !Prism.languages.yaml) {
+      return code; // Return unhighlighted code if Prism isn't loaded yet
+    }
+
     try {
-      return highlight(code, languages.yaml, 'yaml');
+      return Prism.highlight(code, Prism.languages.yaml, 'yaml');
     } catch (error) {
       console.error('Syntax highlighting error:', error);
       return code;

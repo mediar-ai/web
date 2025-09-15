@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, FileCode } from 'lucide-react';
 import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
-import { WorkflowOverview, WorkflowWithSettings } from '@/lib/workflow-types';
 import { formatDuration } from './utils';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
 
@@ -41,7 +40,7 @@ interface MachineAssignment {
 }
 
 interface UnifiedWorkflowDialogProps {
-  workflow: (WorkflowOverview | WorkflowWithSettings) | null;
+  workflow: any | null; // Accept any workflow type since we handle both
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSettingsUpdated?: () => void;
@@ -130,13 +129,9 @@ export function UnifiedWorkflowDialog({
         }
       }
 
-      // If still no YAML, try to construct from workflow data if available
-      if ('automation_sequence' in workflow && workflow.automation_sequence) {
-        setCurrentYaml(workflow.automation_sequence);
-      } else {
-        console.warn('No YAML content found for workflow');
-        setCurrentYaml('');
-      }
+      // If still no YAML, set empty
+      console.warn('No YAML content found for workflow');
+      setCurrentYaml('');
     } catch (error) {
       console.error('Error loading workflow YAML:', error);
       setCurrentYaml('');
@@ -414,12 +409,15 @@ export function UnifiedWorkflowDialog({
                 <span>Loading workflow YAML...</span>
               </div>
             ) : currentYaml ? (
-              <YamlEditorWithHighlight
-                value={currentYaml}
-                onChange={() => {}}
-                readOnly={true}
-                minHeight="400px"
-              />
+              <div className="w-full">
+                <YamlEditorWithHighlight
+                  value={currentYaml}
+                  onChange={() => {}}
+                  readOnly={true}
+                  minHeight="500px"
+                  className="w-full"
+                />
+              </div>
             ) : (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
@@ -437,18 +435,18 @@ export function UnifiedWorkflowDialog({
                   <h4 className="font-semibold mb-3">Input Parameters</h4>
                   {Object.keys(workflow.input_parameters).length > 0 ? (
                     <div className="space-y-2">
-                      {Object.entries(workflow.input_parameters).map(([key, param]) => (
+                      {Object.entries(workflow.input_parameters).map(([key, param]: [string, any]) => (
                         <div key={key} className="border border-black rounded-lg p-3">
                           <div className="flex items-center justify-between mb-1">
                             <code className="text-sm font-mono">{key}</code>
                             <Badge variant="secondary" className="text-xs">
-                              {param.type || 'string'}
+                              {param?.type || 'string'}
                             </Badge>
                           </div>
-                          {param.description && (
+                          {param?.description && (
                             <p className="text-sm text-muted-foreground">{param.description}</p>
                           )}
-                          {param.required && (
+                          {param?.required && (
                             <Badge variant="destructive" className="text-xs mt-1">Required</Badge>
                           )}
                         </div>

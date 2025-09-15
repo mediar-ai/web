@@ -175,7 +175,7 @@ export function CreateWorkflowDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Zap className="w-5 h-5" />
@@ -252,12 +252,11 @@ export function CreateWorkflowDialog({
           </TabsContent>
 
           <TabsContent value="manual" className="space-y-4">
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              {/* Basic Information - Left Column */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold mb-4">Workflow Details</h3>
+            <div className="space-y-6">
+              {/* Basic Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                <div>
+                <div className="md:col-span-2">
                   <Label htmlFor="workflow-name">Workflow Name *</Label>
                   <Input
                     id="workflow-name"
@@ -268,7 +267,7 @@ export function CreateWorkflowDialog({
                   />
                 </div>
 
-                <div>
+                <div className="md:col-span-2">
                   <Label htmlFor="workflow-description">Description</Label>
                   <Textarea
                     id="workflow-description"
@@ -280,7 +279,6 @@ export function CreateWorkflowDialog({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="category">Category</Label>
                     <Select value={category} onValueChange={setCategory}>
@@ -312,7 +310,6 @@ export function CreateWorkflowDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
 
                 <div>
                   <Label htmlFor="duration">Estimated Duration (seconds)</Label>
@@ -327,7 +324,7 @@ export function CreateWorkflowDialog({
                 </div>
 
                 {/* Tags */}
-                <div>
+                <div className="md:col-span-2">
                   <Label>Tags</Label>
                   <div className="flex gap-2 mt-1">
                     <Input
@@ -357,16 +354,10 @@ export function CreateWorkflowDialog({
                   )}
                 </div>
 
-                {/* YAML Validation */}
-                {automationSequence && (
-                  <div className="mt-4">
-                    <YAMLValidator content={automationSequence} />
-                  </div>
-                )}
               </div>
 
-              {/* Automation Sequence - Right Column */}
-              <div className="space-y-4">
+              {/* Automation Sequence */}
+              <div className="space-y-4 w-full">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold">Automation Sequence (YAML) *</h3>
                   <Button
@@ -384,10 +375,13 @@ export function CreateWorkflowDialog({
                   </Button>
                 </div>
 
-                <YamlEditorWithHighlight
-                  value={automationSequence}
-                  onChange={setAutomationSequence}
-                  placeholder={`---
+                <div className="w-full">
+                  <YamlEditorWithHighlight
+                    value={automationSequence}
+                    onChange={setAutomationSequence}
+                    className="w-full"
+                    minHeight="400px"
+                    placeholder={`---
 tool_name: execute_sequence
 arguments:
   variables:
@@ -406,7 +400,15 @@ arguments:
 
     - tool_name: get_focused_window_tree
       arguments: {}`}
-                />
+                  />
+                </div>
+
+                {/* YAML Validation */}
+                {automationSequence && (
+                  <div className="mt-4">
+                    <YAMLValidator content={automationSequence} />
+                  </div>
+                )}
               </div>
             </div>
           </TabsContent>
