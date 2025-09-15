@@ -13,6 +13,7 @@ import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, 
 import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
 import { formatDuration } from './utils';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
+import * as yaml from 'js-yaml';
 
 interface WorkflowVersion {
   version_number: string;
@@ -86,7 +87,11 @@ export function UnifiedWorkflowDialog({
         // Load YAML for active version
         const activeVersion = data.versions?.find((v: WorkflowVersion) => v.is_active);
         if (activeVersion?.automation_sequence) {
-          setCurrentYaml(activeVersion.automation_sequence);
+          // Check if it's already a string or needs to be converted
+          const yamlContent = typeof activeVersion.automation_sequence === 'string'
+            ? activeVersion.automation_sequence
+            : yaml.dump(activeVersion.automation_sequence);
+          setCurrentYaml(yamlContent);
         }
       } else {
         throw new Error(data.error || 'Failed to load versions');
@@ -109,7 +114,11 @@ export function UnifiedWorkflowDialog({
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.workflow?.automation_sequence) {
-          setCurrentYaml(data.workflow.automation_sequence);
+          // Check if it's already a string or needs to be converted
+          const yamlContent = typeof data.workflow.automation_sequence === 'string'
+            ? data.workflow.automation_sequence
+            : yaml.dump(data.workflow.automation_sequence);
+          setCurrentYaml(yamlContent);
           setLoadingYaml(false);
           return;
         }
@@ -122,7 +131,11 @@ export function UnifiedWorkflowDialog({
         if (versionsData.success && versionsData.versions) {
           const activeVersion = versionsData.versions.find((v: any) => v.is_active);
           if (activeVersion?.automation_sequence) {
-            setCurrentYaml(activeVersion.automation_sequence);
+            // Check if it's already a string or needs to be converted
+            const yamlContent = typeof activeVersion.automation_sequence === 'string'
+              ? activeVersion.automation_sequence
+              : yaml.dump(activeVersion.automation_sequence);
+            setCurrentYaml(yamlContent);
             setLoadingYaml(false);
             return;
           }
