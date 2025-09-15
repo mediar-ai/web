@@ -3,7 +3,7 @@
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { DeleteWorkflowDialog } from '@/components/deployments/DeleteWorkflowDialog';
 import { VersionUploadDialog } from '@/components/deployments/VersionUploadDialog';
-import { WorkflowSettingsModal } from '@/components/deployments/WorkflowSettingsModal';
+import { UnifiedWorkflowDialog } from '@/components/deployments/UnifiedWorkflowDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,7 +34,6 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
-  FileText,
   Loader2,
   Pause,
   Play,
@@ -130,7 +129,7 @@ export function WorkflowCard({
     new Map()
   );
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showUnifiedDialog, setShowUnifiedDialog] = useState(false);
   const [resumingWorkflow, setResumingWorkflow] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
@@ -844,30 +843,15 @@ export function WorkflowCard({
                 </Button>
               </VersionUploadDialog>
 
-              {/* Details */}
+              {/* Unified Settings & Details */}
               <Button
-                onClick={() => onFetchWorkflowDetails(workflow.id)}
+                onClick={() => setShowUnifiedDialog(true)}
                 variant="black-outline"
                 size="lg"
                 className="font-mono text-base h-10 px-6 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-black hover:bg-gray-50"
-                disabled={loadingDetails}
               >
-                {loadingDetails ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <FileText className="w-5 h-5" />
-                )}
-                <span className="ml-2">DETAILS</span>
-              </Button>
-
-              {/* Settings */}
-              <Button
-                onClick={() => setShowSettingsModal(true)}
-                variant="black-outline"
-                size="lg"
-                className="font-mono text-base h-10 px-4 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-black hover:bg-gray-50"
-              >
-                <Settings className="w-5 h-5" />
+                <Settings className="w-5 h-5 mr-2" />
+                <span>SETTINGS & DETAILS</span>
               </Button>
 
               {/* Spacer to push delete button to the right */}
@@ -1530,10 +1514,10 @@ export function WorkflowCard({
       />
 
       {/* Workflow Settings Modal */}
-      <WorkflowSettingsModal
+      <UnifiedWorkflowDialog
         workflow={workflow}
-        open={showSettingsModal}
-        onOpenChange={setShowSettingsModal}
+        open={showUnifiedDialog}
+        onOpenChange={setShowUnifiedDialog}
         onSettingsUpdated={onBatchSubmit} // Refresh workflow data after settings change
       />
 
