@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, FileCode } from 'lucide-react';
+import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, FileCode, FilePlus } from 'lucide-react';
 import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
 import { formatDuration } from './utils';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
@@ -45,13 +45,15 @@ interface UnifiedWorkflowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSettingsUpdated?: () => void;
+  onUseAsTemplate?: (yaml: string, name: string) => void;
 }
 
 export function UnifiedWorkflowDialog({
   workflow,
   open,
   onOpenChange,
-  onSettingsUpdated
+  onSettingsUpdated,
+  onUseAsTemplate
 }: UnifiedWorkflowDialogProps) {
   // Version management state
   const [versions, setVersions] = useState<WorkflowVersion[]>([]);
@@ -403,17 +405,34 @@ export function UnifiedWorkflowDialog({
                 <FileCode className="w-4 h-4" />
                 Current Workflow YAML
               </h4>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  navigator.clipboard.writeText(currentYaml);
-                  setSuccessMessage('YAML copied to clipboard');
-                }}
-                disabled={!currentYaml}
-              >
-                Copy YAML
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (currentYaml && onUseAsTemplate) {
+                      onUseAsTemplate(currentYaml, workflow.name);
+                      onOpenChange(false);
+                    }
+                  }}
+                  disabled={!currentYaml || !onUseAsTemplate}
+                  className="flex items-center gap-1"
+                >
+                  <FilePlus className="w-3 h-3" />
+                  Use as Template
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(currentYaml);
+                    setSuccessMessage('YAML copied to clipboard');
+                  }}
+                  disabled={!currentYaml}
+                >
+                  Copy YAML
+                </Button>
+              </div>
             </div>
 
             {loadingYaml ? (

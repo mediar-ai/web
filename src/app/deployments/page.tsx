@@ -206,6 +206,8 @@ function AuthenticatedDeploymentsPage({
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
+  const [templateYaml, setTemplateYaml] = useState<string>('');
+  const [templateName, setTemplateName] = useState<string>('');
 
   // -------------------------------------------------------------------------
   // Loading States
@@ -610,7 +612,16 @@ function AuthenticatedDeploymentsPage({
           =================================================================== */}
       <CreateWorkflowDialog
         open={createWorkflowOpen}
-        onOpenChange={setCreateWorkflowOpen}
+        onOpenChange={(open) => {
+          setCreateWorkflowOpen(open);
+          // Clear template data when closing
+          if (!open) {
+            setTemplateYaml('');
+            setTemplateName('');
+          }
+        }}
+        initialYaml={templateYaml}
+        initialName={templateName}
         onWorkflowCreated={handleWorkflowCreated}
       />
     </div>
