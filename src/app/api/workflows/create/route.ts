@@ -341,9 +341,6 @@ arguments:
         condition: "exists"
         timeout_ms: 5000
 
-    - tool_name: get_focused_window_tree
-      arguments: {}
-
   output_parser: "\${{navigation_parser}}"`,
         category: 'web_automation',
         difficulty_level: 'easy',
@@ -586,10 +583,6 @@ arguments:
         selector: "role:Navigation"
         condition: "exists"
         timeout_ms: 5000
-
-    - tool_name: get_focused_window_tree
-      arguments:
-        include_detailed_attributes: false
   
   output_parser: "\${{form_parser}}"`,
         category: 'form_automation',
