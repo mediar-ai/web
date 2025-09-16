@@ -88,39 +88,43 @@ export async function GET(request: NextRequest) {
         workflow_id: executionAny.workflow_id,
         workflow_name: workflow?.name || 'Unknown Workflow',
         workflow_category: workflow?.category || 'general',
-        
+
+        // Version info
+        version_number: executionAny.version_number || executionAny.workflow_version_number,
+        workflow_version_id: executionAny.workflow_version_id,
+
         status: executionAny.status,
         progress_percentage: executionAny.progress_percentage || 0,
         current_step_index: executionAny.current_step_index || 0,
         total_steps: executionAny.total_steps || 0,
-        
+
         // Timing
         started_at: executionAny.started_at,
         completed_at: executionAny.completed_at,
         runtime_seconds: runtimeSeconds,
         execution_duration_seconds: executionAny.execution_duration_seconds,
-        
+
         // Status flags
         is_running: executionAny.status === 'running',
         is_completed: ['completed', 'failed', 'cancelled'].includes(executionAny.status),
         is_successful: executionAny.status === 'completed',
         has_error: executionAny.status === 'failed' && !!executionAny.error_message,
-        
+
         // Error info
         error_message: executionAny.error_message,
         formatted_output: executionAny.formatted_output,
-        
+
         // Metadata
         modal_call_id: executionAny.modal_call_id,
         created_at: executionAny.created_at,
         updated_at: executionAny.updated_at,
-        
+
         // Quick access URLs
         endpoints: {
           details: `/api/remote-workflows/executions/${executionAny.id}`,
           workflow_details: `/api/remote-workflows/${executionAny.workflow_id}`
         },
-        
+
         // Conditionally include detailed data if requested
         ...(include_results && {
           execution_params: executionAny.execution_params || {},
