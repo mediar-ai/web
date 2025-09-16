@@ -276,57 +276,6 @@ export async function GET() {
         automation_sequence: `---
 tool_name: execute_sequence
 arguments:
-  variables:
-    target_url:
-      type: string
-      label: Target URL
-      description: The URL to navigate to
-      default: "https://www.google.com"
-
-    navigation_parser:
-      type: object
-      label: Navigation Parser
-      default:
-        javascript_code: |
-          // =============================================================================
-          // STANDARDIZED OUTPUT PARSER - Basic Automation Template
-          // =============================================================================
-
-          // Check for navigation errors
-          const hasError = tree && (
-            tree.attributes?.name?.includes("error") ||
-            tree.attributes?.name?.includes("404") ||
-            tree.attributes?.name?.includes("cannot be reached")
-          );
-
-          // Extract page information
-          const pageTitle = tree?.attributes?.name || "";
-          const currentUrl = tree?.attributes?.description || "";
-
-          // Validate navigation success
-          const validation = {
-            navigated: !!tree,
-            titlePresent: pageTitle.length > 0,
-            urlPresent: currentUrl.length > 0,
-            noErrors: !hasError
-          };
-
-          const success = validation.navigated && validation.noErrors;
-
-          return {
-            success: success,
-            data: {
-              pageTitle: pageTitle,
-              currentUrl: currentUrl,
-              windowTree: tree
-            },
-            message: success
-              ? \`Successfully navigated to \${currentUrl}\`
-              : \`Failed to navigate to target URL\`,
-            error: hasError ? "Navigation error detected" : null,
-            validation: validation
-          };
-
   inputs:
     target_url: "https://www.google.com"
 
@@ -339,7 +288,36 @@ arguments:
       arguments:
         delay_ms: 2000
 
-  output_parser: "\${{navigation_parser}}"`,
+  output: |
+    // Modern output parser for navigation workflow
+    const results = stepResults || [];
+
+    if (!results || results.length === 0) {
+      return {
+        success: false,
+        data: null,
+        message: "No navigation results available",
+        error: "No results from navigation",
+        validation: { resultsAvailable: false }
+      };
+    }
+
+    const navResult = results[0];
+    const success = navResult?.success || navResult?.status === 'success';
+
+    return {
+      success: success,
+      data: {
+        navigationResult: navResult,
+        timestamp: new Date().toISOString()
+      },
+      message: success ? "Successfully navigated to Google" : "Navigation failed",
+      error: !success ? navResult?.error || "Navigation error" : null,
+      validation: {
+        navigationCompleted: !!navResult,
+        navigationSuccess: success
+      }
+    };`,
         category: 'web_automation',
         difficulty_level: 'easy',
         estimated_duration_seconds: 30,
@@ -356,70 +334,6 @@ enabled: true
 
 tool_name: execute_sequence
 arguments:
-  variables:
-    task_parser:
-      type: object
-      label: Task Execution Parser
-      default:
-        javascript_code: |
-          // =============================================================================
-          // STANDARDIZED OUTPUT PARSER - Scheduled Task Template
-          // =============================================================================
-          
-          // The execution results are available in the global context
-          // We need to handle cases where the variable might have different names
-          const commandResults = (typeof executionResults !== 'undefined' ? executionResults : 
-                                  typeof results !== 'undefined' ? results : 
-                                  typeof stepResults !== 'undefined' ? stepResults : 
-                                  []);
-          
-          // If no results are available, return an error
-          if (!commandResults || commandResults.length === 0) {
-            return {
-              success: false,
-              data: null,
-              message: "No execution results available",
-              error: "Parser could not access execution results",
-              validation: {
-                resultsAvailable: false
-              }
-            };
-          }
-          
-          // Check if both commands executed successfully
-          const firstCommandResult = commandResults[0];
-          const secondCommandResult = commandResults[1];
-          
-          const validation = {
-            firstCommandExecuted: !!firstCommandResult,
-            secondCommandExecuted: !!secondCommandResult,
-            firstCommandSuccess: firstCommandResult?.success === true || firstCommandResult?.status === 'success',
-            secondCommandSuccess: secondCommandResult?.success === true || secondCommandResult?.status === 'success'
-          };
-          
-          const success = validation.firstCommandExecuted && 
-                          validation.secondCommandExecuted && 
-                          validation.firstCommandSuccess && 
-                          validation.secondCommandSuccess;
-          
-          // Extract command outputs
-          const data = {
-            executionTimestamp: new Date().toISOString(),
-            firstCommandOutput: firstCommandResult?.output || firstCommandResult?.result || null,
-            secondCommandOutput: secondCommandResult?.output || secondCommandResult?.result || null,
-            totalCommands: commandResults.length
-          };
-          
-          return {
-            success: success,
-            data: data,
-            message: success 
-              ? \`Scheduled task completed successfully at \${data.executionTimestamp}\`
-              : "Scheduled task failed to complete",
-            error: !success ? "One or more commands failed to execute" : null,
-            validation: validation
-          };
-  
   steps:
     - tool_name: run_command
       arguments:
@@ -450,8 +364,40 @@ arguments:
             output: 'Task completed successfully',
             result: 'All scheduled operations completed'
           };
-  
-  output_parser: "\${{task_parser}}"`,
+
+  output: |
+    // Modern output parser for scheduled tasks
+    const results = stepResults || [];
+
+    if (!results || results.length === 0) {
+      return {
+        success: false,
+        data: null,
+        message: "No execution results available",
+        error: "Parser could not access execution results",
+        validation: { resultsAvailable: false }
+      };
+    }
+
+    const validation = {
+      firstCommandExecuted: !!results[0],
+      secondCommandExecuted: !!results[1],
+      allCommandsSuccess: results.every(r => r?.success !== false && r?.status !== 'failed')
+    };
+
+    const success = validation.allCommandsSuccess;
+
+    return {
+      success: success,
+      data: {
+        executionTimestamp: new Date().toISOString(),
+        commandResults: results,
+        totalCommands: results.length
+      },
+      message: success ? "Scheduled task completed successfully" : "Task failed",
+      error: !success ? "One or more commands failed" : null,
+      validation: validation
+    };`,
         category: 'scheduled_tasks',
         difficulty_level: 'easy',
         estimated_duration_seconds: 10,
@@ -468,84 +414,14 @@ arguments:
       type: string
       label: Form URL
       description: URL of the form to fill
-      default: "https://example.com/form"
-    
+      default: "https://www.google.com"
+
     name_value:
       type: string
       label: Name
       description: Name to enter in the form
       default: "John Doe"
-    
-    form_parser:
-      type: object
-      label: Form Submission Parser
-      default:
-        javascript_code: |
-          // =============================================================================
-          // STANDARDIZED OUTPUT PARSER - Form Automation Template
-          // =============================================================================
-          
-          // Check for form submission errors
-          const hasError = tree && (
-            tree.text?.includes("error") ||
-            tree.text?.includes("Error") ||
-            tree.text?.includes("failed") ||
-            tree.text?.includes("invalid")
-          );
-          
-          // Look for success indicators
-          const hasSuccessMessage = tree && (
-            tree.text?.includes("success") ||
-            tree.text?.includes("Success") ||
-            tree.text?.includes("submitted") ||
-            tree.text?.includes("complete") ||
-            tree.text?.includes("thank you")
-          );
-          
-          // Extract confirmation data
-          const confirmationMessage = tree?.children?.find(child => 
-            child.role === "Text" && 
-            (child.attributes?.name?.includes("Success") ||
-             child.attributes?.name?.includes("Confirmation"))
-          );
-          
-          // Extract any returned form data or confirmation number
-          const confirmationNumber = tree?.text?.match(/[A-Z0-9]{6,}/)?.[0] || null;
-          
-          // Validation checks
-          const validation = {
-            formNavigated: !!tree,
-            formSubmitted: true, // Assume true since click was successful
-            successMessageFound: hasSuccessMessage,
-            noErrors: !hasError,
-            confirmationPresent: !!confirmationMessage || !!confirmationNumber
-          };
-          
-          const success = validation.formNavigated && 
-                          validation.successMessageFound && 
-                          validation.noErrors;
-          
-          // Extract all relevant data
-          const data = {
-            submittedData: {
-              name: "John Doe" // Value submitted to the form
-            },
-            confirmationNumber: confirmationNumber,
-            confirmationMessage: confirmationMessage?.text || null,
-            pageContent: tree?.text || null,
-            timestamp: new Date().toISOString()
-          };
-          
-          return {
-            success: success,
-            data: data,
-            message: success 
-              ? \`Form submitted successfully\${confirmationNumber ? ' - Confirmation: ' + confirmationNumber : ''}\`
-              : "Form submission failed or could not be confirmed",
-            error: hasError ? "Form submission error detected" : null,
-            validation: validation
-          };
-  
+
   inputs:
     form_url: "https://www.google.com"
     name_value: "John Doe"
@@ -577,8 +453,57 @@ arguments:
     - tool_name: delay
       arguments:
         delay_ms: 2000
-  
-  output_parser: "\${{form_parser}}"`,
+
+  output: |
+    // Modern output parser for form automation
+    const results = stepResults || [];
+
+    if (!results || results.length === 0) {
+      return {
+        success: false,
+        data: null,
+        message: "No form automation results available",
+        error: "No results from form automation",
+        validation: { resultsAvailable: false }
+      };
+    }
+
+    // Check for form submission errors
+    const lastResult = results[results.length - 1];
+    const hasError = lastResult?.error || lastResult?.status === 'failed';
+
+    // Validation checks
+    const validation = {
+      formNavigated: !!results[0] && results[0].success !== false,
+      fieldTyped: !!results[2] && results[2].success !== false,
+      keyPressed: !!results[3] && results[3].success !== false,
+      allStepsCompleted: results.length >= 5,
+      noErrors: !hasError
+    };
+
+    const success = validation.formNavigated &&
+                    validation.fieldTyped &&
+                    validation.keyPressed &&
+                    validation.noErrors;
+
+    // Extract all relevant data
+    const data = {
+      submittedData: {
+        name: "John Doe"
+      },
+      stepsCompleted: results.length,
+      timestamp: new Date().toISOString()
+    };
+
+    return {
+      success: success,
+      data: data,
+      message: success
+        ? "Form automation completed successfully"
+        : "Form automation failed",
+      error: hasError ? "Form automation error detected" : null,
+      validation: validation
+    };`,
         category: 'form_automation',
         difficulty_level: 'medium',
         estimated_duration_seconds: 60,
