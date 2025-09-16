@@ -335,11 +335,9 @@ arguments:
       arguments:
         url: "\${{target_url}}"
 
-    - tool_name: wait_for_element
+    - tool_name: delay
       arguments:
-        selector: "role:Search"
-        condition: "exists"
-        timeout_ms: 5000
+        delay_ms: 2000
 
   output_parser: "\${{navigation_parser}}"`,
         category: 'web_automation',
@@ -561,11 +559,9 @@ arguments:
       arguments:
         url: "\${{form_url}}"
 
-    - tool_name: wait_for_element
+    - tool_name: delay
       arguments:
-        selector: "role:Search"
-        condition: "exists"
-        timeout_ms: 5000
+        delay_ms: 2000
 
     - tool_name: type_into_element
       arguments:
@@ -578,11 +574,9 @@ arguments:
         selector: "\${{selectors.name_field}}"
         key: "{Enter}"
 
-    - tool_name: wait_for_element
+    - tool_name: delay
       arguments:
-        selector: "role:Navigation"
-        condition: "exists"
-        timeout_ms: 5000
+        delay_ms: 2000
   
   output_parser: "\${{form_parser}}"`,
         category: 'form_automation',
