@@ -204,7 +204,7 @@ export async function GET(
         workflow_category: workflow?.category || 'general',
 
         // Execution version info (the actual version that was executed)
-        version_number: execution.version_number,
+        version_number: execution.version_number || execution.workflow_version_number,
         workflow_version_id: execution.workflow_version_id,
 
         // Status info
