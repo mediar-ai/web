@@ -281,8 +281,8 @@ arguments:
       type: string
       label: Target URL
       description: The URL to navigate to
-      default: "https://example.com"
-    
+      default: "https://www.google.com"
+
     navigation_parser:
       type: object
       label: Navigation Parser
@@ -291,18 +291,18 @@ arguments:
           // =============================================================================
           // STANDARDIZED OUTPUT PARSER - Basic Automation Template
           // =============================================================================
-          
+
           // Check for navigation errors
           const hasError = tree && (
             tree.attributes?.name?.includes("error") ||
             tree.attributes?.name?.includes("404") ||
             tree.attributes?.name?.includes("cannot be reached")
           );
-          
+
           // Extract page information
           const pageTitle = tree?.attributes?.name || "";
           const currentUrl = tree?.attributes?.description || "";
-          
+
           // Validate navigation success
           const validation = {
             navigated: !!tree,
@@ -310,9 +310,9 @@ arguments:
             urlPresent: currentUrl.length > 0,
             noErrors: !hasError
           };
-          
+
           const success = validation.navigated && validation.noErrors;
-          
+
           return {
             success: success,
             data: {
@@ -320,24 +320,30 @@ arguments:
               currentUrl: currentUrl,
               windowTree: tree
             },
-            message: success 
+            message: success
               ? \`Successfully navigated to \${currentUrl}\`
               : \`Failed to navigate to target URL\`,
             error: hasError ? "Navigation error detected" : null,
             validation: validation
           };
-  
+
   inputs:
-    target_url: "https://example.com"
-  
+    target_url: "https://www.google.com"
+
   steps:
     - tool_name: navigate_browser
       arguments:
         url: "\${{target_url}}"
-    
+
+    - tool_name: wait_for_element
+      arguments:
+        selector: "role:Search"
+        condition: "exists"
+        timeout_ms: 5000
+
     - tool_name: get_focused_window_tree
       arguments: {}
-  
+
   output_parser: "\${{navigation_parser}}"`,
         category: 'web_automation',
         difficulty_level: 'easy',
@@ -422,13 +428,33 @@ arguments:
   steps:
     - tool_name: run_command
       arguments:
-        unix_command: "echo 'Scheduled task executed at $(date)'"
-        windows_command: "echo Scheduled task executed at %date% %time%"
-    
+        engine: "javascript"
+        run: |
+          // Get current time and system info
+          const os = require('os');
+          const now = new Date();
+
+          console.log(\`Scheduled task executed at \${now.toISOString()}\`);
+          console.log(\`System: \${os.platform()} - \${os.hostname()}\`);
+          console.log(\`Uptime: \${Math.floor(os.uptime() / 60)} minutes\`);
+
+          return {
+            status: 'success',
+            output: \`Scheduled task executed at \${now.toISOString()}\`,
+            result: \`Task executed on \${os.hostname()} at \${now.toISOString()}\`
+          };
+
     - tool_name: run_command
       arguments:
-        unix_command: "echo 'Task completed successfully'"
-        windows_command: "echo Task completed successfully"
+        engine: "javascript"
+        run: |
+          console.log('Task completed successfully');
+
+          return {
+            status: 'success',
+            output: 'Task completed successfully',
+            result: 'All scheduled operations completed'
+          };
   
   output_parser: "\${{task_parser}}"`,
         category: 'scheduled_tasks',
@@ -526,34 +552,44 @@ arguments:
           };
   
   inputs:
-    form_url: "https://example.com/form"
+    form_url: "https://www.google.com"
     name_value: "John Doe"
-  
+
   selectors:
-    name_field: "role:Edit|name:Name"
-    submit_button: "role:Button|name:Submit"
-  
+    name_field: "role:Search"
+    submit_button: "role:Button|name:Google Search"
+
   steps:
     - tool_name: navigate_browser
       arguments:
         url: "\${{form_url}}"
-    
+
+    - tool_name: wait_for_element
+      arguments:
+        selector: "role:Search"
+        condition: "exists"
+        timeout_ms: 5000
+
     - tool_name: type_into_element
       arguments:
         selector: "\${{selectors.name_field}}"
         text_to_type: "\${{name_value}}"
-    
-    - tool_name: click_element
+        clear_before_typing: true
+
+    - tool_name: press_key
       arguments:
-        selector: "\${{selectors.submit_button}}"
-    
+        selector: "\${{selectors.name_field}}"
+        key: "{Enter}"
+
     - tool_name: wait_for_element
       arguments:
-        selector: "role:Text|name:Success"
-        condition: "visible"
-    
+        selector: "role:Navigation"
+        condition: "exists"
+        timeout_ms: 5000
+
     - tool_name: get_focused_window_tree
-      arguments: {}
+      arguments:
+        include_detailed_attributes: false
   
   output_parser: "\${{form_parser}}"`,
         category: 'form_automation',
