@@ -326,10 +326,17 @@ export function BatchTestDialog({
   }, []);
 
   const handleBatchSubmit = async () => {
-    if (!workflow || !batchSpec || totalCombinations === 0) return;
+    if (!workflow) return;
+
+    // For workflows with no parameters, allow a single execution
+    const effectiveTotalCombinations = totalCombinations === 0 &&
+      (!workflow.input_parameters || Object.keys(workflow.input_parameters).length === 0)
+      ? 1 : totalCombinations;
+
+    if (effectiveTotalCombinations === 0) return;
 
     console.log('🚀 BatchTestDialog: Submitting batch with spec:', batchSpec);
-    console.log('🔢 BatchTestDialog: Total combinations:', totalCombinations);
+    console.log('🔢 BatchTestDialog: Total combinations:', effectiveTotalCombinations);
     console.log('🎯 BatchTestDialog: Selected machine ID:', selectedMachineId);
     console.log(
       '📋 BatchTestDialog: Selected version:',
@@ -338,9 +345,13 @@ export function BatchTestDialog({
 
     setIsSubmitting(true);
     try {
+      // For workflows with no parameters, send an empty batch spec
+      const effectiveBatchSpec = totalCombinations === 0 ?
+        { static_parameters: {}, dynamic_parameters: {} } : batchSpec;
+
       // Include machine_id and version_number in the request body
       const requestBody = {
-        ...batchSpec,
+        ...effectiveBatchSpec,
         machine_id: parseInt(selectedMachineId),
         version_number: selectedVersionNumber || undefined, // Send version or undefined for active
       };
@@ -574,7 +585,9 @@ export function BatchTestDialog({
                       Total Combinations:
                     </span>
                     <span className="text-2xl font-bold">
-                      {totalCombinations}
+                      {totalCombinations === 0 && (!workflow.input_parameters || Object.keys(workflow.input_parameters).length === 0)
+                        ? 1
+                        : totalCombinations}
                     </span>
                     {totalCombinations > 5000 && (
                       <span className="text-red-500 text-xs font-semibold">
@@ -587,7 +600,9 @@ export function BatchTestDialog({
                   className="ml-4"
                   size="default"
                   disabled={
-                    totalCombinations === 0 ||
+                    (totalCombinations === 0 &&
+                      workflow.input_parameters &&
+                      Object.keys(workflow.input_parameters).length > 0) ||
                     isSubmitting ||
                     totalCombinations > 5000 ||
                     !isSpecValid ||
@@ -601,7 +616,12 @@ export function BatchTestDialog({
                       Submitting...
                     </div>
                   ) : (
-                    `Queue ${totalCombinations} Execution${totalCombinations === 1 ? '' : 's'}`
+                    (() => {
+                      const count = totalCombinations === 0 &&
+                        (!workflow.input_parameters || Object.keys(workflow.input_parameters).length === 0)
+                        ? 1 : totalCombinations;
+                      return `Queue ${count} Execution${count === 1 ? '' : 's'}`;
+                    })()
                   )}
                 </Button>
               </div>
