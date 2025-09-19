@@ -2,12 +2,13 @@
 
 import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
-import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { WorkflowCardEnhanced } from '@/components/deployments/WorkflowCardEnhanced';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
 import { CommandPalette } from '@/components/deployments/CommandPalette';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
+import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
+import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useExecutionMonitoring } from '@/hooks/useExecutionMonitoring';
@@ -186,6 +187,7 @@ function AuthenticatedDeploymentsPage({
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>(
     []
   );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [executingWorkflows, setExecutingWorkflows] = useState<Set<number>>(
     new Set()
   );
@@ -213,10 +215,10 @@ function AuthenticatedDeploymentsPage({
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
   const [templateYaml, setTemplateYaml] = useState<string>('');
   const [templateName, setTemplateName] = useState<string>('');
-  const [useEnhancedUI, setUseEnhancedUI] = useState(true);
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
   const [selectedWorkflowForAction, setSelectedWorkflowForAction] = useState<WorkflowWithSettings | null>(null);
+  const [sidebarFilter, setSidebarFilter] = useState<string>('all');
 
   // -------------------------------------------------------------------------
   // Keyboard Navigation
@@ -229,17 +231,20 @@ function AuthenticatedDeploymentsPage({
         fetchWorkflowOverview(workflows[index].id);
       }
     },
-    isActive: useEnhancedUI && !createWorkflowOpen && !workflowDetailsOpen,
+    isActive: !createWorkflowOpen && !workflowDetailsOpen,
   });
 
   // -------------------------------------------------------------------------
   // Loading States
   // -------------------------------------------------------------------------
   const [loading, setLoading] = useState(true);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loadingDetails, setLoadingDetails] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(
     null
   );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loadingExecutions, setLoadingExecutions] = useState(true);
 
   // -------------------------------------------------------------------------
@@ -353,6 +358,7 @@ function AuthenticatedDeploymentsPage({
   /**
    * Fetches detailed execution data for a specific run
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const fetchExecutionDetails = useCallback(async (executionId: number) => {
     try {
       setLoadingDetails(true);
@@ -540,14 +546,54 @@ function AuthenticatedDeploymentsPage({
     );
   }
 
+  // Calculate stats for sidebar
+  const sidebarStats = {
+    total: workflows.length,
+    running: liveExecutions.filter(e => e.status === 'running').length,
+    paused: workflows.filter(w => w.cron_expression && !w.cron_enabled).length,
+    failed: executions.filter(e => e.status === 'failed').length,
+    automated: workflows.filter(w => w.cron_expression).length,
+  };
+
+  // Filter workflows based on sidebar selection
+  const filteredWorkflows = workflows.filter(workflow => {
+    switch (sidebarFilter) {
+      case 'running':
+        return liveExecutions.some(e => e.workflow_id === workflow.id && e.status === 'running');
+      case 'automated':
+        return workflow.cron_expression;
+      case 'paused':
+        return workflow.cron_expression && !workflow.cron_enabled;
+      case 'active':
+        return workflow.status === 'deployed' && (!workflow.cron_expression || workflow.cron_enabled);
+      case 'failed':
+        return executions.some(e => e.workflow_id === workflow.id && e.status === 'failed');
+      case 'completed':
+        return executions.some(e => e.workflow_id === workflow.id && e.status === 'completed');
+      default:
+        return true;
+    }
+  });
+
   return (
-    <div className="stable-container p-6 space-y-6">
+    <SidebarProvider>
+      <div className="flex h-screen overflow-hidden">
+        <DeploymentSidebar
+          stats={sidebarStats}
+          selectedFilter={sidebarFilter}
+          onFilterChange={setSidebarFilter}
+          onCreateWorkflow={() => setCreateWorkflowOpen(true)}
+        />
+        <div className="flex-1 overflow-auto">
+          <div className="stable-container p-6 space-y-6">
       {/* ===================================================================
           Page Header
           =================================================================== */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
+        <div className="flex items-start gap-4">
+          <SidebarTrigger />
+          <div>
+            <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
           <p className="text-muted-foreground text-lg">
             Execute and monitor automated workflows remotely
           </p>
@@ -569,6 +615,7 @@ function AuthenticatedDeploymentsPage({
                 Role: {userRole}
               </span>
             )}
+            </div>
           </div>
         </div>
 
@@ -658,18 +705,10 @@ function AuthenticatedDeploymentsPage({
           <h2 className="text-2xl font-bold font-mono">
             AVAILABLE WORKFLOWS
           </h2>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setUseEnhancedUI(!useEnhancedUI)}
-          >
-            {useEnhancedUI ? 'Classic View' : 'Enhanced View'}
-          </Button>
         </div>
 
         <div className="grid gap-4">
-          {useEnhancedUI ? (
-            workflows.map((workflow, index) => (
+          {filteredWorkflows.map((workflow, index) => (
               <WorkflowCardEnhanced
                 key={workflow.id}
                 workflow={workflow}
@@ -683,37 +722,16 @@ function AuthenticatedDeploymentsPage({
                 onEdit={() => handleQuickEdit(workflow.id)}
                 onDelete={() => console.log('Delete not implemented yet')}
               />
-            ))
-          ) : (
-            workflows.map(workflow => (
-              <WorkflowCard
-                key={workflow.id}
-                workflow={workflow}
-                executions={executions}
-                liveExecutions={liveExecutions}
-                executingWorkflows={executingWorkflows}
-                onFetchWorkflowDetails={fetchWorkflowOverview}
-                onFetchExecutionDetails={fetchExecutionDetails}
-                loadingDetails={loadingDetails}
-                loadingExecutionId={loadingExecutionId}
-                loadingExecutions={loadingExecutions}
-                isAdmin={canDelete}
-                onBatchSubmit={() => {
-                  // Force immediate refresh when workflows are modified
-                  console.log('🔄 Refreshing workflows list...');
-                  fetchWorkflows(false);
-                }}
-              />
-            ))
-          )}
+            ))}
         </div>
       </div>
 
-      {/* ===================================================================
-          Command Palette (Enhanced UI Only)
-          =================================================================== */}
-      {useEnhancedUI && (
-        <CommandPalette
+          </div>
+        </div>
+      </div>
+
+      {/* Command Palette */}
+      <CommandPalette
           workflows={workflows}
           onExecuteWorkflow={handleQuickExecute}
           onDuplicateWorkflow={handleQuickDuplicate}
@@ -721,8 +739,7 @@ function AuthenticatedDeploymentsPage({
           onEditWorkflow={handleQuickEdit}
           onCreateWorkflow={() => setCreateWorkflowOpen(true)}
           onRefresh={() => fetchWorkflows(true)}
-        />
-      )}
+      />
 
       {/* ===================================================================
           Workflow Actions Dialog (Rename/Duplicate)
@@ -759,6 +776,6 @@ function AuthenticatedDeploymentsPage({
         initialName={templateName}
         onWorkflowCreated={handleWorkflowCreated}
       />
-    </div>
+    </SidebarProvider>
   );
 }
