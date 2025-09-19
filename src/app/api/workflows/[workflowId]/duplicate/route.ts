@@ -117,8 +117,6 @@ export async function POST(
       // Metadata
       created_by: null, // Clerk user IDs are not compatible with UUID format
       total_versions: 1,
-      // Mark as duplicate source
-      duplicated_from: workflowId,
     };
 
     // Insert duplicate workflow
