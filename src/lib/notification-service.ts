@@ -245,13 +245,40 @@ export class NotificationService {
               ...alertDetails,
               alert_type: 'execution_error',
               severity: 'high',
-              title: `Workflow Execution Failed: ${execution.workflow_name || 'Unknown'}`,
+              title: `Workflow Execution Failed: ${execution.workflow_name || execution.workflow_id || 'Unknown'}`,
               message: `Execution ${execution.id} failed with status: ${execution.status}`,
-              error_message: execution.error_message,
+              error_message: execution.error_message || execution.error || execution.message,
               details: {
+                // Execution details
+                workflow_id: execution.workflow_id,
+                workflow_name: execution.workflow_name,
+                execution_id: execution.id,
                 execution_status: execution.status,
                 started_at: execution.started_at,
                 ended_at: execution.ended_at,
+                duration: execution.execution_time_seconds ? `${execution.execution_time_seconds}s` : undefined,
+
+                // Error details
+                error_message: execution.error_message,
+                error: execution.error,
+                failed_step: execution.failed_step || execution.last_step,
+                stack_trace: execution.stack_trace,
+
+                // Request context (for debugging)
+                request_info: {
+                  ip: execution.request_ip || execution.ip_address,
+                  user_agent: execution.user_agent,
+                  trigger_source: execution.trigger_source || execution.triggered_by || 'manual',
+                  session_id: execution.session_id,
+                },
+
+                // Workflow parameters
+                parameters: execution.parameters || execution.inputs,
+
+                // Additional debug info
+                logs_available: execution.has_logs || false,
+                retry_count: execution.retry_count || 0,
+                parent_execution_id: execution.parent_execution_id,
               },
             };
           }

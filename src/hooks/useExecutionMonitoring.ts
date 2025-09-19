@@ -62,12 +62,24 @@ async function monitorExecution(execution: ExecutionUpdate) {
       return;
     }
 
+    // Enhance execution data with additional context
+    const enhancedExecution = {
+      ...execution,
+      // Add request context if available
+      request_ip: typeof window !== 'undefined' ? window.location.hostname : undefined,
+      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+      trigger_source: 'deployment_dashboard',
+
+      // Add timestamp if not present
+      monitored_at: new Date().toISOString(),
+    };
+
     const response = await fetch('/api/remote-workflows/executions/monitor', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ execution }),
+      body: JSON.stringify({ execution: enhancedExecution }),
     });
 
     if (!response.ok) {
