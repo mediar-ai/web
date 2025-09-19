@@ -17,9 +17,13 @@ export async function POST(request: NextRequest) {
     // Check if Resend is configured
     if (process.env.RESEND_API_KEY) {
       try {
+        // Use a hardcoded fallback that we know works
+        const fromEmail = (process.env.RESEND_FROM_EMAIL || 'alerts@alerts.mediar.ai').trim();
+        console.log('Sending email with from:', JSON.stringify(fromEmail));
+
         // Send email using Resend
         const { data, error } = await resend.emails.send({
-          from: process.env.RESEND_FROM_EMAIL || 'alerts@alerts.mediar.ai',
+          from: fromEmail,
           to: Array.isArray(to) ? to : [to],
           subject,
           html: emailHtml,

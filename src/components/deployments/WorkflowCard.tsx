@@ -35,6 +35,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Copy,
   Loader2,
   Pause,
   Play,
@@ -143,6 +144,7 @@ export function WorkflowCard({
   const [actionLoading, setActionLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingWorkflow, setDeletingWorkflow] = useState(false);
+  const [duplicatingWorkflow, setDuplicatingWorkflow] = useState(false);
 
   // Cache-related state for showing preview results for pending executions
   const [executionCacheResults, setExecutionCacheResults] = useState<
