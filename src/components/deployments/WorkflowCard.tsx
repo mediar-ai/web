@@ -154,7 +154,6 @@ export function WorkflowCard({
   const [actionLoading, setActionLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingWorkflow, setDeletingWorkflow] = useState(false);
-  const [duplicatingWorkflow, setDuplicatingWorkflow] = useState(false);
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
 
