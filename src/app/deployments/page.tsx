@@ -6,6 +6,7 @@ import { WorkflowCard } from '@/components/deployments/WorkflowCard';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useExecutionMonitoring } from '@/hooks/useExecutionMonitoring';
 
 import {
   Execution,
@@ -457,6 +458,9 @@ function AuthenticatedDeploymentsPage({
     setExecutingWorkflows(currentlyExecuting);
   }, [liveExecutions]);
 
+  // Use execution monitoring hook to track errors and trigger alerts
+  useExecutionMonitoring(executions, liveExecutions);
+
   // =========================================================================
   // Computed Values and Statistics
   // =========================================================================
@@ -518,6 +522,17 @@ function AuthenticatedDeploymentsPage({
             <span className="mr-2">+</span>
             Create New Workflow
           </Button>
+
+          {canDelete && (
+            <Button
+              onClick={() => window.location.href = '/internal/notifications'}
+              variant="outline"
+              size="default"
+              className="bg-yellow-50 text-yellow-700 border-yellow-600 hover:bg-yellow-600 hover:text-white text-base font-mono cursor-pointer"
+            >
+              ⚠️ ALERTS
+            </Button>
+          )}
 
           <Button
             onClick={() => window.open('/docs/api/remote-workflows', '_blank')}
