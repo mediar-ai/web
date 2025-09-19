@@ -78,23 +78,45 @@ export async function POST(
       );
     }
 
-    // Generate a unique name for the duplicate
-    const baseName = customName || originalWorkflow.name;
-    let duplicateName = `${baseName} (Copy)`;
-    let counter = 1;
+    // Use custom name if provided, otherwise generate a unique name
+    let duplicateName: string;
 
-    // Check for existing duplicates and find a unique name
-    while (true) {
+    if (customName && customName.trim()) {
+      // User provided a custom name, use it directly
+      duplicateName = customName.trim();
+
+      // Check if this exact name already exists
       const { data: existing } = await supabase
         .from('deployed_workflows')
         .select('id')
         .eq('name', duplicateName)
         .single();
 
-      if (!existing) break;
+      if (existing) {
+        return NextResponse.json(
+          { success: false, error: 'A workflow with this name already exists' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // No custom name, generate one with (Copy) suffix
+      const baseName = originalWorkflow.name;
+      duplicateName = `${baseName} (Copy)`;
+      let counter = 1;
 
-      counter++;
-      duplicateName = `${baseName} (Copy ${counter})`;
+      // Check for existing duplicates and find a unique name
+      while (true) {
+        const { data: existing } = await supabase
+          .from('deployed_workflows')
+          .select('id')
+          .eq('name', duplicateName)
+          .single();
+
+        if (!existing) break;
+
+        counter++;
+        duplicateName = `${baseName} (Copy ${counter})`;
+      }
     }
 
     // Create the duplicate workflow

@@ -46,7 +46,7 @@ export function WorkflowActionsDialog({
         setName(currentName);
         setDescription(currentDescription || '');
       } else if (mode === 'duplicate') {
-        setName(`${currentName} (Copy)`);
+        setName(''); // Let user enter their own name
         setDescription(currentDescription || '');
       }
       setError(null);
