@@ -3,7 +3,11 @@
 import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowCard } from '@/components/deployments/WorkflowCard';
+import { WorkflowCardEnhanced } from '@/components/deployments/WorkflowCardEnhanced';
 import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
+import { CommandPalette } from '@/components/deployments/CommandPalette';
+import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
+import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useExecutionMonitoring } from '@/hooks/useExecutionMonitoring';
@@ -209,6 +213,24 @@ function AuthenticatedDeploymentsPage({
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
   const [templateYaml, setTemplateYaml] = useState<string>('');
   const [templateName, setTemplateName] = useState<string>('');
+  const [useEnhancedUI, setUseEnhancedUI] = useState(true);
+  const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
+  const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
+  const [selectedWorkflowForAction, setSelectedWorkflowForAction] = useState<WorkflowWithSettings | null>(null);
+
+  // -------------------------------------------------------------------------
+  // Keyboard Navigation
+  // -------------------------------------------------------------------------
+  const { selectedIndex, setSelectedIndex } = useKeyboardNavigation({
+    itemCount: workflows.length,
+    onSelect: (index) => console.log('Selected workflow index:', index),
+    onEnter: (index) => {
+      if (workflows[index]) {
+        fetchWorkflowOverview(workflows[index].id);
+      }
+    },
+    isActive: useEnhancedUI && !createWorkflowOpen && !workflowDetailsOpen,
+  });
 
   // -------------------------------------------------------------------------
   // Loading States
@@ -276,6 +298,36 @@ function AuthenticatedDeploymentsPage({
     },
     [fetchWorkflows]
   );
+
+  /**
+   * Handle workflow quick actions from enhanced UI
+   */
+  const handleQuickExecute = useCallback(async (workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    // Execute workflow logic here
+    console.log('Quick executing workflow:', workflow.name);
+    // You can add the actual execution logic here
+  }, [workflows]);
+
+  const handleQuickDuplicate = useCallback((workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    setSelectedWorkflowForAction(workflow);
+    setActionsDialogMode('duplicate');
+    setActionsDialogOpen(true);
+  }, [workflows]);
+
+  const handleQuickEdit = useCallback((workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    setSelectedWorkflowForAction(workflow);
+    setActionsDialogMode('rename');
+    setActionsDialogOpen(true);
+  }, [workflows]);
 
   /**
    * Fetches detailed workflow overview for viewing
@@ -602,33 +654,93 @@ function AuthenticatedDeploymentsPage({
           Workflows List
           =================================================================== */}
       <div className="space-y-4">
-        <h2 className="text-2xl font-bold font-mono mb-4">
-          AVAILABLE WORKFLOWS
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold font-mono">
+            AVAILABLE WORKFLOWS
+          </h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setUseEnhancedUI(!useEnhancedUI)}
+          >
+            {useEnhancedUI ? 'Classic View' : 'Enhanced View'}
+          </Button>
+        </div>
 
         <div className="grid gap-4">
-          {workflows.map(workflow => (
-            <WorkflowCard
-              key={workflow.id}
-              workflow={workflow}
-              executions={executions}
-              liveExecutions={liveExecutions}
-              executingWorkflows={executingWorkflows}
-              onFetchWorkflowDetails={fetchWorkflowOverview}
-              onFetchExecutionDetails={fetchExecutionDetails}
-              loadingDetails={loadingDetails}
-              loadingExecutionId={loadingExecutionId}
-              loadingExecutions={loadingExecutions}
-              isAdmin={canDelete}
-              onBatchSubmit={() => {
-                // Force immediate refresh when workflows are modified
-                console.log('🔄 Refreshing workflows list...');
-                fetchWorkflows(false);
-              }}
-            />
-          ))}
+          {useEnhancedUI ? (
+            workflows.map((workflow, index) => (
+              <WorkflowCardEnhanced
+                key={workflow.id}
+                workflow={workflow}
+                executions={executions.filter(e => e.workflow_id === workflow.id)}
+                liveExecutions={liveExecutions}
+                isSelected={selectedIndex === index}
+                onSelect={() => setSelectedIndex(index)}
+                onExecute={() => handleQuickExecute(workflow.id)}
+                onView={() => fetchWorkflowOverview(workflow.id)}
+                onDuplicate={() => handleQuickDuplicate(workflow.id)}
+                onEdit={() => handleQuickEdit(workflow.id)}
+                onDelete={() => console.log('Delete not implemented yet')}
+              />
+            ))
+          ) : (
+            workflows.map(workflow => (
+              <WorkflowCard
+                key={workflow.id}
+                workflow={workflow}
+                executions={executions}
+                liveExecutions={liveExecutions}
+                executingWorkflows={executingWorkflows}
+                onFetchWorkflowDetails={fetchWorkflowOverview}
+                onFetchExecutionDetails={fetchExecutionDetails}
+                loadingDetails={loadingDetails}
+                loadingExecutionId={loadingExecutionId}
+                loadingExecutions={loadingExecutions}
+                isAdmin={canDelete}
+                onBatchSubmit={() => {
+                  // Force immediate refresh when workflows are modified
+                  console.log('🔄 Refreshing workflows list...');
+                  fetchWorkflows(false);
+                }}
+              />
+            ))
+          )}
         </div>
       </div>
+
+      {/* ===================================================================
+          Command Palette (Enhanced UI Only)
+          =================================================================== */}
+      {useEnhancedUI && (
+        <CommandPalette
+          workflows={workflows}
+          onExecuteWorkflow={handleQuickExecute}
+          onDuplicateWorkflow={handleQuickDuplicate}
+          onViewWorkflow={fetchWorkflowOverview}
+          onEditWorkflow={handleQuickEdit}
+          onCreateWorkflow={() => setCreateWorkflowOpen(true)}
+          onRefresh={() => fetchWorkflows(true)}
+        />
+      )}
+
+      {/* ===================================================================
+          Workflow Actions Dialog (Rename/Duplicate)
+          =================================================================== */}
+      {selectedWorkflowForAction && (
+        <WorkflowActionsDialog
+          open={actionsDialogOpen}
+          onOpenChange={setActionsDialogOpen}
+          mode={actionsDialogMode}
+          workflowId={selectedWorkflowForAction.id}
+          currentName={selectedWorkflowForAction.name}
+          currentDescription={selectedWorkflowForAction.description}
+          onSuccess={() => {
+            setActionsDialogOpen(false);
+            fetchWorkflows(false);
+          }}
+        />
+      )}
 
       {/* ===================================================================
           Create Workflow Dialog
