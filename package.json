@@ -58,6 +58,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "diff": "^8.0.2",
+    "dot-case": "^3.0.4",
     "dotenv": "^17.0.0",
     "framer-motion": "^12.16.0",
     "js-yaml": "^4.1.0",
