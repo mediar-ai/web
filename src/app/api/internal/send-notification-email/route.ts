@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       try {
         // Send email using Resend
         const { data, error } = await resend.emails.send({
-          from: process.env.RESEND_FROM_EMAIL || 'Deployment Alerts <alerts@yourdomain.com>',
+          from: process.env.RESEND_FROM_EMAIL || 'alerts@alerts.mediar.ai',
           to: Array.isArray(to) ? to : [to],
           subject,
           html: emailHtml,
