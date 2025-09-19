@@ -723,11 +723,11 @@ export function UnifiedWorkflowDialog({
                       .sort((a, b) => a.priority - b.priority)
                       .map((assignment) => (
                         <div key={assignment.assignment_id} className="flex items-center justify-between p-2 border border-black rounded text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{assignment.machine_name}</span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-medium truncate" title={assignment.machine_name}>{assignment.machine_name}</span>
                             <Badge className={assignment.assignment_type === 'exclusive'
-                              ? 'bg-black text-white border border-black text-xs'
-                              : 'bg-white text-black border border-black text-xs'
+                              ? 'bg-black text-white border border-black text-xs flex-shrink-0'
+                              : 'bg-white text-black border border-black text-xs flex-shrink-0'
                             }>
                               {assignment.assignment_type}
                             </Badge>
@@ -762,10 +762,10 @@ export function UnifiedWorkflowDialog({
                         <SelectContent>
                           {getAvailableMachinesForAssignment().map((machine) => (
                             <SelectItem key={machine.id} value={machine.id.toString()}>
-                              <div className="flex items-center gap-2">
-                                <span>{machine.name}</span>
+                              <div className="flex items-center gap-2 max-w-[300px]">
+                                <span className="truncate" title={machine.name}>{machine.name}</span>
                                 {machine.current_load !== undefined && machine.max_concurrent && (
-                                  <span className="text-xs text-muted-foreground">
+                                  <span className="text-xs text-muted-foreground flex-shrink-0">
                                     ({machine.current_load}/{machine.max_concurrent})
                                   </span>
                                 )}

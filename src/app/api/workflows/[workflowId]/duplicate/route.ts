@@ -129,13 +129,14 @@ export async function POST(
       parent_workflow_id: originalWorkflow.parent_workflow_id,
       automation_sequence: activeVersion.automation_sequence,
       estimated_duration_seconds: originalWorkflow.estimated_duration_seconds,
-      // Reset cron settings for duplicate (user can enable later)
-      cron_expression: originalWorkflow.cron_expression,
-      cron_timezone: originalWorkflow.cron_timezone || 'UTC',
-      cron_enabled: false, // Disable cron by default for duplicates
-      cron_max_concurrent: originalWorkflow.cron_max_concurrent || 1,
-      cron_retry_on_failure: originalWorkflow.cron_retry_on_failure !== false,
-      cron_retry_count: originalWorkflow.cron_retry_count || 3,
+      // Preserve cron settings but disable by default for safety
+      // If there's no cron expression, don't set cron fields
+      cron_expression: originalWorkflow.cron_expression || null,
+      cron_timezone: originalWorkflow.cron_expression ? (originalWorkflow.cron_timezone || 'UTC') : null,
+      cron_enabled: false, // Always disable cron for duplicates for safety
+      cron_max_concurrent: originalWorkflow.cron_expression ? (originalWorkflow.cron_max_concurrent || 1) : null,
+      cron_retry_on_failure: originalWorkflow.cron_expression ? (originalWorkflow.cron_retry_on_failure !== false) : null,
+      cron_retry_count: originalWorkflow.cron_expression ? (originalWorkflow.cron_retry_count || 3) : null,
       // Metadata
       created_by: null, // Clerk user IDs are not compatible with UUID format
       total_versions: 1,
