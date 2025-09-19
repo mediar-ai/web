@@ -10,16 +10,16 @@ import {
 export const getStatusBadge = (status: string) => {
   const colors: Record<string, string> = {
     deployed: 'bg-black text-white',
-    pending: 'bg-gray-200 text-black',
-    error: 'bg-red-800 text-white',
-    running: 'bg-black text-white',
-    completed: 'bg-green-600 text-white',
-    completed_with_errors: 'bg-yellow-600 text-white', // Success but with warnings
-    failed: 'bg-red-600 text-white',
-    cancelled: 'bg-gray-600 text-white',
-    queued: 'bg-gray-400 text-white',
+    pending: 'bg-white text-black border border-black',
+    error: 'bg-black text-white',
+    running: 'bg-black text-white animate-pulse',
+    completed: 'bg-white text-black border-2 border-black',
+    completed_with_errors: 'bg-gray-200 text-black border border-black', // Success but with warnings
+    failed: 'bg-black text-white',
+    cancelled: 'bg-gray-400 text-white',
+    queued: 'bg-white text-black border border-gray-400',
   };
-  return colors[status] || 'bg-gray-100 text-black';
+  return colors[status] || 'bg-gray-100 text-black border border-gray-300';
 };
 
 export const getStatusIcon = (status: string) => {

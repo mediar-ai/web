@@ -5,6 +5,7 @@ import { DeleteWorkflowDialog } from '@/components/deployments/DeleteWorkflowDia
 import { VersionUploadDialog } from '@/components/deployments/VersionUploadDialog';
 import { UnifiedWorkflowDialog } from '@/components/deployments/UnifiedWorkflowDialog';
 import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
+import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +25,13 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Execution,
   LiveExecutionStatus,
   WorkflowWithSettings,
@@ -36,7 +44,9 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  Edit,
   Loader2,
+  MoreVertical,
   Pause,
   Play,
   PlayCircle,
@@ -74,7 +84,7 @@ const getStatusBadge = (status: string) => {
     completed_with_errors: 'bg-gray-100 text-black border border-black', // Warning style
     failed: 'bg-white text-black border-2 border-black font-bold', // Bold text and border for emphasis
     cancelled: 'bg-gray-100 text-gray-600 border border-gray-400', // Muted
-    skipped: 'bg-blue-50 text-blue-700 border border-blue-300', // Distinct style for skipped
+    skipped: 'bg-gray-50 text-gray-700 border border-gray-400', // Muted style for skipped
     queued: 'bg-white text-black border border-gray-400', // Lighter border
     paused: 'bg-gray-100 text-black border border-gray-400', // Muted
   };
@@ -145,6 +155,8 @@ export function WorkflowCard({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingWorkflow, setDeletingWorkflow] = useState(false);
   const [duplicatingWorkflow, setDuplicatingWorkflow] = useState(false);
+  const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
+  const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
 
   // Cache-related state for showing preview results for pending executions
   const [executionCacheResults, setExecutionCacheResults] = useState<
@@ -486,45 +498,9 @@ export function WorkflowCard({
     return description.trim() || 'periodically';
   };
 
-  const handleDuplicateWorkflow = async () => {
-    setDuplicatingWorkflow(true);
-    try {
-      console.log(`📋 Duplicating workflow: ${workflow.name} (ID: ${workflow.id})`);
-
-      const response = await fetch(
-        `/api/workflows/${workflow.id}/duplicate`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({}),
-        }
-      );
-
-      const result = await response.json();
-
-      if (result.success) {
-        console.log(`✅ Successfully duplicated workflow: ${workflow.name}`);
-
-        // Show success feedback
-        alert(`✅ Workflow duplicated successfully as "${result.workflow.name}"!`);
-
-        // Refresh the workflows list immediately
-        if (onBatchSubmit) {
-          console.log('🔄 Triggering workflows list refresh...');
-          onBatchSubmit();
-        }
-      } else {
-        console.error('Failed to duplicate workflow:', result.error);
-        alert(`❌ Failed to duplicate workflow: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Error duplicating workflow:', error);
-      alert('❌ Error duplicating workflow. Please try again.');
-    } finally {
-      setDuplicatingWorkflow(false);
-    }
+  const handleOpenActionsDialog = (mode: 'rename' | 'duplicate') => {
+    setActionsDialogMode(mode);
+    setActionsDialogOpen(true);
   };
 
   const handleDeleteWorkflow = async (workflowId: number) => {
@@ -869,75 +845,59 @@ export function WorkflowCard({
                 </Button>
               )}
 
-              {/* Upload Version */}
-              <VersionUploadDialog
-                workflowId={workflow.id}
-                workflowName={workflow.name}
-                onUploadSuccess={() => {
-                  // Refresh the workflow data after successful upload
-                  if (onBatchSubmit) {
-                    onBatchSubmit();
-                  }
-                }}
-              >
-                <Button
-                  variant="black-outline"
-                  size="lg"
-                  className="font-mono text-base h-10 px-6 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-black hover:bg-gray-50"
-                >
-                  <Upload className="w-5 h-5 mr-2" />
-                  UPLOAD
-                </Button>
-              </VersionUploadDialog>
-
-              {/* Duplicate Workflow */}
-              <Button
-                onClick={handleDuplicateWorkflow}
-                variant="black-outline"
-                size="lg"
-                disabled={duplicatingWorkflow}
-                className="font-mono text-base h-10 px-6 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-black hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={duplicatingWorkflow ? 'Duplicating...' : 'Duplicate Workflow'}
-              >
-                {duplicatingWorkflow ? (
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                ) : (
-                  <Copy className="w-5 h-5 mr-2" />
-                )}
-                <span>DUPLICATE</span>
-              </Button>
-
-              {/* Unified Settings & Details */}
-              <Button
-                onClick={() => setShowUnifiedDialog(true)}
-                variant="black-outline"
-                size="lg"
-                className="font-mono text-base h-10 px-6 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-black hover:bg-gray-50"
-              >
-                <Settings className="w-5 h-5 mr-2" />
-                <span>SETTINGS & DETAILS</span>
-              </Button>
-
-              {/* Spacer to push delete button to the right */}
-              <div className="flex-1" />
-
-              {/* Delete button - Admin only, differentiated by dashed border */}
-              {!isNested && (
-                <Button
-                  onClick={() => setDeleteDialogOpen(true)}
-                  variant="outline"
-                  size="lg"
-                  disabled={deletingWorkflow}
-                  className="font-mono text-base h-10 px-4 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-dashed border-gray-600 text-gray-700 hover:bg-gray-100 hover:border-black hover:text-black disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={deletingWorkflow ? 'Deleting...' : 'Delete Workflow'}
-                >
-                  {deletingWorkflow ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-5 h-5" />
+              {/* Workflow Actions Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 border-2 border-black hover:bg-gray-100"
+                  >
+                    <MoreVertical className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => handleOpenActionsDialog('rename')}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Rename Workflow
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleOpenActionsDialog('duplicate')}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Duplicate Workflow
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <VersionUploadDialog
+                    workflowId={workflow.id}
+                    workflowName={workflow.name}
+                    onUploadSuccess={() => {
+                      if (onBatchSubmit) {
+                        onBatchSubmit();
+                      }
+                    }}
+                  >
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Version
+                    </DropdownMenuItem>
+                  </VersionUploadDialog>
+                  <DropdownMenuItem onClick={() => setShowUnifiedDialog(true)}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings & Details
+                  </DropdownMenuItem>
+                  {!isNested && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setDeleteDialogOpen(true)}
+                        className="text-red-600 focus:text-red-600"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete Workflow
+                      </DropdownMenuItem>
+                    </>
                   )}
-                </Button>
-              )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             <p className="text-black text-base mb-2">{workflow.description}</p>
@@ -1639,6 +1599,22 @@ export function WorkflowCard({
         onOpenChange={setDeleteDialogOpen}
         onConfirm={handleDeleteWorkflow}
         isDeleting={deletingWorkflow}
+      />
+
+      {/* Workflow Actions Dialog (Rename/Duplicate) */}
+      <WorkflowActionsDialog
+        open={actionsDialogOpen}
+        onOpenChange={setActionsDialogOpen}
+        mode={actionsDialogMode}
+        workflowId={workflow.id}
+        currentName={workflow.name}
+        currentDescription={workflow.description}
+        onSuccess={() => {
+          setActionsDialogOpen(false);
+          if (onBatchSubmit) {
+            onBatchSubmit();
+          }
+        }}
       />
     </Card>
   );

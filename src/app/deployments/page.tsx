@@ -55,8 +55,8 @@ const LiveValueChangeIndicator = ({ value }: { value: number }) => {
           key={delta.id}
           className={`absolute -top-2 -right-6 px-2 py-1 text-sm font-bold rounded-full animate-bounce-in-out ${
             delta.value > 0
-              ? 'bg-green-500 text-white'
-              : 'bg-red-500 text-white'
+              ? 'bg-black text-white'
+              : 'bg-white text-black border-2 border-black'
           }`}
         >
           {delta.value > 0 ? `+${delta.value}` : delta.value}
@@ -495,7 +495,7 @@ function AuthenticatedDeploymentsPage({
           <div className="mt-2">
             <span
               className={`text-sm font-medium ${
-                isAdmin ? 'text-blue-600' : 'text-green-600'
+                isAdmin ? 'text-black font-bold' : 'text-gray-600'
               }`}
             >
               {isAdmin && organizationName
@@ -528,7 +528,7 @@ function AuthenticatedDeploymentsPage({
               onClick={() => window.location.href = '/internal/notifications'}
               variant="outline"
               size="default"
-              className="bg-yellow-50 text-yellow-700 border-yellow-600 hover:bg-yellow-600 hover:text-white text-base font-mono cursor-pointer"
+              className="bg-white text-black border-2 border-black hover:bg-black hover:text-white text-base font-mono cursor-pointer"
             >
               ⚠️ ALERTS
             </Button>
