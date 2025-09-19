@@ -246,7 +246,15 @@ function AuthenticatedDeploymentsPage({
       const response = await fetch('/api/remote-workflows/list');
       const workflowData = await response.json();
       if (workflowData.success) {
-        setWorkflows(workflowData.workflows || []);
+        // Sort workflows for consistent order
+        const sortedWorkflows = (workflowData.workflows || []).sort((a: WorkflowWithSettings, b: WorkflowWithSettings) => {
+          // Sort by name first (case-insensitive), then by ID for stability
+          const nameCompare = a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+          if (nameCompare !== 0) return nameCompare;
+          // If names are identical (unlikely), sort by ID
+          return a.id - b.id;
+        });
+        setWorkflows(sortedWorkflows);
       }
     } catch (error) {
       console.error('Failed to fetch workflows:', error);
