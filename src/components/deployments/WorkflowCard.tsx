@@ -19,6 +19,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Collapsible,
   CollapsibleContent,
@@ -56,7 +58,7 @@ import {
   Upload,
   XCircle,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 
 interface WorkflowCardProps {
   workflow: WorkflowWithSettings;
@@ -156,6 +158,14 @@ export function WorkflowCard({
   const [deletingWorkflow, setDeletingWorkflow] = useState(false);
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
+
+  // Inline editing state
+  const [editingName, setEditingName] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [tempName, setTempName] = useState(workflow.name);
+  const [tempDescription, setTempDescription] = useState(workflow.description || '');
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Cache-related state for showing preview results for pending executions
   const [executionCacheResults, setExecutionCacheResults] = useState<
@@ -502,6 +512,113 @@ export function WorkflowCard({
     setActionsDialogOpen(true);
   };
 
+  // Inline editing handlers
+  const handleStartEditingName = () => {
+    setEditingName(true);
+    setTempName(workflow.name);
+    setTimeout(() => {
+      if (nameInputRef.current) {
+        nameInputRef.current.focus();
+        nameInputRef.current.select();
+      }
+    }, 0);
+  };
+
+  const handleStartEditingDescription = () => {
+    setEditingDescription(true);
+    setTempDescription(workflow.description || '');
+    setTimeout(() => {
+      if (descriptionInputRef.current) {
+        descriptionInputRef.current.focus();
+        descriptionInputRef.current.select();
+      }
+    }, 0);
+  };
+
+  const handleSaveName = async () => {
+    if (!tempName.trim() || tempName.trim() === workflow.name) {
+      setEditingName(false);
+      setTempName(workflow.name);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/workflows/${workflow.id}/rename`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: tempName.trim() }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setEditingName(false);
+        if (onBatchSubmit) {
+          onBatchSubmit();
+        }
+      } else {
+        alert(result.error || 'Failed to rename workflow');
+        setTempName(workflow.name);
+        setEditingName(false);
+      }
+    } catch (error) {
+      console.error('Error renaming workflow:', error);
+      alert('Failed to rename workflow');
+      setTempName(workflow.name);
+      setEditingName(false);
+    }
+  };
+
+  const handleSaveDescription = async () => {
+    if (tempDescription === workflow.description) {
+      setEditingDescription(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/workflows/${workflow.id}/rename`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: workflow.name,
+          description: tempDescription
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setEditingDescription(false);
+        if (onBatchSubmit) {
+          onBatchSubmit();
+        }
+      } else {
+        alert(result.error || 'Failed to update description');
+        setTempDescription(workflow.description || '');
+        setEditingDescription(false);
+      }
+    } catch (error) {
+      console.error('Error updating description:', error);
+      alert('Failed to update description');
+      setTempDescription(workflow.description || '');
+      setEditingDescription(false);
+    }
+  };
+
+  const handleCancelEditName = () => {
+    setEditingName(false);
+    setTempName(workflow.name);
+  };
+
+  const handleCancelEditDescription = () => {
+    setEditingDescription(false);
+    setTempDescription(workflow.description || '');
+  };
+
   const handleDeleteWorkflow = async (workflowId: number) => {
     setDeletingWorkflow(true);
     try {
@@ -700,7 +817,30 @@ export function WorkflowCard({
           <div className="flex-1">
             {/* First line: Workflow title and status */}
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xl font-bold font-mono">{workflow.name}</h3>
+              {editingName ? (
+                <Input
+                  ref={nameInputRef}
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveName();
+                    } else if (e.key === 'Escape') {
+                      handleCancelEditName();
+                    }
+                  }}
+                  onBlur={handleSaveName}
+                  className="text-xl font-bold font-mono border-2 border-black focus:outline-none focus:ring-2 focus:ring-black max-w-md"
+                />
+              ) : (
+                <h3
+                  className="text-xl font-bold font-mono cursor-pointer hover:bg-gray-100 px-2 py-1 -ml-2 rounded transition-colors"
+                  onClick={handleStartEditingName}
+                  title="Click to edit"
+                >
+                  {workflow.name}
+                </h3>
+              )}
               {/* Status badge - moved to title line */}
               <div className="flex items-center gap-2">
                 <Badge
@@ -899,7 +1039,29 @@ export function WorkflowCard({
               </DropdownMenu>
             </div>
 
-            <p className="text-black text-base mb-2">{workflow.description}</p>
+            {editingDescription ? (
+              <Textarea
+                ref={descriptionInputRef}
+                value={tempDescription}
+                onChange={(e) => setTempDescription(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    handleCancelEditDescription();
+                  }
+                }}
+                onBlur={handleSaveDescription}
+                className="text-black text-base mb-2 border-2 border-black focus:outline-none focus:ring-2 focus:ring-black resize-none"
+                rows={2}
+              />
+            ) : (
+              <p
+                className="text-black text-base mb-2 cursor-pointer hover:bg-gray-100 px-2 py-1 -ml-2 rounded transition-colors"
+                onClick={handleStartEditingDescription}
+                title="Click to edit description"
+              >
+                {workflow.description || 'Click to add description...'}
+              </p>
+            )}
 
             {/* Cron workflow notice */}
             {workflow.cron_expression && workflow.cron_enabled && (
