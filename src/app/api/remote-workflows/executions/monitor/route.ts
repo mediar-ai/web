@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     try {
       const parsed = JSON.parse(body);
       execution = parsed.execution;
-    } catch (e) {
+    } catch {
       return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 });
     }
 
