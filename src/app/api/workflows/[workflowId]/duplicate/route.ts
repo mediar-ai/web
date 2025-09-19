@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import * as yaml from 'js-yaml';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,7 +11,7 @@ const supabase = createClient(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { workflowId: string } }
+  { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
     // Check authentication
@@ -26,7 +25,8 @@ export async function POST(
       );
     }
 
-    const workflowId = parseInt(params.workflowId);
+    const { workflowId: workflowIdStr } = await params;
+    const workflowId = parseInt(workflowIdStr);
     if (isNaN(workflowId)) {
       return NextResponse.json(
         { success: false, error: 'Invalid workflow ID' },

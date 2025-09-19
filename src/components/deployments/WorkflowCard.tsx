@@ -486,6 +486,47 @@ export function WorkflowCard({
     return description.trim() || 'periodically';
   };
 
+  const handleDuplicateWorkflow = async () => {
+    setDuplicatingWorkflow(true);
+    try {
+      console.log(`📋 Duplicating workflow: ${workflow.name} (ID: ${workflow.id})`);
+
+      const response = await fetch(
+        `/api/workflows/${workflow.id}/duplicate`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log(`✅ Successfully duplicated workflow: ${workflow.name}`);
+
+        // Show success feedback
+        alert(`✅ Workflow duplicated successfully as "${result.workflow.name}"!`);
+
+        // Refresh the workflows list immediately
+        if (onBatchSubmit) {
+          console.log('🔄 Triggering workflows list refresh...');
+          onBatchSubmit();
+        }
+      } else {
+        console.error('Failed to duplicate workflow:', result.error);
+        alert(`❌ Failed to duplicate workflow: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error duplicating workflow:', error);
+      alert('❌ Error duplicating workflow. Please try again.');
+    } finally {
+      setDuplicatingWorkflow(false);
+    }
+  };
+
   const handleDeleteWorkflow = async (workflowId: number) => {
     setDeletingWorkflow(true);
     try {
@@ -848,6 +889,23 @@ export function WorkflowCard({
                   UPLOAD
                 </Button>
               </VersionUploadDialog>
+
+              {/* Duplicate Workflow */}
+              <Button
+                onClick={handleDuplicateWorkflow}
+                variant="black-outline"
+                size="lg"
+                disabled={duplicatingWorkflow}
+                className="font-mono text-base h-10 px-6 cursor-pointer transition-colors duration-200 rounded-lg font-bold border-2 border-black hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={duplicatingWorkflow ? 'Duplicating...' : 'Duplicate Workflow'}
+              >
+                {duplicatingWorkflow ? (
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                ) : (
+                  <Copy className="w-5 h-5 mr-2" />
+                )}
+                <span>DUPLICATE</span>
+              </Button>
 
               {/* Unified Settings & Details */}
               <Button
