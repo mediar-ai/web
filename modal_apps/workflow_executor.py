@@ -17,14 +17,14 @@ import psycopg2
 import yaml  # For YAML sequence loading
 from psycopg2.extras import RealDictCursor
 
-from modal_apps.lib.db import get_database_connection, get_db_config
-from modal_apps.lib.locks import (
+from lib.db import get_database_connection, get_db_config
+from lib.locks import (
     cleanup_stale_machine_locks,
     record_acquired_lock,
     release_acquired_locks,
 )
-from modal_apps.lib.mcp_client import normalize_endpoint, post_with_503_backoff
-from modal_apps.output_enrichment import enrich_results_if_enabled
+from lib.mcp_client import normalize_endpoint, post_with_503_backoff
+from output_enrichment import enrich_results_if_enabled
 
 # Configure logging to capture everything
 logging.basicConfig(
@@ -1276,22 +1276,55 @@ def extract_legacy_quotes_from_mcp_response(
 
 
 async def execute_mcp_workflow(
-    workflow_data: Dict[str, Any], execution_params: Dict[str, Any], mcp_endpoint: str
+    workflow_data: Dict[str, Any], execution_params: Dict[str, Any], mcp_endpoint: str, machine_id: int = 1
 ) -> Dict[str, Any]:
-    """Execute workflow using the working MCP HTTP approach"""
+    """Execute workflow using the working MCP HTTP approach with file support"""
     import httpx
+    from lib.file_manager import WorkflowFileManager
 
     logger.info("🔌 Attempting to connect to MCP endpoint: %s", mcp_endpoint)
+
+    # Check if workflow requires external files
+    requires_files = workflow_data.get("requires_files", False)
+    file_mapping = {}
+
+    if requires_files:
+        logger.info("📂 Workflow requires external files, preparing...")
+        workflow_id = workflow_data.get("id")
+        version = workflow_data.get("version", "1.0.0")
+
+        # Initialize file manager and download files
+        async with WorkflowFileManager(machine_id=machine_id) as file_manager:
+            try:
+                file_mapping = await file_manager.prepare_workflow_files(
+                    workflow_id, version, timeout=30.0
+                )
+                logger.info(f"✅ Prepared {len(file_mapping)} files for execution")
+            except Exception as e:
+                logger.error(f"Failed to prepare workflow files: {e}")
+                # Continue execution without files if download fails
+                # The workflow might still work with embedded fallbacks
 
     session_client = None
     try:
         # Use the smart sequence loader for dual-format support
         automation_sequence_list = SequenceLoader.load_workflow_sequence(workflow_data)
 
+        # Update paths in automation sequence if files were downloaded
+        if file_mapping:
+            file_manager = WorkflowFileManager(machine_id=machine_id)
+            workflow_data = file_manager.update_workflow_paths(workflow_data, file_mapping)
+            automation_sequence_list = SequenceLoader.load_workflow_sequence(workflow_data)
+
         if not automation_sequence_list or len(automation_sequence_list) == 0:
             raise ValueError("No valid automation sequence found in workflow data")
 
         workflow_data_to_use = automation_sequence_list[0]
+
+        # Debug logging to understand the structure
+        logger.info("🔍 Workflow structure after loading:")
+        logger.info("  Type: %s", type(workflow_data_to_use))
+        logger.info("  Keys: %s", list(workflow_data_to_use.keys()) if isinstance(workflow_data_to_use, dict) else "Not a dict")
 
         tool_name = workflow_data_to_use.get("tool_name")
         arguments = workflow_data_to_use.get("arguments", {})
@@ -1523,6 +1556,11 @@ async def execute_mcp_workflow(
             "params": {"name": tool_name, "arguments": arguments},
         }
 
+        # Debug log the actual request being sent
+        logger.info("📤 Sending tool request to MCP:")
+        logger.info("  Tool name: %s", tool_name)
+        logger.info("  Request JSON: %s", json.dumps(tool_request, indent=2)[:500])
+
         # Add explicit timeout for workflow execution (5 minutes max)
         try:
             response = await asyncio.wait_for(
@@ -1645,10 +1683,22 @@ async def execute_mcp_workflow(
                     # =============================================================================
 
                     # Parse workflow result using the new standardized system
-                    workflow_result = parse_workflow_result(mcp_content)
-
-                    # Display the standardized result
-                    display_workflow_result(workflow_result)
+                    try:
+                        workflow_result = parse_workflow_result(mcp_content)
+                        # Display the standardized result
+                        display_workflow_result(workflow_result)
+                    except Exception as parse_error:
+                        logger.warning(f"Failed to parse workflow result: {parse_error}")
+                        # Create a default workflow_result for error cases
+                        workflow_result = {
+                            "success": False,
+                            "execution_status": "error",
+                            "message": f"Failed to parse result: {str(parse_error)}",
+                            "duration_ms": int(execution_time * 1000),
+                            "steps_executed": 0,
+                            "data": None,
+                            "validation": {"is_valid": False, "errors": [str(parse_error)]}
+                        }
 
                     # Extract data for backward compatibility
                     quotes = []
