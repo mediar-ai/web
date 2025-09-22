@@ -121,3 +121,19 @@ modal.logs
 .mcp.json
 mcp.json
 .cursor/mcp.json
+
+# Test files in root directory (cleanup)
+/test*.py
+/test*.js
+/debug*.py
+/check*.js
+/fix*.js
+/remove*.py
+/test-workflow*.zip
+/test-workflow-*.yml
+/test-workflow-processed.yml
+/*.zip
+
+# Temporary test directories
+/test-workflow-files/
+/mediar-app-tmp/
