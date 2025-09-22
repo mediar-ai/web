@@ -42,13 +42,7 @@ export async function POST(
       .from('workflow_executions')
       .update({
         status: 'cancelled',
-        completed_at: new Date().toISOString(),
-        result: {
-          cancelled: true,
-          cancelled_at: new Date().toISOString(),
-          cancelled_reason: 'User requested cancellation',
-          previous_status: execution.status
-        }
+        completed_at: new Date().toISOString()
       })
       .eq('id', executionId)
       .select()

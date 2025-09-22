@@ -922,7 +922,9 @@ function AuthenticatedDeploymentsPage({
                                       await fetchExecutions();
                                       await fetchLiveExecutions();
                                     } else {
-                                      alert('Failed to cancel execution');
+                                      const error = await response.json();
+                                      console.error('Cancel failed:', error);
+                                      alert(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
                                     }
                                   } catch (error) {
                                     console.error('Error canceling execution:', error);
@@ -934,6 +936,34 @@ function AuthenticatedDeploymentsPage({
                               {execution.status === 'queued' ? 'Cancel' : 'Stop'}
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="text-xs bg-white text-black border-2 border-black hover:bg-black hover:text-white"
+                            onClick={async () => {
+                              if (confirm(`Are you sure you want to DELETE this execution? This cannot be undone.`)) {
+                                try {
+                                  const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/delete`, {
+                                    method: 'DELETE',
+                                  });
+                                  if (response.ok) {
+                                    // Refresh executions
+                                    await fetchExecutions();
+                                    await fetchLiveExecutions();
+                                  } else {
+                                    const error = await response.json();
+                                    console.error('Delete failed:', error);
+                                    alert(`Failed to delete execution: ${error.error || 'Unknown error'}`);
+                                  }
+                                } catch (error) {
+                                  console.error('Error deleting execution:', error);
+                                  alert('Error deleting execution');
+                                }
+                              }
+                            }}
+                          >
+                            Delete
+                          </Button>
                         </div>
                       </td>
                     </tr>
