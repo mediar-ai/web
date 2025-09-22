@@ -2,6 +2,14 @@ import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Also export POST for testing
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ workflowId: string }> }
+) {
+  return DELETE(request, { params });
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }

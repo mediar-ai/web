@@ -624,7 +624,8 @@ export function WorkflowCard({
     try {
       console.log(`🗑️ Deleting workflow: ${workflow.name} (ID: ${workflowId})`);
 
-      const response = await fetch(
+      // Try DELETE first, then POST as fallback
+      let response = await fetch(
         `/api/remote-workflows/${workflowId}/delete`,
         {
           method: 'DELETE',
@@ -633,6 +634,42 @@ export function WorkflowCard({
           },
         }
       );
+
+      // If DELETE fails with 405 (Method Not Allowed), try POST
+      if (response.status === 405) {
+        console.log('DELETE method failed, trying POST...');
+        response = await fetch(
+          `/api/remote-workflows/${workflowId}/delete`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      // Check if response is ok before trying to parse JSON
+      if (!response.ok) {
+        console.error(`Delete API returned status ${response.status}`);
+        const text = await response.text();
+        console.error('Response body:', text);
+
+        // Try to parse as JSON if possible
+        let errorMessage = `Server error (${response.status})`;
+        try {
+          const errorJson = JSON.parse(text);
+          errorMessage = errorJson.error || errorMessage;
+        } catch {
+          // If not JSON, use the text directly if it's not empty
+          if (text) {
+            errorMessage = text;
+          }
+        }
+
+        alert(`❌ Failed to delete workflow: ${errorMessage}`);
+        return;
+      }
 
       const result = await response.json();
 
@@ -656,7 +693,8 @@ export function WorkflowCard({
       }
     } catch (error) {
       console.error('Error deleting workflow:', error);
-      alert('❌ Error deleting workflow. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`❌ Error deleting workflow: ${errorMessage}. Please check the console for details.`);
     } finally {
       setDeletingWorkflow(false);
     }
