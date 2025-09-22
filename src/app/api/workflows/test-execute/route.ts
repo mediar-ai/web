@@ -56,8 +56,8 @@ export async function POST(request: NextRequest) {
       const stepsMatch = yamlContent.match(/steps:[\s\S]*?(?=\n[a-z]|\n$)/);
       if (stepsMatch) {
         // Extract step names
-        const stepLines = stepsMatch[0].split('\n').filter(line => line.includes('tool_name:') || line.includes('name:'));
-        steps = stepLines.map(line => line.split(':')[1]?.trim()).filter(Boolean);
+        const stepLines = stepsMatch[0].split('\n').filter((line: string) => line.includes('tool_name:') || line.includes('name:'));
+        steps = stepLines.map((line: string) => line.split(':')[1]?.trim()).filter(Boolean);
       }
     } catch {
       console.log('Could not parse steps from workflow');
