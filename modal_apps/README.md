@@ -6,7 +6,7 @@ This directory contains Modal serverless applications for the browser workflow c
 
 ### 1. Sequential Processor (`sequential_processor.py`)
 - **Purpose**: Processes UI tree events and generates workflow analyses using LLM
-- **Status**: ✅ Currently deployed and running
+- **Status**: ✅ Currently deployed and running 
 - **Schedule**: Every 2 minutes
 - **App Name**: `sequential-workflow-processor`
 
