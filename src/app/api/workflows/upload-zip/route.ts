@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract and parse workflow YAML
-    const workflowContent = await workflowFile.async('string');
+    let workflowContent = await workflowFile.async('string');
 
     let workflowData;
     try {
