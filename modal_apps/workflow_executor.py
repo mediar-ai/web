@@ -2874,7 +2874,7 @@ if __name__ == "__main__":
 @app.function(
     image=image,
     secrets=secrets,
-    schedule=modal.Period(seconds=10),  # Check every 10 seconds (reduced from 1s)
+    schedule=modal.Period(seconds=1),  # Check every 1 second
     timeout=300,  # 5 minutes max per check
     max_containers=1,  # ENSURE ONLY ONE INSTANCE
     min_containers=0,  # Do not keep warm, prevent queueing
