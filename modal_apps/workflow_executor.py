@@ -2874,7 +2874,8 @@ if __name__ == "__main__":
 @app.function(
     image=image,
     secrets=secrets,
-    # schedule=modal.Period(seconds=1),  # MOVED to high_frequency_processor.py
+    # NO SCHEDULE - This function should not run automatically
+    # It can be called manually or from high_frequency_processor
     timeout=300,  # 5 minutes max per check
     max_containers=1,  # ENSURE ONLY ONE INSTANCE
     min_containers=0,  # Do not keep warm, prevent queueing
