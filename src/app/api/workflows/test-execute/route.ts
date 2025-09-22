@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         const stepLines = stepsMatch[0].split('\n').filter(line => line.includes('tool_name:') || line.includes('name:'));
         steps = stepLines.map(line => line.split(':')[1]?.trim()).filter(Boolean);
       }
-    } catch (e) {
+    } catch {
       console.log('Could not parse steps from workflow');
     }
 

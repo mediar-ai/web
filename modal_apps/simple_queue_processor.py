@@ -83,7 +83,6 @@ def process_queue():
                     completed_at = NOW(),
                     output_data = %s
                 WHERE id = %s
-                RETURNING id, workflow_id
             """, (
                 json.dumps({
                     'success': True,
@@ -94,14 +93,9 @@ def process_queue():
                 exec_id
             ))
 
-        result = cursor.fetchone()
-
-        if result:
-            execution_id, workflow_id, old_status = result
             conn.commit()
-            print(f"✅ Processed execution {execution_id} (workflow {workflow_id})")
+            print(f"✅ Processed execution {exec_id} (workflow {workflow_id})")
         else:
-            conn.rollback()
             print("No queued workflows to process")
 
         cursor.close()
