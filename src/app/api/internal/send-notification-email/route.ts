@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
-// Initialize Resend with your API key
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Resend only if API key is available
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // Simple in-memory email queue for development/fallback
 const emailQueue: any[] = [];
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     const emailHtml = generateEmailHTML(alert, config);
 
     // Check if Resend is configured
-    if (process.env.RESEND_API_KEY) {
+    if (process.env.RESEND_API_KEY && resend) {
       try {
         // Use a hardcoded fallback that we know works
         const fromEmail = (process.env.RESEND_FROM_EMAIL || 'alerts@alerts.mediar.ai').trim();

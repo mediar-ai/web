@@ -23,7 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import * as yaml from 'js-yaml';
-import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap, Upload, FileArchive, FileCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
 
@@ -58,6 +58,14 @@ export function CreateWorkflowDialog({
   const [categories, setCategories] = useState<string[]>([]);
   const [difficultyLevels, setDifficultyLevels] = useState<string[]>([]);
 
+  // ZIP upload state
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadValidation, setUploadValidation] = useState<{
+    status: 'idle' | 'validating' | 'valid' | 'invalid';
+    message?: string | React.ReactNode;
+    workflowData?: any;
+  }>({ status: 'idle' });
+
   // Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -68,6 +76,7 @@ export function CreateWorkflowDialog({
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
+  const [dragActive, setDragActive] = useState(false);
 
   // Load templates when dialog opens and handle initial data
   useEffect(() => {
@@ -81,6 +90,11 @@ export function CreateWorkflowDialog({
           setName(initialName + ' (Copy)');
         }
       }
+    } else {
+      // Reset upload state when dialog closes
+      setUploadedFile(null);
+      setUploadValidation({ status: 'idle' });
+      setDragActive(false);
     }
   }, [open, initialYaml, initialName]);
 
@@ -125,6 +139,12 @@ export function CreateWorkflowDialog({
   };
 
   const handleCreate = async () => {
+    // For ZIP uploads, check if we have valid workflow data
+    if (activeTab === 'upload' && uploadValidation.status !== 'valid') {
+      alert('Please upload a valid workflow ZIP file');
+      return;
+    }
+
     if (!name.trim() || !automationSequence.trim()) {
       alert('Name and automation sequence are required');
       return;
@@ -178,11 +198,129 @@ export function CreateWorkflowDialog({
     setTags([]);
     setNewTag('');
     setActiveTab(initialYaml ? 'manual' : 'template');
+    setUploadedFile(null);
+    setUploadValidation({ status: 'idle' });
+    setDragActive(false);
   };
 
   const copyTemplate = (templateContent: string) => {
     navigator.clipboard.writeText(templateContent);
     console.log('Template copied to clipboard!');
+  };
+
+  // ZIP file handling functions
+  const handleFileUpload = async (file: File) => {
+    setUploadedFile(file);
+    setUploadValidation({ status: 'validating', message: 'Validating ZIP file...' });
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('/api/workflows/upload-zip', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        let successMessage: string | React.ReactNode = 'Valid workflow ZIP file';
+        if (result.workflowData.referencedFiles && result.workflowData.referencedFiles.length > 0) {
+          successMessage = (
+            <div className="space-y-1">
+              <div>✓ Valid workflow ZIP file</div>
+              <div className="text-xs">
+                Found {result.workflowData.referencedFiles.length} referenced file(s)
+              </div>
+            </div>
+          );
+        }
+        setUploadValidation({
+          status: 'valid',
+          message: successMessage,
+          workflowData: result.workflowData,
+        });
+
+        // Pre-fill form fields if data is available
+        if (result.workflowData) {
+          setName(result.workflowData.name || '');
+          setDescription(result.workflowData.description || '');
+          setAutomationSequence(result.workflowData.yaml || '');
+          if (result.workflowData.tags) {
+            setTags(result.workflowData.tags);
+          }
+        }
+      } else {
+        // Check if there are details about missing files
+        let errorMessage = result.error || 'Invalid ZIP file';
+        if (result.details?.missingFiles && result.details.missingFiles.length > 0) {
+          errorMessage = (
+            <div className="space-y-2">
+              <div>{result.error}</div>
+              <div className="text-xs">
+                <div className="font-semibold mb-1">Missing files:</div>
+                {result.details.missingFiles.map((file: string) => (
+                  <div key={file} className="pl-2 font-mono">• {file}</div>
+                ))}
+              </div>
+              {result.details.availableFiles && result.details.availableFiles.length > 0 && (
+                <div className="text-xs mt-2">
+                  <div className="font-semibold mb-1">Available JS files in ZIP:</div>
+                  {result.details.availableFiles.map((file: string) => (
+                    <div key={file} className="pl-2 font-mono text-gray-600">• {file}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        }
+        setUploadValidation({
+          status: 'invalid',
+          message: errorMessage,
+        });
+      }
+    } catch (error) {
+      console.error('Error validating ZIP:', error);
+      setUploadValidation({
+        status: 'invalid',
+        message: 'Failed to validate ZIP file',
+      });
+    }
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      if (file.type === 'application/zip' || file.type === 'application/x-zip-compressed' || file.name.endsWith('.zip')) {
+        handleFileUpload(file);
+      } else {
+        setUploadValidation({
+          status: 'invalid',
+          message: 'Please upload a ZIP file',
+        });
+      }
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFileUpload(e.target.files[0]);
+    }
   };
 
   return (
@@ -200,9 +338,10 @@ export function CreateWorkflowDialog({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="template">Templates</TabsTrigger>
             <TabsTrigger value="manual">Manual Creation</TabsTrigger>
+            <TabsTrigger value="upload">Upload ZIP</TabsTrigger>
           </TabsList>
 
           <TabsContent value="template" className="space-y-4">
@@ -422,6 +561,149 @@ arguments:
                   </div>
                 )}
               </div>
+            </div>
+          </TabsContent>
+
+          {/* ZIP Upload Tab */}
+          <TabsContent value="upload" className="space-y-4">
+            <div className="space-y-6">
+              {/* Upload Zone */}
+              <div
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                  dragActive ? 'border-black bg-gray-50' : 'border-gray-300'
+                } ${uploadedFile ? 'bg-gray-50' : ''}`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+              >
+                <input
+                  type="file"
+                  id="zip-upload"
+                  accept=".zip,application/zip,application/x-zip-compressed"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                {!uploadedFile ? (
+                  <>
+                    <FileArchive className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <h3 className="text-lg font-semibold mb-2">Upload Workflow ZIP</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Drop your workflow ZIP file here or click to browse
+                    </p>
+                    <label htmlFor="zip-upload" className="inline-block cursor-pointer">
+                      <div className="inline-flex items-center px-4 py-2 border border-black rounded hover:bg-gray-50 transition-colors">
+                        <Upload className="w-4 h-4 mr-2" />
+                        <span>Select ZIP File</span>
+                      </div>
+                    </label>
+                  </>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center gap-3">
+                      {uploadValidation.status === 'validating' && (
+                        <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+                      )}
+                      {uploadValidation.status === 'valid' && (
+                        <FileCheck className="w-8 h-8 text-green-600" />
+                      )}
+                      {uploadValidation.status === 'invalid' && (
+                        <AlertCircle className="w-8 h-8 text-red-600" />
+                      )}
+                      <div className="text-left">
+                        <p className="font-semibold">{uploadedFile.name}</p>
+                        <p className="text-sm text-gray-500">
+                          {(uploadedFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                    </div>
+
+                    {uploadValidation.message && (
+                      <div className={`text-sm ${
+                        uploadValidation.status === 'valid' ? 'text-green-600' :
+                        uploadValidation.status === 'invalid' ? 'text-red-600' :
+                        'text-gray-600'
+                      }`}>
+                        {uploadValidation.message}
+                      </div>
+                    )}
+
+                    <label htmlFor="zip-upload" className="inline-block cursor-pointer">
+                      <div className="inline-flex items-center px-3 py-1 text-sm border border-black rounded hover:bg-gray-50 transition-colors">
+                        Choose Different File
+                      </div>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Requirements Info */}
+              <Card className="border-gray-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">ZIP File Requirements</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span>Must contain a <code className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">terminator.yml</code> or <code className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">terminator.yaml</code> file</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span>Can include JavaScript files referenced by <code className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">run_command</code> steps</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span>JavaScript files should be in relative paths (e.g., <code className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">./scripts/validate.js</code>)</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
+                    <span>Maximum file size: 10MB</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Extracted Workflow Preview */}
+              {uploadValidation.status === 'valid' && uploadValidation.workflowData && (
+                <Card className="border-black">
+                  <CardHeader>
+                    <CardTitle className="text-base">Extracted Workflow</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Name</Label>
+                        <Input
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="Workflow name"
+                        />
+                      </div>
+                      <div>
+                        <Label>Description</Label>
+                        <Input
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          placeholder="Brief description"
+                        />
+                      </div>
+                    </div>
+
+                    {uploadValidation.workflowData.files && (
+                      <div>
+                        <Label>Included Files</Label>
+                        <div className="mt-2 space-y-1">
+                          {uploadValidation.workflowData.files.map((file: string, idx: number) => (
+                            <div key={idx} className="text-sm text-gray-600 font-mono">
+                              • {file}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
         </Tabs>
