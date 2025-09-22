@@ -47,16 +47,28 @@ async def high_frequency_check():
 
     # Always run workflow check (every 1 second)
     try:
+        import sys
+        import os
+        # Add current directory to path for imports
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from workflow_executor import check_and_process_queued_jobs
         check_and_process_queued_jobs()
     except Exception as e:
         print(f"Workflow check error: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Run sync processor every 2 seconds
     if current_time - last_sync_run >= 2:
         try:
+            import sys
+            import os
+            # Add current directory to path for imports
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             from sync_processor import backup_sync_and_metadata_processor
             await backup_sync_and_metadata_processor()
             last_sync_run = current_time
         except Exception as e:
             print(f"Sync process error: {e}")
+            import traceback
+            traceback.print_exc()
