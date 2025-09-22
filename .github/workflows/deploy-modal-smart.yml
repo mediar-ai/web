@@ -44,6 +44,8 @@ jobs:
               - 'modal_apps/cleanup_tasks.py'
             high_frequency_processor:
               - 'modal_apps/high_frequency_processor.py'
+            simple_queue_processor:
+              - 'modal_apps/simple_queue_processor.py'
             lib:
               - 'modal_apps/lib/**'
 
@@ -54,6 +56,7 @@ jobs:
       needs.detect-changes.outputs.workflow_executor_changed == 'true' ||
       needs.detect-changes.outputs.cleanup_tasks_changed == 'true' ||
       needs.detect-changes.outputs.high_frequency_processor_changed == 'true' ||
+      needs.detect-changes.outputs.simple_queue_processor_changed == 'true' ||
       needs.detect-changes.outputs.lib_changed == 'true' ||
       github.event.inputs.deploy_all == 'true' ||
       github.event_name == 'workflow_dispatch'
@@ -131,6 +134,20 @@ jobs:
           modal deploy high_frequency_processor.py --name high-frequency-processor
           echo "✅ high-frequency-processor deployed successfully"
 
+      - name: Deploy simple-queue-processor
+        if: |
+          needs.detect-changes.outputs.simple_queue_processor_changed == 'true' ||
+          needs.detect-changes.outputs.lib_changed == 'true' ||
+          github.event.inputs.deploy_all == 'true'
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          echo "Deploying simple-queue-processor..."
+          cd modal_apps
+          modal deploy simple_queue_processor.py --name simple-queue-processor
+          echo "✅ simple-queue-processor deployed successfully"
+
       - name: Test Modal app status
         if: always()
         env:
@@ -138,7 +155,7 @@ jobs:
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           echo "Checking deployed apps..."
-          modal app list | grep -E "workflow-executor|cleanup-tasks|high-frequency" || echo "Apps not visible yet"
+          modal app list | grep -E "workflow-executor|cleanup-tasks|high-frequency|simple-queue" || echo "Apps not visible yet"
 
       - name: Send deployment notification
         if: success()
