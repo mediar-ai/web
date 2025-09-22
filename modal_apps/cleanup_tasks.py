@@ -24,7 +24,7 @@ image = modal.Image.debian_slim().pip_install(
 
 @app.function(
     image=image,
-    schedule=modal.Period(hours=6),  # Run every 6 hours
+    # schedule=modal.Period(hours=6),  # DISABLED: Cron job limit reached
     secrets=[modal.Secret.from_name("supabase-secret")],
     timeout=600,  # 10 minutes timeout
 )
@@ -108,7 +108,7 @@ async def cleanup_file_cache():
 
 @app.function(
     image=image,
-    schedule=modal.Period(days=1),  # Run daily
+    # schedule=modal.Period(days=1),  # DISABLED: Cron job limit reached
     secrets=[modal.Secret.from_name("supabase-secret")],
     timeout=600,
 )
@@ -170,7 +170,7 @@ async def cleanup_orphaned_files():
 
 @app.function(
     image=image,
-    schedule=modal.Period(hours=1),  # Run hourly
+    # schedule=modal.Period(hours=1),  # DISABLED: Cron job limit reached
     secrets=[modal.Secret.from_name("supabase-secret")],
 )
 async def update_cache_statistics():
