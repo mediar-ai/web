@@ -64,7 +64,7 @@ def process_one_workflow():
                 # Get the workflow details
                 cursor.execute("""
                     SELECT name, version, yaml_content
-                    FROM remote_workflows
+                    FROM deployed_workflows
                     WHERE id = %s
                 """, (workflow_id,))
 
@@ -199,7 +199,7 @@ def process_one_workflow():
                 # Get the workflow details
                 cursor.execute("""
                     SELECT name, version, yaml_content
-                    FROM remote_workflows
+                    FROM deployed_workflows
                     WHERE id = %s
                 """, (workflow_id,))
 
