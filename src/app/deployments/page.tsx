@@ -726,7 +726,7 @@ function AuthenticatedDeploymentsPage({
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex min-h-screen">
         <DeploymentSidebar
           stats={sidebarStats}
           selectedFilter={sidebarFilter}
@@ -734,7 +734,7 @@ function AuthenticatedDeploymentsPage({
           onCreateWorkflow={() => setCreateWorkflowOpen(true)}
           canViewAlerts={canDelete}
         />
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="flex-1">
           <div className="max-w-7xl mx-auto p-6 space-y-6">
       {/* ===================================================================
           Page Header
