@@ -161,6 +161,23 @@
   opacity: 1 !important;
 }
 
+/* Custom scrollbar styling - completely hidden */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: none;
+}
+
+/* Hide scrollbar for IE, Edge */
+body {
+  -ms-overflow-style: none;
+}
+
 .resizer {
   @apply absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none;
 }

@@ -12,27 +12,21 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
   // SidebarMenuSub,
   // SidebarMenuSubButton,
   // SidebarMenuSubItem,
-  SidebarRail,
-  SidebarTrigger,
 } from '@/components/ui/sidebar';
 import {
   LayoutDashboard,
-  // FolderOpen,
-  // Clock,
   Activity,
   Settings,
   Plus,
-  PlayCircle,
-  PauseCircle,
-  AlertCircle,
-  CheckCircle,
-  Zap,
   Calendar,
-  BarChart,
-  Archive,
+  Bell,
+  FileText,
+  BookOpen,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -49,6 +43,7 @@ interface DeploymentSidebarProps {
   selectedFilter?: string;
   onFilterChange?: (filter: string) => void;
   onCreateWorkflow?: () => void;
+  canViewAlerts?: boolean;
 }
 
 export function DeploymentSidebar({
@@ -62,6 +57,7 @@ export function DeploymentSidebar({
   selectedFilter = 'all',
   onFilterChange,
   onCreateWorkflow,
+  canViewAlerts = false,
 }: DeploymentSidebarProps) {
   const menuItems = [
     {
@@ -75,68 +71,15 @@ export function DeploymentSidebar({
         },
         {
           icon: Activity,
-          label: 'Running',
-          value: 'running',
-          count: stats.running,
-          color: 'text-blue-500',
+          label: 'Manual (API)',
+          value: 'manual',
+          count: stats.total - stats.automated,
         },
         {
           icon: Calendar,
-          label: 'Automated',
+          label: 'Scheduled (Cron)',
           value: 'automated',
           count: stats.automated,
-          color: 'text-purple-500',
-        },
-      ],
-    },
-    {
-      label: 'Status',
-      items: [
-        {
-          icon: PlayCircle,
-          label: 'Active',
-          value: 'active',
-          color: 'text-green-500',
-        },
-        {
-          icon: PauseCircle,
-          label: 'Paused',
-          value: 'paused',
-          count: stats.paused,
-          color: 'text-yellow-500',
-        },
-        {
-          icon: AlertCircle,
-          label: 'Failed',
-          value: 'failed',
-          count: stats.failed,
-          color: 'text-red-500',
-        },
-        {
-          icon: CheckCircle,
-          label: 'Completed',
-          value: 'completed',
-          color: 'text-gray-500',
-        },
-      ],
-    },
-    {
-      label: 'Analytics',
-      items: [
-        {
-          icon: BarChart,
-          label: 'Performance',
-          value: 'performance',
-        },
-        {
-          icon: Zap,
-          label: 'Executions',
-          value: 'executions',
-        },
-        {
-          icon: Archive,
-          label: 'History',
-          value: 'history',
         },
       ],
     },
@@ -145,13 +88,13 @@ export function DeploymentSidebar({
   return (
     <Sidebar>
       <SidebarHeader>
-        <div className="flex items-center justify-between px-4 py-2">
-          <h2 className="text-lg font-semibold">Deployments</h2>
-          <SidebarTrigger />
+        <div className="px-4 py-2 flex items-center justify-between group">
+          <h2 className="text-sm font-semibold font-mono uppercase">Deployments</h2>
+          <SidebarTrigger className="transition-opacity opacity-0 group-hover:opacity-100 data-[state=collapsed]:opacity-100" />
         </div>
         <div className="px-4 pb-2">
           <Button
-            className="w-full"
+            className="w-full bg-black text-white hover:bg-gray-800"
             size="sm"
             onClick={onCreateWorkflow}
           >
@@ -164,7 +107,7 @@ export function DeploymentSidebar({
       <SidebarContent>
         {menuItems.map((group) => (
           <SidebarGroup key={group.label}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-xs">{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
@@ -177,8 +120,7 @@ export function DeploymentSidebar({
                       <item.icon
                         className={cn(
                           'mr-2 h-4 w-4',
-                          'color' in item ? item.color : undefined,
-                          selectedFilter === item.value && 'text-primary'
+                          selectedFilter === item.value ? 'text-black' : 'text-gray-600'
                         )}
                       />
                       <span className="flex-1">{item.label}</span>
@@ -200,17 +142,52 @@ export function DeploymentSidebar({
       </SidebarContent>
 
       <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => onFilterChange?.('settings')}>
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-xs">Resources</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {canViewAlerts && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => window.location.href = '/internal/notifications'}
+                    className="hover:bg-black hover:text-white"
+                  >
+                    <Bell className="mr-2 h-4 w-4" />
+                    <span className="flex-1">Alerts</span>
+                    <ExternalLink className="h-3 w-3 ml-auto" />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => window.open('/docs/api/remote-workflows', '_blank')}
+                  className="hover:bg-black hover:text-white"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex-1">API Docs</span>
+                  <ExternalLink className="h-3 w-3 ml-auto" />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => window.open('/docs/api/mcp', '_blank')}
+                  className="hover:bg-black hover:text-white"
+                >
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  <span className="flex-1">MCP Docs</span>
+                  <ExternalLink className="h-3 w-3 ml-auto" />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={() => onFilterChange?.('settings')}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarFooter>
-
-      <SidebarRail />
     </Sidebar>
   );
 }
