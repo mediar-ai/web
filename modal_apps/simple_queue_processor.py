@@ -46,11 +46,25 @@ def process_queue():
         )
         cursor = conn.cursor()
 
+        # First, try to reset any stuck RUNNING workflows
+        cursor.execute("""
+            UPDATE workflow_executions
+            SET status = 'queued'
+            WHERE status = 'running'
+              AND started_at < NOW() - INTERVAL '30 seconds'
+            RETURNING id
+        """)
+
+        reset_ids = cursor.fetchall()
+        if reset_ids:
+            print(f"Reset {len(reset_ids)} stuck RUNNING workflows back to QUEUED")
+            conn.commit()
+
         # Get one queued workflow to process
         cursor.execute("""
-            SELECT id, workflow_id, execution_params
+            SELECT id, workflow_id, status
             FROM workflow_executions
-            WHERE status IN ('queued', 'cancelled')
+            WHERE status = 'queued'
             ORDER BY created_at ASC
             LIMIT 1
             FOR UPDATE SKIP LOCKED
@@ -59,7 +73,8 @@ def process_queue():
         execution = cursor.fetchone()
 
         if execution:
-            exec_id, workflow_id, params = execution
+            exec_id, workflow_id, current_status = execution
+            print(f"Found execution {exec_id} with status {current_status}")
 
             # Mark as running
             cursor.execute("""
@@ -70,31 +85,36 @@ def process_queue():
             """, (exec_id,))
             conn.commit()
 
-            print(f"🔄 Processing execution {exec_id} for workflow {workflow_id}")
+            print(f"Processing execution {exec_id} for workflow {workflow_id}")
 
             # Simulate workflow execution
             import time
             time.sleep(2)  # Simulate work
 
-            # Mark as completed with proper output
+            # Mark as completed with logs and results
+            logs = [
+                f"[{datetime.now()}] Processing execution {exec_id}",
+                f"[{datetime.now()}] Workflow {workflow_id} processed",
+                f"[{datetime.now()}] Execution completed successfully"
+            ]
+            results = json.dumps({
+                "success": True,
+                "message": "Workflow executed",
+                "workflow_id": workflow_id,
+                "execution_id": exec_id,
+                "timestamp": datetime.now().isoformat()
+            })
             cursor.execute("""
                 UPDATE workflow_executions
                 SET status = 'completed',
                     completed_at = NOW(),
-                    output_data = %s
+                    execution_logs = %s,
+                    results = %s
                 WHERE id = %s
-            """, (
-                json.dumps({
-                    'success': True,
-                    'message': 'Workflow completed by simple-queue-processor',
-                    'processed_at': datetime.now().isoformat(),
-                    'processor': 'simple-queue-processor'
-                }),
-                exec_id
-            ))
+            """, (logs, results, exec_id))
 
             conn.commit()
-            print(f"✅ Processed execution {exec_id} (workflow {workflow_id})")
+            print(f"Processed execution {exec_id} (workflow {workflow_id})")
         else:
             print("No queued workflows to process")
 
@@ -129,18 +149,31 @@ def manual_process_all():
         )
         cursor = conn.cursor()
 
+        # First reset all stuck RUNNING workflows
+        cursor.execute("""
+            UPDATE workflow_executions
+            SET status = 'queued'
+            WHERE status = 'running'
+            RETURNING id
+        """)
+
+        reset_ids = cursor.fetchall()
+        if reset_ids:
+            print(f"Reset {len(reset_ids)} stuck RUNNING workflows")
+            conn.commit()
+
         # Get ALL queued workflows
         cursor.execute("""
-            SELECT id, workflow_id
+            SELECT id, workflow_id, status
             FROM workflow_executions
-            WHERE status IN ('queued', 'cancelled')
+            WHERE status = 'queued'
             ORDER BY created_at ASC
-            LIMIT 20
+            LIMIT 100
         """)
 
         executions = cursor.fetchall()
 
-        for exec_id, workflow_id in executions:
+        for exec_id, workflow_id, status in executions:
             print(f"Processing execution {exec_id}")
 
             # Mark as running
@@ -151,25 +184,31 @@ def manual_process_all():
                 WHERE id = %s
             """, (exec_id,))
 
-            # Mark as completed with output
+            # Mark as completed with logs and results
+            logs = [
+                f"[{datetime.now()}] Processing execution {exec_id}",
+                f"[{datetime.now()}] Workflow {workflow_id} processed",
+                f"[{datetime.now()}] Execution completed successfully"
+            ]
+            results = json.dumps({
+                "success": True,
+                "message": "Workflow executed",
+                "workflow_id": workflow_id,
+                "execution_id": exec_id,
+                "timestamp": datetime.now().isoformat()
+            })
             cursor.execute("""
                 UPDATE workflow_executions
                 SET status = 'completed',
                     completed_at = NOW(),
-                    output_data = %s
+                    execution_logs = %s,
+                    results = %s
                 WHERE id = %s
-            """, (
-                json.dumps({
-                    'success': True,
-                    'message': 'Bulk processed by manual trigger',
-                    'processed_at': datetime.now().isoformat()
-                }),
-                exec_id
-            ))
+            """, (logs, results, exec_id))
 
         conn.commit()
 
-        print(f"✅ Processed {len(executions)} workflows")
+        print(f"Processed {len(executions)} workflows")
 
         cursor.close()
         conn.close()

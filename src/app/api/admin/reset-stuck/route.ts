@@ -13,12 +13,7 @@ export async function POST(_request: NextRequest) {
       .from('workflow_executions')
       .update({
         status: 'completed',
-        completed_at: new Date().toISOString(),
-        output_data: {
-          status: 'success',
-          message: 'Reset from stuck RUNNING state',
-          reset_at: new Date().toISOString()
-        }
+        completed_at: new Date().toISOString()
       })
       .eq('status', 'running')
       .select();

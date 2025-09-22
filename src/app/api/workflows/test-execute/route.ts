@@ -79,24 +79,12 @@ export async function POST(request: NextRequest) {
 
     const duration = Date.now() - startTime;
 
-    // Update execution with results
+    // Update execution with results - only status fields (no output_data column)
     const { error: updateError } = await supabase
       .from('workflow_executions')
       .update({
         status: 'completed',
-        completed_at: new Date().toISOString(),
-        output_data: {
-          success: true,
-          message: 'Workflow executed successfully',
-          steps_executed: steps.length || 3,
-          duration_ms: duration,
-          logs: logs,
-          workflow_info: {
-            name: workflow.name,
-            version: workflow.version,
-            description: workflow.description
-          }
-        }
+        completed_at: new Date().toISOString()
       })
       .eq('id', execution.id);
 
