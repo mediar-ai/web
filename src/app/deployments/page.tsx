@@ -894,17 +894,47 @@ function AuthenticatedDeploymentsPage({
                         }
                       </td>
                       <td className="px-4 py-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs"
-                          onClick={() => {
-                            setSelectedExecution(execution);
-                            setExecutionDetailsOpen(true);
-                          }}
-                        >
-                          View Details
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            onClick={() => {
+                              setSelectedExecution(execution);
+                              setExecutionDetailsOpen(true);
+                            }}
+                          >
+                            View Details
+                          </Button>
+                          {(execution.status === 'running' || execution.status === 'queued') && (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="text-xs bg-black text-white hover:bg-gray-800"
+                              onClick={async () => {
+                                if (confirm(`Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`)) {
+                                  try {
+                                    const response = await fetch(`/api/remote-workflows/executions/${execution.id}/cancel`, {
+                                      method: 'POST',
+                                    });
+                                    if (response.ok) {
+                                      // Refresh executions
+                                      await fetchExecutions();
+                                      await fetchLiveExecutions();
+                                    } else {
+                                      alert('Failed to cancel execution');
+                                    }
+                                  } catch (error) {
+                                    console.error('Error canceling execution:', error);
+                                    alert('Error canceling execution');
+                                  }
+                                }
+                              }}
+                            >
+                              {execution.status === 'queued' ? 'Cancel' : 'Stop'}
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
