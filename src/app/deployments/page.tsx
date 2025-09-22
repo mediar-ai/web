@@ -914,7 +914,7 @@ function AuthenticatedDeploymentsPage({
                               onClick={async () => {
                                 if (confirm(`Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`)) {
                                   try {
-                                    const response = await fetch(`/api/remote-workflows/executions/${execution.id}/cancel`, {
+                                    const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/cancel`, {
                                       method: 'POST',
                                     });
                                     if (response.ok) {
