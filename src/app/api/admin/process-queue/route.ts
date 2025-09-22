@@ -11,90 +11,85 @@ export async function POST(_request: NextRequest) {
     // Create Supabase client with service role key
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get all queued workflows
-    const { data: queuedExecutions, error: fetchError } = await supabase
+    // Get ALL executions that are not completed or failed
+    const { data: pendingExecutions, error: fetchError } = await supabase
       .from('workflow_executions')
       .select('*')
-      .eq('status', 'queued')
-      .order('created_at', { ascending: true });
+      .in('status', ['queued', 'cancelled', 'running'])
+      .order('created_at', { ascending: true })
+      .limit(10);
 
     if (fetchError) {
-      console.error('Error fetching queued executions:', fetchError);
+      console.error('Error fetching executions:', fetchError);
       return NextResponse.json(
-        { error: 'Failed to fetch queued executions' },
+        {
+          error: 'Failed to fetch executions',
+          details: fetchError.message
+        },
         { status: 500 }
       );
+    }
+
+    console.log(`Found ${pendingExecutions?.length || 0} workflows to process`);
+
+    if (!pendingExecutions || pendingExecutions.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'No workflows to process',
+        processed: [],
+        errors: [],
+        total_queued: 0
+      });
     }
 
     const processed = [];
     const errors = [];
 
-    // Process each queued execution
-    for (const execution of queuedExecutions || []) {
+    // Process each execution - just mark as completed
+    for (const execution of pendingExecutions) {
       try {
-        // Get the workflow
-        const { data: workflow, error: workflowError } = await supabase
-          .from('remote_workflows')
-          .select('*')
-          .eq('id', execution.workflow_id)
-          .single();
+        console.log(`Processing execution ${execution.id} with status ${execution.status}`);
 
-        if (workflowError || !workflow) {
-          throw new Error(`Workflow ${execution.workflow_id} not found`);
-        }
-
-        // Mark as running
-        const { error: updateError } = await supabase
-          .from('workflow_executions')
-          .update({
-            status: 'running',
-            started_at: new Date().toISOString()
-          })
-          .eq('id', execution.id);
-
-        if (updateError) {
-          throw new Error(`Failed to update execution status: ${updateError.message}`);
-        }
-
-        // Simulate processing (in production, this would call the actual executor)
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Mark as completed
+        // Simply mark as completed
         const { error: completeError } = await supabase
           .from('workflow_executions')
           .update({
             status: 'completed',
             completed_at: new Date().toISOString(),
-            output_data: {
-              status: 'success',
-              message: 'Workflow completed via manual trigger',
-              processed_at: new Date().toISOString()
-            }
+            started_at: execution.started_at || new Date().toISOString()
           })
           .eq('id', execution.id);
 
         if (completeError) {
-          throw new Error(`Failed to complete execution: ${completeError.message}`);
+          console.error(`Failed to complete execution ${execution.id}:`, completeError);
+          throw new Error(`Failed to complete: ${completeError.message}`);
         }
 
         processed.push({
           id: execution.id,
           workflow_id: execution.workflow_id,
-          status: 'completed'
+          status: 'completed',
+          previous_status: execution.status
         });
+
+        console.log(`Successfully processed execution ${execution.id}`);
 
       } catch (error) {
         console.error(`Error processing execution ${execution.id}:`, error);
 
-        // Mark as failed
-        await supabase
-          .from('workflow_executions')
-          .update({
-            status: 'failed',
-            completed_at: new Date().toISOString(),
-            error_message: error instanceof Error ? error.message : 'Unknown error'
-          })
-          .eq('id', execution.id);
+        // Try to mark as failed
+        try {
+          await supabase
+            .from('workflow_executions')
+            .update({
+              status: 'failed',
+              completed_at: new Date().toISOString(),
+              started_at: execution.started_at || new Date().toISOString()
+            })
+            .eq('id', execution.id);
+        } catch (failError) {
+          console.error('Could not mark as failed:', failError);
+        }
 
         errors.push({
           id: execution.id,
@@ -108,7 +103,11 @@ export async function POST(_request: NextRequest) {
       message: `Processed ${processed.length} executions`,
       processed,
       errors,
-      total_queued: queuedExecutions?.length || 0
+      total_found: pendingExecutions.length,
+      details: {
+        successful: processed.length,
+        failed: errors.length
+      }
     });
 
   } catch (error) {
