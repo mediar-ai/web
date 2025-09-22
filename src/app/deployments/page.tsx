@@ -26,7 +26,7 @@ import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, Eye, StopCircle, Trash2 } from 'lucide-react';
+import { Bell, Eye, StopCircle, Trash2, PlayCircle } from 'lucide-react';
 
 // ============================================================================
 // Components
@@ -829,14 +829,45 @@ function AuthenticatedDeploymentsPage({
       {executions.length > 0 && (
         <div className="space-y-4 mt-8">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold font-mono uppercase">
-              Recent Executions
-              {executionWorkflowFilter !== 'all' && (
-                <span className="ml-2 text-sm font-normal text-gray-600">
-                  ({workflows.find(w => w.id === executionWorkflowFilter)?.name})
-                </span>
+            <div className="flex items-center gap-4">
+              <h2 className="text-lg font-bold font-mono uppercase">
+                Recent Executions
+                {executionWorkflowFilter !== 'all' && (
+                  <span className="ml-2 text-sm font-normal text-gray-600">
+                    ({workflows.find(w => w.id === executionWorkflowFilter)?.name})
+                  </span>
+                )}
+              </h2>
+              {executions.some(e => e.status === 'queued') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-2 border-black hover:bg-black hover:text-white"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/admin/process-queue', {
+                        method: 'POST'
+                      });
+                      const data = await response.json();
+                      if (response.ok) {
+                        alert(`Processed ${data.processed.length} workflows`);
+                        await fetchExecutions();
+                        await fetchLiveExecutions();
+                      } else {
+                        alert(`Failed to process queue: ${data.error}`);
+                      }
+                    } catch (error) {
+                      console.error('Error processing queue:', error);
+                      alert('Failed to process queue');
+                    }
+                  }}
+                  title="Manually process queued workflows"
+                >
+                  <PlayCircle className="w-4 h-4 mr-2" />
+                  Process Queue
+                </Button>
               )}
-            </h2>
+            </div>
             <div className="flex items-center gap-2">
               <select
                 value={executionWorkflowFilter}
