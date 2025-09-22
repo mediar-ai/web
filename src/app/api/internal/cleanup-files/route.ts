@@ -112,7 +112,7 @@ export async function GET(_request: NextRequest) {
       files: fileStats,
       policies
     });
-  } catch (_error) {
+  } catch {
     return NextResponse.json(
       { error: 'Failed to get statistics' },
       { status: 500 }
