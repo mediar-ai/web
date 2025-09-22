@@ -26,6 +26,7 @@ import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Bell, Eye, StopCircle, Trash2 } from 'lucide-react';
 
 // ============================================================================
 // Components
@@ -763,6 +764,16 @@ function AuthenticatedDeploymentsPage({
               )}
             </div>
           </div>
+          <Link href="/internal/notifications">
+            <Button
+              variant="outline"
+              className="border-2 border-black hover:bg-black hover:text-white"
+              title="Configure Error Alerts"
+            >
+              <Bell className="w-4 h-4 mr-2" />
+              Alerts
+            </Button>
+          </Link>
       </div>
 
 
@@ -894,23 +905,24 @@ function AuthenticatedDeploymentsPage({
                         }
                       </td>
                       <td className="px-4 py-2">
-                        <div className="flex gap-2">
+                        <div className="flex gap-1">
                           <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-xs"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 border border-black hover:bg-black hover:text-white"
                             onClick={() => {
                               setSelectedExecution(execution);
                               setExecutionDetailsOpen(true);
                             }}
+                            title="View Details"
                           >
-                            View Details
+                            <Eye className="h-4 w-4" />
                           </Button>
                           {(execution.status === 'running' || execution.status === 'queued') && (
                             <Button
-                              size="sm"
-                              variant="destructive"
-                              className="text-xs bg-black text-white hover:bg-gray-800"
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 bg-black text-white hover:bg-gray-800"
                               onClick={async () => {
                                 if (confirm(`Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`)) {
                                   try {
@@ -932,14 +944,15 @@ function AuthenticatedDeploymentsPage({
                                   }
                                 }
                               }}
+                              title={execution.status === 'queued' ? 'Cancel' : 'Stop'}
                             >
-                              {execution.status === 'queued' ? 'Cancel' : 'Stop'}
+                              <StopCircle className="h-4 w-4" />
                             </Button>
                           )}
                           <Button
-                            size="sm"
-                            variant="destructive"
-                            className="text-xs bg-white text-black border-2 border-black hover:bg-black hover:text-white"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 border border-black hover:bg-red-600 hover:text-white hover:border-red-600"
                             onClick={async () => {
                               if (confirm(`Are you sure you want to DELETE this execution? This cannot be undone.`)) {
                                 try {
@@ -961,8 +974,9 @@ function AuthenticatedDeploymentsPage({
                                 }
                               }
                             }}
+                            title="Delete Execution"
                           >
-                            Delete
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </td>
