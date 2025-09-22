@@ -42,6 +42,8 @@ jobs:
               - 'modal_apps/output_enrichment.py'
             cleanup_tasks:
               - 'modal_apps/cleanup_tasks.py'
+            high_frequency_processor:
+              - 'modal_apps/high_frequency_processor.py'
             lib:
               - 'modal_apps/lib/**'
 
@@ -51,6 +53,7 @@ jobs:
     if: |
       needs.detect-changes.outputs.workflow_executor_changed == 'true' ||
       needs.detect-changes.outputs.cleanup_tasks_changed == 'true' ||
+      needs.detect-changes.outputs.high_frequency_processor_changed == 'true' ||
       needs.detect-changes.outputs.lib_changed == 'true' ||
       github.event.inputs.deploy_all == 'true' ||
       github.event_name == 'workflow_dispatch'
@@ -114,6 +117,20 @@ jobs:
           modal deploy cleanup_tasks.py --name workflow-cleanup-tasks
           echo "✅ cleanup-tasks deployed successfully"
 
+      - name: Deploy high-frequency-processor
+        if: |
+          needs.detect-changes.outputs.high_frequency_processor_changed == 'true' ||
+          needs.detect-changes.outputs.lib_changed == 'true' ||
+          github.event.inputs.deploy_all == 'true'
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          echo "Deploying high-frequency-processor..."
+          cd modal_apps
+          modal deploy high_frequency_processor.py --name high-frequency-processor
+          echo "✅ high-frequency-processor deployed successfully"
+
       - name: Test Modal app status
         if: always()
         env:
@@ -121,7 +138,7 @@ jobs:
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           echo "Checking deployed apps..."
-          modal app list | grep -E "workflow-executor|cleanup-tasks" || echo "Apps not visible yet"
+          modal app list | grep -E "workflow-executor|cleanup-tasks|high-frequency" || echo "Apps not visible yet"
 
       - name: Send deployment notification
         if: success()
