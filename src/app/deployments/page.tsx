@@ -3,19 +3,22 @@
 import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowCardEnhanced } from '@/components/deployments/WorkflowCardEnhanced';
-import { WorkflowDetailsDialog } from '@/components/deployments/WorkflowDetailsDialog';
+import { UnifiedWorkflowDialog } from '@/components/deployments/UnifiedWorkflowDialog';
 import { CommandPalette } from '@/components/deployments/CommandPalette';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
+import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
-import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { SidebarProvider } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useExecutionMonitoring } from '@/hooks/useExecutionMonitoring';
 
 import {
   Execution,
   LiveExecutionStatus,
+  Workflow,
   WorkflowOverview,
   WorkflowWithSettings,
 } from '@/lib/workflow-types';
@@ -32,44 +35,44 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Animated indicator showing real-time value changes
  * Displays a floating badge that appears when values increase/decrease
  */
-const LiveValueChangeIndicator = ({ value }: { value: number }) => {
-  const [activeDeltas, setActiveDeltas] = useState<
-    { id: string; value: number }[]
-  >([]);
+// const LiveValueChangeIndicator = ({ value }: { value: number }) => {
+//   const [activeDeltas, setActiveDeltas] = useState<
+//     { id: string; value: number }[]
+//   >([]);
 
-  useEffect(() => {
-    if (value !== 0) {
-      const newDelta = { id: `${Date.now()}-${Math.random()}`, value };
-      setActiveDeltas(currentDeltas => [...currentDeltas, newDelta]);
+//   useEffect(() => {
+//     if (value !== 0) {
+//       const newDelta = { id: `${Date.now()}-${Math.random()}`, value };
+//       setActiveDeltas(currentDeltas => [...currentDeltas, newDelta]);
 
-      // Remove delta after animation completes
-      setTimeout(() => {
-        setActiveDeltas(currentDeltas =>
-          currentDeltas.filter(delta => delta.id !== newDelta.id)
-        );
-      }, 2000);
-    }
-  }, [value]);
+//       // Remove delta after animation completes
+//       setTimeout(() => {
+//         setActiveDeltas(currentDeltas =>
+//           currentDeltas.filter(delta => delta.id !== newDelta.id)
+//         );
+//       }, 2000);
+//     }
+//   }, [value]);
 
-  if (activeDeltas.length === 0) return null;
+//   if (activeDeltas.length === 0) return null;
 
-  return (
-    <>
-      {activeDeltas.map(delta => (
-        <span
-          key={delta.id}
-          className={`absolute -top-2 -right-6 px-2 py-1 text-sm font-bold rounded-full animate-bounce-in-out ${
-            delta.value > 0
-              ? 'bg-black text-white'
-              : 'bg-white text-black border-2 border-black'
-          }`}
-        >
-          {delta.value > 0 ? `+${delta.value}` : delta.value}
-        </span>
-      ))}
-    </>
-  );
-};
+//   return (
+//     <>
+//       {activeDeltas.map(delta => (
+//         <span
+//           key={delta.id}
+//           className={`absolute -top-2 -right-6 px-2 py-1 text-sm font-bold rounded-full animate-bounce-in-out ${
+//             delta.value > 0
+//               ? 'bg-black text-white'
+//               : 'bg-white text-black border-2 border-black'
+//           }`}
+//         >
+//           {delta.value > 0 ? `+${delta.value}` : delta.value}
+//         </span>
+//       ))}
+//     </>
+//   );
+// };
 
 // ============================================================================
 // Main Page Component
@@ -88,8 +91,16 @@ export default function WorkflowsPage() {
   // -------------------------------------------------------------------------
   if (!isLoaded) {
     return (
-      <div className="stable-container py-4">
-        <div>Loading...</div>
+      <div className="min-h-screen bg-white p-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-6 w-96" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -218,7 +229,10 @@ function AuthenticatedDeploymentsPage({
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
   const [selectedWorkflowForAction, setSelectedWorkflowForAction] = useState<WorkflowWithSettings | null>(null);
+  const [executionDialogOpen, setExecutionDialogOpen] = useState(false);
+  const [selectedWorkflowForExecution, setSelectedWorkflowForExecution] = useState<Workflow | null>(null);
   const [sidebarFilter, setSidebarFilter] = useState<string>('all');
+  const [executionWorkflowFilter, setExecutionWorkflowFilter] = useState<number | 'all'>('all');
 
   // -------------------------------------------------------------------------
   // Keyboard Navigation
@@ -311,9 +325,8 @@ function AuthenticatedDeploymentsPage({
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
 
-    // Execute workflow logic here
-    console.log('Quick executing workflow:', workflow.name);
-    // You can add the actual execution logic here
+    setSelectedWorkflowForExecution(workflow);
+    setExecutionDialogOpen(true);
   }, [workflows]);
 
   const handleQuickDuplicate = useCallback((workflowId: number) => {
@@ -333,6 +346,61 @@ function AuthenticatedDeploymentsPage({
     setActionsDialogMode('rename');
     setActionsDialogOpen(true);
   }, [workflows]);
+
+  const handleToggleCron = useCallback(async (workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflowId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cron_enabled: !workflow.cron_enabled,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Refresh workflows to show updated state
+        fetchWorkflows(false);
+      } else {
+        console.error('Failed to toggle cron:', result.error);
+      }
+    } catch (error) {
+      console.error('Error toggling cron:', error);
+    }
+  }, [workflows, fetchWorkflows]);
+
+  const handleDeleteWorkflow = useCallback(async (workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    // Confirm deletion
+    if (!confirm(`Are you sure you want to delete "${workflow.name}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflowId}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Refresh workflows list
+        fetchWorkflows(false);
+      } else {
+        console.error('Failed to delete workflow:', result.error);
+      }
+    } catch (error) {
+      console.error('Error deleting workflow:', error);
+    }
+  }, [workflows, fetchWorkflows]);
 
   /**
    * Fetches detailed workflow overview for viewing
@@ -540,9 +608,89 @@ function AuthenticatedDeploymentsPage({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-xl font-mono">LOADING...</div>
-      </div>
+      <SidebarProvider>
+        <div className="flex h-screen overflow-hidden">
+          <DeploymentSidebar
+            stats={{
+              total: 0,
+              running: 0,
+              paused: 0,
+              failed: 0,
+              automated: 0,
+            }}
+            selectedFilter="all"
+            onFilterChange={() => {}}
+            onCreateWorkflow={() => {}}
+            canViewAlerts={false}
+          />
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="max-w-7xl mx-auto p-6 space-y-6">
+              {/* Header skeleton */}
+              <div className="flex items-start justify-between mb-6">
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-80" />
+                  <Skeleton className="h-5 w-64" />
+                  <Skeleton className="h-4 w-48" />
+                </div>
+              </div>
+
+              {/* Workflows section skeleton */}
+              <div className="space-y-4">
+                <Skeleton className="h-7 w-48" />
+                <div className="grid gap-4">
+                  <Card className="border border-gray-200">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-3 flex-1">
+                          <Skeleton className="h-6 w-64" />
+                          <Skeleton className="h-4 w-96" />
+                          <div className="flex gap-2">
+                            <Skeleton className="h-5 w-20" />
+                            <Skeleton className="h-5 w-24" />
+                            <Skeleton className="h-5 w-16" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-8 w-8 rounded" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border border-gray-200">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-3 flex-1">
+                          <Skeleton className="h-6 w-48" />
+                          <Skeleton className="h-4 w-80" />
+                          <div className="flex gap-2">
+                            <Skeleton className="h-5 w-20" />
+                            <Skeleton className="h-5 w-28" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-8 w-8 rounded" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border border-gray-200">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-3 flex-1">
+                          <Skeleton className="h-6 w-72" />
+                          <Skeleton className="h-4 w-full" />
+                          <div className="flex gap-2">
+                            <Skeleton className="h-5 w-24" />
+                            <Skeleton className="h-5 w-20" />
+                            <Skeleton className="h-5 w-32" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-8 w-8 rounded" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </SidebarProvider>
     );
   }
 
@@ -558,8 +706,8 @@ function AuthenticatedDeploymentsPage({
   // Filter workflows based on sidebar selection
   const filteredWorkflows = workflows.filter(workflow => {
     switch (sidebarFilter) {
-      case 'running':
-        return liveExecutions.some(e => e.workflow_id === workflow.id && e.status === 'running');
+      case 'manual':
+        return !workflow.cron_expression;
       case 'automated':
         return workflow.cron_expression;
       case 'paused':
@@ -583,112 +731,49 @@ function AuthenticatedDeploymentsPage({
           selectedFilter={sidebarFilter}
           onFilterChange={setSidebarFilter}
           onCreateWorkflow={() => setCreateWorkflowOpen(true)}
+          canViewAlerts={canDelete}
         />
-        <div className="flex-1 overflow-auto">
-          <div className="stable-container p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="max-w-7xl mx-auto p-6 space-y-6">
       {/* ===================================================================
           Page Header
           =================================================================== */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-start gap-4">
-          <SidebarTrigger />
-          <div>
-            <h1 className="text-4xl font-bold">Remote Workflow Execution</h1>
-          <p className="text-muted-foreground text-lg">
-            Execute and monitor automated workflows remotely
-          </p>
-
-          <div className="mt-2">
-            <span
-              className={`text-sm font-medium ${
-                isAdmin ? 'text-black font-bold' : 'text-gray-600'
-              }`}
-            >
-              {isAdmin && organizationName
-                ? `Admin - ${organizationName}`
-                : organizationName
-                  ? `Member - ${organizationName}`
-                  : 'Organization Access'}
-            </span>
-            {userRole && (
-              <span className="text-xs text-gray-500 ml-2">
-                Role: {userRole}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold font-mono">Remote Workflow Execution</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Execute and monitor automated workflows remotely
+            </p>
+            <div className="mt-2">
+              <span
+                className={`text-sm font-medium ${
+                  isAdmin ? 'text-black font-bold' : 'text-gray-600'
+                }`}
+              >
+                {isAdmin && organizationName
+                  ? `Admin - ${organizationName}`
+                  : organizationName
+                    ? `Member - ${organizationName}`
+                    : 'Organization Access'}
               </span>
-            )}
+              {userRole && (
+                <span className="text-xs text-gray-500 ml-2">
+                  Role: {userRole}
+                </span>
+              )}
             </div>
           </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-2">
-          <Button
-            onClick={() => setCreateWorkflowOpen(true)}
-            size="default"
-            className="text-white text-base font-mono"
-          >
-            <span className="mr-2">+</span>
-            Create New Workflow
-          </Button>
-
-          {canDelete && (
-            <Button
-              onClick={() => window.location.href = '/internal/notifications'}
-              variant="outline"
-              size="default"
-              className="bg-white text-black border-2 border-black hover:bg-black hover:text-white text-base font-mono cursor-pointer"
-            >
-              ⚠️ ALERTS
-            </Button>
-          )}
-
-          <Button
-            onClick={() => window.open('/docs/api/remote-workflows', '_blank')}
-            variant="outline"
-            size="default"
-            className="bg-white text-black border-black hover:bg-black hover:text-white text-base font-mono cursor-pointer"
-          >
-            API DOCS
-          </Button>
-
-          <Button
-            onClick={() => window.open('/docs/api/mcp', '_blank')}
-            variant="outline"
-            size="default"
-            className="bg-white text-black border-black hover:bg-black hover:text-white text-base font-mono cursor-pointer"
-          >
-            MCP DOCS
-          </Button>
-        </div>
       </div>
 
-      {/* ===================================================================
-          Key Metrics Dashboard
-          =================================================================== */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-black">
-          <CardContent className="p-4">
-            <div>
-              <p className="text-base font-mono text-black">
-                AVAILABLE WORKFLOWS
-              </p>
-              <p className="relative inline-block text-4xl font-mono font-bold text-black">
-                {workflows.length}
-                <LiveValueChangeIndicator
-                  value={workflows.length - previousWorkflows.current.length}
-                />
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* ===================================================================
           Dialogs
           =================================================================== */}
-      <WorkflowDetailsDialog
+      <UnifiedWorkflowDialog
         workflow={selectedWorkflow}
         open={workflowDetailsOpen}
         onOpenChange={setWorkflowDetailsOpen}
+        onSettingsUpdated={() => fetchWorkflows(false)}
       />
 
       <ExecutionDetailsDialog
@@ -702,8 +787,8 @@ function AuthenticatedDeploymentsPage({
           =================================================================== */}
       <div className="space-y-4">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold font-mono">
-            AVAILABLE WORKFLOWS
+          <h2 className="text-lg font-bold font-mono uppercase">
+            Available Workflows
           </h2>
         </div>
 
@@ -720,11 +805,115 @@ function AuthenticatedDeploymentsPage({
                 onView={() => fetchWorkflowOverview(workflow.id)}
                 onDuplicate={() => handleQuickDuplicate(workflow.id)}
                 onEdit={() => handleQuickEdit(workflow.id)}
-                onDelete={() => console.log('Delete not implemented yet')}
+                onDelete={() => handleDeleteWorkflow(workflow.id)}
+                onToggleCron={() => handleToggleCron(workflow.id)}
               />
             ))}
         </div>
       </div>
+
+      {/* ===================================================================
+          Recent Executions
+          =================================================================== */}
+      {executions.length > 0 && (
+        <div className="space-y-4 mt-8">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold font-mono uppercase">
+              Recent Executions
+              {executionWorkflowFilter !== 'all' && (
+                <span className="ml-2 text-sm font-normal text-gray-600">
+                  ({workflows.find(w => w.id === executionWorkflowFilter)?.name})
+                </span>
+              )}
+            </h2>
+            <div className="flex items-center gap-2">
+              <select
+                value={executionWorkflowFilter}
+                onChange={(e) => setExecutionWorkflowFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                className="px-3 py-1 text-sm border border-black rounded font-mono bg-white hover:bg-gray-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-black"
+              >
+                <option value="all">All Workflows</option>
+                {workflows.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+              {executionWorkflowFilter !== 'all' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setExecutionWorkflowFilter('all')}
+                  className="text-xs"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="border border-black rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-black">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-mono uppercase">Workflow</th>
+                  <th className="px-4 py-2 text-left text-xs font-mono uppercase">Status</th>
+                  <th className="px-4 py-2 text-left text-xs font-mono uppercase">Started</th>
+                  <th className="px-4 py-2 text-left text-xs font-mono uppercase">Duration</th>
+                  <th className="px-4 py-2 text-left text-xs font-mono uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {executions
+                  .filter(e => executionWorkflowFilter === 'all' || e.workflow_id === executionWorkflowFilter)
+                  .slice(0, 10)
+                  .map((execution) => {
+                  const workflow = workflows.find(w => w.id === execution.workflow_id);
+                  const isLive = liveExecutions.some(le => le.id === execution.execution_id);
+                  return (
+                    <tr key={`execution-${execution.execution_id}`} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-mono">
+                        {workflow?.name || `Workflow ${execution.workflow_id}`}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          execution.status === 'completed' ? 'bg-green-100 text-green-800' :
+                          execution.status === 'failed' ? 'bg-red-100 text-red-800' :
+                          execution.status === 'running' || isLive ? 'bg-yellow-100 text-yellow-800 animate-pulse' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {execution.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-600">
+                        {new Date(execution.started_at || execution.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-sm font-mono">
+                        {execution.completed_at && execution.started_at
+                          ? `${Math.round((new Date(execution.completed_at).getTime() - new Date(execution.started_at).getTime()) / 1000)}s`
+                          : isLive ? 'Running...' : '-'
+                        }
+                      </td>
+                      <td className="px-4 py-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs"
+                          onClick={() => {
+                            setSelectedExecution(execution);
+                            setExecutionDetailsOpen(true);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
           </div>
         </div>
@@ -733,10 +922,15 @@ function AuthenticatedDeploymentsPage({
       {/* Command Palette */}
       <CommandPalette
           workflows={workflows}
+          executions={executions}
           onExecuteWorkflow={handleQuickExecute}
           onDuplicateWorkflow={handleQuickDuplicate}
           onViewWorkflow={fetchWorkflowOverview}
           onEditWorkflow={handleQuickEdit}
+          onViewExecution={(execution) => {
+            setSelectedExecution(execution);
+            setExecutionDetailsOpen(true);
+          }}
           onCreateWorkflow={() => setCreateWorkflowOpen(true)}
           onRefresh={() => fetchWorkflows(true)}
       />
@@ -758,6 +952,16 @@ function AuthenticatedDeploymentsPage({
           }}
         />
       )}
+
+      <BatchTestDialog
+        workflow={selectedWorkflowForExecution}
+        open={executionDialogOpen}
+        onOpenChange={setExecutionDialogOpen}
+        onSubmit={() => {
+          console.log('Test run started');
+          fetchExecutions(false);
+        }}
+      />
 
       {/* ===================================================================
           Create Workflow Dialog

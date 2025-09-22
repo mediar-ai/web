@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
+import cronstrue from 'cronstrue';
 import {
   WorkflowWithSettings,
   Execution,
@@ -20,6 +21,8 @@ import {
   Zap,
   Calendar,
   ArrowRight,
+  Pause,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -48,6 +51,7 @@ interface WorkflowCardEnhancedProps {
   onDuplicate?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onToggleCron?: () => void;
   className?: string;
 }
 
@@ -62,6 +66,7 @@ export function WorkflowCardEnhanced({
   onDuplicate,
   onEdit,
   onDelete,
+  onToggleCron,
   className,
 }: WorkflowCardEnhancedProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -80,14 +85,27 @@ export function WorkflowCardEnhanced({
 
     const avgDuration = recentExecutions.length > 0
       ? recentExecutions.reduce((acc, e) => {
-          const duration = 'duration' in e ? (e as any).duration : 0;
-          return acc + (duration || 0);
+          // Use execution_duration_seconds if available, otherwise calculate from timestamps
+          if (e.execution_duration_seconds) {
+            return acc + e.execution_duration_seconds;
+          } else if (e.completed_at && e.started_at) {
+            const duration = (new Date(e.completed_at).getTime() - new Date(e.started_at).getTime()) / 1000;
+            return acc + duration;
+          }
+          return acc;
         }, 0) / recentExecutions.length
       : 0;
 
     const trend = executions.length >= 2
-      ? ('duration' in executions[0] && 'duration' in executions[1] &&
-         (executions[0] as any).duration > (executions[1] as any).duration) ? 'up' : 'down'
+      ? (() => {
+          const duration0 = executions[0].execution_duration_seconds ||
+            (executions[0].completed_at && executions[0].started_at ?
+              (new Date(executions[0].completed_at).getTime() - new Date(executions[0].started_at).getTime()) / 1000 : 0);
+          const duration1 = executions[1].execution_duration_seconds ||
+            (executions[1].completed_at && executions[1].started_at ?
+              (new Date(executions[1].completed_at).getTime() - new Date(executions[1].started_at).getTime()) / 1000 : 0);
+          return duration0 > duration1 ? 'up' : 'down';
+        })()
       : 'stable';
 
     return {
@@ -109,11 +127,13 @@ export function WorkflowCardEnhanced({
 
   const status = getWorkflowStatus();
 
-  // Format duration
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+  // Format duration (input is in seconds)
+  const formatDuration = (seconds: number) => {
+    if (!seconds || seconds === 0) return '0s';
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60);
+    return `${minutes}m ${remainingSeconds}s`;
   };
 
   return (
@@ -121,10 +141,10 @@ export function WorkflowCardEnhanced({
       <div
         ref={cardRef}
         className={cn(
-          'group relative bg-white rounded-xl border transition-all duration-200',
-          isHovered && 'shadow-lg border-blue-300',
-          isSelected && 'ring-2 ring-blue-500',
-          'hover:border-gray-300',
+          'group relative bg-white rounded-xl border border-black transition-all duration-200',
+          isHovered && 'shadow-lg',
+          isSelected && 'border-2',
+          'hover:shadow-md',
           className
         )}
         onMouseEnter={() => {
@@ -155,7 +175,13 @@ export function WorkflowCardEnhanced({
                       <Calendar className="w-4 h-4 text-gray-400" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Scheduled: {workflow.cron_expression}</p>
+                      <p>{(() => {
+                        try {
+                          return cronstrue.toString(workflow.cron_expression || '', { verbose: false });
+                        } catch {
+                          return `Schedule: ${workflow.cron_expression}`;
+                        }
+                      })()}</p>
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -186,6 +212,15 @@ export function WorkflowCardEnhanced({
                   View Details
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                {workflow.cron_expression && (
+                  <DropdownMenuItem onClick={onToggleCron}>
+                    {workflow.cron_enabled ? (
+                      <><Pause className="mr-2 h-4 w-4" />Pause Schedule</>
+                    ) : (
+                      <><Play className="mr-2 h-4 w-4" />Resume Schedule</>
+                    )}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={onEdit}>
                   Edit Workflow
                 </DropdownMenuItem>
@@ -195,8 +230,9 @@ export function WorkflowCardEnhanced({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={onDelete}
-                  className="text-red-600"
+                  className="hover:bg-black hover:text-white"
                 >
+                  <Trash2 className="mr-2 h-4 w-4" />
                   Delete Workflow
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -294,7 +330,13 @@ export function WorkflowCardEnhanced({
               {workflow.cron_expression && (
                 <div>
                   <span className="text-gray-500">Schedule:</span>{' '}
-                  <span className="font-medium">{workflow.cron_expression}</span>
+                  <span className="font-medium">{(() => {
+                    try {
+                      return cronstrue.toString(workflow.cron_expression, { verbose: false });
+                    } catch {
+                      return workflow.cron_expression;
+                    }
+                  })()}</span>
                 </div>
               )}
               <div className="pt-2 border-t">
@@ -307,7 +349,11 @@ export function WorkflowCardEnhanced({
                     )} />
                     <span>{new Date(exec.created_at).toLocaleTimeString()}</span>
                     <ArrowRight className="w-3 h-3" />
-                    <span>{formatDuration('duration' in exec ? (exec as any).duration || 0 : 0)}</span>
+                    <span>{formatDuration(
+                      exec.execution_duration_seconds ||
+                      (exec.completed_at && exec.started_at ?
+                        (new Date(exec.completed_at).getTime() - new Date(exec.started_at).getTime()) / 1000 : 0)
+                    )}</span>
                   </div>
                 ))}
               </div>

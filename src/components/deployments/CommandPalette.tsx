@@ -4,10 +4,11 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { Input } from '@/components/ui/input';
 import {
-  Command,
   Search,
   Play,
   Copy,
@@ -15,15 +16,20 @@ import {
   RefreshCw,
   Eye,
   Edit,
+  CheckCircle,
+  AlertCircle,
+  Clock,
 } from 'lucide-react';
-import { WorkflowWithSettings } from '@/lib/workflow-types';
+import { WorkflowWithSettings, Execution } from '@/lib/workflow-types';
 
 interface CommandPaletteProps {
   workflows: WorkflowWithSettings[];
+  executions?: Execution[];
   onExecuteWorkflow?: (workflowId: number) => void;
   onDuplicateWorkflow?: (workflowId: number) => void;
   onViewWorkflow?: (workflowId: number) => void;
   onEditWorkflow?: (workflowId: number) => void;
+  onViewExecution?: (execution: Execution) => void;
   // onDeleteWorkflow?: (workflowId: number) => void; // Reserved for future use
   onCreateWorkflow?: () => void;
   onRefresh?: () => void;
@@ -34,17 +40,19 @@ interface CommandItem {
   title: string;
   description?: string;
   icon: React.ReactNode;
-  category: 'workflow' | 'action' | 'navigation';
+  category: 'workflow' | 'action' | 'navigation' | 'execution';
   action: () => void;
   keywords: string[];
 }
 
 export function CommandPalette({
   workflows,
+  executions = [],
   onExecuteWorkflow,
   onDuplicateWorkflow,
   onViewWorkflow,
   onEditWorkflow,
+  onViewExecution,
   // onDeleteWorkflow,
   onCreateWorkflow,
   onRefresh,
@@ -143,8 +151,39 @@ export function CommandPalette({
       });
     });
 
+    // Add execution items (show latest 10)
+    executions.slice(0, 10).forEach((execution) => {
+      const workflow = workflows.find(w => w.id === execution.workflow_id);
+      const statusIcon = execution.status === 'completed' ?
+        <CheckCircle className="w-4 h-4 text-green-500" /> :
+        execution.status === 'failed' ?
+        <AlertCircle className="w-4 h-4 text-red-500" /> :
+        <Clock className="w-4 h-4 text-yellow-500" />;
+
+      items.push({
+        id: `execution-${execution.execution_id}`,
+        title: `Execution #${execution.execution_id}: ${workflow?.name || 'Unknown'}`,
+        description: `Status: ${execution.status} • ${new Date(execution.started_at || execution.created_at).toLocaleString()}`,
+        icon: statusIcon,
+        category: 'execution',
+        action: () => {
+          setOpen(false);
+          onViewExecution?.(execution);
+        },
+        keywords: [
+          'execution',
+          'run',
+          execution.status,
+          execution.execution_id.toString(),
+          workflow?.name.toLowerCase() || '',
+          'details',
+          'view'
+        ],
+      });
+    });
+
     return items;
-  }, [workflows, onExecuteWorkflow, onDuplicateWorkflow, onViewWorkflow, onEditWorkflow, onCreateWorkflow, onRefresh]);
+  }, [workflows, executions, onExecuteWorkflow, onDuplicateWorkflow, onViewWorkflow, onEditWorkflow, onViewExecution, onCreateWorkflow, onRefresh]);
 
   // Filter items based on search
   const filteredItems = useMemo(() => {
@@ -162,13 +201,17 @@ export function CommandPalette({
 
   // Group items by category
   const groupedItems = useMemo(() => {
-    const groups = {
-      action: [] as CommandItem[],
-      workflow: [] as CommandItem[],
-      navigation: [] as CommandItem[],
+    const groups: Record<string, CommandItem[]> = {
+      action: [],
+      workflow: [],
+      navigation: [],
+      execution: [],
     };
 
     filteredItems.forEach((item) => {
+      if (!groups[item.category]) {
+        groups[item.category] = [];
+      }
       groups[item.category].push(item);
     });
 
@@ -266,33 +309,44 @@ export function CommandPalette({
 
   return (
     <>
-      {/* Trigger hint */}
+      {/* Command Bar Trigger - Top Center */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+        className="fixed top-4 left-1/2 transform -translate-x-1/2 px-4 py-1.5 bg-white/90 backdrop-blur border border-gray-300 rounded-full shadow-sm hover:shadow-lg hover:bg-white transition-all flex items-center gap-2 text-sm text-gray-600 hover:text-black z-50"
+        aria-label="Open command palette"
       >
-        <Command className="w-4 h-4" />
-        <span>⌘K</span>
+        <Search className="w-3.5 h-3.5" />
+        <span className="font-mono text-xs">Search or Run Command</span>
+        <kbd className="ml-2 px-2 py-0.5 text-xs bg-gray-100 border border-gray-300 rounded font-mono">⌘K</kbd>
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="p-0 max-w-2xl overflow-hidden">
-          <div className="flex items-center gap-3 px-4 py-3 border-b">
-            <Search className="w-5 h-5 text-gray-400" />
+        <DialogContent className="p-0 max-w-2xl overflow-hidden" hideClose>
+          <VisuallyHidden>
+            <DialogTitle>Command Palette</DialogTitle>
+          </VisuallyHidden>
+          <div className="flex items-center gap-4 px-6 py-4 border-b">
+            <Search className="w-5 h-5 text-gray-400 flex-shrink-0" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Type a command or search..."
-              className="flex-1 border-0 focus:ring-0 p-0 text-base placeholder:text-gray-400"
+              className="flex-1 border-0 focus:ring-0 focus:outline-none px-0 py-1 text-base placeholder:text-gray-400"
               autoFocus
             />
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded">↑↓</kbd>
-              <span>Navigate</span>
-              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded">⏎</kbd>
-              <span>Select</span>
-              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded">Esc</kbd>
-              <span>Close</span>
+            <div className="flex items-center gap-3 text-xs text-gray-400 flex-shrink-0">
+              <div className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">↑↓</kbd>
+                <span>Navigate</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">⏎</kbd>
+                <span>Select</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">Esc</kbd>
+                <span>Close</span>
+              </div>
             </div>
           </div>
 
@@ -305,6 +359,7 @@ export function CommandPalette({
               <>
                 {renderCategory('Actions', groupedItems.action)}
                 {renderCategory('Workflows', groupedItems.workflow)}
+                {renderCategory('Recent Executions', groupedItems.execution)}
                 {renderCategory('Navigation', groupedItems.navigation)}
               </>
             )}
