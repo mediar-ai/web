@@ -624,9 +624,29 @@ export function WorkflowCard({
     try {
       console.log(`🗑️ Deleting workflow: ${workflow.name} (ID: ${workflowId})`);
 
-      // Try DELETE first, then POST as fallback
-      let response = await fetch(
-        `/api/remote-workflows/${workflowId}/delete`,
+      // First test if the route is reachable with POST
+      console.log('Testing route with POST first...');
+      const testResponse = await fetch(
+        `/api/remote-workflows/${workflowId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (testResponse.ok) {
+        const testData = await testResponse.json();
+        console.log('✅ POST test successful:', testData);
+      } else {
+        console.error('❌ POST test failed:', testResponse.status, await testResponse.text());
+      }
+
+      // Now try DELETE
+      console.log('Now trying DELETE...');
+      const response = await fetch(
+        `/api/remote-workflows/${workflowId}`,
         {
           method: 'DELETE',
           headers: {
@@ -634,20 +654,6 @@ export function WorkflowCard({
           },
         }
       );
-
-      // If DELETE fails with 405 (Method Not Allowed), try POST
-      if (response.status === 405) {
-        console.log('DELETE method failed, trying POST...');
-        response = await fetch(
-          `/api/remote-workflows/${workflowId}/delete`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-      }
 
       // Check if response is ok before trying to parse JSON
       if (!response.ok) {
