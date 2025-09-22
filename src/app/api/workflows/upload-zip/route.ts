@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
+import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
 
 export async function POST(request: NextRequest) {
   try {
@@ -129,6 +130,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Extract JavaScript files for upload
+    const filesToUpload: WorkflowFile[] = [];
+    for (const jsFile of jsFiles) {
+      const file = zipContent.file(jsFile);
+      if (file) {
+        const content = await file.async('nodebuffer');
+        filesToUpload.push({
+          path: jsFile,
+          content: content as Buffer
+        });
+      }
+    }
+
+    // Upload files to storage if there are any
+    let fileUrls: Record<string, string> = {};
+    if (filesToUpload.length > 0 && formData.get('workflowId')) {
+      const workflowId = parseInt(formData.get('workflowId') as string);
+      const version = workflowData.version || '1.0.0';
+
+      const fileManager = new WorkflowFileManager();
+      const uploadResult = await fileManager.uploadWorkflowFiles(
+        workflowId,
+        version,
+        filesToUpload
+      );
+
+      if (uploadResult.success) {
+        // Get signed URLs for the files
+        fileUrls = await fileManager.getSignedUrls(workflowId, version);
+
+        // Update YAML with file URLs
+        workflowContent = fileManager.updateYamlWithFileUrls(workflowContent, fileUrls);
+      } else {
+        console.error('Failed to upload files:', uploadResult.error);
+      }
+    }
+
     // Extract metadata and prepare response
     const response = {
       success: true,
@@ -142,6 +180,8 @@ export async function POST(request: NextRequest) {
         jsFiles: jsFiles,
         referencedFiles: referencedFiles,
         missingFiles: missingFiles,
+        fileUrls: fileUrls,
+        hasExternalFiles: filesToUpload.length > 0,
         // Include additional metadata
         config: workflowData.config || {},
         variables: workflowData.variables || {},
