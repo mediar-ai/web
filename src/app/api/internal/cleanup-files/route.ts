@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
 }
 
 // GET endpoint for manual trigger or monitoring
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // Return cleanup statistics
     const supabase = createClient(
@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
       files: fileStats,
       policies
     });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { error: 'Failed to get statistics' },
       { status: 500 }
