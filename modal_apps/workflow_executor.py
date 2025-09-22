@@ -1283,6 +1283,7 @@ async def execute_mcp_workflow(
 
     logger.info("🔌 Attempting to connect to MCP endpoint: %s", mcp_endpoint)
 
+    session_client = None
     try:
         # Use the smart sequence loader for dual-format support
         automation_sequence_list = SequenceLoader.load_workflow_sequence(workflow_data)
@@ -1361,7 +1362,18 @@ async def execute_mcp_workflow(
         def _client_factory():
             import httpx
 
-            return httpx.AsyncClient(timeout=300.0)
+            # Use more granular timeout configuration
+            # - connect: time to establish connection (10s)
+            # - read: time between reads from server (60s for SSE keep-alive)
+            # - write: time to send data (10s)
+            # - pool: time to acquire connection from pool (10s)
+            timeout_config = httpx.Timeout(
+                connect=10.0,
+                read=60.0,  # Shorter read timeout to detect stuck connections
+                write=10.0,
+                pool=10.0
+            )
+            return httpx.AsyncClient(timeout=timeout_config)
 
         async def _initialize_session():
             client, resp = await post_with_503_backoff(
@@ -1397,7 +1409,13 @@ async def execute_mcp_workflow(
                             import httpx
 
                             await session_client.aclose()
-                            retry_client = httpx.AsyncClient(timeout=300.0)
+                            timeout_config = httpx.Timeout(
+                                connect=10.0,
+                                read=60.0,
+                                write=10.0,
+                                pool=10.0
+                            )
+                            retry_client = httpx.AsyncClient(timeout=timeout_config)
                             retry_response = await retry_client.post(
                                 endpoint_url,
                                 json=init_request,
@@ -1505,7 +1523,16 @@ async def execute_mcp_workflow(
             "params": {"name": tool_name, "arguments": arguments},
         }
 
-        response = await _post_with_session(tool_request)
+        # Add explicit timeout for workflow execution (5 minutes max)
+        try:
+            response = await asyncio.wait_for(
+                _post_with_session(tool_request),
+                timeout=300.0  # 5 minutes maximum for workflow execution
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Workflow execution timed out after 5 minutes")
+            await session_client.aclose()
+            raise Exception(f"Workflow execution timed out after 5 minutes for tool: {tool_name}")
 
         if response.status_code != 200:
             raise Exception(
@@ -1755,6 +1782,14 @@ async def execute_mcp_workflow(
         raise Exception(
             f"MCP Execution Failed: {str(e)} | Context: {json.dumps(error_context)}"
         )
+    finally:
+        # Always close the session client if it was created
+        if session_client:
+            try:
+                await session_client.aclose()
+                logger.info("✅ MCP session closed")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Error closing MCP session: {cleanup_error}")
 
 
 @app.function(

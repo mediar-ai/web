@@ -161,6 +161,23 @@
   opacity: 1 !important;
 }
 
+/* Custom scrollbar styling - completely hidden */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: none;
+}
+
+/* Hide scrollbar for IE, Edge */
+body {
+  -ms-overflow-style: none;
+}
+
 .resizer {
   @apply absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none;
 }
@@ -198,22 +215,22 @@ body {
   .border-default {
     @apply border-border;
   }
-  
+
   /* Standard black border for containers/sections */
   .border-black-outline {
     @apply border border-black rounded-lg;
   }
-  
+
   /* Black border for interactive elements (buttons, badges, etc.) */
   .border-black-interactive {
     @apply border border-black rounded;
   }
-  
+
   /* Black border for card-like elements */
   .border-black-card {
     @apply border border-black rounded-md;
   }
-  
+
   /* Hover state for black-bordered interactive elements */
   .border-black-hover {
     @apply hover:border-black transition-colors;
@@ -225,7 +242,7 @@ body {
     /* Prevent width jumping by maintaining consistent container behavior */
     box-sizing: border-box;
   }
-  
+
   .stable-scrollbar {
     scrollbar-gutter: stable;
   }
@@ -236,11 +253,11 @@ body {
   .border-gray-200 {
     @apply border-border;
   }
-  
+
   .border-gray-300 {
     @apply border-border;
   }
-  
+
   .border-muted {
     @apply border-border;
   }
