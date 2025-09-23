@@ -764,16 +764,6 @@ function AuthenticatedDeploymentsPage({
               )}
             </div>
           </div>
-          <Link href="/internal/notifications">
-            <Button
-              variant="outline"
-              className="border-2 border-black hover:bg-black hover:text-white"
-              title="Configure Error Alerts"
-            >
-              <Bell className="w-4 h-4 mr-2" />
-              Alerts
-            </Button>
-          </Link>
       </div>
 
 
