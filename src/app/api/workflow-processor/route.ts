@@ -19,20 +19,35 @@ async function executeMCPWorkflow(
 
     logs.push(`Connecting to MCP endpoint: ${endpointUrl}`);
 
+    let sessionId: string | null = null;
+
     // Simple JSON-RPC implementation that matches what the Python executor does
-    const sendRequest = async (method: string, params: any, id: number) => {
+    const sendRequest = async (method: string, params: any, id?: number) => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream'
+      };
+
+      // Add session ID if we have one
+      if (sessionId) {
+        headers['Mcp-Session-Id'] = sessionId;
+      }
+
+      const body: any = {
+        jsonrpc: '2.0',
+        method,
+        params
+      };
+
+      // Only add ID for requests (not notifications)
+      if (id !== undefined) {
+        body.id = id;
+      }
+
       const response = await fetch(endpointUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method,
-          params,
-          id
-        })
+        headers,
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {
@@ -40,16 +55,48 @@ async function executeMCPWorkflow(
         throw new Error(`MCP request failed (${response.status}): ${text}`);
       }
 
-      return await response.json();
+      // Extract session ID from headers if present
+      const newSessionId = response.headers.get('Mcp-Session-Id');
+      if (newSessionId) {
+        sessionId = newSessionId;
+        logs.push(`Got MCP session ID: ${sessionId}`);
+      }
+
+      // Handle SSE response format from Azure MCP servers
+      const text = await response.text();
+
+      // Check if it's SSE format (starts with "data: ")
+      if (text.startsWith('data: ')) {
+        // Parse SSE data
+        const lines = text.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6); // Remove "data: " prefix
+            try {
+              return JSON.parse(jsonStr);
+            } catch (e) {
+              // Continue to next line if parse fails
+            }
+          }
+        }
+        throw new Error('No valid JSON found in SSE response');
+      }
+
+      // For notifications (no response expected), return empty object
+      if (id === undefined && text.trim() === '') {
+        return {};
+      }
+
+      // Otherwise parse as regular JSON
+      return JSON.parse(text);
     };
 
     // Step 1: Initialize MCP session
     const initResult = await sendRequest('initialize', {
       protocolVersion: '2024-11-05',
       capabilities: {
-        tools: {},
-        prompts: {},
-        resources: {}
+        roots: { listChanged: false },
+        sampling: {}
       },
       clientInfo: {
         name: 'browser-workflow-executor',
@@ -62,6 +109,11 @@ async function executeMCPWorkflow(
     }
 
     logs.push('MCP session initialized');
+
+    // Step 1.5: Send initialized notification (required by MCP protocol)
+    logs.push('Sending initialized notification...');
+    await sendRequest('notifications/initialized', {}); // No ID for notifications
+    logs.push('Initialized notification sent');
 
     // Prepare the workflow steps
     let steps = workflowData.automation_sequence || workflowData.steps || [];
@@ -82,7 +134,7 @@ async function executeMCPWorkflow(
         inputs: executionParams || {},
         verbosity: 'normal'
       }
-    }, 2);
+    }, 3); // ID 3 since we used 1 for initialize
 
     if (executeResult.error) {
       throw new Error(`Workflow execution error: ${executeResult.error.message || JSON.stringify(executeResult.error)}`);
@@ -173,7 +225,7 @@ export async function POST(_request: NextRequest) {
 
     if (!mcpEndpoint && execution.assigned_machine_id) {
       const { data: machine } = await supabase
-        .from('machines')
+        .from('remote_machines')
         .select('mcp_endpoint')
         .eq('id', execution.assigned_machine_id)
         .single();
@@ -185,16 +237,26 @@ export async function POST(_request: NextRequest) {
 
     // If still no endpoint, use a default or skip
     if (!mcpEndpoint) {
-      // Try to get any available machine
+      // Try to get any available Azure VM machine (prefer Load Balancer)
       const { data: anyMachine } = await supabase
-        .from('machines')
-        .select('mcp_endpoint')
-        .eq('is_available', true)
+        .from('remote_machines')
+        .select('id, mcp_endpoint')
+        .eq('status', 'active')
+        .in('id', [4, 6, 7]) // Azure VM Desktop Balancer and Clean VMSS LB
         .limit(1)
         .single();
 
       if (anyMachine?.mcp_endpoint) {
         mcpEndpoint = anyMachine.mcp_endpoint;
+
+        // Update the execution to assign this machine
+        await supabase
+          .from('workflow_executions')
+          .update({
+            assigned_machine_id: anyMachine.id,
+            mcp_endpoint: anyMachine.mcp_endpoint
+          })
+          .eq('id', execution.id);
       } else {
         return NextResponse.json({
           success: false,
