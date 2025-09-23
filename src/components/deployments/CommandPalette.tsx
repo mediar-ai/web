@@ -331,7 +331,7 @@ export function CommandPalette({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Type a command or search..."
-              className="flex-1 border-0 focus:ring-0 focus:outline-none px-0 py-1 text-base placeholder:text-gray-400"
+              className="flex-1 border-0 focus:ring-0 focus:outline-none px-3 py-1 text-base placeholder:text-gray-400"
               autoFocus
             />
             <div className="flex items-center gap-3 text-xs text-gray-400 flex-shrink-0">
