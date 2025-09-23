@@ -256,6 +256,13 @@ export function ExecutionDetailsDialog({
                 <LoadingSkeleton />
               ) : (
                 <div className="space-y-4 h-full flex flex-col">
+                  {(() => {
+                    console.log('Logs tab - execution:', execution);
+                    console.log('Logs tab - execution.execution_logs:', execution.execution_logs);
+                    console.log('Logs tab - is array?', Array.isArray(execution.execution_logs));
+                    console.log('Logs tab - length:', execution.execution_logs?.length);
+                    return null;
+                  })()}
                   {execution.execution_logs &&
                   execution.execution_logs.length > 0 ? (
                     <div className="space-y-2 flex-1 flex flex-col min-h-0">
