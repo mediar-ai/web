@@ -265,7 +265,6 @@ export async function POST(_request: NextRequest) {
       console.log('🔄 Triggering workflow processor for queued executions...');
 
       // Use the same publicUrl logic from above
-      const vercelBypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
       const isProduction = process.env.NODE_ENV === 'production' ||
                          process.env.VERCEL_ENV === 'production' ||
                          process.env.VERCEL;
