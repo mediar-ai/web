@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useAuth, useUser } from '@clerk/nextjs';
 import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
@@ -296,7 +297,41 @@ export default function NotificationsPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen bg-white">Loading...</div>;
+    return (
+      <SidebarProvider>
+        <div className="flex min-h-screen">
+          <DeploymentSidebar
+            canViewAlerts={true}
+            currentPage="alerts"
+          />
+          <main className="flex-1 bg-white">
+            <div className="max-w-7xl mx-auto px-8 py-12">
+              {/* Header Skeleton */}
+              <div className="mb-8">
+                <Skeleton className="h-10 w-64 mb-2" />
+                <Skeleton className="h-6 w-96" />
+              </div>
+
+              {/* Config Cards Skeleton */}
+              <div className="space-y-4 mb-8">
+                <Skeleton className="h-32 w-full" />
+                <Skeleton className="h-32 w-full" />
+              </div>
+
+              {/* Recent Alerts Section Skeleton */}
+              <div className="mt-12">
+                <Skeleton className="h-8 w-48 mb-4" />
+                <div className="space-y-3">
+                  <Skeleton className="h-20 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </SidebarProvider>
+    );
   }
 
   return (
