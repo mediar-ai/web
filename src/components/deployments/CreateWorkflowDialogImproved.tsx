@@ -159,6 +159,8 @@ export function CreateWorkflowDialog({
         const formData = new FormData();
         formData.append('file', uploadedFile);
         formData.append('action', 'create');
+        formData.append('name', name.trim());
+        formData.append('description', description.trim());
 
         response = await fetch('/api/workflows/upload-zip', {
           method: 'POST',
