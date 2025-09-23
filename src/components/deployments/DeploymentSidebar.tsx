@@ -69,8 +69,15 @@ export function DeploymentSidebar({
   // Add keyboard shortcut for new workflow
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Cmd/Ctrl + N
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      // Check for just 'N' key (not in input fields)
+      if (e.key === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        // Don't trigger if user is typing in an input, textarea, or contenteditable
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.isContentEditable) {
+          return;
+        }
         e.preventDefault();
         onCreateWorkflow?.();
       }
@@ -145,12 +152,12 @@ export function DeploymentSidebar({
             className="w-full bg-black text-white hover:bg-gray-800 group/button"
             size="sm"
             onClick={onCreateWorkflow}
-            title="Create new workflow (Ctrl+N / Cmd+N)"
+            title="Create new workflow (Press N)"
           >
             <Plus className="mr-2 h-4 w-4" />
             <span className="flex-1 text-left">New Workflow</span>
-            <kbd className="ml-2 px-1.5 py-0.5 text-[10px] bg-gray-700 text-gray-200 rounded font-mono group-hover/button:bg-gray-600">
-              {typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'}+N
+            <kbd className="ml-2 px-2 py-0.5 text-[10px] bg-gray-700 text-gray-200 rounded font-mono group-hover/button:bg-gray-600">
+              N
             </kbd>
           </Button>
         </div>
