@@ -642,7 +642,7 @@ function AuthenticatedDeploymentsPage({
           <ResizableHandle withHandle className="bg-gray-200 hover:bg-gray-300 transition-colors" />
           <ResizablePanel defaultSize={80} minSize={50}>
             <div className="flex-1 overflow-y-auto overflow-x-hidden">
-            <div className="max-w-7xl mx-auto p-6 space-y-6">
+              <div className="max-w-7xl mx-auto p-6 space-y-6">
               {/* Header skeleton */}
               <div className="flex items-start justify-between mb-6">
                 <div className="space-y-2">
