@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
+import { createClient } from '@supabase/supabase-js';
+import { extractCronConfigFromYAML } from '@/lib/cronParser';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(request: NextRequest) {
   try {
@@ -143,10 +150,84 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Upload files to storage if there are any
+    // Check if this is part of a workflow creation request
+    const isCreating = formData.get('action') === 'create';
+    let workflowId: number | null = null;
     let fileUrls: Record<string, string> = {};
-    if (filesToUpload.length > 0 && formData.get('workflowId')) {
-      const workflowId = parseInt(formData.get('workflowId') as string);
+
+    if (isCreating && filesToUpload.length > 0) {
+      // Create the workflow first, then upload files
+      console.log('🚀 Creating new workflow from ZIP upload');
+
+      // Set requires_files flag if there are JS files
+      if (jsFiles.length > 0) {
+        workflowData.requires_files = true;
+      }
+
+      // Create workflow record
+      const workflowRecord = {
+        name: workflowData.name || 'Untitled Workflow',
+        description: workflowData.description || '',
+        version: workflowData.version || '1.0.0',
+        status: 'deployed',
+        workflow_type: 'execution',
+        automation_sequence: workflowData,
+        requires_files: jsFiles.length > 0,
+        cron_expression: extractCronConfigFromYAML(workflowContent)?.expression || null,
+        cron_timezone: extractCronConfigFromYAML(workflowContent)?.timezone || 'UTC',
+        cron_enabled: extractCronConfigFromYAML(workflowContent)?.enabled || false,
+        created_by: null,
+        total_versions: 1,
+      };
+
+      const { data: newWorkflow, error: workflowError } = await supabase
+        .from('deployed_workflows')
+        .insert(workflowRecord)
+        .select()
+        .single();
+
+      if (workflowError || !newWorkflow) {
+        console.error('Failed to create workflow:', workflowError);
+        return NextResponse.json(
+          { success: false, error: 'Failed to create workflow' },
+          { status: 500 }
+        );
+      }
+
+      workflowId = newWorkflow.id;
+      console.log(`✅ Created workflow with ID: ${workflowId}`);
+
+      // Create version record
+      const versionRecord = {
+        workflow_id: workflowId,
+        version_number: '1.0.0',
+        automation_sequence_yaml: workflowContent,
+        automation_sequence: workflowData,
+        preferred_format: 'yaml',
+        is_active: true,
+        change_notes: 'Initial version from ZIP upload',
+      };
+
+      const { error: versionError } = await supabase
+        .from('deployed_workflow_versions')
+        .insert(versionRecord);
+
+      if (versionError) {
+        console.error('Failed to create version:', versionError);
+        // Clean up workflow if version creation failed
+        await supabase.from('deployed_workflows').delete().eq('id', workflowId);
+        return NextResponse.json(
+          { success: false, error: 'Failed to create workflow version' },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Upload files to storage if there are any
+    if (filesToUpload.length > 0 && (workflowId || formData.get('workflowId'))) {
+      if (!workflowId) {
+        workflowId = parseInt(formData.get('workflowId') as string);
+      }
       const version = workflowData.version || '1.0.0';
 
       const fileManager = new WorkflowFileManager();
@@ -170,6 +251,7 @@ export async function POST(request: NextRequest) {
     // Extract metadata and prepare response
     const response = {
       success: true,
+      workflowId: workflowId,
       workflowData: {
         name: workflowData.name || 'Untitled Workflow',
         description: workflowData.description || '',
@@ -186,7 +268,8 @@ export async function POST(request: NextRequest) {
         config: workflowData.config || {},
         variables: workflowData.variables || {},
         steps: Array.isArray(workflowData.steps) ? workflowData.steps.length : 0,
-      }
+      },
+      message: isCreating ? `Workflow created with ID ${workflowId}` : 'ZIP file processed successfully'
     };
 
     // Store JavaScript files for later use (optional - for future implementation)

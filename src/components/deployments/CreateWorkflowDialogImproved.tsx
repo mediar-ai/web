@@ -152,28 +152,44 @@ export function CreateWorkflowDialog({
 
     setLoading(true);
     try {
-      const response = await fetch('/api/workflows/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim(),
-          category,
-          difficulty_level: difficulty,
-          estimated_duration_seconds: estimatedDuration,
-          automation_sequence: automationSequence,
-          tags,
-          set_as_active: true
-        }),
-      });
+      let response;
+
+      // For ZIP uploads, re-upload the file with action=create to handle file uploads
+      if (activeTab === 'upload' && uploadedFile) {
+        const formData = new FormData();
+        formData.append('file', uploadedFile);
+        formData.append('action', 'create');
+
+        response = await fetch('/api/workflows/upload-zip', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        // For template and manual creation, use the existing endpoint
+        response = await fetch('/api/workflows/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: name.trim(),
+            description: description.trim(),
+            category,
+            difficulty_level: difficulty,
+            estimated_duration_seconds: estimatedDuration,
+            automation_sequence: automationSequence,
+            tags,
+            set_as_active: true
+          }),
+        });
+      }
 
       const result = await response.json();
 
       if (result.success) {
-        alert(`Workflow "${name}" created successfully!`);
-        onWorkflowCreated?.(result.workflow);
+        const workflowName = result.workflowData?.name || name;
+        alert(`Workflow "${workflowName}" created successfully!`);
+        onWorkflowCreated?.(result.workflow || result);
         onOpenChange(false);
         resetForm();
       } else {
@@ -215,6 +231,7 @@ export function CreateWorkflowDialog({
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('action', 'create'); // Indicate this is for workflow creation
 
     try {
       const response = await fetch('/api/workflows/upload-zip', {
