@@ -260,7 +260,30 @@ export async function POST(_request: NextRequest) {
       }
     }
 
-    // 4. Update next execution times for all workflows
+    // 4. Trigger workflow processor to process any queued executions
+    try {
+      console.log('🔄 Triggering workflow processor for queued executions...');
+
+      const processorUrl = `${publicUrl}/api/workflow-processor`;
+      const processorResponse = await fetch(processorUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        }
+      });
+
+      if (processorResponse.ok) {
+        const processorData = await processorResponse.json();
+        console.log(`✅ Workflow processor result: ${JSON.stringify(processorData)}`);
+      } else {
+        console.error(`❌ Workflow processor failed: ${processorResponse.status}`);
+      }
+    } catch (processorError) {
+      console.error('❌ Error calling workflow processor:', processorError);
+    }
+
+    // 5. Update next execution times for all workflows
     if (workflowUpdates.length > 0) {
       for (const update of workflowUpdates) {
         await supabase
