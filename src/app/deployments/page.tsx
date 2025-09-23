@@ -650,70 +650,68 @@ function AuthenticatedDeploymentsPage({
           onCreateWorkflow={() => {}}
           canViewAlerts={false}
         />
-          <div className="flex-1 overflow-y-auto overflow-x-hidden">
-              <div className="max-w-7xl mx-auto p-6 space-y-6">
-                {/* Header skeleton */}
-                <div className="flex items-start justify-between mb-6">
-                  <div className="space-y-2">
-                    <Skeleton className="h-8 w-80" />
-                    <Skeleton className="h-5 w-64" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                </div>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="max-w-7xl mx-auto p-6 space-y-6">
+            {/* Header skeleton */}
+            <div className="flex items-start justify-between mb-6">
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-80" />
+                <Skeleton className="h-5 w-64" />
+                <Skeleton className="h-4 w-48" />
+              </div>
+            </div>
 
-                {/* Workflows section skeleton */}
-                <div className="space-y-4">
-                  <Skeleton className="h-7 w-48" />
-                  <div className="grid gap-4">
-                    <Card className="border border-gray-200">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-3 flex-1">
-                            <Skeleton className="h-6 w-64" />
-                            <Skeleton className="h-4 w-96" />
-                            <div className="flex gap-2">
-                              <Skeleton className="h-5 w-20" />
-                              <Skeleton className="h-5 w-24" />
-                              <Skeleton className="h-5 w-16" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-8 w-8 rounded" />
+            {/* Workflows section skeleton */}
+            <div className="space-y-4">
+              <Skeleton className="h-7 w-48" />
+              <div className="grid gap-4">
+                <Card className="border border-gray-200">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-3 flex-1">
+                        <Skeleton className="h-6 w-64" />
+                        <Skeleton className="h-4 w-96" />
+                        <div className="flex gap-2">
+                          <Skeleton className="h-5 w-20" />
+                          <Skeleton className="h-5 w-24" />
+                          <Skeleton className="h-5 w-16" />
                         </div>
-                      </CardContent>
-                    </Card>
-                    <Card className="border border-gray-200">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-3 flex-1">
-                            <Skeleton className="h-6 w-48" />
-                            <Skeleton className="h-4 w-80" />
-                            <div className="flex gap-2">
-                              <Skeleton className="h-5 w-20" />
-                              <Skeleton className="h-5 w-28" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-8 w-8 rounded" />
+                      </div>
+                      <Skeleton className="h-8 w-8 rounded" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border border-gray-200">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-3 flex-1">
+                        <Skeleton className="h-6 w-48" />
+                        <Skeleton className="h-4 w-80" />
+                        <div className="flex gap-2">
+                          <Skeleton className="h-5 w-20" />
+                          <Skeleton className="h-5 w-28" />
                         </div>
-                      </CardContent>
-                    </Card>
-                    <Card className="border border-gray-200">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-3 flex-1">
-                            <Skeleton className="h-6 w-72" />
-                            <Skeleton className="h-4 w-full" />
-                            <div className="flex gap-2">
-                              <Skeleton className="h-5 w-24" />
-                              <Skeleton className="h-5 w-20" />
-                              <Skeleton className="h-5 w-32" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-8 w-8 rounded" />
+                      </div>
+                      <Skeleton className="h-8 w-8 rounded" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border border-gray-200">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-3 flex-1">
+                        <Skeleton className="h-6 w-72" />
+                        <Skeleton className="h-4 w-full" />
+                        <div className="flex gap-2">
+                          <Skeleton className="h-5 w-24" />
+                          <Skeleton className="h-5 w-20" />
+                          <Skeleton className="h-5 w-32" />
                         </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
+                      </div>
+                      <Skeleton className="h-8 w-8 rounded" />
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           </div>
@@ -759,340 +757,288 @@ function AuthenticatedDeploymentsPage({
   });
 
   return (
-    <div className="flex min-h-screen">
-      <ResizableSidebar
-            stats={sidebarStats}
-            selectedFilter={sidebarFilter}
-            onFilterChange={setSidebarFilter}
-            onCreateWorkflow={() => setCreateWorkflowOpen(true)}
-            canViewAlerts={canDelete}
-          />
+    <>
+      <div className="flex min-h-screen">
+        <ResizableSidebar
+          stats={sidebarStats}
+          selectedFilter={sidebarFilter}
+          onFilterChange={setSidebarFilter}
+          onCreateWorkflow={() => setCreateWorkflowOpen(true)}
+          canViewAlerts={canDelete}
+        />
         <div className="flex-1">
-            <div className="max-w-7xl mx-auto p-6 space-y-6">
-              {/* ===================================================================
+          <div className="max-w-7xl mx-auto p-6 space-y-6">
+            {/* ===================================================================
           Page Header
           =================================================================== */}
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <h1 className="text-2xl font-bold font-mono">
-                    Remote Workflow Execution
-                  </h1>
-                  <p className="text-muted-foreground text-sm mt-1">
-                    Execute and monitor automated workflows remotely
-                  </p>
-                  <div className="mt-2">
-                    <span
-                      className={`text-sm font-medium ${
-                        isAdmin ? 'text-black font-bold' : 'text-gray-600'
-                      }`}
-                    >
-                      {isAdmin && organizationName
-                        ? `Admin - ${organizationName}`
-                        : organizationName
-                          ? `Member - ${organizationName}`
-                          : 'Organization Access'}
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h1 className="text-2xl font-bold font-mono">
+                  Remote Workflow Execution
+                </h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Execute and monitor automated workflows remotely
+                </p>
+                <div className="mt-2">
+                  <span
+                    className={`text-sm font-medium ${
+                      isAdmin ? 'text-black font-bold' : 'text-gray-600'
+                    }`}
+                  >
+                    {isAdmin && organizationName
+                      ? `Admin - ${organizationName}`
+                      : organizationName
+                        ? `Member - ${organizationName}`
+                        : 'Organization Access'}
+                  </span>
+                  {userRole && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      Role: {userRole}
                     </span>
-                    {userRole && (
-                      <span className="text-xs text-gray-500 ml-2">
-                        Role: {userRole}
-                      </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ===================================================================
+          Dialogs
+          =================================================================== */}
+            <UnifiedWorkflowDialog
+              workflow={selectedWorkflow}
+              open={workflowDetailsOpen}
+              onOpenChange={setWorkflowDetailsOpen}
+              onSettingsUpdated={() => fetchWorkflows(false)}
+            />
+
+            <ExecutionDetailsDialog
+              execution={selectedExecution}
+              open={executionDetailsOpen}
+              onOpenChange={setExecutionDetailsOpen}
+            />
+
+            {/* ===================================================================
+          Workflows List
+          =================================================================== */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold font-mono uppercase">
+                  Available Workflows
+                </h2>
+              </div>
+
+              <div className="grid gap-4">
+                {filteredWorkflows.map((workflow, index) => (
+                  <WorkflowCardEnhanced
+                    key={workflow.id}
+                    workflow={workflow}
+                    executions={executions.filter(
+                      e => e.workflow_id === workflow.id
+                    )}
+                    liveExecutions={liveExecutions}
+                    isSelected={selectedIndex === index}
+                    onSelect={() => setSelectedIndex(index)}
+                    onExecute={() => handleQuickExecute(workflow.id)}
+                    onView={() => fetchWorkflowOverview(workflow.id)}
+                    onDuplicate={() => handleQuickDuplicate(workflow.id)}
+                    onEdit={() => handleQuickEdit(workflow.id)}
+                    onDelete={() => handleDeleteWorkflow(workflow.id)}
+                    onToggleCron={() => handleToggleCron(workflow.id)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* ===================================================================
+          Recent Executions
+          =================================================================== */}
+            {executions.length > 0 && (
+              <div className="space-y-4 mt-8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <h2 className="text-lg font-bold font-mono uppercase">
+                      Recent Executions
+                      {executionWorkflowFilter !== 'all' && (
+                        <span className="ml-2 text-sm font-normal text-gray-600">
+                          (
+                          {
+                            workflows.find(
+                              w => w.id === executionWorkflowFilter
+                            )?.name
+                          }
+                          )
+                        </span>
+                      )}
+                    </h2>
+                    {executions.some(e => e.status === 'queued') && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-2 border-black hover:bg-black hover:text-white"
+                        onClick={async () => {
+                          try {
+                            const response = await fetch(
+                              '/api/admin/process-queue',
+                              {
+                                method: 'POST',
+                              }
+                            );
+                            const data = await response.json();
+                            if (response.ok) {
+                              alert(
+                                `Processed ${data.processed.length} workflows`
+                              );
+                              await fetchExecutions();
+                              await fetchLiveExecutions();
+                            } else {
+                              alert(`Failed to process queue: ${data.error}`);
+                            }
+                          } catch (error) {
+                            console.error('Error processing queue:', error);
+                            alert('Failed to process queue');
+                          }
+                        }}
+                        title="Manually process queued workflows"
+                      >
+                        <PlayCircle className="w-4 h-4 mr-2" />
+                        Process Queue
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={executionWorkflowFilter}
+                      onChange={e =>
+                        setExecutionWorkflowFilter(
+                          e.target.value === 'all'
+                            ? 'all'
+                            : parseInt(e.target.value)
+                        )
+                      }
+                      className="px-3 py-1 text-sm border border-black rounded font-mono bg-white hover:bg-gray-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-black"
+                    >
+                      <option value="all">All Workflows</option>
+                      {workflows.map(w => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </select>
+                    {executionWorkflowFilter !== 'all' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setExecutionWorkflowFilter('all')}
+                        className="text-xs"
+                      >
+                        Clear
+                      </Button>
                     )}
                   </div>
                 </div>
-              </div>
-
-              {/* ===================================================================
-          Dialogs
-          =================================================================== */}
-              <UnifiedWorkflowDialog
-                workflow={selectedWorkflow}
-                open={workflowDetailsOpen}
-                onOpenChange={setWorkflowDetailsOpen}
-                onSettingsUpdated={() => fetchWorkflows(false)}
-              />
-
-              <ExecutionDetailsDialog
-                execution={selectedExecution}
-                open={executionDetailsOpen}
-                onOpenChange={setExecutionDetailsOpen}
-              />
-
-              {/* ===================================================================
-          Workflows List
-          =================================================================== */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold font-mono uppercase">
-                    Available Workflows
-                  </h2>
-                </div>
-
-                <div className="grid gap-4">
-                  {filteredWorkflows.map((workflow, index) => (
-                    <WorkflowCardEnhanced
-                      key={workflow.id}
-                      workflow={workflow}
-                      executions={executions.filter(
-                        e => e.workflow_id === workflow.id
-                      )}
-                      liveExecutions={liveExecutions}
-                      isSelected={selectedIndex === index}
-                      onSelect={() => setSelectedIndex(index)}
-                      onExecute={() => handleQuickExecute(workflow.id)}
-                      onView={() => fetchWorkflowOverview(workflow.id)}
-                      onDuplicate={() => handleQuickDuplicate(workflow.id)}
-                      onEdit={() => handleQuickEdit(workflow.id)}
-                      onDelete={() => handleDeleteWorkflow(workflow.id)}
-                      onToggleCron={() => handleToggleCron(workflow.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* ===================================================================
-          Recent Executions
-          =================================================================== */}
-              {executions.length > 0 && (
-                <div className="space-y-4 mt-8">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <h2 className="text-lg font-bold font-mono uppercase">
-                        Recent Executions
-                        {executionWorkflowFilter !== 'all' && (
-                          <span className="ml-2 text-sm font-normal text-gray-600">
-                            (
-                            {
-                              workflows.find(
-                                w => w.id === executionWorkflowFilter
-                              )?.name
-                            }
-                            )
-                          </span>
-                        )}
-                      </h2>
-                      {executions.some(e => e.status === 'queued') && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-2 border-black hover:bg-black hover:text-white"
-                          onClick={async () => {
-                            try {
-                              const response = await fetch(
-                                '/api/admin/process-queue',
-                                {
-                                  method: 'POST',
-                                }
-                              );
-                              const data = await response.json();
-                              if (response.ok) {
-                                alert(
-                                  `Processed ${data.processed.length} workflows`
-                                );
-                                await fetchExecutions();
-                                await fetchLiveExecutions();
-                              } else {
-                                alert(`Failed to process queue: ${data.error}`);
-                              }
-                            } catch (error) {
-                              console.error('Error processing queue:', error);
-                              alert('Failed to process queue');
-                            }
-                          }}
-                          title="Manually process queued workflows"
-                        >
-                          <PlayCircle className="w-4 h-4 mr-2" />
-                          Process Queue
-                        </Button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={executionWorkflowFilter}
-                        onChange={e =>
-                          setExecutionWorkflowFilter(
-                            e.target.value === 'all'
-                              ? 'all'
-                              : parseInt(e.target.value)
-                          )
-                        }
-                        className="px-3 py-1 text-sm border border-black rounded font-mono bg-white hover:bg-gray-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-black"
-                      >
-                        <option value="all">All Workflows</option>
-                        {workflows.map(w => (
-                          <option key={w.id} value={w.id}>
-                            {w.name}
-                          </option>
-                        ))}
-                      </select>
-                      {executionWorkflowFilter !== 'all' && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setExecutionWorkflowFilter('all')}
-                          className="text-xs"
-                        >
-                          Clear
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="border border-black rounded-lg overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-gray-50 border-b border-black">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                            Workflow
-                          </th>
-                          <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                            Status
-                          </th>
-                          <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                            Started
-                          </th>
-                          <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                            Duration
-                          </th>
-                          <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {executions
-                          .filter(
-                            e =>
-                              executionWorkflowFilter === 'all' ||
-                              e.workflow_id === executionWorkflowFilter
-                          )
-                          .slice(0, 10)
-                          .map(execution => {
-                            const workflow = workflows.find(
-                              w => w.id === execution.workflow_id
-                            );
-                            const isLive = liveExecutions.some(
-                              le => le.id === execution.execution_id
-                            );
-                            return (
-                              <tr
-                                key={`execution-${execution.execution_id}`}
-                                className="hover:bg-gray-50"
-                              >
-                                <td className="px-4 py-2 text-sm font-mono">
-                                  {workflow?.name ||
-                                    `Workflow ${execution.workflow_id}`}
-                                </td>
-                                <td className="px-4 py-2">
-                                  <span
-                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                      execution.status === 'completed'
-                                        ? 'bg-green-100 text-green-800'
-                                        : execution.status === 'failed'
-                                          ? 'bg-red-100 text-red-800'
-                                          : execution.status === 'running' ||
-                                              isLive
-                                            ? 'bg-yellow-100 text-yellow-800 animate-pulse'
-                                            : 'bg-gray-100 text-gray-800'
-                                    }`}
+                <div className="border border-black rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-black">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
+                          Workflow
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
+                          Status
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
+                          Started
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
+                          Duration
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {executions
+                        .filter(
+                          e =>
+                            executionWorkflowFilter === 'all' ||
+                            e.workflow_id === executionWorkflowFilter
+                        )
+                        .slice(0, 10)
+                        .map(execution => {
+                          const workflow = workflows.find(
+                            w => w.id === execution.workflow_id
+                          );
+                          const isLive = liveExecutions.some(
+                            le => le.id === execution.execution_id
+                          );
+                          return (
+                            <tr
+                              key={`execution-${execution.execution_id}`}
+                              className="hover:bg-gray-50"
+                            >
+                              <td className="px-4 py-2 text-sm font-mono">
+                                {workflow?.name ||
+                                  `Workflow ${execution.workflow_id}`}
+                              </td>
+                              <td className="px-4 py-2">
+                                <span
+                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                    execution.status === 'completed'
+                                      ? 'bg-green-100 text-green-800'
+                                      : execution.status === 'failed'
+                                        ? 'bg-red-100 text-red-800'
+                                        : execution.status === 'running' ||
+                                            isLive
+                                          ? 'bg-yellow-100 text-yellow-800 animate-pulse'
+                                          : 'bg-gray-100 text-gray-800'
+                                  }`}
+                                >
+                                  {execution.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-600">
+                                {new Date(
+                                  execution.started_at || execution.created_at
+                                ).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-2 text-sm font-mono">
+                                {execution.completed_at && execution.started_at
+                                  ? `${Math.round((new Date(execution.completed_at).getTime() - new Date(execution.started_at).getTime()) / 1000)}s`
+                                  : isLive
+                                    ? 'Running...'
+                                    : '-'}
+                              </td>
+                              <td className="px-4 py-2">
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 border border-black hover:bg-black hover:text-white"
+                                    onClick={() => {
+                                      setSelectedExecution(execution);
+                                      setExecutionDetailsOpen(true);
+                                    }}
+                                    title="View Details"
                                   >
-                                    {execution.status.toUpperCase()}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 text-sm text-gray-600">
-                                  {new Date(
-                                    execution.started_at || execution.created_at
-                                  ).toLocaleString()}
-                                </td>
-                                <td className="px-4 py-2 text-sm font-mono">
-                                  {execution.completed_at &&
-                                  execution.started_at
-                                    ? `${Math.round((new Date(execution.completed_at).getTime() - new Date(execution.started_at).getTime()) / 1000)}s`
-                                    : isLive
-                                      ? 'Running...'
-                                      : '-'}
-                                </td>
-                                <td className="px-4 py-2">
-                                  <div className="flex gap-1">
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  {(execution.status === 'running' ||
+                                    execution.status === 'queued') && (
                                     <Button
                                       size="icon"
                                       variant="ghost"
-                                      className="h-8 w-8 border border-black hover:bg-black hover:text-white"
-                                      onClick={() => {
-                                        setSelectedExecution(execution);
-                                        setExecutionDetailsOpen(true);
-                                      }}
-                                      title="View Details"
-                                    >
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                    {(execution.status === 'running' ||
-                                      execution.status === 'queued') && (
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        className="h-8 w-8 bg-black text-white hover:bg-gray-800"
-                                        onClick={async () => {
-                                          if (
-                                            confirm(
-                                              `Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`
-                                            )
-                                          ) {
-                                            try {
-                                              const response = await fetch(
-                                                `/api/remote-workflows/executions/${execution.execution_id}/cancel`,
-                                                {
-                                                  method: 'POST',
-                                                }
-                                              );
-                                              if (response.ok) {
-                                                // Refresh executions
-                                                await fetchExecutions();
-                                                await fetchLiveExecutions();
-                                              } else {
-                                                const error =
-                                                  await response.json();
-                                                console.error(
-                                                  'Cancel failed:',
-                                                  error
-                                                );
-                                                alert(
-                                                  `Failed to cancel execution: ${error.error || 'Unknown error'}`
-                                                );
-                                              }
-                                            } catch (error) {
-                                              console.error(
-                                                'Error canceling execution:',
-                                                error
-                                              );
-                                              alert(
-                                                'Error canceling execution'
-                                              );
-                                            }
-                                          }
-                                        }}
-                                        title={
-                                          execution.status === 'queued'
-                                            ? 'Cancel'
-                                            : 'Stop'
-                                        }
-                                      >
-                                        <StopCircle className="h-4 w-4" />
-                                      </Button>
-                                    )}
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-8 w-8 border border-black hover:bg-red-600 hover:text-white hover:border-red-600"
+                                      className="h-8 w-8 bg-black text-white hover:bg-gray-800"
                                       onClick={async () => {
                                         if (
                                           confirm(
-                                            `Are you sure you want to DELETE this execution? This cannot be undone.`
+                                            `Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`
                                           )
                                         ) {
                                           try {
                                             const response = await fetch(
-                                              `/api/remote-workflows/executions/${execution.execution_id}/delete`,
+                                              `/api/remote-workflows/executions/${execution.execution_id}/cancel`,
                                               {
-                                                method: 'DELETE',
+                                                method: 'POST',
                                               }
                                             );
                                             if (response.ok) {
@@ -1103,39 +1049,88 @@ function AuthenticatedDeploymentsPage({
                                               const error =
                                                 await response.json();
                                               console.error(
-                                                'Delete failed:',
+                                                'Cancel failed:',
                                                 error
                                               );
                                               alert(
-                                                `Failed to delete execution: ${error.error || 'Unknown error'}`
+                                                `Failed to cancel execution: ${error.error || 'Unknown error'}`
                                               );
                                             }
                                           } catch (error) {
                                             console.error(
-                                              'Error deleting execution:',
+                                              'Error canceling execution:',
                                               error
                                             );
-                                            alert('Error deleting execution');
+                                            alert('Error canceling execution');
                                           }
                                         }
                                       }}
-                                      title="Delete Execution"
+                                      title={
+                                        execution.status === 'queued'
+                                          ? 'Cancel'
+                                          : 'Stop'
+                                      }
                                     >
-                                      <Trash2 className="h-4 w-4" />
+                                      <StopCircle className="h-4 w-4" />
                                     </Button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
+                                  )}
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 border border-black hover:bg-red-600 hover:text-white hover:border-red-600"
+                                    onClick={async () => {
+                                      if (
+                                        confirm(
+                                          `Are you sure you want to DELETE this execution? This cannot be undone.`
+                                        )
+                                      ) {
+                                        try {
+                                          const response = await fetch(
+                                            `/api/remote-workflows/executions/${execution.execution_id}/delete`,
+                                            {
+                                              method: 'DELETE',
+                                            }
+                                          );
+                                          if (response.ok) {
+                                            // Refresh executions
+                                            await fetchExecutions();
+                                            await fetchLiveExecutions();
+                                          } else {
+                                            const error = await response.json();
+                                            console.error(
+                                              'Delete failed:',
+                                              error
+                                            );
+                                            alert(
+                                              `Failed to delete execution: ${error.error || 'Unknown error'}`
+                                            );
+                                          }
+                                        } catch (error) {
+                                          console.error(
+                                            'Error deleting execution:',
+                                            error
+                                          );
+                                          alert('Error deleting execution');
+                                        }
+                                      }
+                                    }}
+                                    title="Delete Execution"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
       {/* Command Palette */}
       <CommandPalette
@@ -1198,6 +1193,6 @@ function AuthenticatedDeploymentsPage({
         initialName={templateName}
         onWorkflowCreated={handleWorkflowCreated}
       />
-    </div>
+    </>
   );
 }
