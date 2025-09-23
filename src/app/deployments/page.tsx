@@ -641,86 +641,87 @@ function AuthenticatedDeploymentsPage({
       <SidebarProvider>
         <div className="flex h-screen overflow-hidden">
           <DeploymentSidebar
-          stats={{
-            total: 0,
-            running: 0,
-            paused: 0,
-            failed: 0,
-            automated: 0,
-          }}
-          selectedFilter="all"
-          onFilterChange={() => {}}
-          onCreateWorkflow={() => {}}
-          canViewAlerts={false}
-        />
-        <DeploymentsPageContent>
-          <div className="overflow-y-auto overflow-x-hidden">
-            <div className="max-w-7xl mx-auto p-6 space-y-6">
-            {/* Header skeleton */}
-            <div className="flex items-start justify-between mb-6">
-              <div className="space-y-2">
-                <Skeleton className="h-8 w-80" />
-                <Skeleton className="h-5 w-64" />
-                <Skeleton className="h-4 w-48" />
-              </div>
-            </div>
+            stats={{
+              total: 0,
+              running: 0,
+              paused: 0,
+              failed: 0,
+              automated: 0,
+            }}
+            selectedFilter="all"
+            onFilterChange={() => {}}
+            onCreateWorkflow={() => {}}
+            canViewAlerts={false}
+          />
+          <DeploymentsPageContent>
+            <div className="overflow-y-auto overflow-x-hidden">
+              <div className="max-w-7xl mx-auto p-6 space-y-6">
+                {/* Header skeleton */}
+                <div className="flex items-start justify-between mb-6">
+                  <div className="space-y-2">
+                    <Skeleton className="h-8 w-80" />
+                    <Skeleton className="h-5 w-64" />
+                    <Skeleton className="h-4 w-48" />
+                  </div>
+                </div>
 
-            {/* Workflows section skeleton */}
-            <div className="space-y-4">
-              <Skeleton className="h-7 w-48" />
-              <div className="grid gap-4">
-                <Card className="border border-gray-200">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-3 flex-1">
-                        <Skeleton className="h-6 w-64" />
-                        <Skeleton className="h-4 w-96" />
-                        <div className="flex gap-2">
-                          <Skeleton className="h-5 w-20" />
-                          <Skeleton className="h-5 w-24" />
-                          <Skeleton className="h-5 w-16" />
+                {/* Workflows section skeleton */}
+                <div className="space-y-4">
+                  <Skeleton className="h-7 w-48" />
+                  <div className="grid gap-4">
+                    <Card className="border border-gray-200">
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-3 flex-1">
+                            <Skeleton className="h-6 w-64" />
+                            <Skeleton className="h-4 w-96" />
+                            <div className="flex gap-2">
+                              <Skeleton className="h-5 w-20" />
+                              <Skeleton className="h-5 w-24" />
+                              <Skeleton className="h-5 w-16" />
+                            </div>
+                          </div>
+                          <Skeleton className="h-8 w-8 rounded" />
                         </div>
-                      </div>
-                      <Skeleton className="h-8 w-8 rounded" />
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="border border-gray-200">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-3 flex-1">
-                        <Skeleton className="h-6 w-48" />
-                        <Skeleton className="h-4 w-80" />
-                        <div className="flex gap-2">
-                          <Skeleton className="h-5 w-20" />
-                          <Skeleton className="h-5 w-28" />
+                      </CardContent>
+                    </Card>
+                    <Card className="border border-gray-200">
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-3 flex-1">
+                            <Skeleton className="h-6 w-48" />
+                            <Skeleton className="h-4 w-80" />
+                            <div className="flex gap-2">
+                              <Skeleton className="h-5 w-20" />
+                              <Skeleton className="h-5 w-28" />
+                            </div>
+                          </div>
+                          <Skeleton className="h-8 w-8 rounded" />
                         </div>
-                      </div>
-                      <Skeleton className="h-8 w-8 rounded" />
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="border border-gray-200">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-3 flex-1">
-                        <Skeleton className="h-6 w-72" />
-                        <Skeleton className="h-4 w-full" />
-                        <div className="flex gap-2">
-                          <Skeleton className="h-5 w-24" />
-                          <Skeleton className="h-5 w-20" />
-                          <Skeleton className="h-5 w-32" />
+                      </CardContent>
+                    </Card>
+                    <Card className="border border-gray-200">
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-3 flex-1">
+                            <Skeleton className="h-6 w-72" />
+                            <Skeleton className="h-4 w-full" />
+                            <div className="flex gap-2">
+                              <Skeleton className="h-5 w-24" />
+                              <Skeleton className="h-5 w-20" />
+                              <Skeleton className="h-5 w-32" />
+                            </div>
+                          </div>
+                          <Skeleton className="h-8 w-8 rounded" />
                         </div>
-                      </div>
-                      <Skeleton className="h-8 w-8 rounded" />
-                    </div>
-                  </CardContent>
-                </Card>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </DeploymentsPageContent>
-      </div>
+          </DeploymentsPageContent>
+        </div>
       </SidebarProvider>
     );
   }
