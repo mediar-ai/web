@@ -18,7 +18,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { Loader2, Terminal, XCircle } from 'lucide-react';
+import { Loader2, Terminal, XCircle, FileText } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
 
