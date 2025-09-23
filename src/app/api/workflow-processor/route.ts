@@ -74,7 +74,7 @@ async function executeMCPWorkflow(
             const jsonStr = line.slice(6); // Remove "data: " prefix
             try {
               return JSON.parse(jsonStr);
-            } catch (e) {
+            } catch {
               // Continue to next line if parse fails
             }
           }
