@@ -187,15 +187,10 @@ export function DeploymentSidebar({
                         }}
                         className={cn(
                           "w-full",
-                          isNavigationItem && isActive && "bg-black text-white hover:bg-gray-800"
+                          isNavigationItem && isActive && "!bg-black !text-white hover:!bg-gray-800 [&>svg]:!text-white"
                         )}
                       >
-                        <item.icon
-                          className={cn(
-                            'mr-2 h-4 w-4',
-                            isActive ? (isNavigationItem ? 'text-white' : 'text-black') : 'text-gray-600'
-                          )}
-                        />
+                        <item.icon className="mr-2 h-4 w-4" />
                         <span className="flex-1">{item.label}</span>
                         {'count' in item && item.count !== undefined && (
                           <Badge
