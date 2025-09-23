@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Sidebar,
   SidebarContent,
@@ -66,6 +66,20 @@ export function DeploymentSidebar({
   const pathname = usePathname();
   const router = useRouter();
 
+  // Add keyboard shortcut for new workflow
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd/Ctrl + N
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        onCreateWorkflow?.();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCreateWorkflow]);
+
   // Determine current page from pathname if not explicitly provided
   const activePage = currentPage || (
     pathname?.includes('/notifications') ? 'alerts' :
@@ -128,12 +142,16 @@ export function DeploymentSidebar({
         </div>
         <div className="px-4 pb-2">
           <Button
-            className="w-full bg-black text-white hover:bg-gray-800"
+            className="w-full bg-black text-white hover:bg-gray-800 group/button"
             size="sm"
             onClick={onCreateWorkflow}
+            title="Create new workflow (Ctrl+N / Cmd+N)"
           >
             <Plus className="mr-2 h-4 w-4" />
-            New Workflow
+            <span className="flex-1 text-left">New Workflow</span>
+            <kbd className="ml-2 px-1.5 py-0.5 text-[10px] bg-gray-700 text-gray-200 rounded font-mono group-hover/button:bg-gray-600">
+              {typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'}+N
+            </kbd>
           </Button>
         </div>
       </SidebarHeader>
