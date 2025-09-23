@@ -88,6 +88,18 @@
 
 ## Testing & Deployment
 
+### Pre-Push Checklist
+**IMPORTANT: Always verify before pushing to main:**
+1. Run `npm run build` to ensure Next.js builds successfully
+2. Check for any TypeScript errors or ESLint warnings that will fail Vercel deployment
+3. Fix all build errors before committing - Vercel deployments will fail if the build fails
+4. Common issues to check:
+   - Unused variables (prefix with `_` if intentionally unused)
+   - Missing imports or undefined variables
+   - useSearchParams() must be wrapped in Suspense boundary
+   - TypeScript type errors
+5. If build succeeds locally, it should deploy successfully on Vercel
+
 ### Modal Deployment (Windows Encoding Fix)
 - If you encounter encoding errors when deploying Modal apps on Windows:
   ```bash
