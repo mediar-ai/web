@@ -182,10 +182,14 @@ export async function POST(request: NextRequest) {
         workflowData.requires_files = true;
       }
 
+      // Use the user-provided name and description if available
+      const userProvidedName = formData.get('name') as string;
+      const userProvidedDescription = formData.get('description') as string;
+
       // Create workflow record
       const workflowRecord = {
-        name: workflowData.name || 'Untitled Workflow',
-        description: workflowData.description || '',
+        name: userProvidedName || workflowData.name || 'Untitled Workflow',
+        description: userProvidedDescription || workflowData.description || '',
         version: workflowData.version || '1.0.0',
         status: 'deployed',
         workflow_type: 'execution',
