@@ -7,103 +7,30 @@ export async function POST(_request: NextRequest) {
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Process all queued workflows by simulating execution
+    // Just check the queue status - don't process anything
+    // The actual processing is done by Modal's scheduled function
     const { data: queuedExecutions } = await supabase
       .from('workflow_executions')
-      .select('id, workflow_id')
+      .select('id, workflow_id, created_at')
       .eq('status', 'queued')
+      .order('created_at', { ascending: true })
       .limit(10);
 
     if (!queuedExecutions || queuedExecutions.length === 0) {
       return NextResponse.json({
         success: true,
-        message: 'No queued workflows to process'
+        message: 'No queued workflows',
+        queue_count: 0
       });
     }
 
-    const processed = [];
-
-    for (const execution of queuedExecutions) {
-      // Update to running
-      await supabase
-        .from('workflow_executions')
-        .update({
-          status: 'running',
-          started_at: new Date().toISOString()
-        })
-        .eq('id', execution.id);
-
-      // Get workflow details
-      const { data: workflow } = await supabase
-        .from('deployed_workflows')
-        .select('name, version')
-        .eq('id', execution.workflow_id)
-        .single();
-
-      const workflowName = workflow?.name || 'Unknown Workflow';
-      const workflowVersion = workflow?.version || '1.0.0';
-
-      // Create execution logs in the correct format
-      const logs = [
-        {
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: `Starting ${workflowName} v${workflowVersion}`
-        },
-        {
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: `Execution ID: ${execution.id}`
-        },
-        {
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Initializing workflow...'
-        },
-        {
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Processing workflow steps...'
-        },
-        {
-          timestamp: new Date().toISOString(),
-          level: 'success',
-          message: 'Workflow completed successfully'
-        }
-      ];
-
-      // Create results
-      const results = {
-        success: true,
-        execution_id: execution.id,
-        workflow_name: workflowName,
-        workflow_version: workflowVersion,
-        completed_at: new Date().toISOString(),
-        data: {
-          processed: true,
-          status: 'SUCCESS',
-          message: 'Workflow executed successfully via manual trigger'
-        }
-      };
-
-      // Update to completed with logs and results
-      await supabase
-        .from('workflow_executions')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          execution_logs: logs,
-          results: results
-        })
-        .eq('id', execution.id);
-
-      processed.push(execution.id);
-    }
-
+    // Return queue status without processing
     return NextResponse.json({
       success: true,
-      message: `Processed ${processed.length} workflows`,
-      execution_ids: processed
+      message: `${queuedExecutions.length} workflows in queue (Modal will process them)`,
+      queue_count: queuedExecutions.length,
+      queued_ids: queuedExecutions.map(e => e.id),
+      note: 'Workflows are processed automatically by Modal every second'
     });
 
   } catch (error) {
