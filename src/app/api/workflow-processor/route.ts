@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 
-// Process workflows in the background using edge runtime for long-running tasks
-export const runtime = 'edge';
+// Process workflows in the background using Node.js runtime for MCP SDK compatibility
+export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes max
 
 async function executeMCPWorkflow(
@@ -11,6 +14,8 @@ async function executeMCPWorkflow(
   mcpEndpoint: string
 ): Promise<{ success: boolean; results?: any; error?: string; logs: string[] }> {
   const logs: string[] = [];
+  let client: Client | null = null;
+  let transport: StreamableHTTPClientTransport | null = null;
 
   try {
     // Normalize the endpoint
@@ -19,70 +24,69 @@ async function executeMCPWorkflow(
 
     logs.push(`Connecting to MCP endpoint: ${endpointUrl}`);
 
-    // Helper to send JSON-RPC requests
-    const sendRequest = async (method: string, params: any, id: number) => {
-      const response = await fetch(endpointUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method,
-          params,
-          id
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`MCP request failed: ${response.status} ${response.statusText}`);
-      }
-
-      return await response.json();
-    };
-
-    // Step 1: Initialize MCP session
-    const initResult = await sendRequest('initialize', {
-      protocolVersion: '2024-11-05',
+    // Create MCP client
+    client = new Client({
+      name: 'browser-workflow-executor',
+      version: '1.0.0'
+    }, {
       capabilities: {
         tools: {},
         prompts: {},
         resources: {}
-      },
-      clientInfo: {
-        name: 'browser-workflow-executor',
-        version: '1.0.0'
       }
-    }, 1);
+    });
 
-    if (initResult.error) {
-      throw new Error(`MCP initialization error: ${initResult.error.message}`);
+    // Create transport with the endpoint URL
+    transport = new StreamableHTTPClientTransport(
+      new URL(endpointUrl)
+    );
+
+    // Connect the client
+    await client.connect(transport);
+    logs.push('MCP client connected');
+
+    // Prepare the steps - ensure it's an array
+    let steps = workflowData.steps || workflowData.automation_sequence || [];
+
+    // If steps is a single object, wrap it in an array
+    if (!Array.isArray(steps)) {
+      steps = [steps];
     }
 
-    logs.push('MCP session initialized');
+    logs.push(`Executing ${steps.length} steps`);
 
-    // Step 2: Execute the workflow
-    const executeResult = await sendRequest('tools/call', {
-      name: 'execute_sequence',
-      arguments: {
-        steps: workflowData.steps || workflowData.automation_sequence || [],
-        inputs: executionParams || {},
-        verbosity: 'normal'
+    // Call the execute_sequence tool - the MCP server expects the steps directly as arguments
+    const result = await client.request({
+      method: 'tools/call',
+      params: {
+        name: 'execute_sequence',
+        arguments: steps
       }
-    }, 2);
-
-    if (executeResult.error) {
-      throw new Error(`Workflow execution error: ${executeResult.error.message}`);
-    }
+    }, CallToolResultSchema);
 
     logs.push('Workflow completed successfully');
 
+    // Close the connection
+    await transport.close();
+
     return {
       success: true,
-      results: executeResult.result || executeResult,
+      results: result.content || result,
       logs
     };
 
   } catch (error) {
     logs.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
+
+    // Clean up on error
+    if (transport) {
+      try {
+        await transport.close();
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    }
+
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
