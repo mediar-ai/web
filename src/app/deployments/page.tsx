@@ -294,16 +294,13 @@ function AuthenticatedDeploymentsPage({
       const response = await fetch('/api/remote-workflows/list');
       const workflowData = await response.json();
       if (workflowData.success) {
-        // Sort workflows for consistent order
+        // Sort workflows by creation date (oldest first)
         const sortedWorkflows = (workflowData.workflows || []).sort(
           (a: WorkflowWithSettings, b: WorkflowWithSettings) => {
-            // Sort by name first (case-insensitive), then by ID for stability
-            const nameCompare = a.name
-              .toLowerCase()
-              .localeCompare(b.name.toLowerCase());
-            if (nameCompare !== 0) return nameCompare;
-            // If names are identical (unlikely), sort by ID
-            return a.id - b.id;
+            // Sort by created_at (oldest first)
+            const dateA = new Date(a.created_at).getTime();
+            const dateB = new Date(b.created_at).getTime();
+            return dateA - dateB;
           }
         );
         setWorkflows(sortedWorkflows);
