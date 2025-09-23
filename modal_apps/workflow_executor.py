@@ -24,6 +24,7 @@ from lib.locks import (
     release_acquired_locks,
 )
 from lib.mcp_client import normalize_endpoint, post_with_503_backoff
+from lib.file_manager import WorkflowFileManager
 from output_enrichment import enrich_results_if_enabled
 
 # Configure logging to capture everything
