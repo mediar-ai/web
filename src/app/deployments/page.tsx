@@ -26,7 +26,7 @@ import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, Eye, StopCircle, Trash2, PlayCircle } from 'lucide-react';
+import { Eye, StopCircle, Trash2, PlayCircle } from 'lucide-react';
 
 // ============================================================================
 // Components
