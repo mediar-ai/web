@@ -1327,34 +1327,44 @@ async def execute_mcp_workflow(
                 logger.info(f" Using configured root_path: {root_path}")
             else:
                 import os
-                # For workflow 38 and 40, we know the subdirectory is 'test-workflow-with-files'
-                # This is a temporary fix until we properly store the subdirectory in files_config
-                if wf_id in [38, 40]:
-                    root_path = os.path.join(base_path, "test-workflow-with-files") + "\\"
-                    logger.info(f" Using known subdirectory for workflow {wf_id}: {root_path}")
-                else:
-                    # Try to find the first subdirectory in the workflow's folder
-                    # Note: This won't work in Modal container since S: drive doesn't exist there
-                    try:
-                        if os.path.exists(base_path):
-                            subdirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
-                            if subdirs:
-                                # Use the first subdirectory found
-                                root_path = os.path.join(base_path, subdirs[0]) + "\\"
-                                logger.info(f" Found subdirectory '{subdirs[0]}', using root_path: {root_path}")
-                            else:
-                                root_path = base_path
-                                logger.info(f" No subdirectory found, using root_path: {root_path}")
+                import requests
+
+                # Call the VM management API to detect the subdirectory
+                try:
+                    detect_url = f"{VM_MANAGEMENT_ENDPOINT}/detect-subdirectory"
+                    detect_payload = {
+                        "workflow_id": wf_id,
+                        "base_path": base_path
+                    }
+
+                    logger.info(f" Calling VM to detect subdirectory for workflow {wf_id} at {base_path}")
+                    detect_response = requests.post(
+                        detect_url,
+                        json=detect_payload,
+                        timeout=5
+                    )
+
+                    if detect_response.status_code == 200:
+                        detect_data = detect_response.json()
+                        if detect_data.get("success") and detect_data.get("subdirectory"):
+                            subdirectory = detect_data["subdirectory"]
+                            root_path = os.path.join(base_path, subdirectory) + "\\"
+                            logger.info(f" VM API detected subdirectory '{subdirectory}', using root_path: {root_path}")
                         else:
-                            # S: drive doesn't exist in Modal container - use base path
-                            logger.info(f" Base path not accessible from container: {base_path}")
-                            root_path = base_path
-                            logger.info(f" Using base root_path: {root_path}")
-                    except Exception as e:
-                        # If we can't list the directory (e.g., running in Modal), use the base path
-                        logger.warning(f" Could not list directory {base_path}: {e}")
-                        root_path = base_path
-                        logger.info(f" Using fallback root_path: {root_path}")
+                            # No subdirectory found, files are directly in base path
+                            root_path = base_path + "\\"
+                            logger.info(f" VM API found no subdirectory, using base path: {root_path}")
+                    else:
+                        # Fallback: just use base path if API call fails
+                        root_path = base_path + "\\"
+                        logger.warning(f"⚠ VM subdirectory detection failed (status {detect_response.status_code}), using base path: {root_path}")
+
+                except Exception as e:
+                    logger.warning(f"⚠ Error calling VM for subdirectory detection: {e}")
+                    # Final fallback - assume the subdirectory has the same pattern
+                    # Most workflows seem to have their files in a subdirectory
+                    root_path = base_path + "\\"
+                    logger.info(f" Using fallback base path: {root_path}")
         else:
             logger.warning(" Workflow requires files but no workflow_id available!")
             root_path = None
