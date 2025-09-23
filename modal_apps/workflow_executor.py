@@ -1326,45 +1326,11 @@ async def execute_mcp_workflow(
                 root_path = os.path.join(base_path, subdirectory) + "\\"
                 logger.info(f" Using configured root_path: {root_path}")
             else:
-                import os
-                import requests
-
-                # Call the VM management API to detect the subdirectory
-                try:
-                    detect_url = f"{VM_MANAGEMENT_ENDPOINT}/detect-subdirectory"
-                    detect_payload = {
-                        "workflow_id": wf_id,
-                        "base_path": base_path
-                    }
-
-                    logger.info(f" Calling VM to detect subdirectory for workflow {wf_id} at {base_path}")
-                    detect_response = requests.post(
-                        detect_url,
-                        json=detect_payload,
-                        timeout=5
-                    )
-
-                    if detect_response.status_code == 200:
-                        detect_data = detect_response.json()
-                        if detect_data.get("success") and detect_data.get("subdirectory"):
-                            subdirectory = detect_data["subdirectory"]
-                            root_path = os.path.join(base_path, subdirectory) + "\\"
-                            logger.info(f" VM API detected subdirectory '{subdirectory}', using root_path: {root_path}")
-                        else:
-                            # No subdirectory found, files are directly in base path
-                            root_path = base_path + "\\"
-                            logger.info(f" VM API found no subdirectory, using base path: {root_path}")
-                    else:
-                        # Fallback: just use base path if API call fails
-                        root_path = base_path + "\\"
-                        logger.warning(f"⚠ VM subdirectory detection failed (status {detect_response.status_code}), using base path: {root_path}")
-
-                except Exception as e:
-                    logger.warning(f"⚠ Error calling VM for subdirectory detection: {e}")
-                    # Final fallback - assume the subdirectory has the same pattern
-                    # Most workflows seem to have their files in a subdirectory
-                    root_path = base_path + "\\"
-                    logger.info(f" Using fallback base path: {root_path}")
+                # The files are stored with their full path including subdirectory in S3
+                # When mounted via rclone, they appear at S:\workflows\{id}\{subdirectory}\{files}
+                # Just use the base path - the MCP server will resolve paths relative to it
+                root_path = base_path + "\\"
+                logger.info(f" Using base path for scripts: {root_path}")
         else:
             logger.warning(" Workflow requires files but no workflow_id available!")
             root_path = None

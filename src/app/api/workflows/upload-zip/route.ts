@@ -159,10 +159,9 @@ export async function POST(request: NextRequest) {
       const file = zipContent.file(jsFile);
       if (file) {
         const content = await file.async('nodebuffer');
-        // Strip root folder from path if present
-        const cleanPath = rootFolder ? jsFile.substring(rootFolder.length) : jsFile;
+        // Keep the full path including root folder
         filesToUpload.push({
-          path: cleanPath,
+          path: jsFile,
           content: content as Buffer
         });
       }
