@@ -141,7 +141,7 @@ export function DeploymentSidebar({
   ];
 
   return (
-    <Sidebar className="h-full border-r border-gray-200">
+    <Sidebar className="h-full">
       <SidebarHeader>
         <div className="px-4 py-2 flex items-center justify-between group">
           <h2 className="text-sm font-semibold font-mono uppercase">Deployments</h2>
