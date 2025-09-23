@@ -2448,7 +2448,7 @@ def execute_workflow(
         # when the workflow_executions status changes to 'completed' or 'failed'
 
         # Trigger alert check for failed executions
-        if workflow_status == "failed" or execution_has_errors:
+        if workflow_status == "failed" or error_message_for_db:
             try:
                 import requests
                 # Get workflow details for the alert
