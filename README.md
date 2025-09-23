@@ -1,7 +1,7 @@
 # Browser Workflow Capture App
 
 A Next.js application for capturing, analyzing, and executing browser workflows with AI.
-
+ 
 ## Features
 
 - **Workflow Dashboard** - View and manage automated workflows
