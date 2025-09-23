@@ -82,7 +82,7 @@ async function executeMCPWorkflow(
     if (transport) {
       try {
         await transport.close();
-      } catch (e) {
+      } catch {
         // Ignore cleanup errors
       }
     }
