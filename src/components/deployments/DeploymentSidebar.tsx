@@ -143,9 +143,9 @@ export function DeploymentSidebar({
   return (
     <Sidebar className="h-full">
       <SidebarHeader>
-        <div className="px-4 py-2 flex items-center justify-between group">
+        <div className="px-4 py-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold font-mono uppercase">Deployments</h2>
-          <SidebarTrigger className="transition-opacity opacity-0 group-hover:opacity-100 data-[state=collapsed]:opacity-100" />
+          <SidebarTrigger className="h-6 w-6 hover:bg-gray-200 rounded" />
         </div>
         <div className="px-4 pb-2">
           <Button
