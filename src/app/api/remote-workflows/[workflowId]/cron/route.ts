@@ -1,11 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
-
 /**
  * PATCH /api/remote-workflows/[workflowId]/cron - Toggle cron schedule
  */
@@ -16,7 +11,7 @@ export async function PATCH(
   try {
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
-    
+
     if (isNaN(workflowIdNum)) {
       return NextResponse.json(
         { success: false, error: 'Invalid workflow ID' },
@@ -35,6 +30,21 @@ export async function PATCH(
     }
 
     console.log(`🔄 ${enabled ? 'Enabling' : 'Disabling'} cron schedule for workflow ${workflowIdNum}`);
+
+    // Get environment variables and check them
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('❌ Supabase environment variables are not set');
+      return NextResponse.json(
+        { success: false, error: 'Supabase configuration error' },
+        { status: 500 }
+      );
+    }
+
+    // Create Supabase client
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Update the cron_enabled status
     const { data: updatedWorkflow, error } = await supabase
@@ -92,13 +102,28 @@ export async function GET(
   try {
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
-    
+
     if (isNaN(workflowIdNum)) {
       return NextResponse.json(
         { success: false, error: 'Invalid workflow ID' },
         { status: 400 }
       );
     }
+
+    // Get environment variables and check them
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('❌ Supabase environment variables are not set');
+      return NextResponse.json(
+        { success: false, error: 'Supabase configuration error' },
+        { status: 500 }
+      );
+    }
+
+    // Create Supabase client
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: workflow, error } = await supabase
       .from('deployed_workflows')

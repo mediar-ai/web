@@ -397,6 +397,8 @@ export function WorkflowCard({
   const handleCronToggle = async () => {
     setCronToggling(true);
     try {
+      console.log(`🔄 Toggling cron for workflow ${workflow.id}, current state: ${workflow.cron_enabled}`);
+
       const response = await fetch(
         `/api/remote-workflows/${workflow.id}/cron`,
         {
@@ -408,9 +410,29 @@ export function WorkflowCard({
         }
       );
 
+      console.log(`📡 Cron toggle response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Cron toggle failed with status ${response.status}:`, errorText);
+
+        let errorMessage = `Server error (${response.status})`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorMessage;
+        } catch {
+          if (errorText) errorMessage = errorText;
+        }
+
+        alert(`Failed to ${!workflow.cron_enabled ? 'enable' : 'disable'} schedule: ${errorMessage}`);
+        return;
+      }
+
       const result = await response.json();
+      console.log('✅ Cron toggle response:', result);
 
       if (result.success) {
+        console.log('🔄 Refreshing workflow list...');
         // Trigger a refresh of the workflow list
         if (onBatchSubmit) {
           onBatchSubmit();
@@ -418,13 +440,14 @@ export function WorkflowCard({
       } else {
         console.error('Failed to toggle cron schedule:', result.error);
         alert(
-          `Failed to ${!workflow.cron_enabled ? 'enable' : 'disable'} schedule`
+          `Failed to ${!workflow.cron_enabled ? 'enable' : 'disable'} schedule: ${result.error}`
         );
       }
     } catch (error) {
       console.error('Error toggling cron schedule:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       alert(
-        `Error ${!workflow.cron_enabled ? 'enabling' : 'disabling'} schedule`
+        `Error ${!workflow.cron_enabled ? 'enabling' : 'disabling'} schedule: ${errorMessage}`
       );
     } finally {
       setCronToggling(false);
