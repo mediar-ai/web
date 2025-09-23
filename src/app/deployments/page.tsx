@@ -353,13 +353,13 @@ function AuthenticatedDeploymentsPage({
     if (!workflow) return;
 
     try {
-      const response = await fetch(`/api/remote-workflows/${workflowId}`, {
+      const response = await fetch(`/api/remote-workflows/${workflowId}/cron`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          cron_enabled: !workflow.cron_enabled,
+          enabled: !workflow.cron_enabled,
         }),
       });
 
