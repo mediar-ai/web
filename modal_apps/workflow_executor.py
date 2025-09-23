@@ -17,15 +17,15 @@ import psycopg2
 import yaml  # For YAML sequence loading
 from psycopg2.extras import RealDictCursor
 
-from lib.db import get_database_connection, get_db_config
-from lib.locks import (
+from modal_apps.lib.db import get_database_connection, get_db_config
+from modal_apps.lib.locks import (
     cleanup_stale_machine_locks,
     record_acquired_lock,
     release_acquired_locks,
 )
-from lib.mcp_client import normalize_endpoint, post_with_503_backoff
+from modal_apps.lib.mcp_client import normalize_endpoint, post_with_503_backoff
 # File manager removed - files are now accessed via rclone mount
-from output_enrichment import enrich_results_if_enabled
+from modal_apps.output_enrichment import enrich_results_if_enabled
 
 # Configure logging to capture everything
 logging.basicConfig(
