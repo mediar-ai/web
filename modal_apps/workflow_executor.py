@@ -2182,9 +2182,9 @@ def execute_workflow(
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "message": line,
                     "level": (
-                        "INFO"
+                        "info"
                         if "INFO:" in line
-                        else ("ERROR" if "ERROR:" in line else "DEBUG")
+                        else ("error" if "ERROR:" in line else "debug")
                     ),
                 }
                 execution_logs.append(log_entry)
@@ -2502,9 +2502,9 @@ def execute_workflow(
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "message": line,
                     "level": (
-                        "INFO"
+                        "info"
                         if "INFO:" in line
-                        else ("ERROR" if "ERROR:" in line else "DEBUG")
+                        else ("error" if "ERROR:" in line else "debug")
                     ),
                 }
                 execution_logs.append(log_entry)
@@ -2514,7 +2514,7 @@ def execute_workflow(
             {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "message": f"FATAL ERROR: {error_msg}",
-                "level": "ERROR",
+                "level": "error",
                 "error_type": type(e).__name__,
                 "error_details": str(e),
             }
