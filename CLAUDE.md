@@ -88,6 +88,14 @@
 
 ## Testing & Deployment
 
+### Modal Deployment (Windows Encoding Fix)
+- If you encounter encoding errors when deploying Modal apps on Windows:
+  ```bash
+  export PYTHONIOENCODING=utf-8 && modal deploy modal_apps/workflow_executor.py
+  ```
+- This fixes the "'charmap' codec can't encode character" error
+- The issue occurs when Modal CLI tries to display Unicode characters (✓) on Windows
+
 ### Environment Variables
 - Use Vercel CLI for production deployments: `npx vercel env add`
 - Keep email sender addresses simple (no angle brackets in env vars)

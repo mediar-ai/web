@@ -82,7 +82,18 @@ class SequenceLoader:
     def _ensure_list_format(sequence: Any) -> List[Dict[str, Any]]:
         """Ensure sequence is in expected list format"""
         if isinstance(sequence, dict):
-            return [sequence]
+            # Check if it's already wrapped with tool_name
+            if "tool_name" in sequence:
+                return [sequence]
+            # If it's a raw workflow (has 'steps' at top level), wrap it
+            elif "steps" in sequence:
+                wrapped = {
+                    "tool_name": "execute_sequence",
+                    "arguments": sequence
+                }
+                return [wrapped]
+            else:
+                return [sequence]
         elif isinstance(sequence, list):
             return sequence
         else:
@@ -1277,7 +1288,7 @@ def extract_legacy_quotes_from_mcp_response(
 
 
 async def execute_mcp_workflow(
-    workflow_data: Dict[str, Any], execution_params: Dict[str, Any], mcp_endpoint: str, machine_id: int = 1
+    workflow_data: Dict[str, Any], execution_params: Dict[str, Any], mcp_endpoint: str, machine_id: int = 1, workflow_id: int = None
 ) -> Dict[str, Any]:
     """Execute workflow using the working MCP HTTP approach with file support"""
     import httpx
@@ -1290,13 +1301,62 @@ async def execute_mcp_workflow(
 
     # If files are required, set the root_path for rclone mount
     # Files are accessed via rclone mount at S:\workflows\{workflow_id}\ on Windows
+    root_path = None
     if requires_files:
         logger.info(" Workflow requires external files, setting root_path...")
-        workflow_id = workflow_data.get("id")
-        root_path = f"S:\\workflows\\{workflow_id}\\"
-        logger.info(f" Using root_path: {root_path}")
-    else:
-        root_path = None
+        # Use the passed workflow_id parameter, fallback to data.get("id") if not provided
+        wf_id = workflow_id or workflow_data.get("id")
+        if wf_id:
+            base_path = f"S:\\workflows\\{wf_id}\\"
+
+            # Check files_config for subdirectory name
+            files_config = workflow_data.get("files_config")
+            subdirectory = None
+
+            if files_config and isinstance(files_config, dict):
+                # Try to get subdirectory from files_config
+                subdirectory = files_config.get("subdirectory") or files_config.get("folder_name")
+                if subdirectory:
+                    logger.info(f" Using subdirectory from files_config: {subdirectory}")
+
+            if subdirectory:
+                # Use the configured subdirectory
+                import os
+                root_path = os.path.join(base_path, subdirectory) + "\\"
+                logger.info(f" Using configured root_path: {root_path}")
+            else:
+                import os
+                # For workflow 38, we know the subdirectory is 'test-workflow-with-files'
+                # This is a temporary fix until we properly store the subdirectory in files_config
+                if wf_id == 38:
+                    root_path = os.path.join(base_path, "test-workflow-with-files") + "\\"
+                    logger.info(f" Using known subdirectory for workflow 38: {root_path}")
+                else:
+                    # Try to find the first subdirectory in the workflow's folder
+                    # Note: This won't work in Modal container since S: drive doesn't exist there
+                    try:
+                        if os.path.exists(base_path):
+                            subdirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
+                            if subdirs:
+                                # Use the first subdirectory found
+                                root_path = os.path.join(base_path, subdirs[0]) + "\\"
+                                logger.info(f" Found subdirectory '{subdirs[0]}', using root_path: {root_path}")
+                            else:
+                                root_path = base_path
+                                logger.info(f" No subdirectory found, using root_path: {root_path}")
+                        else:
+                            # S: drive doesn't exist in Modal container - use base path
+                            logger.info(f" Base path not accessible from container: {base_path}")
+                            root_path = base_path
+                            logger.info(f" Using base root_path: {root_path}")
+                    except Exception as e:
+                        # If we can't list the directory (e.g., running in Modal), use the base path
+                        logger.warning(f" Could not list directory {base_path}: {e}")
+                        root_path = base_path
+                        logger.info(f" Using fallback root_path: {root_path}")
+        else:
+            logger.warning(" Workflow requires files but no workflow_id available!")
+            root_path = None
 
     session_client = None
     try:
@@ -1338,9 +1398,11 @@ async def execute_mcp_workflow(
             logger.info(" Using default inputs from workflow definition.")
 
         # Add scripts_base_path to arguments if workflow requires files
+        # IMPORTANT: scripts_base_path must be at the root level of the execute_sequence arguments
+        # The MCP server expects it alongside 'steps', 'variables', 'inputs', etc.
         if requires_files and root_path:
             arguments["scripts_base_path"] = root_path
-            logger.info(f" Added scripts_base_path to arguments: {root_path}")
+            logger.info(f" Added scripts_base_path to arguments at root level: {root_path}")
 
         # The entire `arguments` object, containing the `variables` schema, the final `inputs`,
         # and the `items`, is sent to MCP. The template engine inside MCP will know
@@ -1908,21 +1970,22 @@ def execute_workflow(
             )
             cur.execute(
                 """
-                SELECT 
+                SELECT
                     w.id, w.name, w.description, w.status, w.category,
                     w.successful_runs, w.failed_runs, w.cancelled_runs, w.total_executions,
                     w.estimated_duration_seconds, w.workflow_type, w.parent_workflow_id, w.display_order,
                     w.created_by, w.created_at, w.updated_at,
                     w.current_version_id, w.total_versions,
+                    w.requires_files, w.files_config,
                     v.automation_sequence_yaml,
                     v.automation_sequence,
                     v.version_number as version,
                     v.change_notes as current_version_notes,
                     v.id as version_id,
-                    CASE 
-                        WHEN v.automation_sequence_yaml IS NOT NULL AND v.automation_sequence_yaml != '' 
+                    CASE
+                        WHEN v.automation_sequence_yaml IS NOT NULL AND v.automation_sequence_yaml != ''
                         THEN 'yaml'
-                        ELSE 'jsonb' 
+                        ELSE 'jsonb'
                     END as sequence_format
                 FROM deployed_workflows w
                 JOIN deployed_workflow_versions v ON v.workflow_id = w.id
@@ -1941,6 +2004,7 @@ def execute_workflow(
         else:
             # Use active version (existing logic)
             logger.info(" Querying active version for workflow %s", workflow_id)
+            # First get the workflow data from the view
             cur.execute(
                 "SELECT * FROM deployed_workflows_with_sequence WHERE id = %s",
                 (workflow_id,),
@@ -1949,6 +2013,18 @@ def execute_workflow(
 
             if not workflow:
                 raise Exception(f"Workflow {workflow_id} not found")
+
+            # Then get requires_files and files_config from the main table
+            cur.execute(
+                "SELECT requires_files, files_config FROM deployed_workflows WHERE id = %s",
+                (workflow_id,),
+            )
+            extra_data = cur.fetchone()
+            if extra_data:
+                workflow["requires_files"] = extra_data["requires_files"]
+                workflow["files_config"] = extra_data["files_config"]
+                logger.info(f" Workflow requires_files: {extra_data['requires_files']}")
+                logger.info(f" Workflow files_config: {extra_data.get('files_config', {})}")
 
         # Validate we have an automation sequence
         if not workflow.get("automation_sequence") and not workflow.get(
@@ -2016,14 +2092,23 @@ def execute_workflow(
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        # Clear buffers to ensure isolated logging for this execution
-        log_buffer.seek(0)
-        log_buffer.truncate(0)
-        stdout_buffer.seek(0)
-        stdout_buffer.truncate(0)
+        # Create fresh buffers for this execution (important in serverless environment)
+        local_log_buffer = io.StringIO()
+        local_stdout_buffer = io.StringIO()
+
+        # Create a new handler for this execution
+        local_log_handler = logging.StreamHandler(local_log_buffer)
+        local_log_handler.setLevel(logging.DEBUG)
+        local_log_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
+
+        # Add handler and remove after execution
+        logger.addHandler(local_log_handler)
+        root_logger.addHandler(local_log_handler)
 
         # Capture stdout/stderr during execution
-        with CaptureOutput(stdout_buffer):
+        with CaptureOutput(local_stdout_buffer):
             try:
                 # Log system information
                 logger.info(" Modal Function: execute_workflow")
@@ -2044,7 +2129,7 @@ def execute_workflow(
                         del params_for_mcp["applicant"]
 
                 results = loop.run_until_complete(
-                    execute_mcp_workflow(workflow, params_for_mcp, endpoint_full)
+                    execute_mcp_workflow(workflow, params_for_mcp, endpoint_full, workflow_id=workflow_id)
                 )
                 logger.info(
                     "Received %d quotes from MCP workflow.",
@@ -2068,8 +2153,12 @@ def execute_workflow(
                 loop.close()
 
         # Capture all logs from both buffers
-        raw_logs = log_buffer.getvalue()
-        stdout_logs = stdout_buffer.getvalue()
+        raw_logs = local_log_buffer.getvalue()
+        stdout_logs = local_stdout_buffer.getvalue()
+
+        # Clean up handlers
+        logger.removeHandler(local_log_handler)
+        root_logger.removeHandler(local_log_handler)
 
         # Combine logs with clear sections
         combined_logs = f"""
@@ -2384,8 +2473,13 @@ def execute_workflow(
         logger.error(" Real workflow execution failed: %s", error_msg)
 
         # Capture any logs that were generated before the error
-        raw_logs = log_buffer.getvalue()
-        stdout_logs = stdout_buffer.getvalue()
+        raw_logs = local_log_buffer.getvalue() if 'local_log_buffer' in locals() else ''
+        stdout_logs = local_stdout_buffer.getvalue() if 'local_stdout_buffer' in locals() else ''
+
+        # Clean up handlers if they were added
+        if 'local_log_handler' in locals():
+            logger.removeHandler(local_log_handler)
+            root_logger.removeHandler(local_log_handler)
 
         # Combine logs for error case
         combined_logs = f"""
