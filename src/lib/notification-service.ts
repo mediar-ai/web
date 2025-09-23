@@ -154,9 +154,11 @@ export class NotificationService {
   private async sendEmailNotification(alert: NotificationAlert, config: NotificationConfig): Promise<void> {
     try {
       // Use absolute URL for server-side fetch
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'https://app.mediar.ai';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.mediar.ai');
+
+      console.log(`Sending email notification to ${baseUrl}/api/internal/send-notification-email`);
+      console.log(`Recipients: ${config.email_recipients?.join(', ')}`);
 
       const response = await fetch(`${baseUrl}/api/internal/send-notification-email`, {
         method: 'POST',
@@ -172,13 +174,17 @@ export class NotificationService {
       });
 
       if (response.ok) {
-            await supabase
+        console.log('Email sent successfully');
+        await supabase
           .from('notification_alerts')
           .update({
             email_sent: true,
             email_sent_at: new Date().toISOString(),
           })
           .eq('id', alert.id);
+      } else {
+        const errorText = await response.text();
+        console.error(`Failed to send email: ${response.status} - ${errorText}`);
       }
     } catch (error) {
       console.error('Failed to send email notification:', error);
