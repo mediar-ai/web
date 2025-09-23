@@ -648,33 +648,33 @@ function AuthenticatedDeploymentsPage({
 
   /**
    * Handle URL parameters for deep linking from emails
+   * Only run once when the page loads with URL params
    */
   useEffect(() => {
-    if (!loading && executions.length > 0) {
-      // Check if we should open a specific execution
-      const executionId = searchParams.get('execution');
-      if (executionId) {
-        const execId = parseInt(executionId);
-        if (!isNaN(execId)) {
-          // Find and open the execution details
-          const execution = executions.find(e => e.execution_id === execId);
-          if (execution) {
-            fetchExecutionDetails(execId);
-          }
-        }
-      }
+    // Only run if we haven't loaded yet and have URL params
+    if (loading) return;
 
-      // Check if we should filter by workflow
-      const workflowId = searchParams.get('workflow');
-      if (workflowId) {
-        const wfId = parseInt(workflowId);
-        if (!isNaN(wfId)) {
-          // You could add filtering logic here if needed
-          // For now, just highlight or scroll to the workflow
+    const executionId = searchParams.get('execution');
+    const workflowId = searchParams.get('workflow');
+
+    // Only process if we have params and haven't processed them yet
+    if (executionId) {
+      const execId = parseInt(executionId);
+      if (!isNaN(execId) && !executionDetailsOpen) {
+        // Only fetch if modal is not already open
+        fetchExecutionDetails(execId);
+      }
+    } else if (workflowId) {
+      const wfId = parseInt(workflowId);
+      if (!isNaN(wfId) && !selectedWorkflow) {
+        // Open workflow overview modal
+        const workflow = workflows.find(w => w.id === wfId);
+        if (workflow) {
+          fetchWorkflowOverview(wfId);
         }
       }
     }
-  }, [searchParams, loading, executions, fetchExecutionDetails]);
+  }, [loading]); // Only depend on loading state, not executions
 
 
   // =========================================================================
