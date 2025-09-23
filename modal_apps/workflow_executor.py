@@ -1327,11 +1327,11 @@ async def execute_mcp_workflow(
                 logger.info(f" Using configured root_path: {root_path}")
             else:
                 import os
-                # For workflow 38, we know the subdirectory is 'test-workflow-with-files'
+                # For workflow 38 and 40, we know the subdirectory is 'test-workflow-with-files'
                 # This is a temporary fix until we properly store the subdirectory in files_config
-                if wf_id == 38:
+                if wf_id in [38, 40]:
                     root_path = os.path.join(base_path, "test-workflow-with-files") + "\\"
-                    logger.info(f" Using known subdirectory for workflow 38: {root_path}")
+                    logger.info(f" Using known subdirectory for workflow {wf_id}: {root_path}")
                 else:
                     # Try to find the first subdirectory in the workflow's folder
                     # Note: This won't work in Modal container since S: drive doesn't exist there

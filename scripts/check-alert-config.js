@@ -10,9 +10,11 @@ async function checkAlertConfig() {
     const configResponse = await fetch(`${baseUrl}/api/internal/notifications/configs`);
     if (configResponse.ok) {
       const configs = await configResponse.json();
-      console.log(`Found ${configs.length} notification configurations:`);
+      console.log('Response from configs endpoint:', JSON.stringify(configs, null, 2));
+      const configArray = Array.isArray(configs) ? configs : (configs.configs || []);
+      console.log(`Found ${configArray.length} notification configurations:`);
 
-      configs.forEach(config => {
+      configArray.forEach(config => {
         console.log(`\n📧 Config: ${config.name}`);
         console.log(`   - Enabled: ${config.enabled}`);
         console.log(`   - Email Enabled: ${config.email_enabled}`);
@@ -22,7 +24,7 @@ async function checkAlertConfig() {
         console.log(`   - Max alerts/hour: ${config.max_alerts_per_hour}`);
       });
 
-      const activeConfigs = configs.filter(c => c.enabled && c.email_enabled);
+      const activeConfigs = configArray.filter(c => c.enabled && c.email_enabled);
       if (activeConfigs.length === 0) {
         console.log('\n⚠️  WARNING: No active email alert configurations found!');
         console.log('   You need to create an alert configuration to receive failure notifications.');
@@ -37,7 +39,8 @@ async function checkAlertConfig() {
     // Check recent alerts
     const alertsResponse = await fetch(`${baseUrl}/api/internal/notifications/alerts?limit=10`);
     if (alertsResponse.ok) {
-      const alerts = await alertsResponse.json();
+      const alertsData = await alertsResponse.json();
+      const alerts = alertsData.alerts || alertsData || [];
       console.log(`\n📬 Recent alerts: ${alerts.length} found`);
 
       alerts.slice(0, 5).forEach(alert => {
