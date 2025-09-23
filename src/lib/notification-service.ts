@@ -153,9 +153,12 @@ export class NotificationService {
 
   private async sendEmailNotification(alert: NotificationAlert, config: NotificationConfig): Promise<void> {
     try {
-      // For now, we'll use a simple email API endpoint
-      // You can replace this with your preferred email service (SendGrid, AWS SES, etc.)
-      const response = await fetch('/api/internal/send-notification-email', {
+      // Use absolute URL for server-side fetch
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'https://app.mediar.ai';
+
+      const response = await fetch(`${baseUrl}/api/internal/send-notification-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
