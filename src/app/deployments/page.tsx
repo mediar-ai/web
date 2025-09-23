@@ -25,6 +25,7 @@ import {
 import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, StopCircle, Trash2, PlayCircle } from 'lucide-react';
 
@@ -86,6 +87,7 @@ export default function WorkflowsPage() {
   const { isLoaded, userId, has } = useAuth();
   const { user } = useUser();
   const { organization, membership } = useOrganization();
+  const searchParams = useSearchParams();
 
   // -------------------------------------------------------------------------
   // Loading State
@@ -620,6 +622,36 @@ function AuthenticatedDeploymentsPage({
     });
     setExecutingWorkflows(currentlyExecuting);
   }, [liveExecutions]);
+
+  /**
+   * Handle URL parameters for deep linking from emails
+   */
+  useEffect(() => {
+    if (!loading && executions.length > 0) {
+      // Check if we should open a specific execution
+      const executionId = searchParams.get('execution');
+      if (executionId) {
+        const execId = parseInt(executionId);
+        if (!isNaN(execId)) {
+          // Find and open the execution details
+          const execution = executions.find(e => e.execution_id === execId);
+          if (execution) {
+            fetchExecutionDetails(execId);
+          }
+        }
+      }
+
+      // Check if we should filter by workflow
+      const workflowId = searchParams.get('workflow');
+      if (workflowId) {
+        const wfId = parseInt(workflowId);
+        if (!isNaN(wfId)) {
+          // You could add filtering logic here if needed
+          // For now, just highlight or scroll to the workflow
+        }
+      }
+    }
+  }, [searchParams, loading, executions, fetchExecutionDetails]);
 
 
   // =========================================================================

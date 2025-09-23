@@ -93,23 +93,18 @@ export async function GET() {
 }
 
 function generateEmailHTML(alert: any, config: any): string {
-  const severityColors: Record<string, string> = {
-    low: '#10b981',
-    medium: '#f59e0b',
-    high: '#ef4444',
-    critical: '#dc2626',
-  };
-  const severityColor = severityColors[alert.severity] || '#ef4444';
 
   const baseUrl = process.env.NEXT_PUBLIC_URL || 'https://app.mediar.ai';
 
   // Extract useful debugging info from the execution details
   const executionDetails = alert.details || {};
-  const workflowName = executionDetails.workflow_name || `Workflow ${alert.workflow_id}`;
-  const failureStep = executionDetails.failed_step || 'Unknown step';
-  const requestInfo = executionDetails.request_info || {};
+  const workflowName = executionDetails.workflow_name || alert.workflow_name || `Workflow ${alert.workflow_id}`;
+  const executionId = alert.execution_id || executionDetails.execution_id || executionDetails.id;
+  const workflowId = alert.workflow_id || executionDetails.workflow_id;
+  const errorMessage = alert.error_message || executionDetails.error_message || alert.message;
+  const triggerSource = executionDetails.trigger_source || 'unknown';
+  const duration = executionDetails.duration || executionDetails.execution_time_seconds || '0';
 
-  // Clean, professional email template with enhanced debugging
   return `
     <!DOCTYPE html>
     <html>
@@ -129,20 +124,22 @@ function generateEmailHTML(alert: any, config: any): string {
         .header {
           background: #000;
           color: white;
-          padding: 24px;
+          padding: 32px 24px;
           text-align: center;
+          border-radius: 8px 8px 0 0;
         }
         .alert-badge {
           display: inline-block;
-          background: ${severityColor};
-          color: white;
-          padding: 4px 12px;
+          background: white;
+          color: #000;
+          padding: 6px 16px;
           border-radius: 4px;
-          font-size: 12px;
-          font-weight: 600;
+          font-size: 11px;
+          font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin-top: 12px;
+          letter-spacing: 1px;
+          margin-top: 16px;
+          border: 2px solid white;
         }
         .content {
           background: white;
@@ -152,36 +149,49 @@ function generateEmailHTML(alert: any, config: any): string {
           display: inline-block;
           background: #000;
           color: white !important;
-          padding: 12px 24px;
-          border-radius: 4px;
+          padding: 14px 28px;
+          border-radius: 6px;
           text-decoration: none !important;
-          font-weight: 500;
-          margin: 20px 0;
-          border: none !important;
+          font-weight: 600;
+          margin: 8px;
+          border: 2px solid #000 !important;
+          font-size: 14px;
+          transition: all 0.2s;
+        }
+        .action-button:hover {
+          background: #333;
+          border-color: #333 !important;
         }
         .secondary-button {
           display: inline-block;
           background: white;
           color: #000 !important;
           padding: 12px 24px;
-          border-radius: 4px;
+          border-radius: 6px;
           text-decoration: none !important;
-          font-weight: 500;
-          margin: 20px 10px;
+          font-weight: 600;
+          margin: 8px;
           border: 2px solid #000 !important;
+          font-size: 14px;
+          transition: all 0.2s;
+        }
+        .secondary-button:hover {
+          background: #000;
+          color: white !important;
         }
         .error-box {
-          background: #fee;
-          border: 1px solid #fcc;
-          border-left: 4px solid #f44;
-          border-radius: 4px;
-          padding: 16px;
-          margin: 20px 0;
-          font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+          background: #fff5f5;
+          border: 2px solid #000;
+          border-left: 6px solid #000;
+          border-radius: 6px;
+          padding: 20px;
+          margin: 24px 0;
+          font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
           font-size: 13px;
-          color: #333;
+          color: #000;
           white-space: pre-wrap;
           word-wrap: break-word;
+          line-height: 1.6;
         }
         .metadata {
           margin: 24px 0;
@@ -227,8 +237,9 @@ function generateEmailHTML(alert: any, config: any): string {
         }
         h2 {
           margin: 0;
-          font-size: 20px;
-          font-weight: 600;
+          font-size: 24px;
+          font-weight: 700;
+          letter-spacing: -0.5px;
         }
         .workflow-name {
           font-size: 14px;
@@ -240,9 +251,9 @@ function generateEmailHTML(alert: any, config: any): string {
     <body>
       <div class="container">
         <div class="header">
-          <h2>Workflow Execution Failed</h2>
+          <h2 style="margin-bottom: 8px;">⚠️ Workflow Execution Failed</h2>
           <div class="workflow-name">${workflowName}</div>
-          <div class="alert-badge">ERROR</div>
+          <div class="alert-badge">${alert.severity?.toUpperCase() || 'ERROR'}</div>
         </div>
 
         <div class="content">
@@ -250,106 +261,58 @@ function generateEmailHTML(alert: any, config: any): string {
             <strong>${config.name}</strong> detected an error in your workflow execution.
           </p>
 
-          ${alert.error_message ? `
-            <div class="error-box">
-              <strong>Error:</strong> ${alert.error_message}
-              ${failureStep !== 'Unknown step' ? `\n<strong>Failed at:</strong> ${failureStep}` : ''}
-            </div>
-          ` : `
-            <div class="error-box">${alert.message || 'Workflow execution failed without detailed error message.'}</div>
-          `}
+          <div class="error-box">
+            <strong style="font-size: 14px;">Error:</strong> ${errorMessage || 'Workflow execution failed'}
+          </div>
 
-          <div style="text-align: center;">
-            ${alert.execution_id ? `
-              <a href="${baseUrl}/deployments?execution=${alert.execution_id}" class="action-button">
-                View Execution Details →
-              </a>
-            ` : ''}
-            ${alert.workflow_id ? `
-              <a href="${baseUrl}/deployments/workflow/${alert.workflow_id}" class="secondary-button">
-                View Workflow
-              </a>
-              <a href="${baseUrl}/deployments/workflow/${alert.workflow_id}/logs" class="secondary-button">
-                View Logs
-              </a>
-            ` : ''}
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${baseUrl}/deployments?execution=${executionId}" class="action-button">
+              View Execution Details →
+            </a>
+            <br/>
+            <a href="${baseUrl}/deployments?workflow=${workflowId}" class="secondary-button">
+              View Workflow
+            </a>
+            <a href="${baseUrl}/deployments?logs=true" class="secondary-button">
+              View Logs
+            </a>
           </div>
 
           <div class="metadata">
             <div class="metadata-item">
-              <strong>Workflow ID:</strong> ${alert.workflow_id || 'Unknown'}
+              <strong>Workflow ID:</strong> ${workflowId || 'N/A'}
             </div>
             <div class="metadata-item">
-              <strong>Execution ID:</strong> ${alert.execution_id || 'Unknown'}
+              <strong>Execution ID:</strong> ${executionId || 'N/A'}
             </div>
             <div class="metadata-item">
-              <strong>Status:</strong> ${executionDetails.status || 'failed'}
+              <strong>Status:</strong> failed
             </div>
             <div class="metadata-item">
-              <strong>Time:</strong> ${new Date().toLocaleString('en-US', {
-                timeZone: 'UTC',
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                timeZoneName: 'short'
-              })}
+              <strong>Time:</strong> ${new Date().toLocaleString('en-US', { timeZoneName: 'short' })}
             </div>
-            ${executionDetails.duration ? `
-              <div class="metadata-item">
-                <strong>Duration:</strong> ${executionDetails.duration}
-              </div>
-            ` : ''}
+            <div class="metadata-item">
+              <strong>Duration:</strong> ${duration}s
+            </div>
           </div>
 
-          ${requestInfo && Object.keys(requestInfo).length > 0 ? `
-            <div class="debug-section">
-              <div class="debug-title">🔍 Debug Information</div>
-              ${requestInfo.ip ? `
-                <div class="metadata-item">
-                  <strong>Request IP:</strong> ${requestInfo.ip}
-                </div>
-              ` : ''}
-              ${requestInfo.user_agent ? `
-                <div class="metadata-item">
-                  <strong>User Agent:</strong> ${requestInfo.user_agent}
-                </div>
-              ` : ''}
-              ${requestInfo.trigger_source ? `
-                <div class="metadata-item">
-                  <strong>Triggered By:</strong> ${requestInfo.trigger_source}
-                </div>
-              ` : ''}
-              ${executionDetails.parameters ? `
-                <div class="metadata-item">
-                  <strong>Parameters:</strong>
-                  <pre style="margin: 5px 0; font-size: 11px; overflow-x: auto;">${JSON.stringify(executionDetails.parameters, null, 2)}</pre>
-                </div>
-              ` : ''}
+          <div class="debug-section">
+            <div class="debug-title">🔍 Debug Information</div>
+            <div class="metadata-item">
+              <strong>Triggered By:</strong> ${triggerSource}
             </div>
-          ` : ''}
+          </div>
 
-          ${executionDetails.stack_trace ? `
-            <div class="debug-section">
-              <div class="debug-title">📋 Stack Trace</div>
-              <pre style="font-size: 11px; overflow-x: auto; max-height: 200px; overflow-y: auto;">
-${executionDetails.stack_trace}
-              </pre>
+
+
+          <details style="margin-top: 20px;">
+            <summary style="cursor: pointer; color: #000; font-size: 13px; padding: 10px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-weight: 600;">
+              📊 View Full Details
+            </summary>
+            <div class="error-box" style="margin-top: 8px; font-size: 11px; background: #fafafa; border-color: #ddd;">
+${JSON.stringify(alert.details || alert, null, 2)}
             </div>
-          ` : ''}
-
-          ${alert.details && Object.keys(alert.details).length > 0 ? `
-            <details style="margin-top: 20px;">
-              <summary style="cursor: pointer; color: #666; font-size: 14px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
-                📊 View Full Details
-              </summary>
-              <div class="error-box" style="margin-top: 8px; font-size: 11px; background: #f9f9f9;">
-${JSON.stringify(alert.details, null, 2)}
-              </div>
-            </details>
-          ` : ''}
+          </details>
         </div>
 
         <div class="footer">
