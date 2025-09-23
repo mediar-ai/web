@@ -18,7 +18,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { FileText, Loader2, Terminal, XCircle } from 'lucide-react';
+import { Loader2, Terminal, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
 
@@ -115,11 +115,10 @@ export function ExecutionDetailsDialog({
           className="flex-1 flex flex-col min-h-0"
         >
           <div className="px-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
               <TabsTrigger value="results">Results</TabsTrigger>
-              <TabsTrigger value="parser">Parser</TabsTrigger>
             </TabsList>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-6">
@@ -343,78 +342,6 @@ export function ExecutionDetailsDialog({
                       <FileText className="h-4 w-4" />
                       <AlertDescription>
                         No results available for this execution.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              )}
-            </TabsContent>
-            <TabsContent value="parser">
-              {isTabLoading || !execution ? (
-                <LoadingSkeleton />
-              ) : (
-                <div className="space-y-4">
-                  {Array.isArray((execution as any)?.results?.mediar_parser) &&
-                  (execution as any).results.mediar_parser.length > 0 ? (
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Normalized parser output (snake_case fields).
-                      </p>
-                      <div className="overflow-auto border border-black rounded-md">
-                        <table className="min-w-full text-sm">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="text-left px-3 py-2 border-b">
-                                carrier_product
-                              </th>
-                              <th className="text-left px-3 py-2 border-b">
-                                quote_value
-                              </th>
-                              <th className="text-left px-3 py-2 border-b">
-                                quote_type
-                              </th>
-                              <th className="text-left px-3 py-2 border-b">
-                                status
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(execution as any).results.mediar_parser.map(
-                              (row: any, idx: number) => (
-                                <tr
-                                  key={idx}
-                                  className="odd:bg-white even:bg-gray-50"
-                                >
-                                  <td className="px-3 py-2 border-b font-mono">
-                                    {row?.carrier_product ?? '—'}
-                                  </td>
-                                  <td className="px-3 py-2 border-b font-mono">
-                                    {row?.quote_value ?? '—'}
-                                  </td>
-                                  <td className="px-3 py-2 border-b font-mono">
-                                    {row?.quote_type ?? '—'}
-                                  </td>
-                                  <td className="px-3 py-2 border-b font-mono">
-                                    {row?.status ?? '—'}
-                                  </td>
-                                </tr>
-                              )
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                      <JsonBlock
-                        data={(execution as any).results.mediar_parser}
-                        title="mediar_parser (raw)"
-                        size="sm"
-                        theme="light"
-                      />
-                    </div>
-                  ) : (
-                    <Alert className="text-center">
-                      <FileText className="h-4 w-4" />
-                      <AlertDescription>
-                        No mediar_parser output available for this execution.
                       </AlertDescription>
                     </Alert>
                   )}
