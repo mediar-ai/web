@@ -119,7 +119,7 @@ export async function GET(
     // Get execution with all details including raw logs and formatted output
     const { data: execution, error } = await supabase
       .from('workflow_executions')
-      .select('*, raw_logs, raw_mcp_response, execution_logs, formatted_output')
+      .select('*, raw_logs, raw_mcp_response, execution_logs, results, formatted_output')
       .eq('id', executionIdNum)
       .single();
 
