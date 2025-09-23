@@ -2624,6 +2624,52 @@ def execute_workflow(
                 # Note: Workflow failure metrics are automatically updated by database trigger
                 # when the workflow_executions status changes to 'failed'
 
+                # Trigger alert check for failed execution in exception handler
+                logger.info(f"Triggering alert check for exception failure - Execution: {execution_id}, Error: {error_msg[:100]}")
+                try:
+                    import requests
+                    # Get workflow details for the alert
+                    cur.execute(
+                        """
+                        SELECT we.*, w.name as workflow_name
+                        FROM workflow_executions we
+                        JOIN deployed_workflows w ON w.id = we.workflow_id
+                        WHERE we.id = %s
+                        """,
+                        (execution_id,)
+                    )
+                    execution_data = cur.fetchone()
+
+                    if execution_data:
+                        # Send to monitoring endpoint
+                        monitor_payload = {
+                            "execution": {
+                                "id": execution_data["id"],
+                                "execution_id": execution_data["id"],
+                                "workflow_id": execution_data["workflow_id"],
+                                "workflow_name": execution_data["workflow_name"],
+                                "status": "failed",
+                                "error_message": error_msg,
+                                "started_at": execution_data["started_at"].isoformat() if execution_data["started_at"] else None,
+                                "completed_at": datetime.now(timezone.utc).isoformat(),
+                                "execution_time_seconds": int(time.time() - start_time),
+                                "trigger_source": "modal_executor_exception",
+                            }
+                        }
+
+                        # Use the app URL from environment or default
+                        app_url = os.environ.get("APP_URL", "https://app.mediar.ai")
+                        monitor_url = f"{app_url}/api/remote-workflows/executions/monitor"
+
+                        logger.info(f"Sending exception alert to {monitor_url}")
+                        response = requests.post(monitor_url, json=monitor_payload, timeout=5)
+                        if response.status_code == 200:
+                            logger.info(f"✅ Alert check triggered successfully for exception failure {execution_id}")
+                        else:
+                            logger.warning(f"❌ Failed to trigger alert check: {response.status_code}")
+                except Exception as alert_error:
+                    logger.error(f"Error triggering alert check in exception handler: {alert_error}")
+
             except Exception as update_error:
                 logger.error("Failed to update error status: %s", update_error)
 
