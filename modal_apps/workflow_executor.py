@@ -2866,8 +2866,7 @@ if __name__ == "__main__":
 @app.function(
     image=image,
     secrets=secrets,
-    # NO SCHEDULE - This function should not run automatically
-    # It can be called manually or from high_frequency_processor
+    schedule=modal.Cron("* * * * *"),  # Run every minute to check for queued jobs
     timeout=300,  # 5 minutes max per check
     max_containers=1,  # ENSURE ONLY ONE INSTANCE
     min_containers=0,  # Do not keep warm, prevent queueing
