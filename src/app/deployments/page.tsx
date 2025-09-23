@@ -26,7 +26,7 @@ import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, StopCircle, Trash2, PlayCircle } from 'lucide-react';
 
 // ============================================================================
@@ -81,6 +81,26 @@ import { Eye, StopCircle, Trash2, PlayCircle } from 'lucide-react';
 // ============================================================================
 
 export default function WorkflowsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white p-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-6 w-96" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+          </div>
+        </div>
+      </div>
+    }>
+      <WorkflowsPageContent />
+    </Suspense>
+  );
+}
+
+function WorkflowsPageContent() {
   // -------------------------------------------------------------------------
   // Authentication Hooks
   // -------------------------------------------------------------------------
@@ -171,6 +191,7 @@ export default function WorkflowsPage() {
       userEmail={userEmail}
       organizationName={organization?.name}
       userRole={membership?.role}
+      searchParams={searchParams}
     />
   );
 }
@@ -185,6 +206,7 @@ interface AuthenticatedDeploymentsPageProps {
   userEmail: string;
   organizationName?: string;
   userRole?: string;
+  searchParams: any;
 }
 
 function AuthenticatedDeploymentsPage({
@@ -192,6 +214,7 @@ function AuthenticatedDeploymentsPage({
   canDelete,
   organizationName,
   userRole,
+  searchParams,
 }: AuthenticatedDeploymentsPageProps) {
   // -------------------------------------------------------------------------
   // Core State - Workflows and Executions

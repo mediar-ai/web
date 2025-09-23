@@ -276,7 +276,7 @@ export class WorkflowFileManager {
     workflowId: number,
     version: string,
     filePath: string,
-    hash: string
+    _hash: string
   ): string {
     // Preserve original file structure without hash prefix
     // Format: workflows/{id}/{filepath}
