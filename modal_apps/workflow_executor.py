@@ -2425,6 +2425,7 @@ def execute_workflow(
 
         # Trigger alert check for failed executions
         if workflow_status == "failed" or error_message_for_db:
+            logger.info(f"Triggering alert check - Status: {workflow_status}, Error: {error_message_for_db}")
             try:
                 import requests
                 # Get workflow details for the alert
@@ -2448,7 +2449,7 @@ def execute_workflow(
                             "workflow_id": execution_data["workflow_id"],
                             "workflow_name": execution_data["workflow_name"],
                             "status": workflow_status,
-                            "error_message": error_message,
+                            "error_message": error_message_for_db,
                             "started_at": execution_data["started_at"].isoformat() if execution_data["started_at"] else None,
                             "completed_at": completion_time.isoformat(),
                             "execution_time_seconds": execution_duration,
@@ -2460,11 +2461,13 @@ def execute_workflow(
                     app_url = os.environ.get("APP_URL", "https://app.mediar.ai")
                     monitor_url = f"{app_url}/api/remote-workflows/executions/monitor"
 
+                    logger.info(f"Sending alert to {monitor_url}")
                     response = requests.post(monitor_url, json=monitor_payload, timeout=5)
                     if response.status_code == 200:
-                        logger.info(f"Alert check triggered for failed execution {execution_id}")
+                        logger.info(f"✅ Alert check triggered successfully for failed execution {execution_id}")
+                        logger.info(f"Response: {response.text}")
                     else:
-                        logger.warning(f"Failed to trigger alert check: {response.status_code}")
+                        logger.warning(f"❌ Failed to trigger alert check: {response.status_code} - {response.text}")
             except Exception as alert_error:
                 logger.error(f"Error triggering alert check: {alert_error}")
 
