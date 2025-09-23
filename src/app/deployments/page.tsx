@@ -14,6 +14,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useExecutionMonitoring } from '@/hooks/useExecutionMonitoring';
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from '@/components/ui/resizable';
 
 import {
   Execution,
@@ -610,21 +615,33 @@ function AuthenticatedDeploymentsPage({
   if (loading) {
     return (
       <SidebarProvider>
-        <div className="flex h-screen overflow-hidden">
-          <DeploymentSidebar
-            stats={{
-              total: 0,
-              running: 0,
-              paused: 0,
-              failed: 0,
-              automated: 0,
-            }}
-            selectedFilter="all"
-            onFilterChange={() => {}}
-            onCreateWorkflow={() => {}}
-            canViewAlerts={false}
-          />
-          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <ResizablePanelGroup
+          direction="horizontal"
+          className="h-screen"
+        >
+          <ResizablePanel
+            defaultSize={20}
+            minSize={15}
+            maxSize={30}
+            className="min-w-[200px]"
+          >
+            <DeploymentSidebar
+              stats={{
+                total: 0,
+                running: 0,
+                paused: 0,
+                failed: 0,
+                automated: 0,
+              }}
+              selectedFilter="all"
+              onFilterChange={() => {}}
+              onCreateWorkflow={() => {}}
+              canViewAlerts={false}
+            />
+          </ResizablePanel>
+          <ResizableHandle withHandle className="bg-gray-200 hover:bg-gray-300 transition-colors" />
+          <ResizablePanel defaultSize={80} minSize={50}>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
             <div className="max-w-7xl mx-auto p-6 space-y-6">
               {/* Header skeleton */}
               <div className="flex items-start justify-between mb-6">
@@ -689,8 +706,8 @@ function AuthenticatedDeploymentsPage({
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </SidebarProvider>
     );
   }
@@ -726,16 +743,28 @@ function AuthenticatedDeploymentsPage({
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen">
-        <DeploymentSidebar
-          stats={sidebarStats}
-          selectedFilter={sidebarFilter}
-          onFilterChange={setSidebarFilter}
-          onCreateWorkflow={() => setCreateWorkflowOpen(true)}
-          canViewAlerts={canDelete}
-        />
-        <div className="flex-1">
-          <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <ResizablePanelGroup
+        direction="horizontal"
+        className="min-h-screen"
+      >
+        <ResizablePanel
+          defaultSize={20}
+          minSize={15}
+          maxSize={30}
+          className="min-w-[200px]"
+        >
+          <DeploymentSidebar
+            stats={sidebarStats}
+            selectedFilter={sidebarFilter}
+            onFilterChange={setSidebarFilter}
+            onCreateWorkflow={() => setCreateWorkflowOpen(true)}
+            canViewAlerts={canDelete}
+          />
+        </ResizablePanel>
+        <ResizableHandle withHandle className="bg-gray-200 hover:bg-gray-300 transition-colors" />
+        <ResizablePanel defaultSize={80} minSize={50}>
+          <div className="flex-1 overflow-auto">
+            <div className="max-w-7xl mx-auto p-6 space-y-6">
       {/* ===================================================================
           Page Header
           =================================================================== */}
@@ -1010,9 +1039,10 @@ function AuthenticatedDeploymentsPage({
         </div>
       )}
 
+            </div>
           </div>
-        </div>
-      </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
 
       {/* Command Palette */}
       <CommandPalette
