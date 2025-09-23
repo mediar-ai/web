@@ -8,8 +8,7 @@ import { CommandPalette } from '@/components/deployments/CommandPalette';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
-import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
-import { SidebarProvider } from '@/components/ui/sidebar';
+import { ResizableSidebar } from '@/components/deployments/ResizableSidebar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -760,9 +759,8 @@ function AuthenticatedDeploymentsPage({
   });
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen">
-        <DeploymentSidebar
+    <div className="flex min-h-screen">
+      <ResizableSidebar
             stats={sidebarStats}
             selectedFilter={sidebarFilter}
             onFilterChange={setSidebarFilter}
