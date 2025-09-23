@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { HttpTransport } from '@modelcontextprotocol/sdk/client/http.js';
 
 // Process workflows in the background using edge runtime for long-running tasks
 export const runtime = 'edge';
@@ -21,41 +19,65 @@ async function executeMCPWorkflow(
 
     logs.push(`Connecting to MCP endpoint: ${endpointUrl}`);
 
-    // Create MCP client with HTTP transport
-    const transport = new HttpTransport(endpointUrl);
-    const client = new Client({
-      name: "browser-workflow-executor",
-      version: "1.0.0"
-    }, {
+    // Helper to send JSON-RPC requests
+    const sendRequest = async (method: string, params: any, id: number) => {
+      const response = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method,
+          params,
+          id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`MCP request failed: ${response.status} ${response.statusText}`);
+      }
+
+      return await response.json();
+    };
+
+    // Step 1: Initialize MCP session
+    const initResult = await sendRequest('initialize', {
+      protocolVersion: '2024-11-05',
       capabilities: {
         tools: {},
         prompts: {},
         resources: {}
+      },
+      clientInfo: {
+        name: 'browser-workflow-executor',
+        version: '1.0.0'
       }
-    });
+    }, 1);
 
-    // Connect to the server
-    await client.connect(transport);
-    logs.push('MCP client connected');
+    if (initResult.error) {
+      throw new Error(`MCP initialization error: ${initResult.error.message}`);
+    }
 
-    // Call the execute_sequence tool
-    const toolResult = await client.callTool(
-      "execute_sequence",
-      {
+    logs.push('MCP session initialized');
+
+    // Step 2: Execute the workflow
+    const executeResult = await sendRequest('tools/call', {
+      name: 'execute_sequence',
+      arguments: {
         steps: workflowData.steps || workflowData.automation_sequence || [],
         inputs: executionParams || {},
-        verbosity: "normal"
+        verbosity: 'normal'
       }
-    );
+    }, 2);
+
+    if (executeResult.error) {
+      throw new Error(`Workflow execution error: ${executeResult.error.message}`);
+    }
 
     logs.push('Workflow completed successfully');
 
-    // Close the client connection
-    await client.close();
-
     return {
       success: true,
-      results: toolResult.content || toolResult,
+      results: executeResult.result || executeResult,
       logs
     };
 
