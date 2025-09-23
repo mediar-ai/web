@@ -190,6 +190,44 @@ export async function GET(
       execution.status === 'failed' || execution.status === 'error';
     const hasError = hasFailed || !!execution.error_message;
 
+    // Transform execution_logs to the format expected by the UI
+    const transformExecutionLogs = (logs: any): any[] => {
+      if (!logs) return [];
+
+      // If logs is already in the correct format (array of objects with timestamp, level, message)
+      if (Array.isArray(logs) && logs.length > 0 && typeof logs[0] === 'object' && 'message' in logs[0]) {
+        return logs;
+      }
+
+      // If logs is an array of strings, transform to expected format
+      if (Array.isArray(logs)) {
+        return logs.map((log: any) => {
+          // Try to parse timestamp and level from string format like "[2025-09-23T00:11:42.828574] Starting workflow..."
+          const timestampMatch = String(log).match(/^\[([^\]]+)\]/);
+          const timestamp = timestampMatch ? timestampMatch[1] : new Date().toISOString();
+          const messageWithoutTimestamp = String(log).replace(/^\[[^\]]+\]\s*/, '');
+
+          // Try to detect log level from message content
+          let level = 'info';
+          if (messageWithoutTimestamp.toLowerCase().includes('error') || messageWithoutTimestamp.toLowerCase().includes('fail')) {
+            level = 'error';
+          } else if (messageWithoutTimestamp.toLowerCase().includes('warn')) {
+            level = 'warn';
+          } else if (messageWithoutTimestamp.toLowerCase().includes('success') || messageWithoutTimestamp.toLowerCase().includes('complet')) {
+            level = 'success';
+          }
+
+          return {
+            timestamp,
+            level,
+            message: messageWithoutTimestamp
+          };
+        });
+      }
+
+      return [];
+    };
+
     // Build comprehensive response
     const response = {
       success: true,
@@ -241,10 +279,8 @@ export async function GET(
         client_id: execution.client_id,
         execution_params: execution.execution_params || {},
 
-        // Include execution logs only in detailed response
-        ...(full_detailed_response && {
-          execution_logs: execution.execution_logs || [],
-        }),
+        // Transform and include execution logs (always include for completed executions)
+        execution_logs: transformExecutionLogs(execution.execution_logs),
 
         // Request Parameters - Enhanced with both original and processed formats
         request_parameters: {
