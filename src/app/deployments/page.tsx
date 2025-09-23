@@ -8,7 +8,8 @@ import { CommandPalette } from '@/components/deployments/CommandPalette';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
-import { ResizableSidebar } from '@/components/deployments/ResizableSidebar';
+import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
+import { SidebarProvider } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -636,8 +637,9 @@ function AuthenticatedDeploymentsPage({
 
   if (loading) {
     return (
-      <div className="flex h-screen overflow-hidden">
-        <ResizableSidebar
+      <SidebarProvider>
+        <div className="flex h-screen overflow-hidden">
+          <DeploymentSidebar
           stats={{
             total: 0,
             running: 0,
@@ -717,6 +719,7 @@ function AuthenticatedDeploymentsPage({
           </div>
         </div>
       </div>
+      </SidebarProvider>
     );
   }
 
@@ -757,9 +760,9 @@ function AuthenticatedDeploymentsPage({
   });
 
   return (
-    <>
+    <SidebarProvider>
       <div className="flex min-h-screen">
-        <ResizableSidebar
+        <DeploymentSidebar
           stats={sidebarStats}
           selectedFilter={sidebarFilter}
           onFilterChange={setSidebarFilter}
@@ -1193,6 +1196,6 @@ function AuthenticatedDeploymentsPage({
         initialName={templateName}
         onWorkflowCreated={handleWorkflowCreated}
       />
-    </>
+    </SidebarProvider>
   );
 }
