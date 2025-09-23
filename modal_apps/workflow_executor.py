@@ -3154,7 +3154,12 @@ def check_and_process_queued_jobs():
                     assigned_machine_id,
                 )
 
-                modal_future = execute_workflow.remote(
+                # Get a reference to the execute_workflow function
+                # This is necessary when calling from within a scheduled function
+                from modal import Function
+                execute_fn = Function.lookup("workflow-executor", "execute_workflow")
+
+                modal_future = execute_fn.remote(
                     workflow_id=workflow_id,
                     mcp_endpoint=mcp_endpoint,
                     execution_params=execution_params,

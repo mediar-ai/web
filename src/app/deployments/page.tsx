@@ -9,6 +9,7 @@ import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
+import { DeploymentsPageContent } from '@/components/deployments/DeploymentsPageContent';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -652,8 +653,9 @@ function AuthenticatedDeploymentsPage({
           onCreateWorkflow={() => {}}
           canViewAlerts={false}
         />
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="max-w-7xl mx-auto p-6 space-y-6">
+        <DeploymentsPageContent>
+          <div className="overflow-y-auto overflow-x-hidden">
+            <div className="max-w-7xl mx-auto p-6 space-y-6">
             {/* Header skeleton */}
             <div className="flex items-start justify-between mb-6">
               <div className="space-y-2">
@@ -717,7 +719,7 @@ function AuthenticatedDeploymentsPage({
               </div>
             </div>
           </div>
-        </div>
+        </DeploymentsPageContent>
       </div>
       </SidebarProvider>
     );
@@ -769,7 +771,7 @@ function AuthenticatedDeploymentsPage({
           onCreateWorkflow={() => setCreateWorkflowOpen(true)}
           canViewAlerts={canDelete}
         />
-        <div className="flex-1">
+        <DeploymentsPageContent>
           <div className="max-w-7xl mx-auto p-6 space-y-6">
             {/* ===================================================================
           Page Header
@@ -1132,7 +1134,7 @@ function AuthenticatedDeploymentsPage({
               </div>
             )}
           </div>
-        </div>
+        </DeploymentsPageContent>
       </div>
 
       {/* Command Palette */}
