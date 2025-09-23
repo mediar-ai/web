@@ -2866,7 +2866,7 @@ if __name__ == "__main__":
 @app.function(
     image=image,
     secrets=secrets,
-    schedule=modal.Cron("* * * * *"),  # Run every minute to check for queued jobs
+    schedule=modal.Period(seconds=1),  # Run every second to check for queued jobs
     timeout=300,  # 5 minutes max per check
     max_containers=1,  # ENSURE ONLY ONE INSTANCE
     min_containers=0,  # Do not keep warm, prevent queueing
