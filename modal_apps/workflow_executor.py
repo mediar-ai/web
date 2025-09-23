@@ -2103,8 +2103,8 @@ def execute_workflow(
             logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         )
 
-        # Add handler and remove after execution
-        logger.addHandler(local_log_handler)
+        # Add handler only to root logger to avoid duplicates
+        # (logger is a child of root_logger, so it will inherit the handler)
         root_logger.addHandler(local_log_handler)
 
         # Capture stdout/stderr during execution
@@ -2156,8 +2156,7 @@ def execute_workflow(
         raw_logs = local_log_buffer.getvalue()
         stdout_logs = local_stdout_buffer.getvalue()
 
-        # Clean up handlers
-        logger.removeHandler(local_log_handler)
+        # Clean up handler from root logger only
         root_logger.removeHandler(local_log_handler)
 
         # Combine logs with clear sections
@@ -2476,9 +2475,8 @@ def execute_workflow(
         raw_logs = local_log_buffer.getvalue() if 'local_log_buffer' in locals() else ''
         stdout_logs = local_stdout_buffer.getvalue() if 'local_stdout_buffer' in locals() else ''
 
-        # Clean up handlers if they were added
+        # Clean up handler from root logger if it was added
         if 'local_log_handler' in locals():
-            logger.removeHandler(local_log_handler)
             root_logger.removeHandler(local_log_handler)
 
         # Combine logs for error case
