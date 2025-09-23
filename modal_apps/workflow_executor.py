@@ -2448,7 +2448,7 @@ def execute_workflow(
         # when the workflow_executions status changes to 'completed' or 'failed'
 
         # Trigger alert check for failed executions
-        if status == "failed" or execution_has_errors:
+        if workflow_status == "failed" or execution_has_errors:
             try:
                 import requests
                 # Get workflow details for the alert
@@ -2471,7 +2471,7 @@ def execute_workflow(
                             "execution_id": execution_data["id"],
                             "workflow_id": execution_data["workflow_id"],
                             "workflow_name": execution_data["workflow_name"],
-                            "status": status,
+                            "status": workflow_status,
                             "error_message": error_message,
                             "started_at": execution_data["started_at"].isoformat() if execution_data["started_at"] else None,
                             "completed_at": completion_time.isoformat(),
