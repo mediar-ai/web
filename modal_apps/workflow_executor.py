@@ -24,7 +24,7 @@ from lib.locks import (
     release_acquired_locks,
 )
 from lib.mcp_client import normalize_endpoint, post_with_503_backoff
-from lib.file_manager import WorkflowFileManager
+# File manager removed - files are now accessed via rclone mount
 from output_enrichment import enrich_results_if_enabled
 
 # Configure logging to capture everything
@@ -1281,41 +1281,27 @@ async def execute_mcp_workflow(
 ) -> Dict[str, Any]:
     """Execute workflow using the working MCP HTTP approach with file support"""
     import httpx
-    from lib.file_manager import WorkflowFileManager
+    # File manager removed - files are now accessed via rclone mount
 
     logger.info(" Attempting to connect to MCP endpoint: %s", mcp_endpoint)
 
     # Check if workflow requires external files
     requires_files = workflow_data.get("requires_files", False)
-    file_mapping = {}
 
+    # If files are required, set the root_path for rclone mount
+    # Files are accessed via rclone mount at /mnt/workflows/{workflow_id}/
     if requires_files:
-        logger.info(" Workflow requires external files, preparing...")
+        logger.info(" Workflow requires external files, setting root_path...")
         workflow_id = workflow_data.get("id")
-        version = workflow_data.get("version", "1.0.0")
-
-        # Initialize file manager and download files
-        async with WorkflowFileManager(machine_id=machine_id) as file_manager:
-            try:
-                file_mapping = await file_manager.prepare_workflow_files(
-                    workflow_id, version, timeout=30.0
-                )
-                logger.info(f" Prepared {len(file_mapping)} files for execution")
-            except Exception as e:
-                logger.error(f"Failed to prepare workflow files: {e}")
-                # Continue execution without files if download fails
-                # The workflow might still work with embedded fallbacks
+        root_path = f"/mnt/workflows/{workflow_id}/"
+        logger.info(f" Using root_path: {root_path}")
+    else:
+        root_path = None
 
     session_client = None
     try:
         # Use the smart sequence loader for dual-format support
         automation_sequence_list = SequenceLoader.load_workflow_sequence(workflow_data)
-
-        # Update paths in automation sequence if files were downloaded
-        if file_mapping:
-            file_manager = WorkflowFileManager(machine_id=machine_id)
-            workflow_data = file_manager.update_workflow_paths(workflow_data, file_mapping)
-            automation_sequence_list = SequenceLoader.load_workflow_sequence(workflow_data)
 
         if not automation_sequence_list or len(automation_sequence_list) == 0:
             raise ValueError("No valid automation sequence found in workflow data")
@@ -1350,6 +1336,11 @@ async def execute_mcp_workflow(
 
         else:
             logger.info(" Using default inputs from workflow definition.")
+
+        # Add scripts_base_path to arguments if workflow requires files
+        if requires_files and root_path:
+            arguments["scripts_base_path"] = root_path
+            logger.info(f" Added scripts_base_path to arguments: {root_path}")
 
         # The entire `arguments` object, containing the `variables` schema, the final `inputs`,
         # and the `items`, is sent to MCP. The template engine inside MCP will know

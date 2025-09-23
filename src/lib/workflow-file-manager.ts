@@ -44,43 +44,24 @@ export class WorkflowFileManager {
       const uploadedFiles = [];
 
       for (const file of files) {
-        // Generate hash for deduplication
+        // Generate hash for tracking (but not for file naming)
         const hash = file.hash || this.generateHash(file.content);
 
-        // Check if file already exists by hash
-        const { data: existing } = await this.supabase
-          .from('workflow_files')
-          .select('storage_path, file_hash')
-          .eq('file_hash', hash)
-          .single();
-
-        let storagePath: string;
-
-        if (existing) {
-          // File already exists, reuse it
-          console.log(`File ${file.path} already exists with hash ${hash}, reusing...`);
-          storagePath = existing.storage_path;
-        } else {
-          // Upload new file
-          storagePath = this.generateStoragePath(workflowId, version, file.path, hash);
+        // Always use workflow-specific path (no deduplication across workflows)
+        // This ensures each workflow has its own files in its directory
+        const storagePath = this.generateStoragePath(workflowId, version, file.path, hash);
 
           const { error: uploadError } = await this.supabase.storage
             .from(this.bucketName)
             .upload(storagePath, file.content, {
               contentType: this.getContentType(file.path),
-              upsert: false,
+              upsert: true, // Allow overwriting for same workflow
               cacheControl: '3600' // Cache for 1 hour
             });
 
           if (uploadError) {
-            // Check if error is because file already exists
-            if (uploadError.message?.includes('already exists')) {
-              console.log(`Storage file already exists at ${storagePath}`);
-            } else {
-              throw new Error(`Failed to upload ${file.path}: ${uploadError.message}`);
-            }
+            throw new Error(`Failed to upload ${file.path}: ${uploadError.message}`);
           }
-        }
 
         // Record file metadata
         const fileRecord = {
@@ -297,11 +278,10 @@ export class WorkflowFileManager {
     filePath: string,
     hash: string
   ): string {
-    // Use hash in path for deduplication
-    // Format: workflows/{id}/v{version}/{hash_prefix}/{filename}
-    const fileName = path.basename(filePath);
-    const hashPrefix = hash.substring(0, 8);
-    return `workflows/${workflowId}/v${version}/${hashPrefix}/${fileName}`;
+    // Preserve original file structure without hash prefix
+    // Format: workflows/{id}/{filepath}
+    // This allows rclone mount to preserve the file structure
+    return `workflows/${workflowId}/${filePath}`;
   }
 
   private getContentType(filePath: string): string {
