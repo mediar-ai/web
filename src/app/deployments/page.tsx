@@ -470,6 +470,9 @@ function AuthenticatedDeploymentsPage({
         `/api/remote-workflows/executions/${executionId}?full_detailed_response=true`
       );
       const executionData = await response.json();
+      console.log('Fetched execution data:', executionData);
+      console.log('Has execution_logs?', !!executionData.execution?.execution_logs);
+      console.log('execution_logs length:', executionData.execution?.execution_logs?.length);
       if (executionData.success) {
         setSelectedExecution(executionData.execution);
       }
@@ -1021,8 +1024,7 @@ function AuthenticatedDeploymentsPage({
                                     variant="ghost"
                                     className="h-8 w-8 border border-black hover:bg-black hover:text-white"
                                     onClick={() => {
-                                      setSelectedExecution(execution);
-                                      setExecutionDetailsOpen(true);
+                                      fetchExecutionDetails(execution.id);
                                     }}
                                     title="View Details"
                                   >
@@ -1147,8 +1149,7 @@ function AuthenticatedDeploymentsPage({
         onViewWorkflow={fetchWorkflowOverview}
         onEditWorkflow={handleQuickEdit}
         onViewExecution={execution => {
-          setSelectedExecution(execution);
-          setExecutionDetailsOpen(true);
+          fetchExecutionDetails(execution.id);
         }}
         onCreateWorkflow={() => setCreateWorkflowOpen(true)}
         onRefresh={() => fetchWorkflows(true)}
