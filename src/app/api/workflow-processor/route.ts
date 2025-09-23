@@ -97,12 +97,11 @@ export async function POST(_request: NextRequest) {
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get one queued execution with assigned machine
+    // Get one queued execution (mcp_endpoint might be null, we'll get it from assigned_machine_id)
     const { data: execution } = await supabase
       .from('workflow_executions')
       .select('*, deployed_workflows!inner(*)')
       .eq('status', 'queued')
-      .not('mcp_endpoint', 'is', null)
       .order('created_at', { ascending: true })
       .limit(1)
       .single();
@@ -116,7 +115,6 @@ export async function POST(_request: NextRequest) {
         .select('*, deployed_workflows!inner(*)')
         .eq('status', 'running')
         .lt('started_at', fiveMinutesAgo)
-        .not('mcp_endpoint', 'is', null)
         .order('started_at', { ascending: true })
         .limit(1)
         .single();
@@ -155,6 +153,42 @@ export async function POST(_request: NextRequest) {
 
     const workflow = execution.deployed_workflows;
 
+    // Get MCP endpoint - either from execution or from machines table
+    let mcpEndpoint = execution.mcp_endpoint;
+
+    if (!mcpEndpoint && execution.assigned_machine_id) {
+      const { data: machine } = await supabase
+        .from('machines')
+        .select('mcp_endpoint')
+        .eq('id', execution.assigned_machine_id)
+        .single();
+
+      if (machine?.mcp_endpoint) {
+        mcpEndpoint = machine.mcp_endpoint;
+      }
+    }
+
+    // If still no endpoint, use a default or skip
+    if (!mcpEndpoint) {
+      // Try to get any available machine
+      const { data: anyMachine } = await supabase
+        .from('machines')
+        .select('mcp_endpoint')
+        .eq('is_available', true)
+        .limit(1)
+        .single();
+
+      if (anyMachine?.mcp_endpoint) {
+        mcpEndpoint = anyMachine.mcp_endpoint;
+      } else {
+        return NextResponse.json({
+          success: false,
+          message: `No MCP endpoint available for execution ${execution.id}`,
+          error: 'No machine available'
+        });
+      }
+    }
+
     // Prepare workflow data
     const workflowData = {
       id: workflow.id,
@@ -168,7 +202,7 @@ export async function POST(_request: NextRequest) {
     const result = await executeMCPWorkflow(
       workflowData,
       execution.execution_params || {},
-      execution.mcp_endpoint
+      mcpEndpoint
     );
 
     // Transform logs to UI format
