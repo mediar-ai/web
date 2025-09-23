@@ -41,7 +41,7 @@ export async function POST(_request: NextRequest) {
       status: 'Check deployments page to see it process'
     });
 
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
