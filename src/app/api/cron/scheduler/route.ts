@@ -264,6 +264,16 @@ export async function POST(_request: NextRequest) {
     try {
       console.log('🔄 Triggering workflow processor for queued executions...');
 
+      // Use the same publicUrl logic from above
+      const vercelBypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+      const isProduction = process.env.NODE_ENV === 'production' ||
+                         process.env.VERCEL_ENV === 'production' ||
+                         process.env.VERCEL;
+
+      const publicUrl = isProduction
+        ? 'https://app.mediar.ai'
+        : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
+
       const processorUrl = `${publicUrl}/api/workflow-processor`;
       const processorResponse = await fetch(processorUrl, {
         method: 'POST',
