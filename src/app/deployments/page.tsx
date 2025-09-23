@@ -637,21 +637,20 @@ function AuthenticatedDeploymentsPage({
 
   if (loading) {
     return (
-      <SidebarProvider>
-        <div className="flex h-screen overflow-hidden">
-          <DeploymentSidebar
-              stats={{
-                total: 0,
-                running: 0,
-                paused: 0,
-                failed: 0,
-                automated: 0,
-              }}
-              selectedFilter="all"
-              onFilterChange={() => {}}
-              onCreateWorkflow={() => {}}
-              canViewAlerts={false}
-            />
+      <div className="flex h-screen overflow-hidden">
+        <ResizableSidebar
+          stats={{
+            total: 0,
+            running: 0,
+            paused: 0,
+            failed: 0,
+            automated: 0,
+          }}
+          selectedFilter="all"
+          onFilterChange={() => {}}
+          onCreateWorkflow={() => {}}
+          canViewAlerts={false}
+        />
           <div className="flex-1 overflow-y-auto overflow-x-hidden">
               <div className="max-w-7xl mx-auto p-6 space-y-6">
                 {/* Header skeleton */}
@@ -720,7 +719,7 @@ function AuthenticatedDeploymentsPage({
             </div>
           </div>
         </div>
-      </SidebarProvider>
+      </div>
     );
   }
 
