@@ -260,37 +260,8 @@ export async function POST(_request: NextRequest) {
       }
     }
 
-    // 4. Trigger workflow processor to process any queued executions
-    try {
-      console.log('🔄 Triggering workflow processor for queued executions...');
-
-      // Use the same publicUrl logic from above
-      const isProduction = process.env.NODE_ENV === 'production' ||
-                         process.env.VERCEL_ENV === 'production' ||
-                         process.env.VERCEL;
-
-      const publicUrl = isProduction
-        ? 'https://app.mediar.ai'
-        : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
-
-      const processorUrl = `${publicUrl}/api/workflow-processor`;
-      const processorResponse = await fetch(processorUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-        }
-      });
-
-      if (processorResponse.ok) {
-        const processorData = await processorResponse.json();
-        console.log(`✅ Workflow processor result: ${JSON.stringify(processorData)}`);
-      } else {
-        console.error(`❌ Workflow processor failed: ${processorResponse.status}`);
-      }
-    } catch (processorError) {
-      console.error('❌ Error calling workflow processor:', processorError);
-    }
+    // 4. Modal will process queued executions automatically
+    console.log('✅ Queued executions will be processed by Modal scheduler');
 
     // 5. Update next execution times for all workflows
     if (workflowUpdates.length > 0) {
