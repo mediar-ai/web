@@ -14,7 +14,6 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useExecutionMonitoring } from '@/hooks/useExecutionMonitoring';
 
 import {
   Execution,
@@ -625,8 +624,6 @@ function AuthenticatedDeploymentsPage({
     setExecutingWorkflows(currentlyExecuting);
   }, [liveExecutions]);
 
-  // Use execution monitoring hook to track errors and trigger alerts
-  useExecutionMonitoring(executions, liveExecutions);
 
   // =========================================================================
   // Computed Values and Statistics
@@ -1024,7 +1021,7 @@ function AuthenticatedDeploymentsPage({
                                     variant="ghost"
                                     className="h-8 w-8 border border-black hover:bg-black hover:text-white"
                                     onClick={() => {
-                                      fetchExecutionDetails(execution.id);
+                                      fetchExecutionDetails(execution.execution_id);
                                     }}
                                     title="View Details"
                                   >
@@ -1149,7 +1146,7 @@ function AuthenticatedDeploymentsPage({
         onViewWorkflow={fetchWorkflowOverview}
         onEditWorkflow={handleQuickEdit}
         onViewExecution={execution => {
-          fetchExecutionDetails(execution.id);
+          fetchExecutionDetails(execution.execution_id);
         }}
         onCreateWorkflow={() => setCreateWorkflowOpen(true)}
         onRefresh={() => fetchWorkflows(true)}
