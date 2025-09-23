@@ -27,10 +27,12 @@ import {
   FileText,
   BookOpen,
   ExternalLink,
+  Rocket,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { usePathname, useRouter } from 'next/navigation';
 
 interface DeploymentSidebarProps {
   stats?: {
@@ -44,6 +46,7 @@ interface DeploymentSidebarProps {
   onFilterChange?: (filter: string) => void;
   onCreateWorkflow?: () => void;
   canViewAlerts?: boolean;
+  currentPage?: 'deployments' | 'alerts' | 'settings';
 }
 
 export function DeploymentSidebar({
@@ -58,10 +61,40 @@ export function DeploymentSidebar({
   onFilterChange,
   onCreateWorkflow,
   canViewAlerts = false,
+  currentPage,
 }: DeploymentSidebarProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // Determine current page from pathname if not explicitly provided
+  const activePage = currentPage || (
+    pathname?.includes('/notifications') ? 'alerts' :
+    pathname?.includes('/settings') ? 'settings' :
+    'deployments'
+  );
+
   const menuItems = [
     {
-      label: 'Overview',
+      label: 'Navigation',
+      items: [
+        {
+          icon: Rocket,
+          label: 'Deployments',
+          value: 'page-deployments',
+          href: '/deployments',
+          isActive: activePage === 'deployments',
+        },
+        ...(canViewAlerts ? [{
+          icon: Bell,
+          label: 'Alerts',
+          value: 'page-alerts',
+          href: '/internal/notifications',
+          isActive: activePage === 'alerts',
+        }] : []),
+      ],
+    },
+    {
+      label: 'Workflows',
       items: [
         {
           icon: LayoutDashboard,
@@ -110,31 +143,46 @@ export function DeploymentSidebar({
             <SidebarGroupLabel className="text-xs">{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.value}>
-                    <SidebarMenuButton
-                      isActive={selectedFilter === item.value}
-                      onClick={() => onFilterChange?.(item.value)}
-                      className="w-full"
-                    >
-                      <item.icon
+                {group.items.map((item) => {
+                  // Check if this is a navigation item or a filter item
+                  const isNavigationItem = 'href' in item;
+                  const isActive = isNavigationItem ? item.isActive : selectedFilter === item.value;
+
+                  return (
+                    <SidebarMenuItem key={item.value}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        onClick={() => {
+                          if (isNavigationItem) {
+                            router.push(item.href);
+                          } else {
+                            onFilterChange?.(item.value);
+                          }
+                        }}
                         className={cn(
-                          'mr-2 h-4 w-4',
-                          selectedFilter === item.value ? 'text-black' : 'text-gray-600'
+                          "w-full",
+                          isNavigationItem && isActive && "bg-black text-white hover:bg-gray-800"
                         )}
-                      />
-                      <span className="flex-1">{item.label}</span>
-                      {'count' in item && item.count !== undefined && (
-                        <Badge
-                          variant={selectedFilter === item.value ? 'default' : 'secondary'}
-                          className="ml-auto"
-                        >
-                          {item.count}
-                        </Badge>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                      >
+                        <item.icon
+                          className={cn(
+                            'mr-2 h-4 w-4',
+                            isActive ? (isNavigationItem ? 'text-white' : 'text-black') : 'text-gray-600'
+                          )}
+                        />
+                        <span className="flex-1">{item.label}</span>
+                        {'count' in item && item.count !== undefined && (
+                          <Badge
+                            variant={isActive ? 'default' : 'secondary'}
+                            className="ml-auto"
+                          >
+                            {item.count}
+                          </Badge>
+                        )}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -146,18 +194,6 @@ export function DeploymentSidebar({
           <SidebarGroupLabel className="text-xs">Resources</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {canViewAlerts && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => window.location.href = '/internal/notifications'}
-                    className="hover:bg-black hover:text-white"
-                  >
-                    <Bell className="mr-2 h-4 w-4" />
-                    <span className="flex-1">Alerts</span>
-                    <ExternalLink className="h-3 w-3 ml-auto" />
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={() => window.open('/docs/api/remote-workflows', '_blank')}
