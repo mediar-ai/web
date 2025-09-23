@@ -138,13 +138,31 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract JavaScript files for upload
+    // Strip the root folder name if present (e.g., "test-workflow-with-files/")
     const filesToUpload: WorkflowFile[] = [];
+
+    // Find common root folder to strip
+    let rootFolder = '';
+    if (jsFiles.length > 0) {
+      const firstPath = jsFiles[0];
+      const firstSlash = firstPath.indexOf('/');
+      if (firstSlash > 0) {
+        const potentialRoot = firstPath.substring(0, firstSlash + 1);
+        // Check if all files start with this root
+        if (jsFiles.every(f => f.startsWith(potentialRoot))) {
+          rootFolder = potentialRoot;
+        }
+      }
+    }
+
     for (const jsFile of jsFiles) {
       const file = zipContent.file(jsFile);
       if (file) {
         const content = await file.async('nodebuffer');
+        // Strip root folder from path if present
+        const cleanPath = rootFolder ? jsFile.substring(rootFolder.length) : jsFile;
         filesToUpload.push({
-          path: jsFile,
+          path: cleanPath,
           content: content as Buffer
         });
       }

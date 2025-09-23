@@ -1289,11 +1289,11 @@ async def execute_mcp_workflow(
     requires_files = workflow_data.get("requires_files", False)
 
     # If files are required, set the root_path for rclone mount
-    # Files are accessed via rclone mount at /mnt/workflows/{workflow_id}/
+    # Files are accessed via rclone mount at S:\workflows\{workflow_id}\ on Windows
     if requires_files:
         logger.info(" Workflow requires external files, setting root_path...")
         workflow_id = workflow_data.get("id")
-        root_path = f"/mnt/workflows/{workflow_id}/"
+        root_path = f"S:\\workflows\\{workflow_id}\\"
         logger.info(f" Using root_path: {root_path}")
     else:
         root_path = None
