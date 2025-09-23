@@ -90,25 +90,22 @@ export function ResizableSidebar({
     <SidebarProvider>
       <div
         ref={sidebarRef}
-        className="relative flex h-full"
+        className="relative h-full border-r border-gray-200"
         style={{ width: `${width}px`, minWidth: `${minWidth}px`, maxWidth: `${maxWidth}px` }}
       >
-        <div className="flex-1 h-full overflow-hidden">
+        <div className="h-full overflow-hidden">
           <DeploymentSidebar {...props} />
         </div>
 
-        {/* Resize handle */}
+        {/* Resize handle - only on the right edge of the sidebar */}
         <div
           className={cn(
-            "absolute right-0 top-0 h-full w-1 cursor-col-resize bg-gray-200 hover:bg-gray-400 transition-colors",
-            "flex items-center justify-center",
-            isResizing && "bg-gray-400"
+            "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 transition-colors z-10",
+            isResizing && "bg-blue-500"
           )}
+          style={{ touchAction: 'none' }}
           onMouseDown={startResizing}
-        >
-          {/* Visual indicator */}
-          <div className="absolute inset-y-0 right-0 w-4 -mr-1.5" />
-        </div>
+        />
       </div>
     </SidebarProvider>
   );
