@@ -389,8 +389,9 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
         return False, f"Check error: {e}", check_duration_ms
 
 
-# Windows VM service management endpoints (from our ngrok-powered system)
-VM_MANAGEMENT_ENDPOINT = "https://vm-windows-1.ngrok.dev"
+# Windows VM service management endpoints
+# This should be dynamically determined based on the machine or passed as a parameter
+VM_MANAGEMENT_ENDPOINT = os.environ.get("VM_MANAGEMENT_ENDPOINT", "")
 
 # Note: MCP endpoints are now passed dynamically via mcp_endpoint parameter
 
@@ -2445,6 +2446,51 @@ def execute_workflow(
 
         # Note: Workflow success/failure metrics are automatically updated by database trigger
         # when the workflow_executions status changes to 'completed' or 'failed'
+
+        # Trigger alert check for failed executions
+        if status == "failed" or execution_has_errors:
+            try:
+                import requests
+                # Get workflow details for the alert
+                cur.execute(
+                    """
+                    SELECT we.*, w.name as workflow_name
+                    FROM workflow_executions we
+                    JOIN deployed_workflows w ON w.id = we.workflow_id
+                    WHERE we.id = %s
+                    """,
+                    (execution_id,)
+                )
+                execution_data = cur.fetchone()
+
+                if execution_data:
+                    # Send to monitoring endpoint
+                    monitor_payload = {
+                        "execution": {
+                            "id": execution_data["id"],
+                            "execution_id": execution_data["id"],
+                            "workflow_id": execution_data["workflow_id"],
+                            "workflow_name": execution_data["workflow_name"],
+                            "status": status,
+                            "error_message": error_message,
+                            "started_at": execution_data["started_at"].isoformat() if execution_data["started_at"] else None,
+                            "completed_at": completion_time.isoformat(),
+                            "execution_time_seconds": execution_duration,
+                            "trigger_source": "modal_executor",
+                        }
+                    }
+
+                    # Use the app URL from environment or default
+                    app_url = os.environ.get("APP_URL", "https://app.mediar.ai")
+                    monitor_url = f"{app_url}/api/remote-workflows/executions/monitor"
+
+                    response = requests.post(monitor_url, json=monitor_payload, timeout=5)
+                    if response.status_code == 200:
+                        logger.info(f"Alert check triggered for failed execution {execution_id}")
+                    else:
+                        logger.warning(f"Failed to trigger alert check: {response.status_code}")
+            except Exception as alert_error:
+                logger.error(f"Error triggering alert check: {alert_error}")
 
         logger.info(
             " Completed real browser execution %s in %ds",
