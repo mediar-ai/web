@@ -273,9 +273,6 @@ function generateEmailHTML(alert: any, config: any): string {
             <a href="${baseUrl}/deployments?workflow=${workflowId}" class="secondary-button">
               View Workflow
             </a>
-            <a href="${baseUrl}/deployments?logs=true" class="secondary-button">
-              View Logs
-            </a>
           </div>
 
           <div class="metadata">
@@ -292,7 +289,7 @@ function generateEmailHTML(alert: any, config: any): string {
               <strong>Time:</strong> ${new Date().toLocaleString('en-US', { timeZoneName: 'short' })}
             </div>
             <div class="metadata-item">
-              <strong>Duration:</strong> ${duration}s
+              <strong>Duration:</strong> ${duration ? `${duration}s` : 'N/A'}
             </div>
           </div>
 
@@ -309,8 +306,12 @@ function generateEmailHTML(alert: any, config: any): string {
             <summary style="cursor: pointer; color: #000; font-size: 13px; padding: 10px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-weight: 600;">
               📊 View Full Details
             </summary>
-            <div class="error-box" style="margin-top: 8px; font-size: 11px; background: #fafafa; border-color: #ddd;">
-${JSON.stringify(alert.details || alert, null, 2)}
+            <div class="error-box" style="margin-top: 8px; font-size: 12px; background: #fafafa; border-color: #ddd; max-height: 400px; overflow-y: auto;">
+              <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;">${JSON.stringify(alert.details || alert, null, 2)
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')}</pre>
             </div>
           </details>
         </div>
