@@ -93,7 +93,8 @@ export function DeploymentSidebar({
         }] : []),
       ],
     },
-    {
+    // Only show workflow filters on the deployments page
+    ...(activePage === 'deployments' ? [{
       label: 'Workflows',
       items: [
         {
@@ -115,7 +116,7 @@ export function DeploymentSidebar({
           count: stats.automated,
         },
       ],
-    },
+    }] : []),
   ];
 
   return (

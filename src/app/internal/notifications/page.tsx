@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useAuth, useUser } from '@clerk/nextjs';
+import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
+import { SidebarProvider } from '@/components/ui/sidebar';
 
 interface NotificationConfig {
   id?: number;
@@ -299,7 +300,13 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white p-8">
+    <SidebarProvider>
+      <div className="flex min-h-screen">
+        <DeploymentSidebar
+          canViewAlerts={true}
+          currentPage="alerts"
+        />
+        <div className="flex-1 bg-white p-8">
       <div className="max-w-4xl mx-auto">
         {/* Toast Notification */}
         {toast && (
@@ -310,19 +317,8 @@ export default function NotificationsPage() {
           />
         )}
 
-        {/* Header with Back Button */}
+        {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <Link href="/deployments">
-              <Button
-                variant="outline"
-                className="border-2 border-black hover:bg-black hover:text-white font-mono"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                BACK TO DEPLOYMENTS
-              </Button>
-            </Link>
-          </div>
           <h1 className="text-3xl font-bold text-black flex items-center gap-2">
             <Bell className="w-8 h-8" />
             Error Alerts
@@ -537,6 +533,8 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
-    </div>
+        </div>
+      </div>
+    </SidebarProvider>
   );
 }
