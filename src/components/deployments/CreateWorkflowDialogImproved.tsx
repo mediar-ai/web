@@ -189,8 +189,8 @@ export function CreateWorkflowDialog({
       const result = await response.json();
 
       if (result.success) {
-        const workflowName = result.workflowData?.name || name;
-        alert(`Workflow "${workflowName}" created successfully!`);
+        // Always use the user-chosen name for the alert message
+        alert(`Workflow "${name.trim()}" created successfully!`);
         onWorkflowCreated?.(result.workflow || result);
         onOpenChange(false);
         resetForm();
@@ -326,6 +326,8 @@ export function CreateWorkflowDialog({
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       if (file.type === 'application/zip' || file.type === 'application/x-zip-compressed' || file.name.endsWith('.zip')) {
+        // Reset validation state before uploading new file
+        setUploadValidation({ status: 'idle' });
         handleFileUpload(file);
       } else {
         setUploadValidation({
@@ -338,6 +340,8 @@ export function CreateWorkflowDialog({
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      // Reset validation state before uploading new file
+      setUploadValidation({ status: 'idle' });
       handleFileUpload(e.target.files[0]);
     }
   };

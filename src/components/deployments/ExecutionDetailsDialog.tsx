@@ -164,6 +164,16 @@ export function ExecutionDetailsDialog({
                               : 'v1.0.0 (default)'}
                           </dd>
                         </div>
+                        {execution.assigned_machine_name && (
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">
+                              Executed On:
+                            </dt>
+                            <dd className="font-mono text-sm">
+                              {execution.assigned_machine_name}
+                            </dd>
+                          </div>
+                        )}
                       </dl>
                     </div>
 

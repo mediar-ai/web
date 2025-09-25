@@ -155,6 +155,20 @@ export async function GET(
       .eq('id', execution.workflow_id)
       .single();
 
+    // Get assigned machine details if available
+    let assignedMachineName = null;
+    if (execution.assigned_machine_id) {
+      const { data: machine } = await supabase
+        .from('remote_machines')
+        .select('name')
+        .eq('id', execution.assigned_machine_id)
+        .single();
+
+      if (machine) {
+        assignedMachineName = machine.name;
+      }
+    }
+
     // Calculate execution metrics
     const startedAt = execution.started_at
       ? new Date(execution.started_at)
@@ -278,6 +292,10 @@ export async function GET(
         modal_call_id: execution.modal_call_id,
         client_id: execution.client_id,
         execution_params: execution.execution_params || {},
+
+        // Machine assignment info
+        assigned_machine_id: execution.assigned_machine_id || null,
+        assigned_machine_name: assignedMachineName,
 
         // Transform and include execution logs (always include for completed executions)
         execution_logs: transformExecutionLogs(execution.execution_logs),
