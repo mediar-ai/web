@@ -141,8 +141,8 @@ export async function POST(request: NextRequest) {
     // Strip the root folder name if present (e.g., "test-workflow-with-files/")
     const filesToUpload: WorkflowFile[] = [];
 
-    // Find common root folder to strip
-    let rootFolder = '';
+    // Find common root folder to strip (not currently used but kept for reference)
+    let _rootFolder = '';
     if (jsFiles.length > 0) {
       const firstPath = jsFiles[0];
       const firstSlash = firstPath.indexOf('/');
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
         const potentialRoot = firstPath.substring(0, firstSlash + 1);
         // Check if all files start with this root
         if (jsFiles.every(f => f.startsWith(potentialRoot))) {
-          rootFolder = potentialRoot;
+          _rootFolder = potentialRoot;
         }
       }
     }
@@ -251,14 +251,44 @@ export async function POST(request: NextRequest) {
       }
       const version = workflowData.version || '1.0.0';
 
+      // Detect subdirectory from file paths
+      let detectedSubdir: string | undefined;
+      if (filesToUpload.length > 0) {
+        const firstFile = filesToUpload[0].path;
+        const firstSlash = firstFile.indexOf('/');
+        if (firstSlash > 0) {
+          const potentialSubdir = firstFile.substring(0, firstSlash);
+          // Check if all files start with this subdirectory
+          if (filesToUpload.every(f => f.path.startsWith(potentialSubdir + '/'))) {
+            detectedSubdir = potentialSubdir;
+            console.log(`📁 Detected subdirectory: ${detectedSubdir}`);
+          }
+        }
+      }
+
       const fileManager = new WorkflowFileManager();
       const uploadResult = await fileManager.uploadWorkflowFiles(
         workflowId,
         version,
-        filesToUpload
+        filesToUpload,
+        detectedSubdir
       );
 
       if (uploadResult.success) {
+        // Update deployed_workflows table with files_config including subdirectory
+        await supabase
+          .from('deployed_workflows')
+          .update({
+            requires_files: true,
+            files_config: {
+              file_count: filesToUpload.length,
+              total_size: filesToUpload.reduce((sum, f) => sum + f.content.length, 0),
+              subdirectory: detectedSubdir || null,
+              last_updated: new Date().toISOString()
+            }
+          })
+          .eq('id', workflowId);
+
         // Get signed URLs for the files
         fileUrls = await fileManager.getSignedUrls(workflowId, version);
 
