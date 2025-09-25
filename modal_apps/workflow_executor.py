@@ -1326,11 +1326,39 @@ async def execute_mcp_workflow(
                 root_path = os.path.join(base_path, subdirectory) + "\\"
                 logger.info(f" Using configured root_path: {root_path}")
             else:
-                # The files are stored with their full path including subdirectory in S3
-                # When mounted via rclone, they appear at S:\workflows\{id}\{subdirectory}\{files}
-                # Just use the base path - the MCP server will resolve paths relative to it
-                root_path = base_path + "\\"
-                logger.info(f" Using base path for scripts: {root_path}")
+                # Try to auto-detect subdirectory from mounted files
+                import os
+                import glob
+
+                # Check if there are subdirectories in the mounted path
+                try:
+                    if os.path.exists(base_path):
+                        subdirs = [d for d in os.listdir(base_path)
+                                 if os.path.isdir(os.path.join(base_path, d))]
+
+                        if len(subdirs) == 1:
+                            # Single subdirectory found - likely the workflow folder
+                            detected_subdir = subdirs[0]
+                            # Check if it contains .js files
+                            js_files = glob.glob(os.path.join(base_path, detected_subdir, "*.js"))
+                            if js_files:
+                                logger.info(f" Auto-detected subdirectory '{detected_subdir}' containing {len(js_files)} JS files")
+                                root_path = os.path.join(base_path, detected_subdir) + "\\"
+                                logger.info(f" Using auto-detected root_path: {root_path}")
+                            else:
+                                root_path = base_path + "\\"
+                                logger.info(f" No JS files in subdirectory, using base path: {root_path}")
+                        else:
+                            # Multiple subdirectories or none - use base path
+                            root_path = base_path + "\\"
+                            logger.info(f" Multiple/no subdirectories found, using base path: {root_path}")
+                    else:
+                        root_path = base_path + "\\"
+                        logger.info(f" Mount path doesn't exist yet, using base path: {root_path}")
+                except Exception as e:
+                    logger.warning(f" Error auto-detecting subdirectory: {e}")
+                    root_path = base_path + "\\"
+                    logger.info(f" Fallback to base path: {root_path}")
         else:
             logger.warning(" Workflow requires files but no workflow_id available!")
             root_path = None
