@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
 
     // Extract JavaScript files for upload
     // Strip the root folder name if present (e.g., "test-workflow-with-files/")
-    const filesToUpload: WorkflowFile[] = [];
+    let filesToUpload: WorkflowFile[] = [];
 
     // Intelligently handle root folders in ZIP structure
     let pathsToProcess = jsFiles;
@@ -274,9 +274,15 @@ export async function POST(request: NextRequest) {
       }
       const version = workflowData.version || '1.0.0';
 
-      // Detect subdirectory from file paths
+      // Normalize paths and detect subdirectory
       let detectedSubdir: string | undefined;
       if (filesToUpload.length > 0) {
+        // Normalize all paths to use forward slashes
+        filesToUpload = filesToUpload.map(f => ({
+          ...f,
+          path: f.path.replace(/\\/g, '/')
+        }));
+
         console.log(`🔍 Analyzing ${filesToUpload.length} files for subdirectory detection:`);
         filesToUpload.forEach(f => console.log(`  - ${f.path}`));
 
