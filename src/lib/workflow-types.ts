@@ -123,6 +123,9 @@ export interface Execution {
   error_message?: string;
   client_id?: string;
   execution_params?: Record<string, unknown>;
+  // Machine assignment info
+  assigned_machine_id?: number;
+  assigned_machine_name?: string;
   // Version information
   version_number?: string;
   workflow_version_id?: number;
