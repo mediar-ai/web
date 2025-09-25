@@ -33,15 +33,19 @@ export async function POST(request: NextRequest) {
     let detectedSubdir: string | null = null;
     const firstPath = files[0].storage_path;
 
+    // Normalize path separators (handle both / and \)
+    const normalizedPath = firstPath.replace(/\\/g, '/');
+
     // Pattern: workflows/{id}/{subdirectory}/{file}
-    const parts = firstPath.split('/');
+    const parts = normalizedPath.split('/');
     if (parts.length >= 4 && parts[0] === 'workflows') {
       // parts[1] is workflow ID, parts[2] is potential subdirectory
       const potentialSubdir = parts[2];
 
       // Check if all files have this subdirectory
       const allMatch = files.every(f => {
-        const fParts = f.storage_path.split('/');
+        const normalizedF = f.storage_path.replace(/\\/g, '/');
+        const fParts = normalizedF.split('/');
         return fParts.length >= 4 && fParts[2] === potentialSubdir;
       });
 

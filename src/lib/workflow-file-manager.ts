@@ -44,14 +44,20 @@ export class WorkflowFileManager {
       const fileRecords = [];
       const uploadedFiles = [];
 
+      // Normalize all file paths to use forward slashes
+      const normalizedFiles = files.map(f => ({
+        ...f,
+        path: f.path.replace(/\\/g, '/')
+      }));
+
       // Auto-detect subdirectory if not provided
       let detectedSubdir = subdirectory;
       console.log(`[WorkflowFileManager] Received subdirectory param: ${subdirectory}`);
-      console.log(`[WorkflowFileManager] Processing ${files.length} files`);
+      console.log(`[WorkflowFileManager] Processing ${normalizedFiles.length} files`);
 
-      if (!detectedSubdir && files.length > 0) {
+      if (!detectedSubdir && normalizedFiles.length > 0) {
         // Check if all files share a common subdirectory
-        const firstFile = files[0].path;
+        const firstFile = normalizedFiles[0].path;
         const firstSlash = firstFile.indexOf('/');
         console.log(`[WorkflowFileManager] First file: ${firstFile}, slash position: ${firstSlash}`);
 
@@ -60,7 +66,7 @@ export class WorkflowFileManager {
           console.log(`[WorkflowFileManager] Potential subdir: ${potentialSubdir}`);
 
           // Check if all files start with this subdirectory
-          if (files.every(f => f.path.startsWith(potentialSubdir + '/'))) {
+          if (normalizedFiles.every(f => f.path.startsWith(potentialSubdir + '/'))) {
             detectedSubdir = potentialSubdir;
             console.log(`[WorkflowFileManager] Auto-detected subdirectory: ${detectedSubdir}`);
           }
@@ -68,7 +74,7 @@ export class WorkflowFileManager {
       }
       console.log(`[WorkflowFileManager] Final subdirectory: ${detectedSubdir || 'none'}`);
 
-      for (const file of files) {
+      for (const file of normalizedFiles) {
         // Generate hash for tracking (but not for file naming)
         const hash = file.hash || this.generateHash(file.content);
 
