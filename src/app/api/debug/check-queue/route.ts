@@ -19,7 +19,6 @@ export async function GET(_request: NextRequest) {
         mcp_endpoint,
         created_at,
         started_at,
-        error,
         client_id
       `)
       .eq('status', 'queued')
@@ -152,8 +151,7 @@ export async function POST(request: NextRequest) {
         .from('workflow_executions')
         .update({
           assigned_machine_id: null,
-          mcp_endpoint: null,
-          error: null
+          mcp_endpoint: null
         })
         .eq('id', executionId)
         .eq('status', 'queued');
