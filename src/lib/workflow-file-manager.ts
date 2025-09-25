@@ -37,11 +37,27 @@ export class WorkflowFileManager {
   async uploadWorkflowFiles(
     workflowId: number,
     version: string,
-    files: WorkflowFile[]
+    files: WorkflowFile[],
+    subdirectory?: string
   ): Promise<FileUploadResult> {
     try {
       const fileRecords = [];
       const uploadedFiles = [];
+
+      // Auto-detect subdirectory if not provided
+      let detectedSubdir = subdirectory;
+      if (!detectedSubdir && files.length > 0) {
+        // Check if all files share a common subdirectory
+        const firstFile = files[0].path;
+        const firstSlash = firstFile.indexOf('/');
+        if (firstSlash > 0) {
+          const potentialSubdir = firstFile.substring(0, firstSlash);
+          // Check if all files start with this subdirectory
+          if (files.every(f => f.path.startsWith(potentialSubdir + '/'))) {
+            detectedSubdir = potentialSubdir;
+          }
+        }
+      }
 
       for (const file of files) {
         // Generate hash for tracking (but not for file naming)
@@ -107,6 +123,7 @@ export class WorkflowFileManager {
           files_config: {
             file_count: files.length,
             total_size: files.reduce((sum, f) => sum + f.content.length, 0),
+            subdirectory: detectedSubdir || null,
             last_updated: new Date().toISOString()
           }
         })
