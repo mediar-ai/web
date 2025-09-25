@@ -233,7 +233,8 @@ export function CreateWorkflowDialog({
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('action', 'create'); // Indicate this is for workflow creation
+    // Don't send 'action: create' during validation - only validate the file
+    // formData.append('action', 'create'); // REMOVED - this was causing duplicate workflow creation
 
     try {
       const response = await fetch('/api/workflows/upload-zip', {

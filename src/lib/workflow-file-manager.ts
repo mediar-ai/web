@@ -46,18 +46,27 @@ export class WorkflowFileManager {
 
       // Auto-detect subdirectory if not provided
       let detectedSubdir = subdirectory;
+      console.log(`[WorkflowFileManager] Received subdirectory param: ${subdirectory}`);
+      console.log(`[WorkflowFileManager] Processing ${files.length} files`);
+
       if (!detectedSubdir && files.length > 0) {
         // Check if all files share a common subdirectory
         const firstFile = files[0].path;
         const firstSlash = firstFile.indexOf('/');
+        console.log(`[WorkflowFileManager] First file: ${firstFile}, slash position: ${firstSlash}`);
+
         if (firstSlash > 0) {
           const potentialSubdir = firstFile.substring(0, firstSlash);
+          console.log(`[WorkflowFileManager] Potential subdir: ${potentialSubdir}`);
+
           // Check if all files start with this subdirectory
           if (files.every(f => f.path.startsWith(potentialSubdir + '/'))) {
             detectedSubdir = potentialSubdir;
+            console.log(`[WorkflowFileManager] Auto-detected subdirectory: ${detectedSubdir}`);
           }
         }
       }
+      console.log(`[WorkflowFileManager] Final subdirectory: ${detectedSubdir || 'none'}`);
 
       for (const file of files) {
         // Generate hash for tracking (but not for file naming)

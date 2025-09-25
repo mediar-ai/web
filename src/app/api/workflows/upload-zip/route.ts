@@ -141,27 +141,50 @@ export async function POST(request: NextRequest) {
     // Strip the root folder name if present (e.g., "test-workflow-with-files/")
     const filesToUpload: WorkflowFile[] = [];
 
-    // Find common root folder to strip (not currently used but kept for reference)
-    let _rootFolder = '';
+    // Intelligently handle root folders in ZIP structure
+    let pathsToProcess = jsFiles;
+
+    // Check if all files are in a single root folder that matches common patterns
     if (jsFiles.length > 0) {
       const firstPath = jsFiles[0];
       const firstSlash = firstPath.indexOf('/');
+
       if (firstSlash > 0) {
-        const potentialRoot = firstPath.substring(0, firstSlash + 1);
-        // Check if all files start with this root
-        if (jsFiles.every(f => f.startsWith(potentialRoot))) {
-          _rootFolder = potentialRoot;
+        const rootFolder = firstPath.substring(0, firstSlash);
+
+        // Check if all files start with this root folder
+        if (jsFiles.every(f => f.startsWith(rootFolder + '/'))) {
+          console.log(`🗂️ Detected common root folder: ${rootFolder}`);
+
+          // Check if the root folder appears to be redundant
+          // (e.g., "sap_with_login/sap_with_login/..." or "workflow-name/workflow-name/...")
+          const pathAfterRoot = firstPath.substring(firstSlash + 1);
+          const secondSlash = pathAfterRoot.indexOf('/');
+
+          if (secondSlash > 0) {
+            const secondFolder = pathAfterRoot.substring(0, secondSlash);
+
+            // If the root folder and second folder are the same (or very similar), strip the root
+            if (rootFolder === secondFolder ||
+                rootFolder.replace(/[-_]/g, '') === secondFolder.replace(/[-_]/g, '')) {
+              console.log(`🔄 Stripping redundant root folder: ${rootFolder}`);
+              pathsToProcess = jsFiles.map(f => f.substring(rootFolder.length + 1));
+            }
+          }
         }
       }
     }
 
-    for (const jsFile of jsFiles) {
-      const file = zipContent.file(jsFile);
+    for (let i = 0; i < jsFiles.length; i++) {
+      const originalPath = jsFiles[i];
+      const processedPath = pathsToProcess[i];
+      const file = zipContent.file(originalPath);
+
       if (file) {
         const content = await file.async('nodebuffer');
-        // Keep the full path including root folder
+        console.log(`📄 Adding JS file - Original: ${originalPath}, Processed: ${processedPath}`);
         filesToUpload.push({
-          path: jsFile,
+          path: processedPath,
           content: content as Buffer
         });
       }
@@ -172,8 +195,8 @@ export async function POST(request: NextRequest) {
     let workflowId: number | null = null;
     let fileUrls: Record<string, string> = {};
 
-    if (isCreating && filesToUpload.length > 0) {
-      // Create the workflow first, then upload files
+    if (isCreating) {
+      // Create the workflow (regardless of whether there are files)
       console.log('🚀 Creating new workflow from ZIP upload');
 
       // Set requires_files flag if there are JS files
@@ -254,15 +277,29 @@ export async function POST(request: NextRequest) {
       // Detect subdirectory from file paths
       let detectedSubdir: string | undefined;
       if (filesToUpload.length > 0) {
+        console.log(`🔍 Analyzing ${filesToUpload.length} files for subdirectory detection:`);
+        filesToUpload.forEach(f => console.log(`  - ${f.path}`));
+
         const firstFile = filesToUpload[0].path;
         const firstSlash = firstFile.indexOf('/');
+        console.log(`📊 First file: ${firstFile}, slash at position: ${firstSlash}`);
+
         if (firstSlash > 0) {
           const potentialSubdir = firstFile.substring(0, firstSlash);
+          console.log(`📂 Potential subdirectory: ${potentialSubdir}`);
+
           // Check if all files start with this subdirectory
-          if (filesToUpload.every(f => f.path.startsWith(potentialSubdir + '/'))) {
+          const allMatch = filesToUpload.every(f => f.path.startsWith(potentialSubdir + '/'));
+          console.log(`✅ All files match pattern: ${allMatch}`);
+
+          if (allMatch) {
             detectedSubdir = potentialSubdir;
-            console.log(`📁 Detected subdirectory: ${detectedSubdir}`);
+            console.log(`📁 Successfully detected subdirectory: ${detectedSubdir}`);
+          } else {
+            console.log(`❌ Not all files match the subdirectory pattern`);
           }
+        } else {
+          console.log(`❌ No subdirectory detected (no slash found or at position 0)`);
         }
       }
 
