@@ -88,10 +88,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get list of all files in ZIP
+    // Get list of all files in ZIP and normalize paths
     const fileList = Object.keys(zipContent.files)
       .filter(path => !zipContent.files[path].dir)
-      .map(path => path);
+      .map(path => path.replace(/\\/g, '/'));  // Normalize Windows paths to use forward slashes
 
     // Check for JavaScript files referenced in workflow
     const jsFiles = fileList.filter(path => path.endsWith('.js'));
@@ -175,14 +175,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Create a mapping of normalized paths to original ZIP paths
+    const originalPaths = Object.keys(zipContent.files).filter(path => !zipContent.files[path].dir);
+    const pathMapping = new Map<string, string>();
+    originalPaths.forEach(orig => {
+      const normalized = orig.replace(/\\/g, '/');
+      if (jsFiles.includes(normalized)) {
+        pathMapping.set(normalized, orig);
+      }
+    });
+
     for (let i = 0; i < jsFiles.length; i++) {
-      const originalPath = jsFiles[i];
+      const normalizedPath = jsFiles[i];
       const processedPath = pathsToProcess[i];
-      const file = zipContent.file(originalPath);
+      const originalZipPath = pathMapping.get(normalizedPath) || normalizedPath;
+      const file = zipContent.file(originalZipPath);
 
       if (file) {
         const content = await file.async('nodebuffer');
-        console.log(`📄 Adding JS file - Original: ${originalPath}, Processed: ${processedPath}`);
+        console.log(`📄 Adding JS file - ZIP: ${originalZipPath}, Processed: ${processedPath}`);
         filesToUpload.push({
           path: processedPath,
           content: content as Buffer
