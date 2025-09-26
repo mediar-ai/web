@@ -131,43 +131,23 @@ export default function DashboardOverview({ organizationName, userRole, userId, 
 
           {/* Role-based Navigation Buttons */}
           <div className="flex flex-wrap gap-3 mb-6">
-            {/* Web Page - Available to all */}
-            <Link href="/web">
-              <Button className="bg-black text-white hover:bg-black border border-black">
-                <Play className="w-4 h-4 mr-2" />
-                Web Workflows
-              </Button>
-            </Link>
-
-            {/* Raw Events - Only if user has events */}
-            {hasRawEvents && (
-              <Link href={`/low-level/${userId}/raw-low-level-events`}>
-                <Button variant="outline" className="border-black text-black hover:bg-black hover:text-white">
-                  <Database className="w-4 h-4 mr-2" />
-                  Raw Events
-                </Button>
-              </Link>
-            )}
-
             {/* Admin Dashboard - Only for Admins/Owners */}
             {(isAdmin || isOwner) && (
               <Link href="/admin">
-                <Button variant="outline" className="border-black text-black hover:bg-white">
+                <Button className="bg-black text-white hover:bg-gray-800 border border-black">
                   <Users className="w-4 h-4 mr-2" />
                   Admin Dashboard
                 </Button>
               </Link>
             )}
 
-            {/* Deployments - Only for Admins/Owners */}
-            {(isAdmin || isOwner) && (
-              <Link href="/deployments">
-                <Button variant="outline" className="border-black text-black hover:bg-white">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Deployments
-                </Button>
-              </Link>
-            )}
+            {/* Deployments - Available to all */}
+            <Link href="/deployments">
+              <Button variant="outline" className="border-black text-black hover:bg-black hover:text-white">
+                <Settings className="w-4 h-4 mr-2" />
+                Deployments
+              </Button>
+            </Link>
           </div>
 
         </div>
