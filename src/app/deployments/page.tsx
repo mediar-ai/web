@@ -185,7 +185,6 @@ function DeploymentsPageContent() {
 
   // Handlers
   const handleWorkflowCreated = useCallback((newWorkflow: any) => {
-    console.log("New workflow created:", newWorkflow);
     fetchWorkflows(false);
   }, [fetchWorkflows]);
 
@@ -326,7 +325,16 @@ function DeploymentsPageContent() {
 
   const hasAdminRole = has({ role: "org:admin" });
   const hasMemberRole = has({ role: "org:member" });
-  const canDelete = hasAdminRole || hasMemberRole;
+
+  // Mediar org IDs for global admin access
+  const MEDIAR_ORG_IDS = [
+    'org_REDACTED',
+    'org_REDACTED',
+  ];
+
+  const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
+  const isGlobalAdmin = isMediarOrg && (hasAdminRole || hasMemberRole);
+  const canDelete = isGlobalAdmin;
   const isAdmin = hasAdminRole;
   const organizationName = organization?.name;
 
@@ -358,10 +366,12 @@ function DeploymentsPageContent() {
 
           <Button
             onClick={() => setCreateWorkflowOpen(true)}
-            className="bg-black text-white hover:bg-gray-800"
+            className="bg-black text-white hover:bg-gray-800 relative"
+            title="Create new workflow (N)"
           >
             <Plus className="w-4 h-4 mr-2" />
             NEW WORKFLOW
+            <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black rounded font-mono">N</kbd>
           </Button>
         </div>
 
@@ -369,7 +379,6 @@ function DeploymentsPageContent() {
         <div className="space-y-4">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold font-mono uppercase">Available Workflows</h2>
-            <span className="text-xs text-gray-500">Press N to create new workflow</span>
           </div>
 
           {loading ? (
@@ -624,7 +633,6 @@ function DeploymentsPageContent() {
             open={batchTestOpen}
             onOpenChange={setBatchTestOpen}
             onSubmit={() => {
-              console.log('Test run started');
               fetchExecutions(false);
             }}
           />

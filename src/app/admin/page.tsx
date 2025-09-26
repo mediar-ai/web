@@ -2,7 +2,7 @@
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { QuickInvite } from '@/components/admin/QuickInvite';
-import { useAuth, useOrganization, useUser } from '@clerk/nextjs';
+import { useAuth, useOrganization, useUser, CreateOrganization } from '@clerk/nextjs';
 import { Shield, Building2, Mail, Plus, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -17,8 +17,6 @@ export default function AdminPage() {
   const { organization, membership } = useOrganization();
   const { user } = useUser();
   const [showCreateOrg, setShowCreateOrg] = useState(false);
-  const [orgName, setOrgName] = useState('');
-  const [creating, setCreating] = useState(false);
 
   // Check if user is Mediar org admin
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
@@ -43,22 +41,6 @@ export default function AdminPage() {
     );
   }
 
-  const handleCreateOrg = async () => {
-    if (!orgName.trim()) return;
-
-    setCreating(true);
-    try {
-      // This would call Clerk API to create organization
-      // For now, just a placeholder
-      console.log('Creating org:', orgName);
-      setOrgName('');
-      setShowCreateOrg(false);
-    } catch (error) {
-      console.error('Failed to create org:', error);
-    } finally {
-      setCreating(false);
-    }
-  };
 
   return (
     <DashboardLayout>
@@ -110,38 +92,10 @@ export default function AdminPage() {
                     CREATE NEW ORGANIZATION
                   </button>
                 ) : (
-                  <div className="space-y-4">
-                    <input
-                      type="text"
-                      value={orgName}
-                      onChange={(e) => setOrgName(e.target.value)}
-                      placeholder="Organization name"
-                      className="w-full p-2 border-2 border-black font-mono focus:outline-none focus:ring-2 focus:ring-black"
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleCreateOrg}
-                        disabled={creating || !orgName.trim()}
-                        className={`flex-1 p-2 font-mono font-bold transition-colors ${
-                          creating || !orgName.trim()
-                            ? 'bg-gray-200 text-gray-500 border-2 border-gray-400'
-                            : 'bg-black text-white hover:bg-gray-800'
-                        }`}
-                      >
-                        {creating ? 'CREATING...' : 'CREATE'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowCreateOrg(false);
-                          setOrgName('');
-                        }}
-                        className="px-4 py-2 bg-white text-black border-2 border-black hover:bg-black hover:text-white font-mono font-bold transition-colors"
-                      >
-                        CANCEL
-                      </button>
-                    </div>
-                  </div>
+                  <CreateOrganization
+                    afterCreateOrganizationUrl="/admin"
+                    skipInvitationScreen={true}
+                  />
                 )}
               </div>
             </div>
