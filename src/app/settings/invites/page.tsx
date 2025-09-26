@@ -13,9 +13,9 @@ const MEDIAR_ORG_IDS = [
 ];
 
 export default function InvitesPage() {
-  const { userId } = useAuth();
+  const { userId: _userId } = useAuth();
   const { organization, membership } = useOrganization();
-  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [_pendingInvites, _setPendingInvites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
@@ -113,7 +113,7 @@ export default function InvitesPage() {
           <div className="p-4">
             {loading ? (
               <p className="font-mono text-gray-600">Loading...</p>
-            ) : pendingInvites.length > 0 ? (
+            ) : _pendingInvites.length > 0 ? (
               <table className="w-full font-mono text-sm">
                 <thead>
                   <tr className="border-b-2 border-black">
@@ -124,7 +124,7 @@ export default function InvitesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingInvites.map((invite) => (
+                  {_pendingInvites.map((invite) => (
                     <tr key={invite.id} className="border-b border-gray-200">
                       <td className="p-2">{invite.email}</td>
                       <td className="p-2">{invite.sentAt}</td>

@@ -313,7 +313,7 @@ export function CommandPalette({
     );
   };
 
-  const isMac = typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
+  const _isMac = typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
 
   return (
     <>

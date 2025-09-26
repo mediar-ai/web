@@ -5,8 +5,6 @@ import { Button } from '@/components/ui/button';
 import { UserButton } from '@clerk/nextjs';
 import {
     Building2,
-    Database,
-    Play,
     Settings,
     Users,
     Workflow
@@ -23,7 +21,7 @@ interface DashboardOverviewProps {
 }
 
 export default function DashboardOverview({ organizationName, userRole, userId, isAdmin, isOwner }: DashboardOverviewProps) {
-  const [hasRawEvents, setHasRawEvents] = useState(false);
+  const [_hasRawEvents, setHasRawEvents] = useState(false);
 
   // Check if user has raw events
   useEffect(() => {

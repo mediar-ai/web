@@ -6,15 +6,11 @@ import { useOrganization, useUser, useClerk } from '@clerk/nextjs';
 import { useState } from 'react';
 import {
   LayoutGrid,
-  Users,
   Settings,
-  Mail,
   Activity,
   ChevronRight,
   ChevronLeft,
   Building2,
-  Home,
-  Bell,
   Shield,
   LogOut
 } from 'lucide-react';

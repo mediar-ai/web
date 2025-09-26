@@ -8,7 +8,7 @@ import Link from 'next/link';
 
 export default function TeamPage() {
   const { userId } = useAuth();
-  const { organization, membership } = useOrganization();
+  const { organization: _organization, membership } = useOrganization();
   const isOwner = membership?.role === 'org:owner';
 
   return (
