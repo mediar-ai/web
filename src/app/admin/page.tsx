@@ -6,8 +6,7 @@ import {
   useOrganization,
   useOrganizationList,
   useUser,
-  CreateOrganization,
-  OrganizationProfile
+  CreateOrganization
 } from '@clerk/nextjs';
 import {
   Shield,
@@ -40,7 +39,6 @@ export default function AdminPage() {
   const { organizationList, setActive } = useOrganizationList();
   const { user } = useUser();
   const [showCreateOrg, setShowCreateOrg] = useState(false);
-  const [showOrgProfile, setShowOrgProfile] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'invitations'>('overview');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
@@ -56,7 +54,6 @@ export default function AdminPage() {
   // Check if user is Mediar admin
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
   const isOrgAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
-  const canManageOrg = isOrgAdmin;
   const isGlobalAdmin = isMediarOrg && isOrgAdmin;
 
   // Fetch all organizations if global admin
@@ -360,15 +357,17 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {canManageOrg && (
+                {isGlobalAdmin && (
                   <div className="flex gap-2 pt-4 border-t border-gray-200">
-                    <button
-                      onClick={() => setShowOrgProfile(true)}
-                      className="px-4 py-2 bg-white text-black border-2 border-black hover:bg-black hover:text-white font-mono font-bold transition-colors"
+                    <a
+                      href="https://dashboard.clerk.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-white text-black border-2 border-black hover:bg-black hover:text-white font-mono font-bold transition-colors inline-flex items-center"
                     >
-                      <Settings className="w-4 h-4 inline mr-2" />
-                      EDIT SETTINGS
-                    </button>
+                      <Building2 className="w-4 h-4 mr-2" />
+                      CLERK DASHBOARD
+                    </a>
                   </div>
                 )}
               </div>
@@ -411,55 +410,9 @@ export default function AdminPage() {
                     <div className="border-2 border-black p-4">
                       <Building2 className="w-6 h-6 mb-2" />
                       <p className="font-mono text-2xl font-bold">{isGlobalAdmin ? allOrganizations.length : (organizationList?.length || 1)}</p>
-                      <p className="font-mono text-xs text-gray-600">{isGlobalAdmin ? 'ALL ORGS' : 'YOUR ORGS'}</p>
+                      <p className="font-mono text-xs text-gray-600">ORGANIZATIONS</p>
                     </div>
                   </div>
-
-                  {/* All Organizations - Show for Global Admin */}
-                  {isGlobalAdmin && (
-                    <div className="border-2 border-black">
-                      <div className="bg-gray-50 p-4 border-b-2 border-black flex items-center justify-between">
-                        <h3 className="font-mono font-bold">QUICK STATS</h3>
-                        <button
-                          onClick={() => setActiveTab('organizations')}
-                          className="font-mono text-xs underline hover:no-underline"
-                        >
-                          VIEW ALL ORGANIZATIONS →
-                        </button>
-                      </div>
-                      <div className="p-4">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div>
-                            <p className="font-mono text-2xl font-bold">{allOrganizations.length}</p>
-                            <p className="font-mono text-xs text-gray-600">TOTAL ORGS</p>
-                          </div>
-                          <div>
-                            <p className="font-mono text-2xl font-bold">
-                              {allOrganizations.filter(org => {
-                                const created = new Date(org.created_at);
-                                const thirtyDaysAgo = new Date();
-                                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                                return created >= thirtyDaysAgo;
-                              }).length}
-                            </p>
-                            <p className="font-mono text-xs text-gray-600">NEW (30 DAYS)</p>
-                          </div>
-                          <div>
-                            <p className="font-mono text-2xl font-bold">
-                              {allOrganizations.reduce((sum, org) => sum + (org.member_count || 0), 0)}
-                            </p>
-                            <p className="font-mono text-xs text-gray-600">TOTAL USERS</p>
-                          </div>
-                          <div>
-                            <p className="font-mono text-2xl font-bold">
-                              {allOrganizations.filter(org => org.is_active !== false).length}
-                            </p>
-                            <p className="font-mono text-xs text-gray-600">ACTIVE</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {/* User's Organizations - Show for non-global admin */}
                   {!isGlobalAdmin && organizationList && organizationList.length > 1 && (
@@ -724,33 +677,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Organization Profile Modal */}
-        {showOrgProfile && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white border-2 border-black max-w-4xl w-full max-h-[80vh] overflow-y-auto">
-              <div className="p-4 border-b-2 border-black flex items-center justify-between sticky top-0 bg-white">
-                <h2 className="font-mono font-bold">ORGANIZATION SETTINGS</h2>
-                <button
-                  onClick={() => setShowOrgProfile(false)}
-                  className="p-1 hover:bg-gray-100"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-4">
-                <OrganizationProfile
-                  appearance={{
-                    elements: {
-                      formButtonPrimary: "bg-black hover:bg-gray-800",
-                      card: "border-0 shadow-none",
-                      navbar: "hidden"
-                    }
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </DashboardLayout>
   );
