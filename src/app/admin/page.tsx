@@ -10,6 +10,7 @@ import {
   CreateOrganization,
   OrganizationProfile
 } from '@clerk/nextjs';
+import { createClient } from '@supabase/supabase-js';
 import {
   Shield,
   Building2,
@@ -21,7 +22,6 @@ import {
   UserPlus,
   AlertCircle,
   X,
-  ChevronDown,
   Clock,
   Crown
 } from 'lucide-react';
@@ -33,6 +33,12 @@ const MEDIAR_ORG_IDS = [
   'org_REDACTED',
 ];
 
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 export default function AdminPage() {
   const { isLoaded } = useAuth();
   const { organization, membership, invitationList, membershipList } = useOrganization({
@@ -43,14 +49,42 @@ export default function AdminPage() {
   const { user } = useUser();
   const [showCreateOrg, setShowCreateOrg] = useState(false);
   const [showOrgProfile, setShowOrgProfile] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'invitations' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'invitations' | 'organizations'>('overview');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
+  const [allOrganizations, setAllOrganizations] = useState<any[]>([]);
+  const [loadingOrgs, setLoadingOrgs] = useState(false);
 
   // Check if user is Mediar admin
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
   const isOrgAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
   const canManageOrg = isOrgAdmin;
+  const isGlobalAdmin = isMediarOrg && isOrgAdmin;
+
+  // Fetch all organizations from Supabase if global admin
+  useEffect(() => {
+    if (isGlobalAdmin) {
+      fetchAllOrganizations();
+    }
+  }, [isGlobalAdmin]);
+
+  const fetchAllOrganizations = async () => {
+    setLoadingOrgs(true);
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setAllOrganizations(data);
+      }
+    } catch (error) {
+      console.error('Error fetching organizations:', error);
+    } finally {
+      setLoadingOrgs(false);
+    }
+  };
 
   // Handle invite
   const handleInvite = async () => {
@@ -193,7 +227,7 @@ export default function AdminPage() {
             {/* Tabs */}
             <div className="border-b-2 border-black mb-6">
               <div className="flex gap-0">
-                {['overview', 'members', 'invitations'].map((tab) => (
+                {(isGlobalAdmin ? ['overview', 'members', 'invitations', 'organizations'] : ['overview', 'members', 'invitations']).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab as any)}
@@ -226,16 +260,62 @@ export default function AdminPage() {
                     </div>
                     <div className="border-2 border-black p-4">
                       <Building2 className="w-6 h-6 mb-2" />
-                      <p className="font-mono text-2xl font-bold">{organizationList?.length || 1}</p>
-                      <p className="font-mono text-xs text-gray-600">YOUR ORGS</p>
+                      <p className="font-mono text-2xl font-bold">{isGlobalAdmin ? allOrganizations.length : (organizationList?.length || 1)}</p>
+                      <p className="font-mono text-xs text-gray-600">{isGlobalAdmin ? 'ALL ORGS' : 'YOUR ORGS'}</p>
                     </div>
                   </div>
 
-                  {/* All Your Organizations */}
-                  {organizationList && organizationList.length > 1 && (
+                  {/* All Organizations - Show for Global Admin */}
+                  {isGlobalAdmin && (
+                    <div className="border-2 border-black">
+                      <div className="bg-gray-50 p-4 border-b-2 border-black flex items-center justify-between">
+                        <h3 className="font-mono font-bold">QUICK STATS</h3>
+                        <button
+                          onClick={() => setActiveTab('organizations')}
+                          className="font-mono text-xs underline hover:no-underline"
+                        >
+                          VIEW ALL ORGANIZATIONS →
+                        </button>
+                      </div>
+                      <div className="p-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div>
+                            <p className="font-mono text-2xl font-bold">{allOrganizations.length}</p>
+                            <p className="font-mono text-xs text-gray-600">TOTAL ORGS</p>
+                          </div>
+                          <div>
+                            <p className="font-mono text-2xl font-bold">
+                              {allOrganizations.filter(org => {
+                                const created = new Date(org.created_at);
+                                const thirtyDaysAgo = new Date();
+                                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                                return created >= thirtyDaysAgo;
+                              }).length}
+                            </p>
+                            <p className="font-mono text-xs text-gray-600">NEW (30 DAYS)</p>
+                          </div>
+                          <div>
+                            <p className="font-mono text-2xl font-bold">
+                              {allOrganizations.reduce((sum, org) => sum + (org.member_count || 0), 0)}
+                            </p>
+                            <p className="font-mono text-xs text-gray-600">TOTAL USERS</p>
+                          </div>
+                          <div>
+                            <p className="font-mono text-2xl font-bold">
+                              {allOrganizations.filter(org => org.is_active !== false).length}
+                            </p>
+                            <p className="font-mono text-xs text-gray-600">ACTIVE</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* User's Organizations - Show for non-global admin */}
+                  {!isGlobalAdmin && organizationList && organizationList.length > 1 && (
                     <div className="border-2 border-black">
                       <div className="bg-gray-50 p-4 border-b-2 border-black">
-                        <h3 className="font-mono font-bold">ALL YOUR ORGANIZATIONS</h3>
+                        <h3 className="font-mono font-bold">YOUR ORGANIZATIONS</h3>
                       </div>
                       <div className="divide-y divide-gray-200">
                         {organizationList.map((org) => (
@@ -301,7 +381,9 @@ export default function AdminPage() {
                               onClick={async () => {
                                 if (confirm(`Remove ${member.publicUserData?.identifier} from organization?`)) {
                                   try {
-                                    await organization.removeMember(member.publicUserData?.userId!);
+                                    if (member.publicUserData?.userId) {
+                                      await organization.removeMember(member.publicUserData.userId);
+                                    }
                                     await membershipList?.revalidate();
                                   } catch (error) {
                                     console.error('Failed to remove member:', error);
@@ -408,6 +490,128 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+
+              {activeTab === 'organizations' && isGlobalAdmin && (
+                <div className="space-y-4">
+                  <div className="border-2 border-black">
+                    <div className="bg-black text-white p-4 flex items-center justify-between">
+                      <h3 className="font-mono font-bold">ALL ORGANIZATIONS</h3>
+                      <button
+                        onClick={fetchAllOrganizations}
+                        className="px-3 py-1 bg-white text-black font-mono text-xs font-bold hover:bg-gray-100"
+                      >
+                        REFRESH
+                      </button>
+                    </div>
+                    {loadingOrgs ? (
+                      <div className="p-8 text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b-2 border-black bg-gray-50">
+                              <th className="text-left p-3 font-mono font-bold text-xs">NAME</th>
+                              <th className="text-left p-3 font-mono font-bold text-xs">CLERK ID</th>
+                              <th className="text-center p-3 font-mono font-bold text-xs">MEMBERS</th>
+                              <th className="text-left p-3 font-mono font-bold text-xs">CREATED</th>
+                              <th className="text-center p-3 font-mono font-bold text-xs">STATUS</th>
+                              <th className="text-center p-3 font-mono font-bold text-xs">ACTIONS</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {allOrganizations.map((org) => {
+                              const isCurrentOrg = org.clerk_organization_id === organization?.id;
+                              const createdDate = new Date(org.created_at);
+                              const isNew = (Date.now() - createdDate.getTime()) < (7 * 24 * 60 * 60 * 1000); // Less than 7 days
+
+                              return (
+                                <tr key={org.id} className={isCurrentOrg ? 'bg-gray-50' : 'hover:bg-gray-50'}>
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-8 h-8 bg-black text-white rounded flex items-center justify-center font-mono text-xs font-bold">
+                                        {org.name?.[0]?.toUpperCase() || '?'}
+                                      </div>
+                                      <div>
+                                        <p className="font-mono font-bold text-sm">
+                                          {org.name || 'Unnamed'}
+                                          {isCurrentOrg && (
+                                            <span className="ml-2 px-1.5 py-0.5 bg-black text-white text-xs">CURRENT</span>
+                                          )}
+                                          {isNew && (
+                                            <span className="ml-2 px-1.5 py-0.5 bg-yellow-100 text-yellow-800 border border-yellow-300 text-xs">NEW</span>
+                                          )}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="p-3">
+                                    <code className="font-mono text-xs text-gray-600 break-all">
+                                      {org.clerk_organization_id || 'N/A'}
+                                    </code>
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <span className="font-mono font-bold">{org.member_count || 0}</span>
+                                  </td>
+                                  <td className="p-3">
+                                    <p className="font-mono text-xs text-gray-600">
+                                      {createdDate.toLocaleDateString()}
+                                    </p>
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <span className={`px-2 py-1 font-mono text-xs border ${
+                                      org.is_active !== false
+                                        ? 'bg-white text-black border-black'
+                                        : 'bg-gray-200 text-gray-600 border-gray-400'
+                                    }`}>
+                                      {org.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <div className="flex items-center justify-center gap-2">
+                                      {org.clerk_organization_id && (
+                                        <button
+                                          onClick={() => {
+                                            if (organizationList?.find(o => o.organization.id === org.clerk_organization_id)) {
+                                              setActive?.({ organization: org.clerk_organization_id });
+                                            } else {
+                                              alert('You are not a member of this organization');
+                                            }
+                                          }}
+                                          className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white"
+                                          title="Switch to this organization"
+                                        >
+                                          VIEW
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={() => {
+                                          // In a real app, this would open a modal to manage the org
+                                          alert(`Manage ${org.name} - Feature coming soon`);
+                                        }}
+                                        className="px-2 py-1 font-mono text-xs border border-gray-400 hover:bg-gray-100"
+                                        title="Manage organization"
+                                      >
+                                        MANAGE
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {allOrganizations.length === 0 && (
+                          <div className="p-8 text-center text-gray-500 font-mono">
+                            No organizations found
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Mediar Admin Section */}
@@ -424,7 +628,7 @@ export default function AdminPage() {
                     You have global admin access. You can see and manage all organizations and workflows.
                   </p>
                   <div className="flex gap-4">
-                    <Link href="/internal/admin-backup" className="px-4 py-2 bg-red-600 text-white font-mono font-bold hover:bg-red-700">
+                    <Link href="/admin-old" className="px-4 py-2 bg-red-600 text-white font-mono font-bold hover:bg-red-700">
                       LEGACY ADMIN
                     </Link>
                     <Link href="/notifications" className="px-4 py-2 bg-white text-red-600 border-2 border-red-600 font-mono font-bold hover:bg-red-50">
