@@ -9,6 +9,7 @@ import { CommandPalette } from '@/components/deployments/CommandPalette';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
+import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -123,7 +124,13 @@ function DeploymentsPageContent() {
 
   const fetchExecutions = useCallback(async (_showLoading = true) => {
     try {
-      const response = await fetch('/api/remote-workflows/executions?limit=1000');
+      // Include viewOrgId if present in URL params
+      const urlParams = new URLSearchParams(window.location.search);
+      const viewOrgId = urlParams.get('viewOrgId');
+      const apiUrl = viewOrgId
+        ? `/api/remote-workflows/executions?limit=1000&viewOrgId=${viewOrgId}`
+        : '/api/remote-workflows/executions?limit=1000';
+      const response = await fetch(apiUrl);
       const executionsData = await response.json();
       if (executionsData.success) {
         setExecutions(executionsData.executions || []);
@@ -363,6 +370,11 @@ function DeploymentsPageContent() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Mediar Org Switcher */}
+            <Suspense fallback={null}>
+              <MediarOrgSwitcher />
+            </Suspense>
+
             {/* Command Bar */}
             <button
               onClick={() => setCommandPaletteOpen(true)}
