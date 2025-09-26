@@ -1,9 +1,9 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
+// Only the actual Mediar organization ID
 const MEDIAR_ORG_IDS = [
-  'org_2yydAO45WOB4RaCE4F4BNUPtw9c',
-  'org_2yynzGa53bNM1GTPLp5mc2lYRyD',
+  'org_2yynzGa53bNM1GTPLp5mc2lYRyD', // Mediar organization
 ];
 
 // Get invitations for an organization

@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 
-// Mediar organization IDs (dev and prod)
+// Only the actual Mediar organization ID
 const MEDIAR_ORG_IDS = [
-  'org_2yydAO45WOB4RaCE4F4BNUPtw9c', // Mediar dev
-  'org_2yynzGa53bNM1GTPLp5mc2lYRyD', // Mediar prod
+  'org_2yynzGa53bNM1GTPLp5mc2lYRyD', // Mediar organization
 ];
 
 export async function POST(request: NextRequest) {
