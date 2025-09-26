@@ -4,9 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Mediar organization IDs for special admin access
-// Only the actual Mediar organization ID
+// Mediar organization IDs (both old and new)
 const MEDIAR_ORG_IDS = [
-  'org_REDACTED', // Mediar organization
+  'org_REDACTED', // Current Mediar organization
+  'org_REDACTED', // Legacy Mediar organization (has existing workflows)
 ];
 
 type JSONValue =

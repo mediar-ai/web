@@ -1,9 +1,10 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
-// Only the actual Mediar organization ID
+// Mediar organization IDs (both old and new)
 const MEDIAR_ORG_IDS = [
-  'org_REDACTED', // Mediar organization
+  'org_REDACTED', // Current Mediar organization
+  'org_REDACTED', // Legacy Mediar organization (has existing workflows)
 ];
 
 export async function GET() {
