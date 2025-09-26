@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useOrganization, useUser, useClerk } from '@clerk/nextjs';
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import {
   LayoutGrid,
   Settings,
@@ -37,6 +37,17 @@ export function Sidebar() {
     }
     return false;
   });
+  const [isMediarAdmin, setIsMediarAdmin] = useState(false);
+
+  // Check if user is a Mediar admin
+  useEffect(() => {
+    if (user) {
+      const hasMediarEmail = user.emailAddresses?.some(
+        email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+      ) || false;
+      setIsMediarAdmin(hasMediarEmail);
+    }
+  }, [user]);
 
   const toggleSidebar = () => {
     const newState = !isCollapsed;
@@ -47,7 +58,7 @@ export function Sidebar() {
   };
 
   const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
-  const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
+  const _isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
 
   const navigation: NavItem[] = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
@@ -58,7 +69,7 @@ export function Sidebar() {
 
   const filteredNav = navigation.filter(item => {
     if (item.adminOnly && !isAdmin) return false;
-    if (item.mediarOnly && !isMediarOrg) return false;
+    if (item.mediarOnly && !isMediarAdmin) return false; // Show Admin for @mediar.ai users
     return true;
   });
 
