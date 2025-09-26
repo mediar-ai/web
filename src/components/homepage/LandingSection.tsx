@@ -38,12 +38,12 @@ export default function LandingSection() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
         <div className="text-center">
           <h2 className="text-4xl md:text-6xl font-bold text-black mb-6">
-            Capture, Analyze &
+            Capture, Analyze & 
             <br />
             <span className="text-gray-600">Automate Workflows</span>
           </h2>
           <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-            Transform your browser workflows into actionable insights.
+            Transform your browser workflows into actionable insights. 
             Record, analyze, and deploy automated workflows with AI-powered intelligence.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -52,49 +52,6 @@ export default function LandingSection() {
                 Get Started
               </Button>
             </SignUpButton>
-          </div>
-        </div>
-      </section>
-
-      {/* Latest News Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 border-t border-gray-200">
-        <div className="max-w-4xl mx-auto">
-          <h3 className="text-2xl font-bold text-black mb-6">Latest News</h3>
-
-          {/* News Item - Fundraising */}
-          <div className="border-2 border-black p-6 mb-4">
-            <div className="flex items-start justify-between mb-2">
-              <h4 className="text-lg font-bold text-black">Mediar Raises Series A Funding</h4>
-              <span className="text-sm text-gray-600 font-mono">July 25, 2025</span>
-            </div>
-            <p className="text-gray-700 mb-3">
-              We're excited to announce that we've raised $12M in Series A funding led by leading VCs
-              to accelerate our mission of making workflow automation accessible to every team.
-            </p>
-            <a href="#" className="text-black font-bold hover:underline text-sm">
-              Read More →
-            </a>
-          </div>
-
-          {/* Additional News Items */}
-          <div className="border border-gray-300 p-4 mb-4">
-            <div className="flex items-start justify-between mb-2">
-              <h4 className="text-md font-bold text-black">Product Update: AI-Powered Workflow Suggestions</h4>
-              <span className="text-sm text-gray-600 font-mono">Nov 15, 2024</span>
-            </div>
-            <p className="text-gray-600 text-sm">
-              Our latest update brings intelligent workflow recommendations based on your usage patterns.
-            </p>
-          </div>
-
-          <div className="border border-gray-300 p-4">
-            <div className="flex items-start justify-between mb-2">
-              <h4 className="text-md font-bold text-black">New Integration: Connect with 50+ Popular Tools</h4>
-              <span className="text-sm text-gray-600 font-mono">Oct 28, 2024</span>
-            </div>
-            <p className="text-gray-600 text-sm">
-              Mediar now integrates seamlessly with your favorite productivity and automation tools.
-            </p>
           </div>
         </div>
       </section>
