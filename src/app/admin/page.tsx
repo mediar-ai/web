@@ -47,6 +47,8 @@ export default function AdminPage() {
   const [inviting, setInviting] = useState(false);
   const [allOrganizations, setAllOrganizations] = useState<any[]>([]);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
+  const [selectedOrgForManagement, setSelectedOrgForManagement] = useState<any>(null);
+  const [showManageOrgModal, setShowManageOrgModal] = useState(false);
 
   // Check if user is Mediar admin
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
@@ -171,7 +173,7 @@ export default function AdminPage() {
               </p>
             </div>
 
-            {/* Organization Switcher */}
+            {/* Organization Switcher - Use Clerk's for regular users, show all orgs button for global admin */}
             <div className="flex items-center gap-4">
               <div className="border-2 border-black">
                 <OrganizationSwitcher
@@ -186,6 +188,17 @@ export default function AdminPage() {
                   }}
                 />
               </div>
+
+              {isGlobalAdmin && (
+                <button
+                  onClick={() => setActiveTab('organizations')}
+                  className="px-4 py-2 bg-white text-black border-2 border-black font-mono font-bold hover:bg-black hover:text-white flex items-center gap-2"
+                  title="View all organizations"
+                >
+                  <Building2 className="w-4 h-4" />
+                  ALL ORGS
+                </button>
+              )}
 
               <button
                 onClick={() => setShowCreateOrg(true)}
@@ -589,25 +602,27 @@ export default function AdminPage() {
                                   </td>
                                   <td className="p-3 text-center">
                                     <div className="flex items-center justify-center gap-2">
-                                      {org.clerk_organization_id && (
-                                        <button
-                                          onClick={() => {
-                                            if (organizationList?.find(o => o.organization.id === org.clerk_organization_id)) {
-                                              setActive?.({ organization: org.clerk_organization_id });
-                                            } else {
-                                              alert('You are not a member of this organization');
-                                            }
-                                          }}
-                                          className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white"
-                                          title="Switch to this organization"
-                                        >
-                                          VIEW
-                                        </button>
-                                      )}
                                       <button
                                         onClick={() => {
-                                          // In a real app, this would open a modal to manage the org
-                                          alert(`Manage ${org.name} - Feature coming soon`);
+                                          // For global admin, we will switch to the org if we are a member,
+                                          // otherwise just show a management modal
+                                          if (organizationList?.find(o => o.organization.id === org.clerk_organization_id)) {
+                                            setActive?.({ organization: org.clerk_organization_id });
+                                          } else {
+                                            // Cannot switch to org we are not a member of, but we can manage it
+                                            setSelectedOrgForManagement(org);
+                                            setShowManageOrgModal(true);
+                                          }
+                                        }}
+                                        className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white"
+                                        title={isCurrentOrg ? "Current organization" : "View/Manage organization"}
+                                      >
+                                        {isCurrentOrg ? 'CURRENT' : 'VIEW'}
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedOrgForManagement(org);
+                                          setShowManageOrgModal(true);
                                         }}
                                         className="px-2 py-1 font-mono text-xs border border-gray-400 hover:bg-gray-100"
                                         title="Manage organization"
@@ -723,6 +738,82 @@ export default function AdminPage() {
                     }
                   }}
                 />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Manage Organization Modal for Global Admin */}
+        {showManageOrgModal && selectedOrgForManagement && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white border-2 border-black max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+              <div className="p-4 border-b-2 border-black flex items-center justify-between sticky top-0 bg-white">
+                <h2 className="font-mono font-bold">MANAGE ORGANIZATION: {selectedOrgForManagement.name}</h2>
+                <button
+                  onClick={() => {
+                    setShowManageOrgModal(false);
+                    setSelectedOrgForManagement(null);
+                  }}
+                  className="p-1 hover:bg-gray-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="border-2 border-black p-4">
+                  <h3 className="font-mono font-bold mb-4">ORGANIZATION DETAILS</h3>
+                  <div className="space-y-2 font-mono text-sm">
+                    <p><strong>Name:</strong> {selectedOrgForManagement.name}</p>
+                    <p><strong>Clerk ID:</strong> <code className="text-xs bg-gray-100 px-1">{selectedOrgForManagement.clerk_organization_id}</code></p>
+                    <p><strong>Created:</strong> {new Date(selectedOrgForManagement.created_at).toLocaleDateString()}</p>
+                    <p><strong>Members:</strong> {selectedOrgForManagement.member_count || 0}</p>
+                    <p><strong>Status:</strong> <span className={`px-2 py-1 text-xs border ${selectedOrgForManagement.is_active !== false ? 'border-black' : 'border-gray-400 text-gray-600'}`}>
+                      {selectedOrgForManagement.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
+                    </span></p>
+                  </div>
+                </div>
+
+                <div className="border-2 border-black p-4">
+                  <h3 className="font-mono font-bold mb-4">GLOBAL ADMIN ACTIONS</h3>
+                  <p className="font-mono text-sm text-gray-600 mb-4">
+                    As a Mediar global admin, you can manage this organization&apos;s settings and members.
+                  </p>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        // Check if we are a member first
+                        const isMember = organizationList?.find(o => o.organization.id === selectedOrgForManagement.clerk_organization_id);
+                        if (isMember) {
+                          // Switch to the org and close modal
+                          setActive?.({ organization: selectedOrgForManagement.clerk_organization_id });
+                          setShowManageOrgModal(false);
+                          setSelectedOrgForManagement(null);
+                          setActiveTab('members');
+                        } else {
+                          alert('To manage members, you need to join this organization first. Use the Clerk dashboard to add yourself as an admin.');
+                        }
+                      }}
+                      className="w-full px-4 py-2 bg-black text-white font-mono font-bold hover:bg-gray-800"
+                    >
+                      MANAGE MEMBERS & INVITATIONS
+                    </button>
+                    <button
+                      onClick={() => {
+                        alert('Organization deletion must be done through the Clerk dashboard for security reasons.');
+                      }}
+                      className="w-full px-4 py-2 bg-white text-red-600 border-2 border-red-600 font-mono font-bold hover:bg-red-50"
+                    >
+                      DELETE ORGANIZATION
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border border-gray-400 p-4 bg-gray-50">
+                  <p className="font-mono text-xs text-gray-600">
+                    <strong>Note:</strong> Some actions require direct access through the Clerk dashboard.
+                    To fully manage an organization you are not a member of, add yourself as an admin through Clerk first.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
