@@ -23,6 +23,8 @@ import {
 import { WorkflowWithSettings, Execution } from '@/lib/workflow-types';
 
 interface CommandPaletteProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   workflows: WorkflowWithSettings[];
   executions?: Execution[];
   onExecuteWorkflow?: (workflowId: number) => void;
@@ -46,6 +48,8 @@ interface CommandItem {
 }
 
 export function CommandPalette({
+  open: controlledOpen,
+  onOpenChange,
   workflows,
   executions = [],
   onExecuteWorkflow,
@@ -57,7 +61,9 @@ export function CommandPalette({
   onCreateWorkflow,
   onRefresh,
 }: CommandPaletteProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = onOpenChange || setInternalOpen;
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -183,7 +189,7 @@ export function CommandPalette({
     });
 
     return items;
-  }, [workflows, executions, onExecuteWorkflow, onDuplicateWorkflow, onViewWorkflow, onEditWorkflow, onViewExecution, onCreateWorkflow, onRefresh]);
+  }, [workflows, executions, onExecuteWorkflow, onDuplicateWorkflow, onViewWorkflow, onEditWorkflow, onViewExecution, onCreateWorkflow, onRefresh, setOpen]);
 
   // Filter items based on search
   const filteredItems = useMemo(() => {
@@ -259,7 +265,7 @@ export function CommandPalette({
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, []);
+  }, [setOpen]);
 
   const renderCategory = (title: string, items: CommandItem[]) => {
     if (items.length === 0) return null;
@@ -307,19 +313,10 @@ export function CommandPalette({
     );
   };
 
+  const isMac = typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
+
   return (
     <>
-      {/* Command Bar Trigger - Top Center */}
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed top-4 left-1/2 transform -translate-x-1/2 px-4 py-1.5 bg-white/90 backdrop-blur border border-gray-300 rounded-full shadow-sm hover:shadow-lg hover:bg-white transition-all flex items-center gap-2 text-sm text-gray-600 hover:text-black z-50"
-        aria-label="Open command palette"
-      >
-        <Search className="w-3.5 h-3.5" />
-        <span className="font-mono text-xs">Search or Run Command</span>
-        <kbd className="ml-2 px-2 py-0.5 text-xs bg-gray-100 border border-gray-300 rounded font-mono">⌘K</kbd>
-      </button>
-
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="p-0 max-w-2xl overflow-hidden" hideClose>
           <VisuallyHidden>
@@ -336,15 +333,15 @@ export function CommandPalette({
             />
             <div className="flex items-center gap-3 text-xs text-gray-400 flex-shrink-0">
               <div className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">↑↓</kbd>
+                <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded font-mono">↑↓</kbd>
                 <span>Navigate</span>
               </div>
               <div className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">⏎</kbd>
+                <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded font-mono">⏎</kbd>
                 <span>Select</span>
               </div>
               <div className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">Esc</kbd>
+                <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded font-mono">Esc</kbd>
                 <span>Close</span>
               </div>
             </div>

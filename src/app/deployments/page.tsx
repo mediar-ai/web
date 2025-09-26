@@ -10,22 +10,19 @@ import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import {
   Execution,
   LiveExecutionStatus,
-  Workflow,
   WorkflowOverview,
   WorkflowWithSettings,
 } from '@/lib/workflow-types';
 import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
 
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, StopCircle, Trash2, PlayCircle, Plus } from 'lucide-react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Eye, StopCircle, Trash2, Plus, Search } from 'lucide-react';
 
 export default function DeploymentsPage() {
   return (
@@ -44,8 +41,8 @@ export default function DeploymentsPage() {
 
 function DeploymentsPageContent() {
   const { isLoaded, userId, has } = useAuth();
-  const { user } = useUser();
-  const { organization, membership } = useOrganization();
+  const { } = useUser();
+  const { organization } = useOrganization();
   const searchParams = useSearchParams();
 
   // State
@@ -66,9 +63,10 @@ function DeploymentsPageContent() {
   const [selectedWorkflowForAction, setSelectedWorkflowForAction] = useState<WorkflowWithSettings | null>(null);
   const [templateYaml, setTemplateYaml] = useState<string>('');
   const [templateName, setTemplateName] = useState<string>('');
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // Use keyboard navigation
-  const { selectedIndex: navSelectedIndex, setSelectedIndex: setNavSelectedIndex } = useKeyboardNavigation({
+  const { selectedIndex: navSelectedIndex } = useKeyboardNavigation({
     itemCount: workflows.length,
     onSelect: index => setSelectedIndex(index),
     onEnter: index => {
@@ -123,7 +121,7 @@ function DeploymentsPageContent() {
     }
   }, []);
 
-  const fetchExecutions = useCallback(async (showLoading = true) => {
+  const fetchExecutions = useCallback(async (_showLoading = true) => {
     try {
       const response = await fetch('/api/remote-workflows/executions?limit=1000');
       const executionsData = await response.json();
@@ -184,7 +182,7 @@ function DeploymentsPageContent() {
   }, []);
 
   // Handlers
-  const handleWorkflowCreated = useCallback((newWorkflow: any) => {
+  const handleWorkflowCreated = useCallback((_newWorkflow: any) => {
     fetchWorkflows(false);
   }, [fetchWorkflows]);
 
@@ -364,15 +362,30 @@ function DeploymentsPageContent() {
             </div>
           </div>
 
-          <Button
-            onClick={() => setCreateWorkflowOpen(true)}
-            className="bg-black text-white hover:bg-gray-800 relative"
-            title="Create new workflow (N)"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            NEW WORKFLOW
-            <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black rounded font-mono">N</kbd>
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Command Bar */}
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm"
+              aria-label="Open command palette"
+            >
+              <Search className="w-4 h-4" />
+              <span className="font-mono text-xs uppercase">Search</span>
+              <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black border border-black rounded font-mono">
+                {typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'}K
+              </kbd>
+            </button>
+
+            <Button
+              onClick={() => setCreateWorkflowOpen(true)}
+              className="bg-black text-white hover:bg-gray-800 relative"
+              title="Create new workflow (N)"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              NEW WORKFLOW
+              <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black rounded font-mono">N</kbd>
+            </Button>
+          </div>
         </div>
 
         {/* Workflows List */}
@@ -571,6 +584,8 @@ function DeploymentsPageContent() {
 
         {/* Command Palette */}
         <CommandPalette
+          open={commandPaletteOpen}
+          onOpenChange={setCommandPaletteOpen}
           workflows={workflows}
           executions={executions}
           onExecuteWorkflow={handleQuickExecute}
