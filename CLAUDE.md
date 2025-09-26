@@ -4,52 +4,71 @@
 
 ### Color Scheme: Black & White Minimalism
 - **Primary colors**: Black (#000) and White (#FFF) only
-- **Accent colors**: Use gray shades sparingly (#333, #666, #999, #CCC)
+- **Accent colors**: Use gray shades sparingly (#333, #666, #999, #CCC, #F9FAFB for bg-gray-50)
 - **NO COLOR CODING**: Avoid red, green, yellow, blue, orange for status indicators
 - **Status differentiation**: Use borders, text weight, and animations instead of colors
+- **Exception**: Red (#DC2626) only for Mediar admin sections and destructive actions
 
 ### Component Styling
 
 #### Buttons
 - Primary action: `bg-black text-white hover:bg-gray-800`
 - Secondary action: `bg-white text-black border-2 border-black hover:bg-black hover:text-white`
-- Disabled: `bg-gray-200 text-gray-500`
+- Icon button: `border border-black hover:bg-black hover:text-white`
+- Disabled: `bg-gray-200 text-gray-500 border-2 border-gray-400`
+- Destructive (rarely): `hover:bg-red-600 hover:text-white hover:border-red-600`
+- Keyboard shortcuts: `<kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black rounded font-mono">N</kbd>`
 
 #### Status Badges
 ```
-- Active/Running: bg-black text-white (optional: animate-pulse)
+- Active/Running: bg-black text-white animate-pulse
 - Success/Completed: bg-white text-black border-2 border-black
 - Error/Failed: bg-black text-white font-bold
-- Pending/Queued: bg-white text-black border border-gray-400
-- Warning: bg-gray-200 text-black border border-black
+- Pending/Queued: bg-yellow-100 text-yellow-800 border border-yellow-300
+- Disabled: bg-gray-200 text-gray-800
+- Admin/Owner: bg-black text-white (with Crown icon for owners)
 ```
 
 #### Forms & Inputs
-- All inputs: `border-2 border-black focus:outline-none focus:ring-2 focus:ring-black`
-- Monospace font for technical content: `font-mono`
+- All inputs: `border-2 border-black focus:outline-none focus:ring-2 focus:ring-black font-mono`
+- Placeholders should be descriptive
+- Group related inputs with proper spacing
 
 #### Cards & Containers
-- Standard card: `border border-black bg-white`
-- Emphasized card: `border-2 border-black`
-- Nested/Secondary: `bg-gray-50 border border-gray-400`
+- Standard card: `border-2 border-black bg-white`
+- Card header: `bg-black text-white p-4` with `font-mono font-bold` title
+- Nested sections: `bg-gray-50 border border-gray-200`
+- Modals: `border-2 border-black` with sticky header
+- Tables: `divide-y divide-gray-200` with `bg-gray-50` header
+
+#### Layout Patterns
+- **Tabs**: Connected rectangles with active tab `bg-black text-white`
+- **Sidebar**: Collapsible with icons, uses localStorage for persistence
+- **Modals**: Fixed overlay with `bg-black bg-opacity-50` backdrop
+- **Page headers**: Large title with icon, subtitle in gray-600
 
 ### Typography
-- Headers: `font-mono font-bold text-black`
+- Page titles: `text-3xl font-mono font-bold`
+- Section headers: `font-mono font-bold uppercase`
+- Labels: `font-mono text-xs text-gray-600 uppercase`
 - Body text: `text-black` (use `text-gray-600` for secondary)
-- Error messages: Display in boxes with borders, not colored text
-- Use UPPERCASE sparingly for emphasis (e.g., status badges)
+- Technical content: Always `font-mono` (IDs, emails, code)
+- Error messages: Display in bordered boxes, not colored text
 
 ### Visual Hierarchy
-- Use **border thickness** to show importance (1px, 2px, 4px)
-- Use **font weight** for emphasis (normal, medium, bold)
-- Use **spacing** and **size** to create hierarchy
-- Use **animations** sparingly (pulse for active states, transitions on hover)
+- Use **border thickness** to show importance (border, border-2, border-4)
+- Use **font weight** for emphasis (normal, bold)
+- Use **spacing** generously (p-4, p-6, p-8)
+- Use **UPPERCASE** for labels and important buttons
+- Icons should be 4-6 in size, consistent throughout
 
 ### Interaction Patterns
-- Hover states should invert colors (black ↔ white)
-- Active states use `animate-pulse` or similar subtle animations
-- Focus states use black ring/outline
-- Avoid browser alerts - use toast notifications or inline messages
+- Hover states should invert colors (black ↔ white transition)
+- Active states use `animate-pulse` for live data
+- Focus states use `ring-2 ring-black`
+- Confirmations: Use browser confirm() for destructive actions
+- Loading: Simple spinner with "Loading..." text
+- Empty states: Centered icon with descriptive text
 
 ## Code Style Guidelines
 
