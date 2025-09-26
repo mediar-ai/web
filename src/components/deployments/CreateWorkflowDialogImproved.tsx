@@ -123,7 +123,7 @@ export function CreateWorkflowDialog({
       setDifficulty(template.difficulty_level);
       setEstimatedDuration(template.estimated_duration_seconds);
       setAutomationSequence(template.automation_sequence);
-      setActiveTab('manual');
+      // Stay on template tab - don't switch tabs automatically
     }
   };
 
