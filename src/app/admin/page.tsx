@@ -13,7 +13,6 @@ import {
   Building2,
   Users,
   Plus,
-  Settings,
   Mail,
   Trash2,
   UserPlus,
