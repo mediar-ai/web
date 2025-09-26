@@ -482,8 +482,8 @@ export async function GET(request: NextRequest) {
       ids: accessibleWorkflowIds.slice(0, 5)
     });
 
-    if (accessibleWorkflowIds.length === 0) {
-      // No workflows accessible to this org
+    if (accessibleWorkflowIds.length === 0 && !isMediarOrg) {
+      // No workflows accessible to non-Mediar org
       return NextResponse.json({
         success: true,
         workflows: [],
