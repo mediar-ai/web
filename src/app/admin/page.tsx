@@ -19,26 +19,28 @@ import {
   AlertCircle,
   X,
   Clock,
-  Crown,
-  ChevronDown
+  Crown
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
-export default function AdminPage() {
+function AdminPageContent() {
   const { isLoaded } = useAuth();
   const { organization, membership } = useOrganization();
   const { userMemberships, setActive } = useOrganizationList();
   const { user } = useUser();
+  const searchParams = useSearchParams();
+  const viewOrgId = searchParams.get('viewOrgId');
+
   const [showCreateOrg, setShowCreateOrg] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'invitations'>('overview');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [allOrganizations, setAllOrganizations] = useState<any[]>([]);
-  const [loadingOrgs, setLoadingOrgs] = useState(false);
+  const [_loadingOrgs, setLoadingOrgs] = useState(false);
   const [selectedOrg, setSelectedOrg] = useState<any>(null);
-  const [showOrgDropdown, setShowOrgDropdown] = useState(false);
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
   const [orgInvitations, setOrgInvitations] = useState<any[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -59,20 +61,19 @@ export default function AdminPage() {
     }
   }, [isGlobalAdmin]);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (showOrgDropdown && !(e.target as Element).closest('.org-dropdown')) {
-        setShowOrgDropdown(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [showOrgDropdown]);
 
-  // Set initial selected org
+  // Set selected org based on viewOrgId or current org
   useEffect(() => {
-    if (organization && !selectedOrg) {
+    if (viewOrgId && allOrganizations.length > 0) {
+      // Find the organization from the viewOrgId
+      const targetOrg = allOrganizations.find(org =>
+        org.clerk_organization_id === viewOrgId || org.id === viewOrgId
+      );
+      if (targetOrg) {
+        setSelectedOrg(targetOrg);
+      }
+    } else if (organization) {
+      // Use current organization if no viewOrgId
       setSelectedOrg({
         id: organization.id,
         name: organization.name,
@@ -80,7 +81,7 @@ export default function AdminPage() {
         member_count: organization.membersCount || 0
       });
     }
-  }, [organization, selectedOrg]);
+  }, [viewOrgId, organization, allOrganizations]);
 
   // Fetch members and invitations when selected org changes
   useEffect(() => {
@@ -233,7 +234,7 @@ export default function AdminPage() {
   return (
     <DashboardLayout>
       <div className="p-8">
-        {/* Header with Org Switcher */}
+        {/* Header */}
         <div className="mb-8">
           <div className="flex items-start justify-between">
             <div>
@@ -246,80 +247,14 @@ export default function AdminPage() {
               </p>
             </div>
 
-            {/* Custom Organization Dropdown for Global Admins */}
-            <div className="flex items-center gap-4">
-              {isGlobalAdmin ? (
-                <div className="relative org-dropdown">
-                  <button
-                    onClick={() => setShowOrgDropdown(!showOrgDropdown)}
-                    className="px-4 py-2 border-2 border-black bg-white hover:bg-gray-50 font-mono flex items-center gap-2 min-w-[200px]"
-                  >
-                    <div className="w-6 h-6 bg-black text-white rounded flex items-center justify-center text-xs font-bold">
-                      {selectedOrg?.name?.[0]?.toUpperCase() || '?'}
-                    </div>
-                    <span className="flex-1 text-left">{selectedOrg?.name || 'Select Org'}</span>
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-
-                  {showOrgDropdown && (
-                    <div className="absolute top-full mt-1 left-0 right-0 bg-white border-2 border-black max-h-96 overflow-y-auto z-50 min-w-[300px]">
-                      <div className="p-2 border-b border-gray-200 bg-gray-50">
-                        <p className="font-mono text-xs text-gray-600">ALL ORGANIZATIONS</p>
-                      </div>
-                      {loadingOrgs ? (
-                        <div className="p-4 text-center">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mx-auto"></div>
-                        </div>
-                      ) : (
-                        allOrganizations.map((org) => (
-                          <button
-                            key={org.id}
-                            onClick={() => {
-                              setSelectedOrg(org);
-                              setShowOrgDropdown(false);
-                              // If switching to current user's org, update via Clerk
-                              if (userMemberships?.data?.find(o => o.organization.id === org.clerk_organization_id)) {
-                                setActive?.({ organization: org.clerk_organization_id });
-                              }
-                            }}
-                            className={`w-full px-3 py-2 text-left hover:bg-gray-50 font-mono text-sm flex items-center gap-2 ${
-                              selectedOrg?.id === org.id ? 'bg-black text-white' : ''
-                            }`}
-                          >
-                            <div className={`w-6 h-6 ${selectedOrg?.id === org.id ? 'bg-white text-black' : 'bg-black text-white'} rounded flex items-center justify-center text-xs font-bold`}>
-                              {org.name?.[0]?.toUpperCase() || '?'}
-                            </div>
-                            <span className="flex-1">{org.name}</span>
-                            <span className="text-xs opacity-60">
-                              {org.id === selectedOrg?.id && orgMembers.length > 0
-                                ? orgMembers.length
-                                : org.member_count || 0} members
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                // For non-global admins, just show current org name
-                <div className="px-4 py-2 border-2 border-black bg-white font-mono flex items-center gap-2">
-                  <div className="w-6 h-6 bg-black text-white rounded flex items-center justify-center text-xs font-bold">
-                    {organization?.name?.[0]?.toUpperCase() || '?'}
-                  </div>
-                  <span>{organization?.name || 'No Organization'}</span>
-                </div>
-              )}
-
-              <button
-                onClick={() => setShowCreateOrg(true)}
-                className="px-4 py-2 bg-black text-white font-mono font-bold hover:bg-gray-800 flex items-center gap-2"
-                title="Create new organization"
-              >
-                <Plus className="w-4 h-4" />
-                NEW ORG
-              </button>
-            </div>
+            <button
+              onClick={() => setShowCreateOrg(true)}
+              className="px-4 py-2 bg-black text-white font-mono font-bold hover:bg-gray-800 flex items-center gap-2"
+              title="Create new organization"
+            >
+              <Plus className="w-4 h-4" />
+              NEW ORG
+            </button>
           </div>
         </div>
 
@@ -698,5 +633,19 @@ export default function AdminPage() {
 
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={
+      <DashboardLayout>
+        <div className="p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
+      </DashboardLayout>
+    }>
+      <AdminPageContent />
+    </Suspense>
   );
 }
