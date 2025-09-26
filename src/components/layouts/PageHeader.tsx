@@ -1,8 +1,5 @@
 'use client';
 
-import { Suspense } from 'react';
-import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
-
 interface PageHeaderProps {
   title: string;
   subtitle?: string;
@@ -19,15 +16,12 @@ export function PageHeader({ title, subtitle, children }: PageHeaderProps) {
         )}
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* Mediar Org Switcher - shows only for @mediar.ai users */}
-        <Suspense fallback={null}>
-          <MediarOrgSwitcher />
-        </Suspense>
-
-        {/* Additional actions passed as children */}
-        {children}
-      </div>
+      {/* Additional actions passed as children */}
+      {children && (
+        <div className="flex items-center gap-4">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronDown, Shield, Building, TestTube } from 'lucide-react';
+import { ChevronDown, Shield, Building, TestTube, Building2 } from 'lucide-react';
+import { useOrganization } from '@clerk/nextjs';
 
 interface Organization {
   id: string;
@@ -11,7 +12,11 @@ interface Organization {
   workflowCount: number;
 }
 
-export function MediarOrgSwitcher() {
+interface MediarOrgSwitcherProps {
+  inSidebar?: boolean;
+}
+
+export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -20,6 +25,7 @@ export function MediarOrgSwitcher() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { organization } = useOrganization();
 
   useEffect(() => {
     checkAdminStatus();
@@ -65,13 +71,89 @@ export function MediarOrgSwitcher() {
     router.refresh();
   };
 
-  // Don't show for non-admins
+  // For non-admins in sidebar, show regular org display
+  if (!isAdmin && inSidebar) {
+    if (!organization) return null;
+    return (
+      <div className="flex items-center gap-2">
+        <Building2 className="w-4 h-4" />
+        <span className="font-mono text-sm truncate">{organization.name}</span>
+      </div>
+    );
+  }
+
+  // Don't show switcher for non-admins outside sidebar
   if (loading || !isAdmin) {
     return null;
   }
 
   const currentOrg = organizations.find(o => o.id === currentViewOrg);
 
+  // Sidebar view - more compact
+  if (inSidebar) {
+    return (
+      <div className="relative">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full flex items-center gap-2 hover:bg-gray-100 transition-colors rounded p-1"
+        >
+          <Building className="w-4 h-4 flex-shrink-0" />
+          <span className="font-mono text-sm truncate flex-1 text-left">
+            {currentOrg ? currentOrg.name : organizations.find(o => o.type === 'mediar')?.name || 'Select Org'}
+          </span>
+          <ChevronDown className="w-4 h-4 flex-shrink-0" />
+        </button>
+
+        {isOpen && (
+          <div className="absolute top-full mt-1 left-0 right-0 bg-white border-2 border-black shadow-lg z-50">
+            <div className="p-2 bg-black text-white font-mono text-xs uppercase">
+              Switch Organization
+            </div>
+
+            {/* Default Mediar view */}
+            <button
+              onClick={() => handleOrgSwitch(null)}
+              className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
+                !currentViewOrg ? 'bg-gray-100' : ''
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Shield className="w-3 h-3" />
+                <div className="font-mono text-xs">Default (All)</div>
+              </div>
+            </button>
+
+            <div className="border-t border-gray-200" />
+
+            {/* Organization list */}
+            {organizations.map(org => {
+              const Icon = org.type === 'mediar' ? Shield :
+                          org.type === 'test' ? TestTube : Building;
+
+              return (
+                <button
+                  key={org.id}
+                  onClick={() => handleOrgSwitch(org.id)}
+                  className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
+                    currentViewOrg === org.id ? 'bg-gray-100' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon className="w-3 h-3" />
+                    <div className="font-mono text-xs truncate">
+                      {org.name} ({org.workflowCount})
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Page header view - original full-sized version
   return (
     <div className="relative">
       <button
