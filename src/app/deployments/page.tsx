@@ -1,5 +1,6 @@
 'use client';
 
+import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
 import { ExecutionDetailsDialog } from '@/components/deployments/ExecutionDetailsDialog';
 import { WorkflowCardEnhanced } from '@/components/deployments/WorkflowCardEnhanced';
@@ -8,270 +9,66 @@ import { CommandPalette } from '@/components/deployments/CommandPalette';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
-import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
-import { DeploymentsPageContent } from '@/components/deployments/DeploymentsPageContent';
-import { SidebarProvider } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import {
   Execution,
   LiveExecutionStatus,
-  Workflow,
   WorkflowOverview,
   WorkflowWithSettings,
 } from '@/lib/workflow-types';
 import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
 
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, StopCircle, Trash2, PlayCircle } from 'lucide-react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Eye, StopCircle, Trash2, Plus, Search } from 'lucide-react';
 
-// ============================================================================
-// Components
-// ============================================================================
-
-/**
- * Animated indicator showing real-time value changes
- * Displays a floating badge that appears when values increase/decrease
- */
-// const LiveValueChangeIndicator = ({ value }: { value: number }) => {
-//   const [activeDeltas, setActiveDeltas] = useState<
-//     { id: string; value: number }[]
-//   >([]);
-
-//   useEffect(() => {
-//     if (value !== 0) {
-//       const newDelta = { id: `${Date.now()}-${Math.random()}`, value };
-//       setActiveDeltas(currentDeltas => [...currentDeltas, newDelta]);
-
-//       // Remove delta after animation completes
-//       setTimeout(() => {
-//         setActiveDeltas(currentDeltas =>
-//           currentDeltas.filter(delta => delta.id !== newDelta.id)
-//         );
-//       }, 2000);
-//     }
-//   }, [value]);
-
-//   if (activeDeltas.length === 0) return null;
-
-//   return (
-//     <>
-//       {activeDeltas.map(delta => (
-//         <span
-//           key={delta.id}
-//           className={`absolute -top-2 -right-6 px-2 py-1 text-sm font-bold rounded-full animate-bounce-in-out ${
-//             delta.value > 0
-//               ? 'bg-black text-white'
-//               : 'bg-white text-black border-2 border-black'
-//           }`}
-//         >
-//           {delta.value > 0 ? `+${delta.value}` : delta.value}
-//         </span>
-//       ))}
-//     </>
-//   );
-// };
-
-// ============================================================================
-// Main Page Component
-// ============================================================================
-
-export default function WorkflowsPage() {
+export default function DeploymentsPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-white p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-6 w-96" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-          </div>
+      <DashboardLayout>
+        <div className="p-6">
+          <Skeleton className="h-10 w-64 mb-4" />
+          <Skeleton className="h-32 w-full" />
         </div>
-      </div>
+      </DashboardLayout>
     }>
-      <WorkflowsPageContent />
+      <DeploymentsPageContent />
     </Suspense>
   );
 }
 
-function WorkflowsPageContent() {
-  // -------------------------------------------------------------------------
-  // Authentication Hooks
-  // -------------------------------------------------------------------------
+function DeploymentsPageContent() {
   const { isLoaded, userId, has } = useAuth();
-  const { user } = useUser();
-  const { organization, membership } = useOrganization();
+  const { } = useUser();
+  const { organization } = useOrganization();
   const searchParams = useSearchParams();
 
-  // -------------------------------------------------------------------------
-  // Loading State
-  // -------------------------------------------------------------------------
-  if (!isLoaded) {
-    return (
-      <div className="min-h-screen bg-white p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-6 w-96" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // -------------------------------------------------------------------------
-  // Authentication Check
-  // -------------------------------------------------------------------------
-  if (!userId) {
-    return (
-      <div className="stable-container py-4 flex justify-center">
-        <SignIn />
-      </div>
-    );
-  }
-
-  // -------------------------------------------------------------------------
-  // Authorization and Permissions
-  // -------------------------------------------------------------------------
-  const hasAdminRole = has({ role: 'org:admin' });
-  const hasMemberRole = has({ role: 'org:member' });
-
-  // Debug: log all available user data
-  console.log('🔍 User object:', user);
-  console.log('🔍 User email addresses:', user?.emailAddresses);
-
-  const userEmail =
-    user?.emailAddresses?.[0]?.emailAddress ||
-    user?.primaryEmailAddress?.emailAddress ||
-    '';
-
-  // Temporary: Allow based on userId for testing since email detection isn't working
-  const allowedUserIds = ['user_2yydAO45WOB4RaCE4F4BNUPtw9c']; // Louis's user ID
-  const canDeleteWorkflows =
-    ['louis@mediar.ai', 'matt@mediar.ai'].includes(userEmail.toLowerCase()) ||
-    allowedUserIds.includes(userId || '');
-
-  console.log(
-    `🔐 Current user: ${userEmail}, UserID: ${userId}, Can delete: ${canDeleteWorkflows}`
-  );
-
-  // -------------------------------------------------------------------------
-  // Access Control
-  // -------------------------------------------------------------------------
-  if (!hasAdminRole && !hasMemberRole) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full space-y-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
-          <p className="text-gray-600">
-            You need admin or member privileges to access deployments.
-          </p>
-          <Link href="/admin">
-            <Button variant="outline">Return to Dashboard</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // Pass authentication context to the main component
-  return (
-    <AuthenticatedDeploymentsPage
-      isAdmin={hasAdminRole}
-      canDelete={canDeleteWorkflows}
-      userEmail={userEmail}
-      organizationName={organization?.name}
-      userRole={membership?.role}
-      searchParams={searchParams}
-    />
-  );
-}
-
-// ============================================================================
-// Authenticated Deployments Page
-// ============================================================================
-
-interface AuthenticatedDeploymentsPageProps {
-  isAdmin: boolean;
-  canDelete: boolean;
-  userEmail: string;
-  organizationName?: string;
-  userRole?: string;
-  searchParams: any;
-}
-
-function AuthenticatedDeploymentsPage({
-  isAdmin,
-  canDelete,
-  organizationName,
-  userRole,
-  searchParams,
-}: AuthenticatedDeploymentsPageProps) {
-  // -------------------------------------------------------------------------
-  // Core State - Workflows and Executions
-  // -------------------------------------------------------------------------
+  // State
   const [workflows, setWorkflows] = useState<WorkflowWithSettings[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
-  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>(
-    []
-  );
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [executingWorkflows, setExecutingWorkflows] = useState<Set<number>>(
-    new Set()
-  );
-
-  // -------------------------------------------------------------------------
-  // Live Statistics State
-  // -------------------------------------------------------------------------
-  const [liveStats, setLiveStats] = useState({
-    total_active: 0,
-    running: 0,
-    queued: 0,
-    average_progress: 0,
-  });
-
-  // -------------------------------------------------------------------------
-  // UI State - Dialogs and Loading
-  // -------------------------------------------------------------------------
-  const [selectedWorkflow, setSelectedWorkflow] =
-    useState<WorkflowOverview | null>(null);
-  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(
-    null
-  );
-  const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
-  const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
+  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowOverview | null>(null);
+  const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
+  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
+  const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
+  const [executionWorkflowFilter, setExecutionWorkflowFilter] = useState<number | "all">("all");
+  const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
+  const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
+  const [batchTestOpen, setBatchTestOpen] = useState(false);
+  const [selectedWorkflowForAction, setSelectedWorkflowForAction] = useState<WorkflowWithSettings | null>(null);
   const [templateYaml, setTemplateYaml] = useState<string>('');
   const [templateName, setTemplateName] = useState<string>('');
-  const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
-  const [actionsDialogMode, setActionsDialogMode] = useState<
-    'rename' | 'duplicate' | null
-  >(null);
-  const [selectedWorkflowForAction, setSelectedWorkflowForAction] =
-    useState<WorkflowWithSettings | null>(null);
-  const [executionDialogOpen, setExecutionDialogOpen] = useState(false);
-  const [selectedWorkflowForExecution, setSelectedWorkflowForExecution] =
-    useState<Workflow | null>(null);
-  const [sidebarFilter, setSidebarFilter] = useState<string>('all');
-  const [executionWorkflowFilter, setExecutionWorkflowFilter] = useState<
-    number | 'all'
-  >('all');
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  // -------------------------------------------------------------------------
-  // Keyboard Navigation
-  // -------------------------------------------------------------------------
-  const { selectedIndex, setSelectedIndex } = useKeyboardNavigation({
+  // Use keyboard navigation
+  const { selectedIndex: navSelectedIndex } = useKeyboardNavigation({
     itemCount: workflows.length,
-    onSelect: index => console.log('Selected workflow index:', index),
+    onSelect: index => setSelectedIndex(index),
     onEnter: index => {
       if (workflows[index]) {
         fetchWorkflowOverview(workflows[index].id);
@@ -280,49 +77,36 @@ function AuthenticatedDeploymentsPage({
     isActive: !createWorkflowOpen && !workflowDetailsOpen,
   });
 
-  // -------------------------------------------------------------------------
-  // Loading States
-  // -------------------------------------------------------------------------
-  const [loading, setLoading] = useState(true);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [loadingExecutionId, setLoadingExecutionId] = useState<number | null>(
-    null
-  );
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [loadingExecutions, setLoadingExecutions] = useState(true);
+  useEffect(() => {
+    setSelectedIndex(navSelectedIndex);
+  }, [navSelectedIndex]);
 
-  // -------------------------------------------------------------------------
-  // Previous Values for Delta Calculations
-  // -------------------------------------------------------------------------
-  const previousWorkflows = useRef<WorkflowWithSettings[]>([]);
-  const previousLiveStats = useRef({
-    total_active: 0,
-    running: 0,
-    queued: 0,
-    average_progress: 0,
-  });
+  // Keyboard shortcut for new workflow (N key)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "n" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+          return;
+        }
+        e.preventDefault();
+        setCreateWorkflowOpen(true);
+      }
+    };
 
-  // =========================================================================
-  // Data Fetching Functions
-  // =========================================================================
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
-  /**
-   * Fetches the list of available workflows
-   */
+  // Fetch functions
   const fetchWorkflows = useCallback(async (showLoading = true) => {
     try {
-      if (showLoading) {
-        setLoading(true);
-      }
-      const response = await fetch('/api/remote-workflows/list');
+      if (showLoading) setLoading(true);
+      const response = await fetch("/api/remote-workflows/list");
       const workflowData = await response.json();
       if (workflowData.success) {
-        // Sort workflows by creation date (oldest first)
         const sortedWorkflows = (workflowData.workflows || []).sort(
           (a: WorkflowWithSettings, b: WorkflowWithSettings) => {
-            // Sort by created_at (oldest first)
             const dateA = new Date(a.created_at).getTime();
             const dateB = new Date(b.created_at).getTime();
             return dateA - dateB;
@@ -331,194 +115,15 @@ function AuthenticatedDeploymentsPage({
         setWorkflows(sortedWorkflows);
       }
     } catch (error) {
-      console.error('Failed to fetch workflows:', error);
+      console.error("Failed to fetch workflows:", error);
     } finally {
-      if (showLoading) {
-        setLoading(false);
-      }
+      if (showLoading) setLoading(false);
     }
   }, []);
 
-  /**
-   * Handles successful workflow creation
-   */
-  const handleWorkflowCreated = useCallback(
-    (newWorkflow: any) => {
-      console.log('🎉 New workflow created:', newWorkflow);
-      // Refresh the workflows list to show the new workflow
-      fetchWorkflows(false);
-    },
-    [fetchWorkflows]
-  );
-
-  /**
-   * Handle workflow quick actions from enhanced UI
-   */
-  const handleQuickExecute = useCallback(
-    async (workflowId: number) => {
-      const workflow = workflows.find(w => w.id === workflowId);
-      if (!workflow) return;
-
-      setSelectedWorkflowForExecution(workflow);
-      setExecutionDialogOpen(true);
-    },
-    [workflows]
-  );
-
-  const handleQuickDuplicate = useCallback(
-    (workflowId: number) => {
-      const workflow = workflows.find(w => w.id === workflowId);
-      if (!workflow) return;
-
-      setSelectedWorkflowForAction(workflow);
-      setActionsDialogMode('duplicate');
-      setActionsDialogOpen(true);
-    },
-    [workflows]
-  );
-
-  const handleQuickEdit = useCallback(
-    (workflowId: number) => {
-      const workflow = workflows.find(w => w.id === workflowId);
-      if (!workflow) return;
-
-      setSelectedWorkflowForAction(workflow);
-      setActionsDialogMode('rename');
-      setActionsDialogOpen(true);
-    },
-    [workflows]
-  );
-
-  const handleToggleCron = useCallback(
-    async (workflowId: number) => {
-      const workflow = workflows.find(w => w.id === workflowId);
-      if (!workflow) return;
-
-      try {
-        const response = await fetch(
-          `/api/remote-workflows/${workflowId}/cron`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              enabled: !workflow.cron_enabled,
-            }),
-          }
-        );
-
-        const result = await response.json();
-
-        if (result.success) {
-          // Refresh workflows to show updated state
-          fetchWorkflows(false);
-        } else {
-          console.error('Failed to toggle cron:', result.error);
-        }
-      } catch (error) {
-        console.error('Error toggling cron:', error);
-      }
-    },
-    [workflows, fetchWorkflows]
-  );
-
-  const handleDeleteWorkflow = useCallback(
-    async (workflowId: number) => {
-      const workflow = workflows.find(w => w.id === workflowId);
-      if (!workflow) return;
-
-      // Confirm deletion
-      if (!confirm(`Are you sure you want to delete "${workflow.name}"?`)) {
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/remote-workflows/${workflowId}`, {
-          method: 'DELETE',
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-          // Refresh workflows list
-          fetchWorkflows(false);
-        } else {
-          console.error('Failed to delete workflow:', result.error);
-        }
-      } catch (error) {
-        console.error('Error deleting workflow:', error);
-      }
-    },
-    [workflows, fetchWorkflows]
-  );
-
-  /**
-   * Fetches detailed workflow overview for viewing
-   */
-  const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
+  const fetchExecutions = useCallback(async (_showLoading = true) => {
     try {
-      setLoadingDetails(true);
-      const response = await fetch(
-        `/api/remote-workflows/${workflowId}/overview`
-      );
-      const overviewData = await response.json();
-      if (response.ok && overviewData.success) {
-        setSelectedWorkflow(overviewData.workflow);
-        setWorkflowDetailsOpen(true);
-      }
-    } catch (error) {
-      console.error('Failed to fetch workflow overview:', error);
-    } finally {
-      setLoadingDetails(false);
-    }
-  }, []);
-
-  /**
-   * Fetches detailed execution data for a specific run
-   */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const fetchExecutionDetails = useCallback(async (executionId: number) => {
-    try {
-      setLoadingDetails(true);
-      setLoadingExecutionId(executionId);
-
-      // Open the dialog immediately to show loading skeleton
-      setSelectedExecution(null);
-      setExecutionDetailsOpen(true);
-
-      const response = await fetch(
-        `/api/remote-workflows/executions/${executionId}?full_detailed_response=true`
-      );
-      const executionData = await response.json();
-      console.log('Fetched execution data:', executionData);
-      console.log('Has execution_logs?', !!executionData.execution?.execution_logs);
-      console.log('execution_logs length:', executionData.execution?.execution_logs?.length);
-      if (executionData.success) {
-        setSelectedExecution(executionData.execution);
-      }
-    } catch (error) {
-      console.error('Failed to fetch execution details:', error);
-      // Close dialog on error
-      setExecutionDetailsOpen(false);
-    } finally {
-      setLoadingDetails(false);
-      setLoadingExecutionId(null);
-    }
-  }, []);
-
-  /**
-   * Fetches historical execution records
-   */
-  const fetchExecutions = useCallback(async (showLoading = true) => {
-    try {
-      if (showLoading) {
-        setLoadingExecutions(true);
-      }
-      // Fetch more executions to avoid truncating history when multiple workflows are active
-      const response = await fetch(
-        '/api/remote-workflows/executions?limit=1000'
-      );
+      const response = await fetch('/api/remote-workflows/executions?limit=1000');
       const executionsData = await response.json();
       if (executionsData.success) {
         setExecutions(executionsData.executions || []);
@@ -526,729 +131,528 @@ function AuthenticatedDeploymentsPage({
     } catch (error) {
       console.error('Failed to fetch executions:', error);
       setExecutions([]);
-    } finally {
-      if (showLoading) {
-        setLoadingExecutions(false);
-      }
     }
   }, []);
 
-  /**
-   * Fetches currently running/active executions
-   */
   const fetchLiveExecutions = useCallback(async () => {
     try {
-      const response = await fetch(
-        '/api/remote-workflows/executions/live?status=active&limit=500'
-      );
-
+      const response = await fetch('/api/remote-workflows/executions/live?status=active&limit=500');
       if (!response.ok) {
-        // API endpoint might not be available yet (migration not run)
         setLiveExecutions([]);
-        setLiveStats({
-          total_active: 0,
-          running: 0,
-          queued: 0,
-          average_progress: 0,
-        });
         return;
       }
-
       const liveData = await response.json();
       if (liveData.success && liveData.data) {
         setLiveExecutions(liveData.data.executions || []);
-        setLiveStats(
-          liveData.data.summary || {
-            total_active: 0,
-            running: 0,
-            queued: 0,
-            average_progress: 0,
-          }
-        );
       } else {
         setLiveExecutions([]);
-        setLiveStats({
-          total_active: 0,
-          running: 0,
-          queued: 0,
-          average_progress: 0,
-        });
       }
     } catch (error) {
       console.error('Failed to fetch live executions:', error);
       setLiveExecutions([]);
-      setLiveStats({
-        total_active: 0,
-        running: 0,
-        queued: 0,
-        average_progress: 0,
-      });
     }
   }, []);
 
-  // =========================================================================
-  // Effects and Lifecycle
-  // =========================================================================
+  const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflowId}/overview`);
+      const overviewData = await response.json();
+      if (response.ok && overviewData.success) {
+        setSelectedWorkflow(overviewData.workflow);
+        setWorkflowDetailsOpen(true);
+      }
+    } catch (error) {
+      console.error('Failed to fetch workflow overview:', error);
+    }
+  }, []);
 
-  /**
-   * Initial data load on component mount
-   */
+  const fetchExecutionDetails = useCallback(async (executionId: number) => {
+    try {
+      setSelectedExecution(null);
+      setExecutionDetailsOpen(true);
+      const response = await fetch(`/api/remote-workflows/executions/${executionId}?full_detailed_response=true`);
+      const executionData = await response.json();
+      if (executionData.success) {
+        setSelectedExecution(executionData.execution);
+      }
+    } catch (error) {
+      console.error('Failed to fetch execution details:', error);
+      setExecutionDetailsOpen(false);
+    }
+  }, []);
+
+  // Handlers
+  const handleWorkflowCreated = useCallback((_newWorkflow: any) => {
+    fetchWorkflows(false);
+  }, [fetchWorkflows]);
+
+  const handleQuickExecute = useCallback(async (workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    setSelectedWorkflowForAction(workflow);
+    setBatchTestOpen(true);
+  }, [workflows]);
+
+  const handleQuickEdit = useCallback((workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    setSelectedWorkflowForAction(workflow);
+    setActionsDialogMode('rename');
+    setActionsDialogOpen(true);
+  }, [workflows]);
+
+  const handleQuickDuplicate = useCallback((workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    setSelectedWorkflowForAction(workflow);
+    setActionsDialogMode('duplicate');
+    setActionsDialogOpen(true);
+  }, [workflows]);
+
+  const handleDeleteWorkflow = useCallback(async (workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    if (!confirm(`Are you sure you want to delete "${workflow.name}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflowId}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        fetchWorkflows(false);
+      } else {
+        console.error('Failed to delete workflow:', result.error);
+      }
+    } catch (error) {
+      console.error('Error deleting workflow:', error);
+    }
+  }, [workflows, fetchWorkflows]);
+
+  const handleToggleCron = useCallback(async (workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflowId}/cron`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !workflow.cron_enabled })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        fetchWorkflows(false);
+      } else {
+        console.error('Failed to toggle cron:', result.error);
+      }
+    } catch (error) {
+      console.error('Error toggling cron:', error);
+    }
+  }, [workflows, fetchWorkflows]);
+
+  // Initial data loading
   useEffect(() => {
     fetchWorkflows();
     fetchExecutions();
     fetchLiveExecutions();
   }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
 
-  /**
-   * Real-time polling for execution status updates
-   * Polls every 2 seconds for live updates
-   */
+  // Polling
   useEffect(() => {
-    let pollTimer: NodeJS.Timeout | null = null;
-
-    console.log('[POLLING] Starting 2-second polling for execution updates...');
-
-    const pollExecutionStatus = () => {
-      // Only fetch live executions and executions (not workflows) to minimize load
+    const pollTimer = setInterval(() => {
       fetchLiveExecutions();
-      fetchExecutions(false); // false = don't show loading spinner
-    };
+      fetchExecutions(false);
+    }, 2000);
 
-    // Set up 2-second interval polling
-    pollTimer = setInterval(pollExecutionStatus, 2000);
-
-    return () => {
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        console.log('[POLLING] Stopped polling');
-      }
-    };
+    return () => clearInterval(pollTimer);
   }, [fetchLiveExecutions, fetchExecutions]);
 
-  /**
-   * Track previous values for delta calculations
-   */
+  // Handle URL parameters for deep linking
   useEffect(() => {
-    previousWorkflows.current = workflows;
-    previousLiveStats.current = liveStats;
-  }, [workflows, liveStats]);
-
-  /**
-   * Update currently executing workflows set
-   */
-  useEffect(() => {
-    const currentlyExecuting = new Set<number>();
-    liveExecutions.forEach(execution => {
-      if (execution.status === 'running' || execution.status === 'queued') {
-        currentlyExecuting.add(execution.workflow_id);
-      }
-    });
-    setExecutingWorkflows(currentlyExecuting);
-  }, [liveExecutions]);
-
-  /**
-   * Handle URL parameters for deep linking from emails
-   * Only run once when the page loads with URL params
-   */
-  useEffect(() => {
-    // Only run if we haven't loaded yet and have URL params
     if (loading) return;
 
-    const executionId = searchParams.get('execution');
-    const workflowId = searchParams.get('workflow');
+    const executionId = searchParams.get("execution");
+    const workflowId = searchParams.get("workflow");
 
-    // Only process if we have params and haven't processed them yet
     if (executionId) {
       const execId = parseInt(executionId);
       if (!isNaN(execId) && !executionDetailsOpen) {
-        // Only fetch if modal is not already open
         fetchExecutionDetails(execId);
       }
     } else if (workflowId) {
       const wfId = parseInt(workflowId);
       if (!isNaN(wfId) && !selectedWorkflow) {
-        // Open workflow overview modal
         const workflow = workflows.find(w => w.id === wfId);
         if (workflow) {
           fetchWorkflowOverview(wfId);
         }
       }
     }
-  }, [loading]); // Only depend on loading state, not executions
+  }, [loading, searchParams, executionDetailsOpen, selectedWorkflow, workflows, fetchExecutionDetails, fetchWorkflowOverview]);
 
-
-  // =========================================================================
-  // Computed Values and Statistics
-  // =========================================================================
-
-  // Note: These statistics are calculated for potential future use
-  // Currently only workflow count is displayed in the UI
-
-  // =========================================================================
-  // Render
-  // =========================================================================
-
-  if (loading) {
+  // Loading state
+  if (!isLoaded) {
     return (
-      <SidebarProvider>
-        <div className="flex h-screen overflow-hidden">
-          <DeploymentSidebar
-            stats={{
-              total: 0,
-              running: 0,
-              paused: 0,
-              failed: 0,
-              automated: 0,
-            }}
-            selectedFilter="all"
-            onFilterChange={() => {}}
-            onCreateWorkflow={() => {}}
-            canViewAlerts={false}
-          />
-          <DeploymentsPageContent>
-            <div className="overflow-y-auto overflow-x-hidden">
-              <div className="max-w-7xl mx-auto p-6 space-y-6">
-                {/* Header skeleton */}
-                <div className="flex items-start justify-between mb-6">
-                  <div className="space-y-2">
-                    <Skeleton className="h-8 w-80" />
-                    <Skeleton className="h-5 w-64" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                </div>
-
-                {/* Workflows section skeleton */}
-                <div className="space-y-4">
-                  <Skeleton className="h-7 w-48" />
-                  <div className="grid gap-4">
-                    <Card className="border border-gray-200">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-3 flex-1">
-                            <Skeleton className="h-6 w-64" />
-                            <Skeleton className="h-4 w-96" />
-                            <div className="flex gap-2">
-                              <Skeleton className="h-5 w-20" />
-                              <Skeleton className="h-5 w-24" />
-                              <Skeleton className="h-5 w-16" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-8 w-8 rounded" />
-                        </div>
-                      </CardContent>
-                    </Card>
-                    <Card className="border border-gray-200">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-3 flex-1">
-                            <Skeleton className="h-6 w-48" />
-                            <Skeleton className="h-4 w-80" />
-                            <div className="flex gap-2">
-                              <Skeleton className="h-5 w-20" />
-                              <Skeleton className="h-5 w-28" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-8 w-8 rounded" />
-                        </div>
-                      </CardContent>
-                    </Card>
-                    <Card className="border border-gray-200">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-3 flex-1">
-                            <Skeleton className="h-6 w-72" />
-                            <Skeleton className="h-4 w-full" />
-                            <div className="flex gap-2">
-                              <Skeleton className="h-5 w-24" />
-                              <Skeleton className="h-5 w-20" />
-                              <Skeleton className="h-5 w-32" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-8 w-8 rounded" />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </DeploymentsPageContent>
+      <DashboardLayout>
+        <div className="p-6">
+          <Skeleton className="h-10 w-64 mb-4" />
+          <Skeleton className="h-32 w-full" />
         </div>
-      </SidebarProvider>
+      </DashboardLayout>
     );
   }
 
-  // Calculate stats for sidebar
-  const sidebarStats = {
-    total: workflows.length,
-    running: liveExecutions.filter(e => e.status === 'running').length,
-    paused: workflows.filter(w => w.cron_expression && !w.cron_enabled).length,
-    failed: executions.filter(e => e.status === 'failed').length,
-    automated: workflows.filter(w => w.cron_expression).length,
-  };
+  // Auth check
+  if (!userId) {
+    return (
+      <DashboardLayout>
+        <div className="flex justify-center py-8">
+          <SignIn />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
-  // Filter workflows based on sidebar selection
-  const filteredWorkflows = workflows.filter(workflow => {
-    switch (sidebarFilter) {
-      case 'manual':
-        return !workflow.cron_expression;
-      case 'automated':
-        return workflow.cron_expression;
-      case 'paused':
-        return workflow.cron_expression && !workflow.cron_enabled;
-      case 'active':
-        return (
-          workflow.status === 'deployed' &&
-          (!workflow.cron_expression || workflow.cron_enabled)
-        );
-      case 'failed':
-        return executions.some(
-          e => e.workflow_id === workflow.id && e.status === 'failed'
-        );
-      case 'completed':
-        return executions.some(
-          e => e.workflow_id === workflow.id && e.status === 'completed'
-        );
-      default:
-        return true;
-    }
-  });
+  const hasAdminRole = has({ role: "org:admin" });
+  const hasMemberRole = has({ role: "org:member" });
+
+  // Mediar org IDs for global admin access
+  const MEDIAR_ORG_IDS = [
+    'org_2yydAO45WOB4RaCE4F4BNUPtw9c',
+    'org_2yynzGa53bNM1GTPLp5mc2lYRyD',
+  ];
+
+  const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
+  const isGlobalAdmin = isMediarOrg && (hasAdminRole || hasMemberRole);
+  const canDelete = isGlobalAdmin;
+  const isAdmin = hasAdminRole;
+  const organizationName = organization?.name;
+
+  // Filter executions
+  const filteredExecutions = executionWorkflowFilter === "all"
+    ? executions
+    : executions.filter(e => e.workflow_id === executionWorkflowFilter);
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen">
-        <DeploymentSidebar
-          stats={sidebarStats}
-          selectedFilter={sidebarFilter}
-          onFilterChange={setSidebarFilter}
-          onCreateWorkflow={() => setCreateWorkflowOpen(true)}
-          canViewAlerts={canDelete}
-        />
-        <DeploymentsPageContent>
-          <div className="max-w-7xl mx-auto p-6 space-y-6">
-            {/* ===================================================================
-          Page Header
-          =================================================================== */}
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <h1 className="text-2xl font-bold font-mono">
-                  Remote Workflow Execution
-                </h1>
-                <p className="text-muted-foreground text-sm mt-1">
-                  Execute and monitor automated workflows remotely
-                </p>
-                <div className="mt-2">
-                  <span
-                    className={`text-sm font-medium ${
-                      isAdmin ? 'text-black font-bold' : 'text-gray-600'
-                    }`}
-                  >
-                    {isAdmin && organizationName
-                      ? `Admin - ${organizationName}`
-                      : organizationName
-                        ? `Member - ${organizationName}`
-                        : 'Organization Access'}
-                  </span>
-                  {userRole && (
-                    <span className="text-xs text-gray-500 ml-2">
-                      Role: {userRole}
+    <DashboardLayout>
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold font-mono">Remote Workflow Execution</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Execute and monitor automated workflows remotely
+            </p>
+            <div className="mt-2">
+              <span className={`text-sm font-medium ${isAdmin ? "text-black font-bold" : "text-gray-600"}`}>
+                {isAdmin && organizationName
+                  ? `Admin - ${organizationName}`
+                  : organizationName
+                    ? `Member - ${organizationName}`
+                    : "Organization Access"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Command Bar */}
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm"
+              aria-label="Open command palette"
+            >
+              <Search className="w-4 h-4" />
+              <span className="font-mono text-xs uppercase">Search</span>
+              <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black border border-black rounded font-mono">
+                {typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'}K
+              </kbd>
+            </button>
+
+            <Button
+              onClick={() => setCreateWorkflowOpen(true)}
+              className="bg-black text-white hover:bg-gray-800 relative"
+              title="Create new workflow (N)"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              NEW WORKFLOW
+              <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black rounded font-mono">N</kbd>
+            </Button>
+          </div>
+        </div>
+
+        {/* Workflows List */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold font-mono uppercase">Available Workflows</h2>
+          </div>
+
+          {loading ? (
+            <div className="grid gap-4">
+              {[1, 2, 3].map(i => (
+                <Skeleton key={i} className="h-32" />
+              ))}
+            </div>
+          ) : workflows.length > 0 ? (
+            <div className="grid gap-4">
+              {workflows.map((workflow, index) => (
+                <WorkflowCardEnhanced
+                  key={workflow.id}
+                  workflow={workflow}
+                  executions={executions.filter(e => e.workflow_id === workflow.id)}
+                  liveExecutions={liveExecutions}
+                  isSelected={selectedIndex === index}
+                  onSelect={() => setSelectedIndex(index)}
+                  onExecute={() => handleQuickExecute(workflow.id)}
+                  onView={() => fetchWorkflowOverview(workflow.id)}
+                  onDuplicate={() => handleQuickDuplicate(workflow.id)}
+                  onEdit={() => handleQuickEdit(workflow.id)}
+                  onDelete={() => handleDeleteWorkflow(workflow.id)}
+                  onToggleCron={() => handleToggleCron(workflow.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 border-2 border-dashed border-black">
+              <p className="font-mono text-gray-600 mb-4">No workflows created yet</p>
+              <Button
+                onClick={() => setCreateWorkflowOpen(true)}
+                className="bg-black text-white hover:bg-gray-800"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                CREATE YOUR FIRST WORKFLOW
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Recent Executions */}
+        {executions.length > 0 && (
+          <div className="space-y-4 mt-8">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <h2 className="text-lg font-bold font-mono uppercase">
+                  Recent Executions
+                  {executionWorkflowFilter !== "all" && (
+                    <span className="ml-2 text-sm font-normal text-gray-600">
+                      ({workflows.find(w => w.id === executionWorkflowFilter)?.name})
                     </span>
                   )}
-                </div>
-              </div>
-            </div>
-
-            {/* ===================================================================
-          Dialogs
-          =================================================================== */}
-            <UnifiedWorkflowDialog
-              workflow={selectedWorkflow}
-              open={workflowDetailsOpen}
-              onOpenChange={setWorkflowDetailsOpen}
-              onSettingsUpdated={() => fetchWorkflows(false)}
-            />
-
-            <ExecutionDetailsDialog
-              execution={selectedExecution}
-              open={executionDetailsOpen}
-              onOpenChange={setExecutionDetailsOpen}
-            />
-
-            {/* ===================================================================
-          Workflows List
-          =================================================================== */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold font-mono uppercase">
-                  Available Workflows
                 </h2>
               </div>
 
-              <div className="grid gap-4">
-                {filteredWorkflows.map((workflow, index) => (
-                  <WorkflowCardEnhanced
-                    key={workflow.id}
-                    workflow={workflow}
-                    executions={executions.filter(
-                      e => e.workflow_id === workflow.id
-                    )}
-                    liveExecutions={liveExecutions}
-                    isSelected={selectedIndex === index}
-                    onSelect={() => setSelectedIndex(index)}
-                    onExecute={() => handleQuickExecute(workflow.id)}
-                    onView={() => fetchWorkflowOverview(workflow.id)}
-                    onDuplicate={() => handleQuickDuplicate(workflow.id)}
-                    onEdit={() => handleQuickEdit(workflow.id)}
-                    onDelete={() => handleDeleteWorkflow(workflow.id)}
-                    onToggleCron={() => handleToggleCron(workflow.id)}
-                  />
+              <select
+                value={executionWorkflowFilter}
+                onChange={e => setExecutionWorkflowFilter(
+                  e.target.value === "all" ? "all" : parseInt(e.target.value)
+                )}
+                className="px-3 py-1 border-2 border-black font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
+              >
+                <option value="all">All Workflows</option>
+                {workflows.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
                 ))}
-              </div>
+              </select>
             </div>
 
-            {/* ===================================================================
-          Recent Executions
-          =================================================================== */}
-            {executions.length > 0 && (
-              <div className="space-y-4 mt-8">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <h2 className="text-lg font-bold font-mono uppercase">
-                      Recent Executions
-                      {executionWorkflowFilter !== 'all' && (
-                        <span className="ml-2 text-sm font-normal text-gray-600">
-                          (
-                          {
-                            workflows.find(
-                              w => w.id === executionWorkflowFilter
-                            )?.name
-                          }
-                          )
-                        </span>
-                      )}
-                    </h2>
-                    {executions.some(e => e.status === 'queued') && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-2 border-black hover:bg-black hover:text-white"
-                        onClick={async () => {
-                          try {
-                            const response = await fetch(
-                              '/api/admin/process-queue',
-                              {
-                                method: 'POST',
-                              }
-                            );
-                            const data = await response.json();
-                            if (response.ok) {
-                              alert(
-                                `Processed ${data.processed.length} workflows`
-                              );
-                              await fetchExecutions();
-                              await fetchLiveExecutions();
-                            } else {
-                              alert(`Failed to process queue: ${data.error}`);
-                            }
-                          } catch (error) {
-                            console.error('Error processing queue:', error);
-                            alert('Failed to process queue');
-                          }
-                        }}
-                        title="Manually process queued workflows"
-                      >
-                        <PlayCircle className="w-4 h-4 mr-2" />
-                        Process Queue
-                      </Button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={executionWorkflowFilter}
-                      onChange={e =>
-                        setExecutionWorkflowFilter(
-                          e.target.value === 'all'
-                            ? 'all'
-                            : parseInt(e.target.value)
-                        )
-                      }
-                      className="px-3 py-1 text-sm border border-black rounded font-mono bg-white hover:bg-gray-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-black"
-                    >
-                      <option value="all">All Workflows</option>
-                      {workflows.map(w => (
-                        <option key={w.id} value={w.id}>
-                          {w.name}
-                        </option>
-                      ))}
-                    </select>
-                    {executionWorkflowFilter !== 'all' && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setExecutionWorkflowFilter('all')}
-                        className="text-xs"
-                      >
-                        Clear
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <div className="border border-black rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-black">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                          Workflow
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                          Status
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                          Started
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                          Duration
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-mono uppercase">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {executions
-                        .filter(
-                          e =>
-                            executionWorkflowFilter === 'all' ||
-                            e.workflow_id === executionWorkflowFilter
-                        )
-                        .slice(0, 10)
-                        .map(execution => {
-                          const workflow = workflows.find(
-                            w => w.id === execution.workflow_id
-                          );
-                          const isLive = liveExecutions.some(
-                            le => le.id === execution.execution_id
-                          );
-                          return (
-                            <tr
-                              key={`execution-${execution.execution_id}`}
-                              className="hover:bg-gray-50"
+            <div className="border-2 border-black">
+              <table className="w-full">
+                <thead className="bg-black text-white">
+                  <tr>
+                    <th className="text-left p-3 font-mono">Workflow</th>
+                    <th className="text-left p-3 font-mono">Status</th>
+                    <th className="text-left p-3 font-mono">Started</th>
+                    <th className="text-left p-3 font-mono">Duration</th>
+                    <th className="text-left p-3 font-mono">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredExecutions.slice(0, 10).map(execution => {
+                    const workflow = workflows.find(w => w.id === execution.workflow_id);
+                    const isLive = liveExecutions.some(le => le.id === execution.execution_id);
+                    return (
+                      <tr key={`execution-${execution.execution_id}`} className="border-t border-gray-200 hover:bg-gray-50">
+                        <td className="p-3 font-mono text-sm">
+                          {workflow?.name || `Workflow ${execution.workflow_id}`}
+                        </td>
+                        <td className="p-3">
+                          <span className={`font-mono text-xs px-2 py-1 ${
+                            execution.status === 'completed' ? 'bg-white border-2 border-black' :
+                            execution.status === 'failed' ? 'bg-black text-white font-bold' :
+                            execution.status === 'running' || isLive ? 'bg-black text-white animate-pulse' :
+                            'bg-gray-200 text-gray-800'
+                          }`}>
+                            {execution.status.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="p-3 font-mono text-sm">
+                          {new Date(execution.started_at || execution.created_at).toLocaleString()}
+                        </td>
+                        <td className="p-3 font-mono text-sm">
+                          {execution.completed_at && execution.started_at
+                            ? `${Math.round((new Date(execution.completed_at).getTime() - new Date(execution.started_at).getTime()) / 1000)}s`
+                            : isLive ? 'Running...' : '-'}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 border border-black hover:bg-black hover:text-white"
+                              onClick={() => fetchExecutionDetails(execution.execution_id)}
+                              title="View Details"
                             >
-                              <td className="px-4 py-2 text-sm font-mono">
-                                {workflow?.name ||
-                                  `Workflow ${execution.workflow_id}`}
-                              </td>
-                              <td className="px-4 py-2">
-                                <span
-                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                    execution.status === 'completed'
-                                      ? 'bg-green-100 text-green-800'
-                                      : execution.status === 'failed'
-                                        ? 'bg-red-100 text-red-800'
-                                        : execution.status === 'running' ||
-                                            isLive
-                                          ? 'bg-yellow-100 text-yellow-800 animate-pulse'
-                                          : 'bg-gray-100 text-gray-800'
-                                  }`}
-                                >
-                                  {execution.status.toUpperCase()}
-                                </span>
-                              </td>
-                              <td className="px-4 py-2 text-sm text-gray-600">
-                                {new Date(
-                                  execution.started_at || execution.created_at
-                                ).toLocaleString()}
-                              </td>
-                              <td className="px-4 py-2 text-sm font-mono">
-                                {execution.completed_at && execution.started_at
-                                  ? `${Math.round((new Date(execution.completed_at).getTime() - new Date(execution.started_at).getTime()) / 1000)}s`
-                                  : isLive
-                                    ? 'Running...'
-                                    : '-'}
-                              </td>
-                              <td className="px-4 py-2">
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 border border-black hover:bg-black hover:text-white"
-                                    onClick={() => {
-                                      fetchExecutionDetails(execution.execution_id);
-                                    }}
-                                    title="View Details"
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  {(execution.status === 'running' ||
-                                    execution.status === 'queued') && (
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-8 w-8 bg-black text-white hover:bg-gray-800"
-                                      onClick={async () => {
-                                        if (
-                                          confirm(
-                                            `Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`
-                                          )
-                                        ) {
-                                          try {
-                                            const response = await fetch(
-                                              `/api/remote-workflows/executions/${execution.execution_id}/cancel`,
-                                              {
-                                                method: 'POST',
-                                              }
-                                            );
-                                            if (response.ok) {
-                                              // Refresh executions
-                                              await fetchExecutions();
-                                              await fetchLiveExecutions();
-                                            } else {
-                                              const error =
-                                                await response.json();
-                                              console.error(
-                                                'Cancel failed:',
-                                                error
-                                              );
-                                              alert(
-                                                `Failed to cancel execution: ${error.error || 'Unknown error'}`
-                                              );
-                                            }
-                                          } catch (error) {
-                                            console.error(
-                                              'Error canceling execution:',
-                                              error
-                                            );
-                                            alert('Error canceling execution');
-                                          }
-                                        }
-                                      }}
-                                      title={
-                                        execution.status === 'queued'
-                                          ? 'Cancel'
-                                          : 'Stop'
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {(execution.status === 'running' || execution.status === 'queued') && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 bg-black text-white hover:bg-gray-800"
+                                onClick={async () => {
+                                  if (confirm(`Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`)) {
+                                    try {
+                                      const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/cancel`, {
+                                        method: 'POST',
+                                      });
+                                      if (response.ok) {
+                                        await fetchExecutions();
+                                        await fetchLiveExecutions();
+                                      } else {
+                                        const error = await response.json();
+                                        console.error('Cancel failed:', error);
+                                        alert(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
                                       }
-                                    >
-                                      <StopCircle className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 border border-black hover:bg-red-600 hover:text-white hover:border-red-600"
-                                    onClick={async () => {
-                                      if (
-                                        confirm(
-                                          `Are you sure you want to DELETE this execution? This cannot be undone.`
-                                        )
-                                      ) {
-                                        try {
-                                          const response = await fetch(
-                                            `/api/remote-workflows/executions/${execution.execution_id}/delete`,
-                                            {
-                                              method: 'DELETE',
-                                            }
-                                          );
-                                          if (response.ok) {
-                                            // Refresh executions
-                                            await fetchExecutions();
-                                            await fetchLiveExecutions();
-                                          } else {
-                                            const error = await response.json();
-                                            console.error(
-                                              'Delete failed:',
-                                              error
-                                            );
-                                            alert(
-                                              `Failed to delete execution: ${error.error || 'Unknown error'}`
-                                            );
-                                          }
-                                        } catch (error) {
-                                          console.error(
-                                            'Error deleting execution:',
-                                            error
-                                          );
-                                          alert('Error deleting execution');
-                                        }
+                                    } catch (error) {
+                                      console.error('Error canceling execution:', error);
+                                      alert('Error canceling execution');
+                                    }
+                                  }
+                                }}
+                                title={execution.status === 'queued' ? 'Cancel' : 'Stop'}
+                              >
+                                <StopCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 border border-black hover:bg-red-600 hover:text-white hover:border-red-600"
+                                onClick={async () => {
+                                  if (confirm(`Are you sure you want to DELETE this execution? This cannot be undone.`)) {
+                                    try {
+                                      const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/delete`, {
+                                        method: 'DELETE',
+                                      });
+                                      if (response.ok) {
+                                        await fetchExecutions();
+                                        await fetchLiveExecutions();
+                                      } else {
+                                        const error = await response.json();
+                                        console.error('Delete failed:', error);
+                                        alert(`Failed to delete execution: ${error.error || 'Unknown error'}`);
                                       }
-                                    }}
-                                    title="Delete Execution"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+                                    } catch (error) {
+                                      console.error('Error deleting execution:', error);
+                                      alert('Error deleting execution');
+                                    }
+                                  }
+                                }}
+                                title="Delete Execution"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </DeploymentsPageContent>
-      </div>
+        )}
 
-      {/* Command Palette */}
-      <CommandPalette
-        workflows={workflows}
-        executions={executions}
-        onExecuteWorkflow={handleQuickExecute}
-        onDuplicateWorkflow={handleQuickDuplicate}
-        onViewWorkflow={fetchWorkflowOverview}
-        onEditWorkflow={handleQuickEdit}
-        onViewExecution={execution => {
-          fetchExecutionDetails(execution.execution_id);
-        }}
-        onCreateWorkflow={() => setCreateWorkflowOpen(true)}
-        onRefresh={() => fetchWorkflows(true)}
-      />
-
-      {/* ===================================================================
-          Workflow Actions Dialog (Rename/Duplicate)
-          =================================================================== */}
-      {selectedWorkflowForAction && (
-        <WorkflowActionsDialog
-          open={actionsDialogOpen}
-          onOpenChange={setActionsDialogOpen}
-          mode={actionsDialogMode}
-          workflowId={selectedWorkflowForAction.id}
-          currentName={selectedWorkflowForAction.name}
-          currentDescription={selectedWorkflowForAction.description}
-          onSuccess={() => {
-            setActionsDialogOpen(false);
-            fetchWorkflows(false);
+        {/* Command Palette */}
+        <CommandPalette
+          open={commandPaletteOpen}
+          onOpenChange={setCommandPaletteOpen}
+          workflows={workflows}
+          executions={executions}
+          onExecuteWorkflow={handleQuickExecute}
+          onDuplicateWorkflow={handleQuickDuplicate}
+          onViewWorkflow={fetchWorkflowOverview}
+          onEditWorkflow={handleQuickEdit}
+          onViewExecution={execution => {
+            fetchExecutionDetails(execution.execution_id);
           }}
+          onCreateWorkflow={() => setCreateWorkflowOpen(true)}
+          onRefresh={() => fetchWorkflows(true)}
         />
-      )}
 
-      <BatchTestDialog
-        workflow={selectedWorkflowForExecution}
-        open={executionDialogOpen}
-        onOpenChange={setExecutionDialogOpen}
-        onSubmit={() => {
-          console.log('Test run started');
-          fetchExecutions(false);
-        }}
-      />
+        {/* Dialogs */}
+        <CreateWorkflowDialog
+          open={createWorkflowOpen}
+          onOpenChange={open => {
+            setCreateWorkflowOpen(open);
+            if (!open) {
+              setTemplateYaml('');
+              setTemplateName('');
+            }
+          }}
+          initialYaml={templateYaml}
+          initialName={templateName}
+          onWorkflowCreated={handleWorkflowCreated}
+        />
 
-      {/* ===================================================================
-          Create Workflow Dialog
-          =================================================================== */}
-      <CreateWorkflowDialog
-        open={createWorkflowOpen}
-        onOpenChange={open => {
-          setCreateWorkflowOpen(open);
-          // Clear template data when closing
-          if (!open) {
-            setTemplateYaml('');
-            setTemplateName('');
-          }
-        }}
-        initialYaml={templateYaml}
-        initialName={templateName}
-        onWorkflowCreated={handleWorkflowCreated}
-      />
-    </SidebarProvider>
+        <UnifiedWorkflowDialog
+          workflow={selectedWorkflow}
+          open={workflowDetailsOpen}
+          onOpenChange={setWorkflowDetailsOpen}
+          onSettingsUpdated={() => fetchWorkflows(false)}
+        />
+
+        <ExecutionDetailsDialog
+          execution={selectedExecution}
+          open={executionDetailsOpen}
+          onOpenChange={setExecutionDetailsOpen}
+        />
+
+        {selectedWorkflowForAction && (
+          <WorkflowActionsDialog
+            open={actionsDialogOpen}
+            onOpenChange={setActionsDialogOpen}
+            mode={actionsDialogMode}
+            workflowId={selectedWorkflowForAction.id}
+            currentName={selectedWorkflowForAction.name}
+            currentDescription={selectedWorkflowForAction.description}
+            onSuccess={() => {
+              setActionsDialogOpen(false);
+              fetchWorkflows(false);
+            }}
+          />
+        )}
+
+        {selectedWorkflowForAction && (
+          <BatchTestDialog
+            workflow={selectedWorkflowForAction}
+            open={batchTestOpen}
+            onOpenChange={setBatchTestOpen}
+            onSubmit={() => {
+              fetchExecutions(false);
+            }}
+          />
+        )}
+      </div>
+    </DashboardLayout>
   );
 }
