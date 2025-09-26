@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useOrganization, useUser } from '@clerk/nextjs';
+import { useOrganization, useUser, useClerk } from '@clerk/nextjs';
 import { useState } from 'react';
 import {
   LayoutGrid,
@@ -15,7 +15,8 @@ import {
   Building2,
   Home,
   Bell,
-  Shield
+  Shield,
+  LogOut
 } from 'lucide-react';
 
 interface NavItem {
@@ -35,6 +36,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { organization, membership } = useOrganization();
   const { user } = useUser();
+  const { signOut } = useClerk();
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('sidebarCollapsed') === 'true';
@@ -128,7 +130,7 @@ export function Sidebar() {
       </nav>
 
       {/* User Section */}
-      <div className="p-4 border-t-2 border-black">
+      <div className="p-4 border-t-2 border-black space-y-2">
         <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : 'px-3'} py-2`}>
           <div className="w-8 h-8 bg-black text-white flex items-center justify-center font-mono text-xs flex-shrink-0">
             {user?.firstName?.[0] || user?.username?.[0] || 'U'}
@@ -144,6 +146,21 @@ export function Sidebar() {
             </div>
           )}
         </div>
+
+        {/* Logout Button */}
+        <button
+          onClick={() => signOut()}
+          className={`
+            w-full flex items-center gap-3 px-3 py-2 font-mono text-sm
+            text-black hover:bg-black hover:text-white
+            border-2 border-black transition-colors
+            ${isCollapsed ? 'justify-center' : ''}
+          `}
+          title={isCollapsed ? 'Sign Out' : undefined}
+        >
+          <LogOut className="w-4 h-4" />
+          {!isCollapsed && <span>Sign Out</span>}
+        </button>
       </div>
     </div>
   );
