@@ -1,16 +1,13 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
+import { PageHeader } from '@/components/layouts/PageHeader';
 import { QuickInvite } from '@/components/admin/QuickInvite';
 import { useAuth, useOrganization } from '@clerk/nextjs';
 import { ArrowLeft, Mail, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-
-const MEDIAR_ORG_IDS = [
-  'org_2yydAO45WOB4RaCE4F4BNUPtw9c',
-  'org_2yynzGa53bNM1GTPLp5mc2lYRyD',
-];
+import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 export default function InvitesPage() {
   const { userId: _userId } = useAuth();
@@ -65,11 +62,11 @@ export default function InvitesPage() {
           Settings
         </Link>
 
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="font-mono font-bold text-3xl mb-2">Client Invitations</h1>
-          <p className="font-mono text-gray-600">Send invitations to new clients</p>
-        </div>
+        {/* Header with org switcher */}
+        <PageHeader
+          title="Client Invitations"
+          subtitle="Send invitations to new clients"
+        />
 
         {/* Quick Invite Section */}
         <QuickInvite />

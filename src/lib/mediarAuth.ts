@@ -1,10 +1,5 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
-
-// Mediar organization IDs
-export const MEDIAR_ORG_IDS = [
-  'org_2yynzGa53bNM1GTPLp5mc2lYRyD', // Current Mediar organization
-  'org_2yydAO45WOB4RaCE4F4BNUPtw9c', // Legacy Mediar organization
-];
+import { MEDIAR_ORG_IDS } from './constants';
 
 /**
  * Check if the current user is a Mediar admin (has @mediar.ai email)

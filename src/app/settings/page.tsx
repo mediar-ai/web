@@ -1,6 +1,7 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
+import { PageHeader } from '@/components/layouts/PageHeader';
 import { useOrganization, useUser } from '@clerk/nextjs';
 // Icons removed - will add when needed
 import Link from 'next/link';
@@ -21,11 +22,11 @@ export default function SettingsPage() {
   return (
     <DashboardLayout>
       <div className="p-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="font-mono font-bold text-3xl mb-2">Settings</h1>
-          <p className="font-mono text-gray-600">Manage your account and preferences</p>
-        </div>
+        {/* Header with org switcher */}
+        <PageHeader
+          title="Settings"
+          subtitle="Manage your account and preferences"
+        />
 
         {/* Settings Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

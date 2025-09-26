@@ -1,6 +1,7 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
+import { PageHeader } from '@/components/layouts/PageHeader';
 import RoleManagementSection from '@/components/admin/RoleManagementSection';
 import { useAuth, useOrganization } from '@clerk/nextjs';
 import { ArrowLeft } from 'lucide-react';
@@ -20,11 +21,11 @@ export default function TeamPage() {
           Settings
         </Link>
 
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="font-mono font-bold text-3xl mb-2">Team Management</h1>
-          <p className="font-mono text-gray-600">Manage team members and their permissions</p>
-        </div>
+        {/* Header with org switcher */}
+        <PageHeader
+          title="Team Management"
+          subtitle="Manage team members and their permissions"
+        />
 
         {/* Team Management Section */}
         {isOwner ? (
