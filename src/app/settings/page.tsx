@@ -2,7 +2,7 @@
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { useOrganization, useUser } from '@clerk/nextjs';
-import { Building2, CreditCard, Bell } from 'lucide-react';
+// Icons removed - will add when needed
 import Link from 'next/link';
 
 export default function SettingsPage() {
@@ -10,24 +10,7 @@ export default function SettingsPage() {
   const { user } = useUser();
 
   const settingsSections = [
-    {
-      title: 'Organization',
-      icon: Building2,
-      description: 'Manage your organization settings',
-      href: '/settings/organization',
-    },
-    {
-      title: 'Notifications',
-      icon: Bell,
-      description: 'Configure email and alert preferences',
-      href: '/settings/notifications',
-    },
-    {
-      title: 'Billing',
-      icon: CreditCard,
-      description: 'Manage subscription and payment methods',
-      href: '/settings/billing',
-    },
+    // Empty for now - can add settings sections later
   ];
 
   return (

@@ -3,7 +3,7 @@
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { QuickInvite } from '@/components/admin/QuickInvite';
 import { useAuth, useOrganization, useUser } from '@clerk/nextjs';
-import { Shield, Building2, Users, Mail, Plus, Settings } from 'lucide-react';
+import { Shield, Building2, Mail, Plus, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -147,34 +147,14 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Quick Links */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link href="/settings/team" className="block border-2 border-black p-4 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5" />
-                <div>
-                  <h3 className="font-mono font-bold">TEAM MANAGEMENT</h3>
-                  <p className="font-mono text-xs text-gray-600">Manage roles and permissions</p>
-                </div>
-              </div>
-            </Link>
-
+          {/* Quick Link to Alerts */}
+          <div className="mb-8">
             <Link href="/notifications" className="block border-2 border-black p-4 hover:bg-gray-50 transition-colors">
               <div className="flex items-center gap-3">
                 <Settings className="w-5 h-5" />
                 <div>
                   <h3 className="font-mono font-bold">ALERT SETTINGS</h3>
-                  <p className="font-mono text-xs text-gray-600">Configure notifications</p>
-                </div>
-              </div>
-            </Link>
-
-            <Link href="/deployments" className="block border-2 border-black p-4 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-3">
-                <Shield className="w-5 h-5" />
-                <div>
-                  <h3 className="font-mono font-bold">DEPLOYMENTS</h3>
-                  <p className="font-mono text-xs text-gray-600">Monitor all workflows</p>
+                  <p className="font-mono text-xs text-gray-600">Configure workflow notifications and alerts</p>
                 </div>
               </div>
             </Link>
