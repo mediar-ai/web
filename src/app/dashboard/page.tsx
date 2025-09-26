@@ -1,13 +1,14 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
-import { useOrganization } from '@clerk/nextjs';
+import { useOrganization, useUser } from '@clerk/nextjs';
 import { Activity, Workflow, TrendingUp, Clock, CheckCircle, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 export default function DashboardPage() {
-  const { organization } = useOrganization();
+  const { organization, isLoaded: orgLoaded } = useOrganization();
+  const { user } = useUser();
   const [stats, setStats] = useState([
     { label: 'Active Workflows', value: '0', icon: Workflow, change: '' },
     { label: 'Total Executions', value: '0', icon: Activity, change: '' },
@@ -18,17 +19,54 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Reset state when user or organization changes
+    setStats([
+      { label: 'Active Workflows', value: '0', icon: Workflow, change: '' },
+      { label: 'Total Executions', value: '0', icon: Activity, change: '' },
+      { label: 'Avg Speed', value: '0s', icon: Zap, change: '' },
+      { label: 'Success Rate', value: '0%', icon: TrendingUp, change: '' },
+    ]);
+    setRecentActivity([]);
+    setLoading(true);
+
     const fetchDashboardData = async () => {
-      if (!organization?.id) return;
+      // Wait for organization to be loaded
+      if (!orgLoaded || !organization?.id) {
+        setLoading(false);
+        return;
+      }
+
+      console.log('[Dashboard] Fetching data for org:', organization?.id, 'user:', user?.id);
 
       try {
-        // Fetch workflows
-        const workflowsResponse = await fetch('/api/remote-workflows/list');
+        // Fetch workflows with cache busting
+        const workflowsResponse = await fetch('/api/remote-workflows/list', {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+          },
+        });
         const workflowsData = await workflowsResponse.json();
 
-        // Fetch recent executions
-        const executionsResponse = await fetch('/api/remote-workflows/executions?limit=10');
+        console.log('[Dashboard] Workflows response:', {
+          success: workflowsData.success,
+          workflowCount: workflowsData.workflows?.length,
+          organization: workflowsData.organization,
+        });
+
+        // Fetch recent executions with cache busting
+        const executionsResponse = await fetch('/api/remote-workflows/executions?limit=10', {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+          },
+        });
         const executionsData = await executionsResponse.json();
+
+        console.log('[Dashboard] Executions response:', {
+          success: executionsData.success,
+          executionCount: executionsData.executions?.length,
+        });
 
         if (workflowsData.success) {
           const workflows = workflowsData.workflows || [];
@@ -90,7 +128,7 @@ export default function DashboardPage() {
     // Refresh every 30 seconds
     const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
-  }, [organization?.id]);
+  }, [organization?.id, user?.id, orgLoaded]);
 
   return (
     <DashboardLayout>
