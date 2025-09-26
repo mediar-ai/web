@@ -418,6 +418,8 @@ export async function GET(request: NextRequest) {
     // Check if user is in Mediar organization
     const isMediarOrg = MEDIAR_ORG_IDS.includes(orgId);
 
+    console.log('[API] Workflows list request - Org:', orgId, 'Is Mediar:', isMediarOrg);
+
     // Get URL parameters for filtering and pagination
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
@@ -430,26 +432,43 @@ export async function GET(request: NextRequest) {
 
     if (isMediarOrg) {
       // Mediar sees all workflows
-      const { data: allWorkflows } = await supabase
+      const { data: allWorkflows, error: allError } = await supabase
         .from('deployed_workflows')
         .select('id')
         .is('parent_workflow_id', null);
+
+      console.log('[API] Mediar org - fetching all workflows:', {
+        count: allWorkflows?.length,
+        error: allError?.message
+      });
 
       accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
     } else {
       // Regular org sees only their workflows and shared workflows
       // Get workflows owned by this org
-      const { data: ownedWorkflows } = await supabase
+      const { data: ownedWorkflows, error: ownedError } = await supabase
         .from('deployed_workflows')
-        .select('id')
+        .select('id, organization_id')
         .eq('organization_id', orgId)
         .is('parent_workflow_id', null);
 
+      console.log('[API] Regular org - owned workflows:', {
+        orgId,
+        count: ownedWorkflows?.length,
+        workflows: ownedWorkflows?.slice(0, 3),
+        error: ownedError?.message
+      });
+
       // Get workflows shared with this org
-      const { data: sharedAccess } = await supabase
+      const { data: sharedAccess, error: sharedError } = await supabase
         .from('workflow_organization_access')
         .select('workflow_id')
         .eq('organization_id', orgId);
+
+      console.log('[API] Regular org - shared workflows:', {
+        count: sharedAccess?.length,
+        error: sharedError?.message
+      });
 
       const ownedIds = (ownedWorkflows || []).map(w => w.id);
       const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
@@ -457,6 +476,11 @@ export async function GET(request: NextRequest) {
       // Combine and deduplicate
       accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds])];
     }
+
+    console.log('[API] Accessible workflow IDs:', {
+      count: accessibleWorkflowIds.length,
+      ids: accessibleWorkflowIds.slice(0, 5)
+    });
 
     if (accessibleWorkflowIds.length === 0) {
       // No workflows accessible to this org
