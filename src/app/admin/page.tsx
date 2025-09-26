@@ -24,11 +24,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-
-const MEDIAR_ORG_IDS = [
-  'org_REDACTED',
-  'org_REDACTED',
-];
+import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 export default function AdminPage() {
   const { isLoaded } = useAuth();
@@ -49,9 +45,12 @@ export default function AdminPage() {
   const [loadingInvitations, setLoadingInvitations] = useState(false);
 
   // Check if user is Mediar admin
+  const hasMediarEmail = user?.emailAddresses?.some(
+    email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+  ) || false;
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
   const isOrgAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
-  const isGlobalAdmin = isMediarOrg && isOrgAdmin;
+  const isGlobalAdmin = hasMediarEmail; // @mediar.ai users are always global admins
 
   // Fetch all organizations if global admin
   useEffect(() => {
@@ -213,7 +212,7 @@ export default function AdminPage() {
   }
 
   // Show access denied if not admin
-  if (!isOrgAdmin && !isMediarOrg) {
+  if (!isGlobalAdmin && !isOrgAdmin) {
     return (
       <DashboardLayout>
         <div className="p-8">
@@ -222,7 +221,7 @@ export default function AdminPage() {
               <Shield className="w-12 h-12 mx-auto mb-4" />
               <h1 className="font-mono font-bold text-2xl mb-2">ACCESS RESTRICTED</h1>
               <p className="font-mono text-gray-600">
-                This section is only available to organization administrators.
+                This section is only available to organization administrators or Mediar staff.
               </p>
             </div>
           </div>
