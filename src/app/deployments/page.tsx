@@ -60,28 +60,28 @@ function DeploymentsPageContent() {
   const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
   const [executionWorkflowFilter, setExecutionWorkflowFilter] = useState<number | "all">("all");
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
+  const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
   const [batchTestOpen, setBatchTestOpen] = useState(false);
   const [selectedWorkflowForAction, setSelectedWorkflowForAction] = useState<WorkflowWithSettings | null>(null);
+  const [templateYaml, setTemplateYaml] = useState<string>('');
+  const [templateName, setTemplateName] = useState<string>('');
 
   // Use keyboard navigation
-  useKeyboardNavigation({
-    isEnabled: true,
-    totalItems: workflows.length,
-    selectedIndex,
-    onNavigate: setSelectedIndex,
-    onEnter: () => {
-      if (selectedIndex >= 0 && selectedIndex < workflows.length) {
-        handleQuickExecute(workflows[selectedIndex].id);
+  const { selectedIndex: navSelectedIndex, setSelectedIndex: setNavSelectedIndex } = useKeyboardNavigation({
+    itemCount: workflows.length,
+    onSelect: index => setSelectedIndex(index),
+    onEnter: index => {
+      if (workflows[index]) {
+        fetchWorkflowOverview(workflows[index].id);
       }
     },
-    onDelete: () => {
-      if (selectedIndex >= 0 && selectedIndex < workflows.length) {
-        handleDeleteWorkflow(workflows[selectedIndex].id);
-      }
-    }
+    isActive: !createWorkflowOpen && !workflowDetailsOpen,
   });
+
+  useEffect(() => {
+    setSelectedIndex(navSelectedIndex);
+  }, [navSelectedIndex]);
 
   // Keyboard shortcut for new workflow (N key)
   useEffect(() => {
@@ -93,11 +93,6 @@ function DeploymentsPageContent() {
         }
         e.preventDefault();
         setCreateWorkflowOpen(true);
-      }
-      // Cmd+K for command palette
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen(true);
       }
     };
 
@@ -130,54 +125,61 @@ function DeploymentsPageContent() {
 
   const fetchExecutions = useCallback(async (showLoading = true) => {
     try {
-      if (showLoading) setLoading(true);
-      const response = await fetch("/api/remote-workflows/executions");
-      const executionData = await response.json();
-      if (executionData.success) {
-        setExecutions(executionData.executions || []);
+      const response = await fetch('/api/remote-workflows/executions?limit=1000');
+      const executionsData = await response.json();
+      if (executionsData.success) {
+        setExecutions(executionsData.executions || []);
       }
     } catch (error) {
-      console.error("Failed to fetch executions:", error);
-    } finally {
-      if (showLoading) setLoading(false);
+      console.error('Failed to fetch executions:', error);
+      setExecutions([]);
     }
   }, []);
 
   const fetchLiveExecutions = useCallback(async () => {
     try {
-      const response = await fetch("/api/remote-workflows/live-executions");
+      const response = await fetch('/api/remote-workflows/executions/live?status=active&limit=500');
+      if (!response.ok) {
+        setLiveExecutions([]);
+        return;
+      }
       const liveData = await response.json();
-      if (liveData.success) {
-        setLiveExecutions(liveData.executions || []);
+      if (liveData.success && liveData.data) {
+        setLiveExecutions(liveData.data.executions || []);
+      } else {
+        setLiveExecutions([]);
       }
     } catch (error) {
-      console.error("Failed to fetch live executions:", error);
+      console.error('Failed to fetch live executions:', error);
+      setLiveExecutions([]);
     }
   }, []);
 
   const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
     try {
       const response = await fetch(`/api/remote-workflows/${workflowId}/overview`);
-      const data = await response.json();
-      if (data.success) {
-        setSelectedWorkflow(data.overview);
+      const overviewData = await response.json();
+      if (response.ok && overviewData.success) {
+        setSelectedWorkflow(overviewData.workflow);
         setWorkflowDetailsOpen(true);
       }
     } catch (error) {
-      console.error("Failed to fetch workflow overview:", error);
+      console.error('Failed to fetch workflow overview:', error);
     }
   }, []);
 
   const fetchExecutionDetails = useCallback(async (executionId: number) => {
     try {
-      const response = await fetch(`/api/remote-workflows/executions/${executionId}`);
-      const data = await response.json();
-      if (data.success) {
-        setSelectedExecution(data.execution);
-        setExecutionDetailsOpen(true);
+      setSelectedExecution(null);
+      setExecutionDetailsOpen(true);
+      const response = await fetch(`/api/remote-workflows/executions/${executionId}?full_detailed_response=true`);
+      const executionData = await response.json();
+      if (executionData.success) {
+        setSelectedExecution(executionData.execution);
       }
     } catch (error) {
-      console.error("Failed to fetch execution details:", error);
+      console.error('Failed to fetch execution details:', error);
+      setExecutionDetailsOpen(false);
     }
   }, []);
 
@@ -192,50 +194,70 @@ function DeploymentsPageContent() {
     if (!workflow) return;
 
     setSelectedWorkflowForAction(workflow);
+    setBatchTestOpen(true);
+  }, [workflows]);
+
+  const handleQuickEdit = useCallback((workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    setSelectedWorkflowForAction(workflow);
+    setActionsDialogMode('rename');
     setActionsDialogOpen(true);
   }, [workflows]);
 
-  const handleQuickEdit = useCallback(async (workflowId: number) => {
-    fetchWorkflowOverview(workflowId);
-  }, [fetchWorkflowOverview]);
+  const handleQuickDuplicate = useCallback((workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
 
-  const handleQuickDuplicate = useCallback(async (workflowId: number) => {
-    // Implementation for duplicate
-    console.log("Duplicate workflow:", workflowId);
-  }, []);
+    setSelectedWorkflowForAction(workflow);
+    setActionsDialogMode('duplicate');
+    setActionsDialogOpen(true);
+  }, [workflows]);
 
   const handleDeleteWorkflow = useCallback(async (workflowId: number) => {
-    if (!confirm("Are you sure you want to delete this workflow?")) return;
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    if (!confirm(`Are you sure you want to delete "${workflow.name}"?`)) {
+      return;
+    }
 
     try {
-      const response = await fetch(`/api/remote-workflows/${workflowId}/delete`, {
-        method: "DELETE"
+      const response = await fetch(`/api/remote-workflows/${workflowId}`, {
+        method: 'DELETE',
       });
 
-      if (response.ok) {
-        await fetchWorkflows(false);
+      const result = await response.json();
+      if (result.success) {
+        fetchWorkflows(false);
+      } else {
+        console.error('Failed to delete workflow:', result.error);
       }
     } catch (error) {
-      console.error("Failed to delete workflow:", error);
+      console.error('Error deleting workflow:', error);
     }
-  }, [fetchWorkflows]);
+  }, [workflows, fetchWorkflows]);
 
   const handleToggleCron = useCallback(async (workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
 
     try {
-      const response = await fetch(`/api/remote-workflows/${workflowId}/toggle-cron`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch(`/api/remote-workflows/${workflowId}/cron`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !workflow.cron_enabled })
       });
 
-      if (response.ok) {
-        await fetchWorkflows(false);
+      const result = await response.json();
+      if (result.success) {
+        fetchWorkflows(false);
+      } else {
+        console.error('Failed to toggle cron:', result.error);
       }
     } catch (error) {
-      console.error("Failed to toggle cron:", error);
+      console.error('Error toggling cron:', error);
     }
   }, [workflows, fetchWorkflows]);
 
@@ -430,51 +452,141 @@ function DeploymentsPageContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredExecutions.slice(0, 10).map(execution => (
-                    <tr key={execution.id} className="border-t border-gray-200 hover:bg-gray-50">
-                      <td className="p-3 font-mono text-sm">
-                        {workflows.find(w => w.id === execution.workflow_id)?.name}
-                      </td>
-                      <td className="p-3">
-                        <span className={`font-mono text-xs px-2 py-1 ${
-                          execution.status === "completed" ? "bg-white border-2 border-black" :
-                          execution.status === "failed" ? "bg-black text-white" :
-                          execution.status === "running" ? "bg-white border-2 border-black animate-pulse" :
-                          "bg-gray-100 border border-gray-300"
-                        }`}>
-                          {execution.status.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="p-3 font-mono text-sm">
-                        {new Date(execution.started_at).toLocaleString()}
-                      </td>
-                      <td className="p-3 font-mono text-sm">
-                        {execution.completed_at
-                          ? `${Math.round((new Date(execution.completed_at).getTime() - new Date(execution.started_at).getTime()) / 1000)}s`
-                          : "-"}
-                      </td>
-                      <td className="p-3">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => fetchExecutionDetails(execution.id)}
-                          className="font-mono text-xs hover:bg-black hover:text-white"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredExecutions.slice(0, 10).map(execution => {
+                    const workflow = workflows.find(w => w.id === execution.workflow_id);
+                    const isLive = liveExecutions.some(le => le.id === execution.execution_id);
+                    return (
+                      <tr key={`execution-${execution.execution_id}`} className="border-t border-gray-200 hover:bg-gray-50">
+                        <td className="p-3 font-mono text-sm">
+                          {workflow?.name || `Workflow ${execution.workflow_id}`}
+                        </td>
+                        <td className="p-3">
+                          <span className={`font-mono text-xs px-2 py-1 ${
+                            execution.status === 'completed' ? 'bg-white border-2 border-black' :
+                            execution.status === 'failed' ? 'bg-black text-white font-bold' :
+                            execution.status === 'running' || isLive ? 'bg-black text-white animate-pulse' :
+                            'bg-gray-200 text-gray-800'
+                          }`}>
+                            {execution.status.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="p-3 font-mono text-sm">
+                          {new Date(execution.started_at || execution.created_at).toLocaleString()}
+                        </td>
+                        <td className="p-3 font-mono text-sm">
+                          {execution.completed_at && execution.started_at
+                            ? `${Math.round((new Date(execution.completed_at).getTime() - new Date(execution.started_at).getTime()) / 1000)}s`
+                            : isLive ? 'Running...' : '-'}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 border border-black hover:bg-black hover:text-white"
+                              onClick={() => fetchExecutionDetails(execution.execution_id)}
+                              title="View Details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {(execution.status === 'running' || execution.status === 'queued') && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 bg-black text-white hover:bg-gray-800"
+                                onClick={async () => {
+                                  if (confirm(`Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`)) {
+                                    try {
+                                      const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/cancel`, {
+                                        method: 'POST',
+                                      });
+                                      if (response.ok) {
+                                        await fetchExecutions();
+                                        await fetchLiveExecutions();
+                                      } else {
+                                        const error = await response.json();
+                                        console.error('Cancel failed:', error);
+                                        alert(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
+                                      }
+                                    } catch (error) {
+                                      console.error('Error canceling execution:', error);
+                                      alert('Error canceling execution');
+                                    }
+                                  }
+                                }}
+                                title={execution.status === 'queued' ? 'Cancel' : 'Stop'}
+                              >
+                                <StopCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 border border-black hover:bg-red-600 hover:text-white hover:border-red-600"
+                                onClick={async () => {
+                                  if (confirm(`Are you sure you want to DELETE this execution? This cannot be undone.`)) {
+                                    try {
+                                      const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/delete`, {
+                                        method: 'DELETE',
+                                      });
+                                      if (response.ok) {
+                                        await fetchExecutions();
+                                        await fetchLiveExecutions();
+                                      } else {
+                                        const error = await response.json();
+                                        console.error('Delete failed:', error);
+                                        alert(`Failed to delete execution: ${error.error || 'Unknown error'}`);
+                                      }
+                                    } catch (error) {
+                                      console.error('Error deleting execution:', error);
+                                      alert('Error deleting execution');
+                                    }
+                                  }
+                                }}
+                                title="Delete Execution"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
+        {/* Command Palette */}
+        <CommandPalette
+          workflows={workflows}
+          executions={executions}
+          onExecuteWorkflow={handleQuickExecute}
+          onDuplicateWorkflow={handleQuickDuplicate}
+          onViewWorkflow={fetchWorkflowOverview}
+          onEditWorkflow={handleQuickEdit}
+          onViewExecution={execution => {
+            fetchExecutionDetails(execution.execution_id);
+          }}
+          onCreateWorkflow={() => setCreateWorkflowOpen(true)}
+          onRefresh={() => fetchWorkflows(true)}
+        />
+
         {/* Dialogs */}
         <CreateWorkflowDialog
-          isOpen={createWorkflowOpen}
-          onClose={() => setCreateWorkflowOpen(false)}
+          open={createWorkflowOpen}
+          onOpenChange={open => {
+            setCreateWorkflowOpen(open);
+            if (!open) {
+              setTemplateYaml('');
+              setTemplateName('');
+            }
+          }}
+          initialYaml={templateYaml}
+          initialName={templateName}
           onWorkflowCreated={handleWorkflowCreated}
         />
 
@@ -491,24 +603,17 @@ function DeploymentsPageContent() {
           onOpenChange={setExecutionDetailsOpen}
         />
 
-        <CommandPalette
-          open={commandPaletteOpen}
-          onOpenChange={setCommandPaletteOpen}
-          workflows={workflows}
-          onSelectWorkflow={(workflow) => {
-            fetchWorkflowOverview(workflow.id);
-            setCommandPaletteOpen(false);
-          }}
-        />
-
         {selectedWorkflowForAction && (
           <WorkflowActionsDialog
-            workflow={selectedWorkflowForAction}
             open={actionsDialogOpen}
             onOpenChange={setActionsDialogOpen}
-            onExecute={() => {
-              setBatchTestOpen(true);
+            mode={actionsDialogMode}
+            workflowId={selectedWorkflowForAction.id}
+            currentName={selectedWorkflowForAction.name}
+            currentDescription={selectedWorkflowForAction.description}
+            onSuccess={() => {
               setActionsDialogOpen(false);
+              fetchWorkflows(false);
             }}
           />
         )}
@@ -518,9 +623,9 @@ function DeploymentsPageContent() {
             workflow={selectedWorkflowForAction}
             open={batchTestOpen}
             onOpenChange={setBatchTestOpen}
-            onComplete={() => {
-              fetchExecutions();
-              setBatchTestOpen(false);
+            onSubmit={() => {
+              console.log('Test run started');
+              fetchExecutions(false);
             }}
           />
         )}
