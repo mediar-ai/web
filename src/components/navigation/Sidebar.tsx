@@ -56,7 +56,6 @@ export function Sidebar() {
   const navigation: NavItem[] = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
     { label: 'Deployments', href: '/deployments', icon: Activity },
-    { label: 'Alerts', href: '/notifications', icon: Bell },
     { label: 'Settings', href: '/settings', icon: Settings },
     { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
   ];
