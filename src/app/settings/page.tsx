@@ -9,7 +9,12 @@ export default function SettingsPage() {
   const { organization } = useOrganization();
   const { user } = useUser();
 
-  const settingsSections = [
+  const settingsSections: Array<{
+    title: string;
+    description: string;
+    href: string;
+    icon: any;
+  }> = [
     // Empty for now - can add settings sections later
   ];
 
