@@ -9,10 +9,11 @@ const MEDIAR_ORG_IDS = [
 // Get invitations for an organization
 export async function GET(
   request: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
   try {
     const { userId, orgId } = await auth();
+    const { orgId: targetOrgId } = await params;
 
     if (!userId || !orgId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -28,7 +29,7 @@ export async function GET(
     // Fetch organization invitations from Clerk
     const clerk = await clerkClient();
     const invitations = await clerk.organizations.getOrganizationInvitationList({
-      organizationId: params.orgId,
+      organizationId: targetOrgId,
       status: ['pending'],
       limit: 100,
     });
@@ -52,10 +53,11 @@ export async function GET(
 // Send invitation
 export async function POST(
   request: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
   try {
     const { userId, orgId } = await auth();
+    const { orgId: targetOrgId } = await params;
     const { email, role = 'org:member' } = await request.json();
 
     if (!userId || !orgId) {
@@ -72,7 +74,7 @@ export async function POST(
     // Send invitation using Clerk API
     const clerk = await clerkClient();
     const invitation = await clerk.organizations.createOrganizationInvitation({
-      organizationId: params.orgId,
+      organizationId: targetOrgId,
       emailAddress: email,
       role: role,
       inviterUserId: userId,
@@ -88,10 +90,11 @@ export async function POST(
 // Revoke invitation
 export async function DELETE(
   request: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
   try {
     const { userId, orgId } = await auth();
+    const { orgId: targetOrgId } = await params;
     const { invitationId } = await request.json();
 
     if (!userId || !orgId) {
@@ -108,7 +111,7 @@ export async function DELETE(
     // Revoke invitation using Clerk API
     const clerk = await clerkClient();
     await clerk.organizations.revokeOrganizationInvitation({
-      organizationId: params.orgId,
+      organizationId: targetOrgId,
       invitationId: invitationId,
     });
 

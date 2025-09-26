@@ -8,10 +8,11 @@ const MEDIAR_ORG_IDS = [
 
 export async function GET(
   request: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
   try {
     const { userId, orgId } = await auth();
+    const { orgId: targetOrgId } = await params;
 
     if (!userId || !orgId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -27,13 +28,13 @@ export async function GET(
     // Fetch organization members from Clerk
     const clerk = await clerkClient();
     const memberships = await clerk.organizations.getOrganizationMembershipList({
-      organizationId: params.orgId,
+      organizationId: targetOrgId,
       limit: 100,
     });
 
     // Also fetch the organization details
     const organization = await clerk.organizations.getOrganization({
-      organizationId: params.orgId,
+      organizationId: targetOrgId,
     });
 
     // Format the data
@@ -65,10 +66,11 @@ export async function GET(
 // Remove member from organization
 export async function DELETE(
   request: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
   try {
     const { userId, orgId } = await auth();
+    const { orgId: targetOrgId } = await params;
     const { memberId } = await request.json();
 
     if (!userId || !orgId) {
@@ -85,7 +87,7 @@ export async function DELETE(
     // Remove member using Clerk API
     const clerk = await clerkClient();
     await clerk.organizations.deleteOrganizationMembership({
-      organizationId: params.orgId,
+      organizationId: targetOrgId,
       userId: memberId,
     });
 
