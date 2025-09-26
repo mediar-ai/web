@@ -32,7 +32,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <div className="min-h-screen bg-white">
       <Sidebar />
-      <main className={`${sidebarWidth} transition-all duration-200`}>
+      <main className={`${sidebarWidth} transition-[margin-left] duration-200`}>
         {children}
       </main>
     </div>
