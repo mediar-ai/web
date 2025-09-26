@@ -2,7 +2,7 @@
 -- This migration assigns all existing workflows without organization_id to Mediar
 
 -- First, update all workflows that don't have an organization_id
--- Assign them to the first Mediar organization
+-- Assign them to the Mediar organization
 UPDATE public.deployed_workflows
 SET organization_id = 'org_REDACTED'
 WHERE organization_id IS NULL;
@@ -27,17 +27,4 @@ WHERE NOT EXISTS (
 )
 ON CONFLICT (workflow_id, organization_id) DO NOTHING;
 
--- Also add access for the second Mediar org if needed
-INSERT INTO public.workflow_organization_access (workflow_id, organization_id, access_level)
-SELECT
-  dw.id,
-  'org_REDACTED',
-  'admin'
-FROM public.deployed_workflows dw
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM public.workflow_organization_access woa
-  WHERE woa.workflow_id = dw.id
-  AND woa.organization_id = 'org_REDACTED'
-)
-ON CONFLICT (workflow_id, organization_id) DO NOTHING;
+-- No need for second org - test123 should not have access

@@ -1,9 +1,9 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
+// Only the actual Mediar organization ID
 const MEDIAR_ORG_IDS = [
-  'org_REDACTED',
-  'org_REDACTED',
+  'org_REDACTED', // Mediar organization
 ];
 
 export async function GET(

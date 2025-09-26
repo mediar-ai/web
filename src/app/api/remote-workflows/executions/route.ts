@@ -4,9 +4,9 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Mediar organization IDs for special admin access
+// Only the actual Mediar organization ID
 const MEDIAR_ORG_IDS = [
-  'org_REDACTED',
-  'org_REDACTED',
+  'org_REDACTED', // Mediar organization
 ];
 
 export async function GET(request: NextRequest) {

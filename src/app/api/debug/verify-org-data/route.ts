@@ -2,9 +2,9 @@ import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
+// Only the actual Mediar organization ID
 const MEDIAR_ORG_IDS = [
-  'org_REDACTED',
-  'org_REDACTED',
+  'org_REDACTED', // Mediar organization
 ];
 
 export async function GET() {
