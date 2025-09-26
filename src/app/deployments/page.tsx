@@ -9,7 +9,6 @@ import { CommandPalette } from '@/components/deployments/CommandPalette';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
-import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -19,6 +18,7 @@ import {
   WorkflowOverview,
   WorkflowWithSettings,
 } from '@/lib/workflow-types';
+import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
 
 import { useSearchParams } from 'next/navigation';
@@ -331,17 +331,10 @@ function DeploymentsPageContent() {
   const hasAdminRole = has({ role: "org:admin" });
   const hasMemberRole = has({ role: "org:member" });
 
-  // Mediar org IDs for global admin access
-  const MEDIAR_ORG_IDS = [
-    'org_REDACTED',
-    'org_REDACTED',
-  ];
-
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
   const isGlobalAdmin = isMediarOrg && (hasAdminRole || hasMemberRole);
   const canDelete = isGlobalAdmin;
-  const isAdmin = hasAdminRole;
-  const organizationName = organization?.name;
+  const _isAdmin = hasAdminRole;
 
   // Filter executions
   const filteredExecutions = executionWorkflowFilter === "all"
@@ -358,23 +351,9 @@ function DeploymentsPageContent() {
             <p className="text-muted-foreground text-sm mt-1">
               Execute and monitor automated workflows remotely
             </p>
-            <div className="mt-2">
-              <span className={`text-sm font-medium ${isAdmin ? "text-black font-bold" : "text-gray-600"}`}>
-                {isAdmin && organizationName
-                  ? `Admin - ${organizationName}`
-                  : organizationName
-                    ? `Member - ${organizationName}`
-                    : "Organization Access"}
-              </span>
-            </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Mediar Org Switcher */}
-            <Suspense fallback={null}>
-              <MediarOrgSwitcher />
-            </Suspense>
-
             {/* Command Bar */}
             <button
               onClick={() => setCommandPaletteOpen(true)}
