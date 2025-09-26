@@ -1,14 +1,19 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
+import { PageHeader } from '@/components/layouts/PageHeader';
 import { useOrganization, useUser } from '@clerk/nextjs';
 import { Activity, Workflow, TrendingUp, Clock, CheckCircle, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
-export default function DashboardPage() {
+function DashboardContent() {
   const { organization, isLoaded: orgLoaded } = useOrganization();
   const { user } = useUser();
+  const searchParams = useSearchParams();
+  const viewOrgId = searchParams.get('viewOrgId');
   const [stats, setStats] = useState([
     { label: 'Active Workflows', value: '0', icon: Workflow, change: '' },
     { label: 'Total Executions', value: '0', icon: Activity, change: '' },
@@ -31,16 +36,22 @@ export default function DashboardPage() {
 
     const fetchDashboardData = async () => {
       // Wait for organization to be loaded
-      if (!orgLoaded || !organization?.id) {
+      if (!orgLoaded || (!organization?.id && !viewOrgId)) {
         setLoading(false);
         return;
       }
 
-      console.log('[Dashboard] Fetching data for org:', organization?.id, 'user:', user?.id);
+      const effectiveOrgId = viewOrgId || organization?.id;
+      console.log('[Dashboard] Fetching data for org:', effectiveOrgId, 'user:', user?.id);
 
       try {
+        // Build URL with viewOrgId if present
+        const workflowsUrl = viewOrgId
+          ? `/api/remote-workflows/list?viewOrgId=${viewOrgId}`
+          : '/api/remote-workflows/list';
+
         // Fetch workflows with cache busting
-        const workflowsResponse = await fetch('/api/remote-workflows/list', {
+        const workflowsResponse = await fetch(workflowsUrl, {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache',
@@ -55,7 +66,11 @@ export default function DashboardPage() {
         });
 
         // Fetch recent executions with cache busting
-        const executionsResponse = await fetch('/api/remote-workflows/executions?limit=10', {
+        const executionsUrl = viewOrgId
+          ? `/api/remote-workflows/executions?limit=10&viewOrgId=${viewOrgId}`
+          : '/api/remote-workflows/executions?limit=10';
+
+        const executionsResponse = await fetch(executionsUrl, {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache',
@@ -128,18 +143,16 @@ export default function DashboardPage() {
     // Refresh every 30 seconds
     const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
-  }, [organization?.id, user?.id, orgLoaded]);
+  }, [organization?.id, user?.id, orgLoaded, viewOrgId]);
 
   return (
     <DashboardLayout>
       <div className="p-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="font-mono font-bold text-3xl mb-2">Dashboard</h1>
-          <p className="font-mono text-gray-600">
-            Welcome back to {organization?.name || 'your workspace'}
-          </p>
-        </div>
+        {/* Header with org switcher */}
+        <PageHeader
+          title="Dashboard"
+          subtitle={`Welcome back to ${organization?.name || 'your workspace'}`}
+        />
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -215,5 +228,19 @@ export default function DashboardPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <DashboardLayout>
+        <div className="p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto"></div>
+        </div>
+      </DashboardLayout>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }
