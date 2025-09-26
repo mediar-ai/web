@@ -1,18 +1,23 @@
-import { auth } from '@clerk/nextjs/server';
 import { cacheResponse } from '@/lib/responseCache';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Mediar organization IDs for special admin access
-const MEDIAR_ORG_IDS = [
-  'org_2yynzGa53bNM1GTPLp5mc2lYRyD', // Current Mediar organization
-  'org_2yydAO45WOB4RaCE4F4BNUPtw9c', // Legacy Mediar organization (has existing workflows)
-];
-
 export async function GET(request: NextRequest) {
   try {
-    // Get organization context from Clerk
-    const { orgId } = await auth();
+    // Import the new auth helper
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+
+    // Get URL parameters for filtering and pagination
+    const { searchParams } = new URL(request.url);
+    const workflow_id = searchParams.get('workflow_id');
+    const status = searchParams.get('status');
+    const limit = parseInt(searchParams.get('limit') || '200');
+    const offset = parseInt(searchParams.get('offset') || '0');
+    const include_results = searchParams.get('include_results') === 'true';
+    const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
+
+    // Get effective organization context
+    const { orgId, isMediarOrg } = await getEffectiveOrgId(viewOrgId);
 
     if (!orgId) {
       return NextResponse.json(
@@ -33,17 +38,6 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Check if user is in Mediar organization
-    const isMediarOrg = MEDIAR_ORG_IDS.includes(orgId);
-    
-    // Get URL parameters for filtering and pagination
-    const { searchParams } = new URL(request.url);
-    const workflow_id = searchParams.get('workflow_id');
-    const status = searchParams.get('status');
-    const limit = parseInt(searchParams.get('limit') || '200');
-    const offset = parseInt(searchParams.get('offset') || '0');
-    const include_results = searchParams.get('include_results') === 'true';
 
     // First, get workflow IDs this organization has access to (same logic as workflows list)
     let accessibleWorkflowIds: number[] = [];

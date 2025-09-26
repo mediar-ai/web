@@ -1,14 +1,6 @@
-import { auth } from '@clerk/nextjs/server';
 import { cacheResponse } from '@/lib/responseCache';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-
-// Mediar organization IDs for special admin access
-// Mediar organization IDs (both old and new)
-const MEDIAR_ORG_IDS = [
-  'org_2yynzGa53bNM1GTPLp5mc2lYRyD', // Current Mediar organization
-  'org_2yydAO45WOB4RaCE4F4BNUPtw9c', // Legacy Mediar organization (has existing workflows)
-];
 
 type JSONValue =
   | string
@@ -393,8 +385,19 @@ const extractDefaults = (schema: JSONObject): JSONObject => {
 
 export async function GET(request: NextRequest) {
   try {
-    // Get organization context from Clerk
-    const { orgId } = await auth();
+    // Import the new auth helper
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+
+    // Get URL parameters for filtering and pagination
+    const { searchParams } = new URL(request.url);
+    const category = searchParams.get('category');
+    const status = searchParams.get('status'); // No default - show all by default
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const offset = parseInt(searchParams.get('offset') || '0');
+    const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
+
+    // Get effective organization context
+    const { orgId, isMediarOrg, isMediarAdmin, actualOrgId } = await getEffectiveOrgId(viewOrgId);
 
     if (!orgId) {
       return NextResponse.json(
@@ -416,17 +419,13 @@ export async function GET(request: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if user is in Mediar organization
-    const isMediarOrg = MEDIAR_ORG_IDS.includes(orgId);
-
-    console.log('[API] Workflows list request - Org:', orgId, 'Is Mediar:', isMediarOrg);
-
-    // Get URL parameters for filtering and pagination
-    const { searchParams } = new URL(request.url);
-    const category = searchParams.get('category');
-    const status = searchParams.get('status'); // No default - show all by default
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    console.log('[API] Workflows list request:', {
+      effectiveOrg: orgId,
+      actualOrg: actualOrgId,
+      isMediar: isMediarOrg,
+      isMediarAdmin,
+      viewingAsOrg: viewOrgId
+    });
 
     // First, get workflow IDs this organization has access to
     let accessibleWorkflowIds: number[] = [];
