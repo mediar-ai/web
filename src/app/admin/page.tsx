@@ -658,14 +658,37 @@ export default function AdminPage() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-4">
+              <div className="p-4 bg-white">
                 <CreateOrganization
                   afterCreateOrganizationUrl="/admin"
                   skipInvitationScreen={false}
                   appearance={{
                     elements: {
-                      formButtonPrimary: "bg-black hover:bg-gray-800",
-                      card: "border-0 shadow-none"
+                      rootBox: "bg-white",
+                      card: "border-0 shadow-none bg-white",
+                      headerTitle: "font-mono font-bold text-black",
+                      headerSubtitle: "font-mono text-gray-600",
+                      formButtonPrimary: "bg-black hover:bg-gray-800 text-white font-mono",
+                      formFieldInput: "border-2 border-black font-mono",
+                      formFieldLabel: "font-mono text-black",
+                      identityPreview: "border-2 border-black",
+                      identityPreviewText: "font-mono",
+                      footer: "bg-white",
+                      footerActionLink: "text-black hover:underline"
+                    },
+                    layout: {
+                      socialButtonsPlacement: "bottom",
+                      socialButtonsVariant: "blockButton"
+                    },
+                    variables: {
+                      colorPrimary: "#000000",
+                      colorBackground: "#FFFFFF",
+                      colorText: "#000000",
+                      colorTextSecondary: "#666666",
+                      colorInputBackground: "#FFFFFF",
+                      colorInputText: "#000000",
+                      borderRadius: "0px",
+                      fontFamily: "monospace"
                     }
                   }}
                 />
