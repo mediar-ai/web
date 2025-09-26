@@ -32,10 +32,8 @@ const MEDIAR_ORG_IDS = [
 
 export default function AdminPage() {
   const { isLoaded } = useAuth();
-  const { organization, membership, membershipList } = useOrganization({
-    membershipList: {}
-  });
-  const { organizationList, setActive } = useOrganizationList();
+  const { organization, membership } = useOrganization();
+  const { userMemberships, setActive } = useOrganizationList();
   const { user } = useUser();
   const [showCreateOrg, setShowCreateOrg] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'invitations'>('overview');
@@ -80,10 +78,10 @@ export default function AdminPage() {
         id: organization.id,
         name: organization.name,
         clerk_organization_id: organization.id,
-        member_count: membershipList?.count || 0
+        member_count: organization.membersCount || 0
       });
     }
-  }, [organization, membershipList, selectedOrg]);
+  }, [organization, selectedOrg]);
 
   // Fetch members and invitations when selected org changes
   useEffect(() => {
@@ -281,7 +279,7 @@ export default function AdminPage() {
                               setSelectedOrg(org);
                               setShowOrgDropdown(false);
                               // If switching to current user's org, update via Clerk
-                              if (organizationList?.find(o => o.organization.id === org.clerk_organization_id)) {
+                              if (userMemberships?.data?.find(o => o.organization.id === org.clerk_organization_id)) {
                                 setActive?.({ organization: org.clerk_organization_id });
                               }
                             }}
@@ -408,27 +406,27 @@ export default function AdminPage() {
                     </div>
                     <div className="border-2 border-black p-4">
                       <Building2 className="w-6 h-6 mb-2" />
-                      <p className="font-mono text-2xl font-bold">{isGlobalAdmin ? allOrganizations.length : (organizationList?.length || 1)}</p>
+                      <p className="font-mono text-2xl font-bold">{isGlobalAdmin ? allOrganizations.length : (userMemberships?.data?.length || 1)}</p>
                       <p className="font-mono text-xs text-gray-600">ORGANIZATIONS</p>
                     </div>
                   </div>
 
                   {/* User's Organizations - Show for non-global admin */}
-                  {!isGlobalAdmin && organizationList && organizationList.length > 1 && (
+                  {!isGlobalAdmin && userMemberships?.data && userMemberships.data.length > 1 && (
                     <div className="border-2 border-black">
                       <div className="bg-gray-50 p-4 border-b-2 border-black">
                         <h3 className="font-mono font-bold">YOUR ORGANIZATIONS</h3>
                       </div>
                       <div className="divide-y divide-gray-200">
-                        {organizationList.map((org) => (
+                        {userMemberships.data.map((org) => (
                           <div key={org.organization.id} className="p-4 flex items-center justify-between">
                             <div>
                               <p className="font-mono font-bold">{org.organization.name}</p>
                               <p className="font-mono text-xs text-gray-600">
-                                Role: {org.membership?.role?.replace('org:', '').toUpperCase()}
+                                Role: {org.role?.replace('org:', '').toUpperCase()}
                               </p>
                             </div>
-                            {org.organization.id !== organization.id && (
+                            {org.organization.id !== organization?.id && (
                               <button
                                 onClick={() => setActive?.({ organization: org.organization.id })}
                                 className="px-3 py-1 font-mono text-xs border-2 border-black hover:bg-black hover:text-white"
