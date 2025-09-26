@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useOrganization, useUser, useClerk } from '@clerk/nextjs';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import {
   LayoutGrid,
   Settings,
@@ -14,6 +14,7 @@ import {
   Shield,
   LogOut
 } from 'lucide-react';
+import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 
 interface NavItem {
   label: string;
@@ -23,10 +24,7 @@ interface NavItem {
   mediarOnly?: boolean;
 }
 
-const MEDIAR_ORG_IDS = [
-  'org_2yydAO45WOB4RaCE4F4BNUPtw9c',
-  'org_2yynzGa53bNM1GTPLp5mc2lYRyD',
-];
+import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -80,12 +78,18 @@ export function Sidebar() {
       </div>
 
       {/* Organization Switcher */}
-      {organization && !isCollapsed && (
+      {!isCollapsed && (
         <div className="px-6 py-4 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-4 h-4" />
-            <span className="font-mono text-sm truncate">{organization.name}</span>
-          </div>
+          <Suspense fallback={
+            organization ? (
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4" />
+                <span className="font-mono text-sm truncate">{organization.name}</span>
+              </div>
+            ) : null
+          }>
+            <MediarOrgSwitcher inSidebar={true} />
+          </Suspense>
         </div>
       )}
 
