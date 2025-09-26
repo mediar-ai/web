@@ -6,7 +6,6 @@ import {
   useOrganization,
   useOrganizationList,
   useUser,
-  OrganizationSwitcher,
   CreateOrganization,
   OrganizationProfile
 } from '@clerk/nextjs';
@@ -22,7 +21,8 @@ import {
   AlertCircle,
   X,
   Clock,
-  Crown
+  Crown,
+  ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
@@ -34,21 +34,24 @@ const MEDIAR_ORG_IDS = [
 
 export default function AdminPage() {
   const { isLoaded } = useAuth();
-  const { organization, membership, invitationList, membershipList } = useOrganization({
-    invitationList: {},
+  const { organization, membership, membershipList } = useOrganization({
     membershipList: {}
   });
   const { organizationList, setActive } = useOrganizationList();
   const { user } = useUser();
   const [showCreateOrg, setShowCreateOrg] = useState(false);
   const [showOrgProfile, setShowOrgProfile] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'invitations' | 'organizations'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'invitations'>('overview');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [allOrganizations, setAllOrganizations] = useState<any[]>([]);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
-  const [selectedOrgForManagement, setSelectedOrgForManagement] = useState<any>(null);
-  const [showManageOrgModal, setShowManageOrgModal] = useState(false);
+  const [selectedOrg, setSelectedOrg] = useState<any>(null);
+  const [showOrgDropdown, setShowOrgDropdown] = useState(false);
+  const [orgMembers, setOrgMembers] = useState<any[]>([]);
+  const [orgInvitations, setOrgInvitations] = useState<any[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [loadingInvitations, setLoadingInvitations] = useState(false);
 
   // Check if user is Mediar admin
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
@@ -56,75 +59,151 @@ export default function AdminPage() {
   const canManageOrg = isOrgAdmin;
   const isGlobalAdmin = isMediarOrg && isOrgAdmin;
 
-  // Fetch all organizations from Supabase if global admin
+  // Fetch all organizations if global admin
   useEffect(() => {
     if (isGlobalAdmin) {
       fetchAllOrganizations();
     }
   }, [isGlobalAdmin]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showOrgDropdown && !(e.target as Element).closest('.org-dropdown')) {
+        setShowOrgDropdown(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showOrgDropdown]);
+
+  // Set initial selected org
+  useEffect(() => {
+    if (organization && !selectedOrg) {
+      setSelectedOrg({
+        id: organization.id,
+        name: organization.name,
+        clerk_organization_id: organization.id,
+        member_count: membershipList?.count || 0
+      });
+    }
+  }, [organization, membershipList, selectedOrg]);
+
+  // Fetch members and invitations when selected org changes
+  useEffect(() => {
+    if (selectedOrg && isGlobalAdmin) {
+      fetchOrgMembers(selectedOrg.clerk_organization_id || selectedOrg.id);
+      fetchOrgInvitations(selectedOrg.clerk_organization_id || selectedOrg.id);
+    }
+  }, [selectedOrg, isGlobalAdmin]);
+
   const fetchAllOrganizations = async () => {
     setLoadingOrgs(true);
     try {
-      // Fetch from our API endpoint which gets orgs from Clerk
       const response = await fetch('/api/admin/organizations');
-
       if (response.ok) {
         const data = await response.json();
-        console.log('Fetched organizations from Clerk:', data.organizations);
         setAllOrganizations(data.organizations || []);
-      } else {
-        // Fallback to current user's organizations
-        if (organizationList && organizationList.length > 0) {
-          const clerkOrgs = organizationList.map(org => ({
-            id: org.organization.id,
-            name: org.organization.name,
-            clerk_organization_id: org.organization.id,
-            created_at: org.organization.createdAt,
-            member_count: org.organization.membersCount || 0,
-            is_active: true
-          }));
-          setAllOrganizations(clerkOrgs);
-        }
-        console.error('Failed to fetch from API, status:', response.status);
       }
     } catch (error) {
       console.error('Error fetching organizations:', error);
-      // Fallback to showing current user's organizations
-      if (organizationList && organizationList.length > 0) {
-        const clerkOrgs = organizationList.map(org => ({
-          id: org.organization.id,
-          name: org.organization.name,
-          clerk_organization_id: org.organization.id,
-          created_at: org.organization.createdAt,
-          member_count: org.organization.membersCount || 0,
-          is_active: true
-        }));
-        setAllOrganizations(clerkOrgs);
-      }
     } finally {
       setLoadingOrgs(false);
     }
   };
 
-  // Handle invite
+  const fetchOrgMembers = async (orgId: string) => {
+    setLoadingMembers(true);
+    try {
+      const response = await fetch(`/api/admin/organizations/${orgId}/members`);
+      if (response.ok) {
+        const data = await response.json();
+        setOrgMembers(data.members || []);
+      }
+    } catch (error) {
+      console.error('Error fetching members:', error);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const fetchOrgInvitations = async (orgId: string) => {
+    setLoadingInvitations(true);
+    try {
+      const response = await fetch(`/api/admin/organizations/${orgId}/invitations`);
+      if (response.ok) {
+        const data = await response.json();
+        setOrgInvitations(data.invitations || []);
+      }
+    } catch (error) {
+      console.error('Error fetching invitations:', error);
+    } finally {
+      setLoadingInvitations(false);
+    }
+  };
+
+  // Handle invite for any organization
   const handleInvite = async () => {
-    if (!inviteEmail || !organization) return;
+    if (!inviteEmail || !selectedOrg) return;
 
     setInviting(true);
     try {
-      await organization.inviteMember({
-        emailAddress: inviteEmail,
-        role: 'org:member'
+      const response = await fetch(`/api/admin/organizations/${selectedOrg.clerk_organization_id || selectedOrg.id}/invitations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail, role: 'org:member' })
       });
-      setInviteEmail('');
-      // Refresh invitations list
-      await invitationList?.revalidate();
+
+      if (response.ok) {
+        setInviteEmail('');
+        // Refresh invitations
+        await fetchOrgInvitations(selectedOrg.clerk_organization_id || selectedOrg.id);
+      } else {
+        alert('Failed to send invitation. Please check the email address.');
+      }
     } catch (error) {
       console.error('Failed to invite member:', error);
-      alert('Failed to send invitation. Please check the email address.');
+      alert('Failed to send invitation.');
     } finally {
       setInviting(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!selectedOrg) return;
+
+    try {
+      const response = await fetch(`/api/admin/organizations/${selectedOrg.clerk_organization_id || selectedOrg.id}/members`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: userId })
+      });
+
+      if (response.ok) {
+        await fetchOrgMembers(selectedOrg.clerk_organization_id || selectedOrg.id);
+      } else {
+        alert('Failed to remove member');
+      }
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+    }
+  };
+
+  const handleRevokeInvitation = async (invitationId: string) => {
+    if (!selectedOrg) return;
+
+    try {
+      const response = await fetch(`/api/admin/organizations/${selectedOrg.clerk_organization_id || selectedOrg.id}/invitations`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invitationId })
+      });
+
+      if (response.ok) {
+        await fetchOrgInvitations(selectedOrg.clerk_organization_id || selectedOrg.id);
+      }
+    } catch (error) {
+      console.error('Failed to revoke invitation:', error);
     }
   };
 
@@ -173,31 +252,65 @@ export default function AdminPage() {
               </p>
             </div>
 
-            {/* Organization Switcher - Use Clerk's for regular users, show all orgs button for global admin */}
+            {/* Custom Organization Dropdown for Global Admins */}
             <div className="flex items-center gap-4">
-              <div className="border-2 border-black">
-                <OrganizationSwitcher
-                  hidePersonal
-                  afterCreateOrganizationUrl="/admin"
-                  afterSelectOrganizationUrl="/admin"
-                  appearance={{
-                    elements: {
-                      rootBox: "font-mono",
-                      organizationSwitcherTrigger: "px-4 py-2 font-mono hover:bg-gray-50"
-                    }
-                  }}
-                />
-              </div>
+              {isGlobalAdmin ? (
+                <div className="relative org-dropdown">
+                  <button
+                    onClick={() => setShowOrgDropdown(!showOrgDropdown)}
+                    className="px-4 py-2 border-2 border-black bg-white hover:bg-gray-50 font-mono flex items-center gap-2 min-w-[200px]"
+                  >
+                    <div className="w-6 h-6 bg-black text-white rounded flex items-center justify-center text-xs font-bold">
+                      {selectedOrg?.name?.[0]?.toUpperCase() || '?'}
+                    </div>
+                    <span className="flex-1 text-left">{selectedOrg?.name || 'Select Org'}</span>
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
 
-              {isGlobalAdmin && (
-                <button
-                  onClick={() => setActiveTab('organizations')}
-                  className="px-4 py-2 bg-white text-black border-2 border-black font-mono font-bold hover:bg-black hover:text-white flex items-center gap-2"
-                  title="View all organizations"
-                >
-                  <Building2 className="w-4 h-4" />
-                  ALL ORGS
-                </button>
+                  {showOrgDropdown && (
+                    <div className="absolute top-full mt-1 left-0 right-0 bg-white border-2 border-black max-h-96 overflow-y-auto z-50 min-w-[300px]">
+                      <div className="p-2 border-b border-gray-200 bg-gray-50">
+                        <p className="font-mono text-xs text-gray-600">ALL ORGANIZATIONS</p>
+                      </div>
+                      {loadingOrgs ? (
+                        <div className="p-4 text-center">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mx-auto"></div>
+                        </div>
+                      ) : (
+                        allOrganizations.map((org) => (
+                          <button
+                            key={org.id}
+                            onClick={() => {
+                              setSelectedOrg(org);
+                              setShowOrgDropdown(false);
+                              // If switching to current user's org, update via Clerk
+                              if (organizationList?.find(o => o.organization.id === org.clerk_organization_id)) {
+                                setActive?.({ organization: org.clerk_organization_id });
+                              }
+                            }}
+                            className={`w-full px-3 py-2 text-left hover:bg-gray-50 font-mono text-sm flex items-center gap-2 ${
+                              selectedOrg?.id === org.id ? 'bg-black text-white' : ''
+                            }`}
+                          >
+                            <div className={`w-6 h-6 ${selectedOrg?.id === org.id ? 'bg-white text-black' : 'bg-black text-white'} rounded flex items-center justify-center text-xs font-bold`}>
+                              {org.name?.[0]?.toUpperCase() || '?'}
+                            </div>
+                            <span className="flex-1">{org.name}</span>
+                            <span className="text-xs opacity-60">{org.member_count || 0} members</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // For non-global admins, just show current org name
+                <div className="px-4 py-2 border-2 border-black bg-white font-mono flex items-center gap-2">
+                  <div className="w-6 h-6 bg-black text-white rounded flex items-center justify-center text-xs font-bold">
+                    {organization?.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <span>{organization?.name || 'No Organization'}</span>
+                </div>
               )}
 
               <button
@@ -213,7 +326,7 @@ export default function AdminPage() {
         </div>
 
         {/* Current Organization Info */}
-        {organization ? (
+        {selectedOrg ? (
           <>
             <div className="border-2 border-black mb-6">
               <div className="bg-black text-white p-4">
@@ -223,11 +336,11 @@ export default function AdminPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <p className="font-mono text-xs text-gray-600 mb-1">NAME</p>
-                    <p className="font-mono font-bold">{organization.name}</p>
+                    <p className="font-mono font-bold">{selectedOrg.name}</p>
                   </div>
                   <div>
                     <p className="font-mono text-xs text-gray-600 mb-1">ID</p>
-                    <p className="font-mono text-xs break-all">{organization.id}</p>
+                    <p className="font-mono text-xs break-all">{selectedOrg.clerk_organization_id || selectedOrg.id}</p>
                   </div>
                   <div>
                     <p className="font-mono text-xs text-gray-600 mb-1">YOUR ROLE</p>
@@ -238,7 +351,7 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <p className="font-mono text-xs text-gray-600 mb-1">MEMBERS</p>
-                    <p className="font-mono font-bold">{membershipList?.count || 0}</p>
+                    <p className="font-mono font-bold">{selectedOrg.member_count || 0}</p>
                   </div>
                 </div>
 
@@ -259,7 +372,7 @@ export default function AdminPage() {
             {/* Tabs */}
             <div className="border-b-2 border-black mb-6">
               <div className="flex gap-0">
-                {(isGlobalAdmin ? ['overview', 'members', 'invitations', 'organizations'] : ['overview', 'members', 'invitations']).map((tab) => (
+                {['overview', 'members', 'invitations'].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab as any)}
@@ -282,12 +395,12 @@ export default function AdminPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="border-2 border-black p-4">
                       <Users className="w-6 h-6 mb-2" />
-                      <p className="font-mono text-2xl font-bold">{membershipList?.count || 0}</p>
+                      <p className="font-mono text-2xl font-bold">{orgMembers.length}</p>
                       <p className="font-mono text-xs text-gray-600">ACTIVE MEMBERS</p>
                     </div>
                     <div className="border-2 border-black p-4">
                       <Mail className="w-6 h-6 mb-2" />
-                      <p className="font-mono text-2xl font-bold">{invitationList?.count || 0}</p>
+                      <p className="font-mono text-2xl font-bold">{orgInvitations.length}</p>
                       <p className="font-mono text-xs text-gray-600">PENDING INVITES</p>
                     </div>
                     <div className="border-2 border-black p-4">
@@ -376,74 +489,80 @@ export default function AdminPage() {
 
               {activeTab === 'members' && (
                 <div className="border-2 border-black">
-                  <div className="bg-gray-50 p-4 border-b-2 border-black">
+                  <div className="bg-gray-50 p-4 border-b-2 border-black flex items-center justify-between">
                     <h3 className="font-mono font-bold">ORGANIZATION MEMBERS</h3>
-                  </div>
-                  <div className="divide-y divide-gray-200">
-                    {membershipList?.data?.map((member) => (
-                      <div key={member.id} className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-mono font-bold">
-                            {member.publicUserData?.firstName?.[0]?.toUpperCase() ||
-                             member.publicUserData?.identifier?.[0]?.toUpperCase() || '?'}
-                          </div>
-                          <div>
-                            <p className="font-mono font-bold">
-                              {member.publicUserData?.firstName} {member.publicUserData?.lastName}
-                              {member.publicUserData?.userId === user?.id && (
-                                <span className="ml-2 text-xs text-gray-600">(YOU)</span>
-                              )}
-                            </p>
-                            <p className="font-mono text-xs text-gray-600">
-                              {member.publicUserData?.identifier}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className={`font-mono text-xs px-2 py-1 border ${
-                            member.role === 'org:owner' ? 'border-black bg-black text-white' :
-                            member.role === 'org:admin' ? 'border-black bg-gray-100' :
-                            'border-gray-400'
-                          }`}>
-                            {member.role === 'org:owner' && <Crown className="w-3 h-3 inline mr-1" />}
-                            {member.role.replace('org:', '').toUpperCase()}
-                          </span>
-                          {canManageOrg && member.publicUserData?.userId !== user?.id && member.role !== 'org:owner' && (
-                            <button
-                              onClick={async () => {
-                                if (confirm(`Remove ${member.publicUserData?.identifier} from organization?`)) {
-                                  try {
-                                    if (member.publicUserData?.userId) {
-                                      await organization.removeMember(member.publicUserData.userId);
-                                    }
-                                    await membershipList?.revalidate();
-                                  } catch (error) {
-                                    console.error('Failed to remove member:', error);
-                                    alert('Failed to remove member');
-                                  }
-                                }
-                              }}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded"
-                              title="Remove member"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {(!membershipList?.data || membershipList.data.length === 0) && (
-                      <div className="p-8 text-center text-gray-500 font-mono">
-                        No members found
-                      </div>
+                    {isGlobalAdmin && (
+                      <button
+                        onClick={() => fetchOrgMembers(selectedOrg?.clerk_organization_id || selectedOrg?.id)}
+                        className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white"
+                      >
+                        REFRESH
+                      </button>
                     )}
                   </div>
+                  {loadingMembers ? (
+                    <div className="p-8 text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-200">
+                      {orgMembers.map((member) => (
+                        <div key={member.id} className="p-4 flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-mono font-bold">
+                              {member.firstName?.[0]?.toUpperCase() ||
+                               member.email?.[0]?.toUpperCase() || '?'}
+                            </div>
+                            <div>
+                              <p className="font-mono font-bold">
+                                {member.firstName} {member.lastName}
+                                {member.userId === user?.id && (
+                                  <span className="ml-2 text-xs text-gray-600">(YOU)</span>
+                                )}
+                              </p>
+                              <p className="font-mono text-xs text-gray-600">
+                                {member.email}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className={`font-mono text-xs px-2 py-1 border ${
+                              member.role === 'org:owner' ? 'border-black bg-black text-white' :
+                              member.role === 'org:admin' ? 'border-black bg-gray-100' :
+                              'border-gray-400'
+                            }`}>
+                              {member.role === 'org:owner' && <Crown className="w-3 h-3 inline mr-1" />}
+                              {member.role.replace('org:', '').toUpperCase()}
+                            </span>
+                            {isGlobalAdmin && member.userId !== user?.id && member.role !== 'org:owner' && (
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`Remove ${member.email} from organization?`)) {
+                                    await handleRemoveMember(member.userId);
+                                  }
+                                }}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded"
+                                title="Remove member"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {orgMembers.length === 0 && (
+                        <div className="p-8 text-center text-gray-500 font-mono">
+                          No members found
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {activeTab === 'invitations' && (
                 <div className="space-y-4">
-                  {canManageOrg && (
+                  {isGlobalAdmin && (
                     <div className="border-2 border-black p-4">
                       <h3 className="font-mono font-bold mb-4">INVITE NEW MEMBER</h3>
                       <div className="flex gap-2">
@@ -469,176 +588,61 @@ export default function AdminPage() {
                         </button>
                       </div>
                       <p className="font-mono text-xs text-gray-600 mt-2">
-                        Inviting to: {organization.name}
+                        Inviting to: {selectedOrg.name}
                       </p>
                     </div>
                   )}
 
                   <div className="border-2 border-black">
-                    <div className="bg-gray-50 p-4 border-b-2 border-black">
+                    <div className="bg-gray-50 p-4 border-b-2 border-black flex items-center justify-between">
                       <h3 className="font-mono font-bold">PENDING INVITATIONS</h3>
-                    </div>
-                    <div className="divide-y divide-gray-200">
-                      {invitationList?.data?.map((invitation) => (
-                        <div key={invitation.id} className="p-4 flex items-center justify-between">
-                          <div>
-                            <p className="font-mono font-bold">{invitation.emailAddress}</p>
-                            <p className="font-mono text-xs text-gray-600 flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              Invited {new Date(invitation.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <span className="font-mono text-xs px-2 py-1 bg-yellow-100 text-yellow-800 border border-yellow-300">
-                              PENDING
-                            </span>
-                            {canManageOrg && (
-                              <button
-                                onClick={async () => {
-                                  if (confirm('Revoke this invitation?')) {
-                                    try {
-                                      await invitation.revoke();
-                                      await invitationList?.revalidate();
-                                    } catch (error) {
-                                      console.error('Failed to revoke invitation:', error);
-                                    }
-                                  }
-                                }}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded"
-                                title="Revoke invitation"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {(!invitationList?.data || invitationList.data.length === 0) && (
-                        <div className="p-8 text-center text-gray-500 font-mono">
-                          No pending invitations
-                        </div>
+                      {isGlobalAdmin && (
+                        <button
+                          onClick={() => fetchOrgInvitations(selectedOrg?.clerk_organization_id || selectedOrg?.id)}
+                          className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white"
+                        >
+                          REFRESH
+                        </button>
                       )}
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'organizations' && isGlobalAdmin && (
-                <div className="space-y-4">
-                  <div className="border-2 border-black">
-                    <div className="bg-black text-white p-4 flex items-center justify-between">
-                      <h3 className="font-mono font-bold">ALL ORGANIZATIONS</h3>
-                      <button
-                        onClick={fetchAllOrganizations}
-                        className="px-3 py-1 bg-white text-black font-mono text-xs font-bold hover:bg-gray-100"
-                      >
-                        REFRESH
-                      </button>
-                    </div>
-                    {loadingOrgs ? (
+                    {loadingInvitations ? (
                       <div className="p-8 text-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="border-b-2 border-black bg-gray-50">
-                              <th className="text-left p-3 font-mono font-bold text-xs">NAME</th>
-                              <th className="text-left p-3 font-mono font-bold text-xs">CLERK ID</th>
-                              <th className="text-center p-3 font-mono font-bold text-xs">MEMBERS</th>
-                              <th className="text-left p-3 font-mono font-bold text-xs">CREATED</th>
-                              <th className="text-center p-3 font-mono font-bold text-xs">STATUS</th>
-                              <th className="text-center p-3 font-mono font-bold text-xs">ACTIONS</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200">
-                            {allOrganizations.map((org) => {
-                              const isCurrentOrg = org.clerk_organization_id === organization?.id;
-                              const createdDate = new Date(org.created_at);
-                              const isNew = (Date.now() - createdDate.getTime()) < (7 * 24 * 60 * 60 * 1000); // Less than 7 days
-
-                              return (
-                                <tr key={org.id} className={isCurrentOrg ? 'bg-gray-50' : 'hover:bg-gray-50'}>
-                                  <td className="p-3">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-8 h-8 bg-black text-white rounded flex items-center justify-center font-mono text-xs font-bold">
-                                        {org.name?.[0]?.toUpperCase() || '?'}
-                                      </div>
-                                      <div>
-                                        <p className="font-mono font-bold text-sm">
-                                          {org.name || 'Unnamed'}
-                                          {isCurrentOrg && (
-                                            <span className="ml-2 px-1.5 py-0.5 bg-black text-white text-xs">CURRENT</span>
-                                          )}
-                                          {isNew && (
-                                            <span className="ml-2 px-1.5 py-0.5 bg-yellow-100 text-yellow-800 border border-yellow-300 text-xs">NEW</span>
-                                          )}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="p-3">
-                                    <code className="font-mono text-xs text-gray-600 break-all">
-                                      {org.clerk_organization_id || 'N/A'}
-                                    </code>
-                                  </td>
-                                  <td className="p-3 text-center">
-                                    <span className="font-mono font-bold">{org.member_count || 0}</span>
-                                  </td>
-                                  <td className="p-3">
-                                    <p className="font-mono text-xs text-gray-600">
-                                      {createdDate.toLocaleDateString()}
-                                    </p>
-                                  </td>
-                                  <td className="p-3 text-center">
-                                    <span className={`px-2 py-1 font-mono text-xs border ${
-                                      org.is_active !== false
-                                        ? 'bg-white text-black border-black'
-                                        : 'bg-gray-200 text-gray-600 border-gray-400'
-                                    }`}>
-                                      {org.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
-                                    </span>
-                                  </td>
-                                  <td className="p-3 text-center">
-                                    <div className="flex items-center justify-center gap-2">
-                                      <button
-                                        onClick={() => {
-                                          // For global admin, we will switch to the org if we are a member,
-                                          // otherwise just show a management modal
-                                          if (organizationList?.find(o => o.organization.id === org.clerk_organization_id)) {
-                                            setActive?.({ organization: org.clerk_organization_id });
-                                          } else {
-                                            // Cannot switch to org we are not a member of, but we can manage it
-                                            setSelectedOrgForManagement(org);
-                                            setShowManageOrgModal(true);
-                                          }
-                                        }}
-                                        className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white"
-                                        title={isCurrentOrg ? "Current organization" : "View/Manage organization"}
-                                      >
-                                        {isCurrentOrg ? 'CURRENT' : 'VIEW'}
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          setSelectedOrgForManagement(org);
-                                          setShowManageOrgModal(true);
-                                        }}
-                                        className="px-2 py-1 font-mono text-xs border border-gray-400 hover:bg-gray-100"
-                                        title="Manage organization"
-                                      >
-                                        MANAGE
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                        {allOrganizations.length === 0 && (
+                      <div className="divide-y divide-gray-200">
+                        {orgInvitations.map((invitation) => (
+                          <div key={invitation.id} className="p-4 flex items-center justify-between">
+                            <div>
+                              <p className="font-mono font-bold">{invitation.email}</p>
+                              <p className="font-mono text-xs text-gray-600 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                Invited {new Date(invitation.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="font-mono text-xs px-2 py-1 bg-yellow-100 text-yellow-800 border border-yellow-300">
+                                PENDING
+                              </span>
+                              {isGlobalAdmin && (
+                                <button
+                                  onClick={async () => {
+                                    if (confirm('Revoke this invitation?')) {
+                                      await handleRevokeInvitation(invitation.id);
+                                    }
+                                  }}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded"
+                                  title="Revoke invitation"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        {orgInvitations.length === 0 && (
                           <div className="p-8 text-center text-gray-500 font-mono">
-                            No organizations found
+                            No pending invitations
                           </div>
                         )}
                       </div>
@@ -738,82 +742,6 @@ export default function AdminPage() {
                     }
                   }}
                 />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Manage Organization Modal for Global Admin */}
-        {showManageOrgModal && selectedOrgForManagement && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white border-2 border-black max-w-4xl w-full max-h-[80vh] overflow-y-auto">
-              <div className="p-4 border-b-2 border-black flex items-center justify-between sticky top-0 bg-white">
-                <h2 className="font-mono font-bold">MANAGE ORGANIZATION: {selectedOrgForManagement.name}</h2>
-                <button
-                  onClick={() => {
-                    setShowManageOrgModal(false);
-                    setSelectedOrgForManagement(null);
-                  }}
-                  className="p-1 hover:bg-gray-100"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-6 space-y-6">
-                <div className="border-2 border-black p-4">
-                  <h3 className="font-mono font-bold mb-4">ORGANIZATION DETAILS</h3>
-                  <div className="space-y-2 font-mono text-sm">
-                    <p><strong>Name:</strong> {selectedOrgForManagement.name}</p>
-                    <p><strong>Clerk ID:</strong> <code className="text-xs bg-gray-100 px-1">{selectedOrgForManagement.clerk_organization_id}</code></p>
-                    <p><strong>Created:</strong> {new Date(selectedOrgForManagement.created_at).toLocaleDateString()}</p>
-                    <p><strong>Members:</strong> {selectedOrgForManagement.member_count || 0}</p>
-                    <p><strong>Status:</strong> <span className={`px-2 py-1 text-xs border ${selectedOrgForManagement.is_active !== false ? 'border-black' : 'border-gray-400 text-gray-600'}`}>
-                      {selectedOrgForManagement.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
-                    </span></p>
-                  </div>
-                </div>
-
-                <div className="border-2 border-black p-4">
-                  <h3 className="font-mono font-bold mb-4">GLOBAL ADMIN ACTIONS</h3>
-                  <p className="font-mono text-sm text-gray-600 mb-4">
-                    As a Mediar global admin, you can manage this organization&apos;s settings and members.
-                  </p>
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => {
-                        // Check if we are a member first
-                        const isMember = organizationList?.find(o => o.organization.id === selectedOrgForManagement.clerk_organization_id);
-                        if (isMember) {
-                          // Switch to the org and close modal
-                          setActive?.({ organization: selectedOrgForManagement.clerk_organization_id });
-                          setShowManageOrgModal(false);
-                          setSelectedOrgForManagement(null);
-                          setActiveTab('members');
-                        } else {
-                          alert('To manage members, you need to join this organization first. Use the Clerk dashboard to add yourself as an admin.');
-                        }
-                      }}
-                      className="w-full px-4 py-2 bg-black text-white font-mono font-bold hover:bg-gray-800"
-                    >
-                      MANAGE MEMBERS & INVITATIONS
-                    </button>
-                    <button
-                      onClick={() => {
-                        alert('Organization deletion must be done through the Clerk dashboard for security reasons.');
-                      }}
-                      className="w-full px-4 py-2 bg-white text-red-600 border-2 border-red-600 font-mono font-bold hover:bg-red-50"
-                    >
-                      DELETE ORGANIZATION
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border border-gray-400 p-4 bg-gray-50">
-                  <p className="font-mono text-xs text-gray-600">
-                    <strong>Note:</strong> Some actions require direct access through the Clerk dashboard.
-                    To fully manage an organization you are not a member of, add yourself as an admin through Clerk first.
-                  </p>
-                </div>
               </div>
             </div>
           </div>
