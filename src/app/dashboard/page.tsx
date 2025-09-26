@@ -2,7 +2,7 @@
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { useOrganization } from '@clerk/nextjs';
-import { Activity, Workflow, Users, TrendingUp, Clock, CheckCircle } from 'lucide-react';
+import { Activity, Workflow, TrendingUp, Clock, CheckCircle, Zap } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DashboardPage() {
@@ -11,14 +11,14 @@ export default function DashboardPage() {
   const stats = [
     { label: 'Active Workflows', value: '12', icon: Workflow, change: '+2' },
     { label: 'Deployments', value: '28', icon: Activity, change: '+5' },
-    { label: 'Team Members', value: '4', icon: Users, change: '0' },
+    { label: 'Avg Speed', value: '45s', icon: Zap, change: '-5s' },
     { label: 'Success Rate', value: '98%', icon: TrendingUp, change: '+3%' },
   ];
 
   const recentActivity = [
     { action: 'Workflow deployed', item: 'Customer Onboarding', time: '2 minutes ago', status: 'success' },
     { action: 'Workflow updated', item: 'Data Processing', time: '1 hour ago', status: 'success' },
-    { action: 'Team member invited', item: 'john@example.com', time: '3 hours ago', status: 'pending' },
+    { action: 'Workflow executed', item: 'Daily Report', time: '3 hours ago', status: 'success' },
     { action: 'Deployment failed', item: 'Legacy Migration', time: '5 hours ago', status: 'error' },
   ];
 
@@ -84,18 +84,14 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
-          <Link href="/workflows/new" className="block border-2 border-black p-4 hover:bg-gray-50 transition-colors">
-            <h3 className="font-mono font-bold mb-2">CREATE WORKFLOW</h3>
-            <p className="font-mono text-sm text-gray-600">Start a new automation workflow</p>
-          </Link>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
           <Link href="/deployments" className="block border-2 border-black p-4 hover:bg-gray-50 transition-colors">
             <h3 className="font-mono font-bold mb-2">VIEW DEPLOYMENTS</h3>
             <p className="font-mono text-sm text-gray-600">Monitor active deployments</p>
           </Link>
-          <Link href="/settings/team" className="block border-2 border-black p-4 hover:bg-gray-50 transition-colors">
-            <h3 className="font-mono font-bold mb-2">INVITE TEAM</h3>
-            <p className="font-mono text-sm text-gray-600">Add new team members</p>
+          <Link href="/settings" className="block border-2 border-black p-4 hover:bg-gray-50 transition-colors">
+            <h3 className="font-mono font-bold mb-2">SETTINGS</h3>
+            <p className="font-mono text-sm text-gray-600">Manage your account</p>
           </Link>
         </div>
       </div>
