@@ -28,16 +28,42 @@ export async function GET() {
     });
 
     // Transform the data for the frontend
-    const formattedOrgs = organizations.data.map(org => ({
-      id: org.id,
-      name: org.name,
-      clerk_organization_id: org.id,
-      created_at: org.createdAt,
-      member_count: org.membersCount || 0,
-      is_active: true,
-      logo_url: org.imageUrl,
-      slug: org.slug,
-    }));
+    // Fetch member counts for each organization
+    const formattedOrgs = await Promise.all(
+      organizations.data.map(async (org) => {
+        try {
+          // Get the membership list to get accurate count
+          const memberships = await clerk.organizations.getOrganizationMembershipList({
+            organizationId: org.id,
+            limit: 1, // We just need the count
+          });
+
+          return {
+            id: org.id,
+            name: org.name,
+            clerk_organization_id: org.id,
+            created_at: org.createdAt,
+            member_count: memberships.totalCount || 0,
+            is_active: true,
+            logo_url: org.imageUrl,
+            slug: org.slug,
+          };
+        } catch (error) {
+          console.error(`Error fetching member count for org ${org.id}:`, error);
+          // Fallback if individual org fetch fails
+          return {
+            id: org.id,
+            name: org.name,
+            clerk_organization_id: org.id,
+            created_at: org.createdAt,
+            member_count: 0,
+            is_active: true,
+            logo_url: org.imageUrl,
+            slug: org.slug,
+          };
+        }
+      })
+    );
 
     return NextResponse.json({ organizations: formattedOrgs });
   } catch (error) {

@@ -97,6 +97,7 @@ export default function AdminPage() {
     }
   }, [selectedOrg, isGlobalAdmin]);
 
+
   const fetchAllOrganizations = async () => {
     setLoadingOrgs(true);
     try {
@@ -296,7 +297,11 @@ export default function AdminPage() {
                               {org.name?.[0]?.toUpperCase() || '?'}
                             </div>
                             <span className="flex-1">{org.name}</span>
-                            <span className="text-xs opacity-60">{org.member_count || 0} members</span>
+                            <span className="text-xs opacity-60">
+                              {org.id === selectedOrg?.id && orgMembers.length > 0
+                                ? orgMembers.length
+                                : org.member_count || 0} members
+                            </span>
                           </button>
                         ))
                       )}
