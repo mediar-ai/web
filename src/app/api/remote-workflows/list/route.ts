@@ -1,6 +1,13 @@
+import { auth } from '@clerk/nextjs/server';
 import { cacheResponse } from '@/lib/responseCache';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+
+// Mediar organization IDs for special admin access
+const MEDIAR_ORG_IDS = [
+  'org_2yydAO45WOB4RaCE4F4BNUPtw9c',
+  'org_2yynzGa53bNM1GTPLp5mc2lYRyD',
+];
 
 type JSONValue =
   | string
@@ -385,6 +392,20 @@ const extractDefaults = (schema: JSONObject): JSONObject => {
 
 export async function GET(request: NextRequest) {
   try {
+    // Get organization context from Clerk
+    const { orgId } = await auth();
+
+    if (!orgId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No organization context',
+          workflows: [],
+        },
+        { status: 401 }
+      );
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -394,6 +415,9 @@ export async function GET(request: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Check if user is in Mediar organization
+    const isMediarOrg = MEDIAR_ORG_IDS.includes(orgId);
+
     // Get URL parameters for filtering and pagination
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
@@ -401,8 +425,68 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
+    // First, get workflow IDs this organization has access to
+    let accessibleWorkflowIds: number[] = [];
+
+    if (isMediarOrg) {
+      // Mediar sees all workflows
+      const { data: allWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id')
+        .is('parent_workflow_id', null);
+
+      accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
+    } else {
+      // Regular org sees only their workflows and shared workflows
+      // Get workflows owned by this org
+      const { data: ownedWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id')
+        .eq('organization_id', orgId)
+        .is('parent_workflow_id', null);
+
+      // Get workflows shared with this org
+      const { data: sharedAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('workflow_id')
+        .eq('organization_id', orgId);
+
+      const ownedIds = (ownedWorkflows || []).map(w => w.id);
+      const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
+
+      // Combine and deduplicate
+      accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds])];
+    }
+
+    if (accessibleWorkflowIds.length === 0) {
+      // No workflows accessible to this org
+      return NextResponse.json({
+        success: true,
+        workflows: [],
+        pagination: {
+          total: 0,
+          limit,
+          offset,
+          has_more: false,
+        },
+        filters: {
+          category: category || 'all',
+          status,
+          applied_filters: {
+            ...(category && { category }),
+            status,
+          },
+        },
+        organization: {
+          id: orgId,
+          isMediar: isMediarOrg,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     // Build query with filters - using statistics summary view for version-specific stats
-    // Only fetch top-level workflows (no parent_workflow_id) to avoid duplicates
+    // Only fetch workflows this org has access to
     let query = supabase
       .from('workflow_statistics_summary')
       .select(
@@ -428,6 +512,7 @@ export async function GET(request: NextRequest) {
         updated_at
       `
       )
+      .in('id', accessibleWorkflowIds)
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -455,10 +540,10 @@ export async function GET(request: NextRequest) {
         .from('deployed_workflows_with_sequence')
         .select(
           `
-          id, 
-          automation_sequence, 
-          workflow_type, 
-          parent_workflow_id, 
+          id,
+          automation_sequence,
+          workflow_type,
+          parent_workflow_id,
           display_order,
           cron_expression,
           cron_timezone,
@@ -467,7 +552,8 @@ export async function GET(request: NextRequest) {
           next_scheduled_execution,
           cron_max_concurrent,
           cron_retry_on_failure,
-          cron_retry_count
+          cron_retry_count,
+          organization_id
         `
         )
         .in('id', workflowIds);
@@ -512,7 +598,8 @@ export async function GET(request: NextRequest) {
           cron_retry_on_failure,
           cron_retry_count,
           created_at,
-          updated_at
+          updated_at,
+          organization_id
         `
         )
         .eq('workflow_type', 'settings')
@@ -521,6 +608,24 @@ export async function GET(request: NextRequest) {
 
       if (!settingsError) {
         settingsWorkflows = settings || [];
+      }
+    }
+
+    // If Mediar org, also fetch information about which orgs have access to each workflow
+    let workflowAccessInfo: Record<number, string[]> = {};
+    if (isMediarOrg && workflowIds.length > 0) {
+      const { data: accessData } = await supabase
+        .from('workflow_organization_access')
+        .select('workflow_id, organization_id')
+        .in('workflow_id', workflowIds);
+
+      if (accessData) {
+        accessData.forEach(access => {
+          if (!workflowAccessInfo[access.workflow_id]) {
+            workflowAccessInfo[access.workflow_id] = [];
+          }
+          workflowAccessInfo[access.workflow_id].push(access.organization_id);
+        });
       }
     }
 
@@ -587,10 +692,11 @@ export async function GET(request: NextRequest) {
       {}
     );
 
-    // Get total count for pagination (only top-level workflows without parents)
+    // Get total count for pagination (only accessible workflows)
     let countQuery = supabase
       .from('deployed_workflows')
       .select('*', { count: 'exact', head: true })
+      .in('id', accessibleWorkflowIds)
       .is('parent_workflow_id', null); // Only top-level workflows
 
     // Apply same filters as main query
@@ -628,6 +734,7 @@ export async function GET(request: NextRequest) {
           parent_workflow_id:
             automationSequences[workflow.id]?.parent_workflow_id,
           display_order: automationSequences[workflow.id]?.display_order || 0,
+          organization_id: automationSequences[workflow.id]?.organization_id,
           // Add cron scheduling fields
           cron_expression: automationSequences[workflow.id]?.cron_expression,
           cron_timezone: automationSequences[workflow.id]?.cron_timezone,
@@ -659,6 +766,10 @@ export async function GET(request: NextRequest) {
             current_version: workflow.current_version,
             total_versions: workflow.total_versions,
           },
+          // Add access info for Mediar admins
+          ...(isMediarOrg && {
+            shared_with_orgs: workflowAccessInfo[workflow.id] || [],
+          }),
         };
 
         return {
@@ -683,6 +794,10 @@ export async function GET(request: NextRequest) {
           ...(category && { category }),
           status,
         },
+      },
+      organization: {
+        id: orgId,
+        isMediar: isMediarOrg,
       },
       timestamp: new Date().toISOString(),
     };

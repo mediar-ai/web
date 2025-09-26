@@ -30,13 +30,20 @@ interface CreateWorkflowRequest {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication
+    // Check authentication and organization
     const { auth } = await import('@clerk/nextjs/server');
-    const { userId } = await auth();
+    const { userId, orgId } = await auth();
 
     if (!userId) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    if (!orgId) {
+      return NextResponse.json(
+        { success: false, error: 'Organization context required' },
         { status: 401 }
       );
     }
@@ -161,7 +168,7 @@ export async function POST(request: NextRequest) {
 
     // Input parameters are now stored within the automation sequence itself
 
-    // Create the main workflow record
+    // Create the main workflow record with organization ownership
     const workflowData = {
       name: body.name,
       description: body.description || '',
@@ -171,6 +178,8 @@ export async function POST(request: NextRequest) {
       parent_workflow_id: body.parent_workflow_id || null,
       automation_sequence: jsonbContent || parsedSequence, // JSONB column (required)
       estimated_duration_seconds: body.estimated_duration_seconds,
+      // Organization ownership
+      organization_id: orgId,
       // Cron configuration
       cron_expression: cronConfig?.expression || null,
       cron_timezone: cronConfig?.timezone || 'UTC',
