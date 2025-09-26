@@ -1,9 +1,30 @@
+import { auth } from '@clerk/nextjs/server';
 import { cacheResponse } from '@/lib/responseCache';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Mediar organization IDs for special admin access
+const MEDIAR_ORG_IDS = [
+  'org_REDACTED',
+  'org_REDACTED',
+];
+
 export async function GET(request: NextRequest) {
   try {
+    // Get organization context from Clerk
+    const { orgId } = await auth();
+
+    if (!orgId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No organization context',
+          executions: [],
+        },
+        { status: 401 }
+      );
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -12,6 +33,9 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Check if user is in Mediar organization
+    const isMediarOrg = MEDIAR_ORG_IDS.includes(orgId);
     
     // Get URL parameters for filtering and pagination
     const { searchParams } = new URL(request.url);
@@ -21,23 +45,86 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const include_results = searchParams.get('include_results') === 'true';
 
+    // First, get workflow IDs this organization has access to (same logic as workflows list)
+    let accessibleWorkflowIds: number[] = [];
+
+    if (isMediarOrg) {
+      // Mediar sees all workflows
+      const { data: allWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id');
+
+      accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
+    } else {
+      // Regular org sees only their workflows and shared workflows
+      // Get workflows owned by this org
+      const { data: ownedWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id')
+        .eq('organization_id', orgId);
+
+      // Get workflows shared with this org
+      const { data: sharedAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('workflow_id')
+        .eq('organization_id', orgId);
+
+      const ownedIds = (ownedWorkflows || []).map(w => w.id);
+      const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
+
+      // Combine and deduplicate
+      accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds])];
+    }
+
+    // If no accessible workflows, return empty results
+    if (accessibleWorkflowIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        executions: [],
+        pagination: {
+          total: 0,
+          limit,
+          offset,
+          has_more: false,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     // Build base query - PERFORMANCE OPTIMIZED: exclude heavy JSONB fields by default
     // Heavy fields (execution_params, results) are only included when include_results=true
-    const selectFields = include_results 
-      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category)'
-      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category)';
-    
+    const selectFields = include_results
+      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category, organization_id)'
+      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category, organization_id)';
+
     let query = supabase
       .from('workflow_executions')
       .select(selectFields)
+      .in('workflow_id', accessibleWorkflowIds) // Filter by accessible workflows
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    // Apply filters
+    // Apply additional filters
     if (workflow_id) {
-      query = query.eq('workflow_id', parseInt(workflow_id));
+      // Check if requested workflow is in accessible list
+      if (accessibleWorkflowIds.includes(parseInt(workflow_id))) {
+        query = query.eq('workflow_id', parseInt(workflow_id));
+      } else {
+        // Workflow not accessible, return empty
+        return NextResponse.json({
+          success: true,
+          executions: [],
+          pagination: {
+            total: 0,
+            limit,
+            offset,
+            has_more: false,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
-    
+
     if (status) {
       query = query.eq('status', status);
     }
@@ -49,12 +136,13 @@ export async function GET(request: NextRequest) {
       throw new Error(`Database query failed: ${error.message}`);
     }
 
-    // Get total count for pagination
+    // Get total count for pagination - also filtered by accessible workflows
     let countQuery = supabase
       .from('workflow_executions')
-      .select('*', { count: 'exact', head: true });
-    
-    if (workflow_id) {
+      .select('*', { count: 'exact', head: true })
+      .in('workflow_id', accessibleWorkflowIds);
+
+    if (workflow_id && accessibleWorkflowIds.includes(parseInt(workflow_id))) {
       countQuery = countQuery.eq('workflow_id', parseInt(workflow_id));
     }
     if (status) {
