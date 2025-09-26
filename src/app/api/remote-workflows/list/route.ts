@@ -612,7 +612,7 @@ export async function GET(request: NextRequest) {
     }
 
     // If Mediar org, also fetch information about which orgs have access to each workflow
-    let workflowAccessInfo: Record<number, string[]> = {};
+    const workflowAccessInfo: Record<number, string[]> = {};
     if (isMediarOrg && workflowIds.length > 0) {
       const { data: accessData } = await supabase
         .from('workflow_organization_access')
