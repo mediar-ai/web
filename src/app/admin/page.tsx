@@ -10,7 +10,6 @@ import {
   CreateOrganization,
   OrganizationProfile
 } from '@clerk/nextjs';
-import { createClient } from '@supabase/supabase-js';
 import {
   Shield,
   Building2,
@@ -32,12 +31,6 @@ const MEDIAR_ORG_IDS = [
   'org_2yydAO45WOB4RaCE4F4BNUPtw9c',
   'org_2yynzGa53bNM1GTPLp5mc2lYRyD',
 ];
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function AdminPage() {
   const { isLoaded } = useAuth();
@@ -71,16 +64,42 @@ export default function AdminPage() {
   const fetchAllOrganizations = async () => {
     setLoadingOrgs(true);
     try {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Fetch from our API endpoint which gets orgs from Clerk
+      const response = await fetch('/api/admin/organizations');
 
-      if (!error && data) {
-        setAllOrganizations(data);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Fetched organizations from Clerk:', data.organizations);
+        setAllOrganizations(data.organizations || []);
+      } else {
+        // Fallback to current user's organizations
+        if (organizationList && organizationList.length > 0) {
+          const clerkOrgs = organizationList.map(org => ({
+            id: org.organization.id,
+            name: org.organization.name,
+            clerk_organization_id: org.organization.id,
+            created_at: org.organization.createdAt,
+            member_count: org.organization.membersCount || 0,
+            is_active: true
+          }));
+          setAllOrganizations(clerkOrgs);
+        }
+        console.error('Failed to fetch from API, status:', response.status);
       }
     } catch (error) {
       console.error('Error fetching organizations:', error);
+      // Fallback to showing current user's organizations
+      if (organizationList && organizationList.length > 0) {
+        const clerkOrgs = organizationList.map(org => ({
+          id: org.organization.id,
+          name: org.organization.name,
+          clerk_organization_id: org.organization.id,
+          created_at: org.organization.createdAt,
+          member_count: org.organization.membersCount || 0,
+          is_active: true
+        }));
+        setAllOrganizations(clerkOrgs);
+      }
     } finally {
       setLoadingOrgs(false);
     }
