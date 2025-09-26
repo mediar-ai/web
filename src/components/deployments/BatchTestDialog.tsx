@@ -447,9 +447,9 @@ export function BatchTestDialog({
                           value={machine.id.toString()}
                         >
                           <div className="flex items-center justify-between w-full">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
                               <div
-                                className={`w-2 h-2 rounded-full ${
+                                className={`w-2 h-2 rounded-full flex-shrink-0 ${
                                   machine.health_status === 'healthy'
                                     ? 'bg-green-500'
                                     : machine.health_status === 'unhealthy'
@@ -457,15 +457,15 @@ export function BatchTestDialog({
                                       : 'bg-yellow-500'
                                 }`}
                               />
-                              <span className="font-medium">
+                              <span className="font-medium truncate max-w-[200px]" title={machine.name}>
                                 {machine.name}
                               </span>
-                              <span className="text-xs text-muted-foreground">
+                              <span className="text-xs text-muted-foreground flex-shrink-0">
                                 ({machine.machine_type})
                               </span>
                             </div>
                             {machine.load_info && (
-                              <span className="text-xs text-muted-foreground ml-2">
+                              <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
                                 {machine.load_info.current_executions}/
                                 {machine.load_info.available_capacity +
                                   machine.load_info.current_executions}{' '}
