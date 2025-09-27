@@ -30,6 +30,8 @@ interface Machine {
   mcp_endpoint: string;
   current_load?: number;
   max_concurrent?: number;
+  health_status?: string;
+  health_details?: any;
 }
 
 interface MachineAssignment {
@@ -721,32 +723,45 @@ export function UnifiedWorkflowDialog({
                     <h4 className="font-medium text-sm">Current Assignments</h4>
                     {machineAssignments
                       .sort((a, b) => a.priority - b.priority)
-                      .map((assignment) => (
-                        <div key={assignment.assignment_id} className="flex items-center justify-between p-2 border border-black rounded text-sm">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-medium truncate" title={assignment.machine_name}>{assignment.machine_name}</span>
-                            <Badge className={assignment.assignment_type === 'exclusive'
-                              ? 'bg-black text-white border border-black text-xs flex-shrink-0'
-                              : 'bg-white text-black border border-black text-xs flex-shrink-0'
-                            }>
-                              {assignment.assignment_type}
-                            </Badge>
+                      .map((assignment) => {
+                        // Find the machine data for this assignment
+                        const machineData = availableMachines.find(m => m.id === assignment.machine_id);
+
+                        return (
+                          <div key={assignment.assignment_id} className="flex items-center justify-between p-2 border border-black rounded text-sm">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-medium truncate" title={assignment.machine_name}>{assignment.machine_name}</span>
+                              {/* Health indicator for assigned machines */}
+                              {machineData && (
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                  machineData.health_status === 'healthy' ? 'bg-black animate-pulse' :
+                                  machineData.health_status === 'unhealthy' ? 'bg-gray-800' :
+                                  'bg-gray-400'
+                                }`} title={`Health: ${machineData.health_status || 'unknown'}`} />
+                              )}
+                              <Badge className={assignment.assignment_type === 'exclusive'
+                                ? 'bg-black text-white border border-black text-xs flex-shrink-0'
+                                : 'bg-white text-black border border-black text-xs flex-shrink-0'
+                              }>
+                                {assignment.assignment_type}
+                              </Badge>
+                            </div>
+                            <Button
+                              variant="black-outline"
+                              size="sm"
+                              className="h-6 px-2 text-xs"
+                              onClick={() => removeMachineAssignment(assignment.assignment_id)}
+                              disabled={removingAssignment === assignment.assignment_id}
+                            >
+                              {removingAssignment === assignment.assignment_id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3 h-3" />
+                              )}
+                            </Button>
                           </div>
-                          <Button
-                            variant="black-outline"
-                            size="sm"
-                            className="h-6 px-2 text-xs"
-                            onClick={() => removeMachineAssignment(assignment.assignment_id)}
-                            disabled={removingAssignment === assignment.assignment_id}
-                          >
-                            {removingAssignment === assignment.assignment_id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-3 h-3" />
-                            )}
-                          </Button>
-                        </div>
-                      ))}
+                        );
+                      })}
                   </div>
                 )}
 
@@ -760,18 +775,60 @@ export function UnifiedWorkflowDialog({
                           <SelectValue placeholder="Select machine" />
                         </SelectTrigger>
                         <SelectContent>
-                          {getAvailableMachinesForAssignment().map((machine) => (
-                            <SelectItem key={machine.id} value={machine.id.toString()}>
-                              <div className="flex items-center gap-2 max-w-[300px]">
-                                <span className="truncate" title={machine.name}>{machine.name}</span>
-                                {machine.current_load !== undefined && machine.max_concurrent && (
-                                  <span className="text-xs text-muted-foreground flex-shrink-0">
-                                    ({machine.current_load}/{machine.max_concurrent})
+                          {getAvailableMachinesForAssignment().map((machine) => {
+                            // Parse health details for tooltip
+                            let healthTooltip = '';
+                            if (machine.health_details) {
+                              try {
+                                const details = typeof machine.health_details === 'string'
+                                  ? JSON.parse(machine.health_details)
+                                  : machine.health_details;
+
+                                if (details.lastCheck) {
+                                  const lastCheck = new Date(details.lastCheck);
+                                  const timeAgo = Math.floor((Date.now() - lastCheck.getTime()) / 1000);
+                                  const timeStr = timeAgo < 60 ? `${timeAgo}s ago`
+                                    : timeAgo < 3600 ? `${Math.floor(timeAgo / 60)}m ago`
+                                    : `${Math.floor(timeAgo / 3600)}h ago`;
+
+                                  healthTooltip = `Health: ${machine.health_status || 'unknown'}\n`;
+                                  healthTooltip += `Last check: ${timeStr}\n`;
+                                  if (details.responseTime) {
+                                    healthTooltip += `Response time: ${details.responseTime}ms\n`;
+                                  }
+                                  if (details.error) {
+                                    healthTooltip += `Error: ${details.error}\n`;
+                                  }
+                                }
+                              } catch (e) {
+                                // If parsing fails, just show basic status
+                                healthTooltip = `Health: ${machine.health_status || 'unknown'}`;
+                              }
+                            } else {
+                              healthTooltip = `Health: ${machine.health_status || 'unknown'}`;
+                            }
+
+                            return (
+                              <SelectItem key={machine.id} value={machine.id.toString()}>
+                                <div className="flex items-center gap-2 max-w-[300px]" title={healthTooltip}>
+                                  <span className="truncate" title={`${machine.name}\n${healthTooltip}`}>
+                                    {machine.name}
                                   </span>
-                                )}
-                              </div>
-                            </SelectItem>
-                          ))}
+                                  {/* Health indicator dot */}
+                                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                    machine.health_status === 'healthy' ? 'bg-black animate-pulse' :
+                                    machine.health_status === 'unhealthy' ? 'bg-gray-800' :
+                                    'bg-gray-400'
+                                  }`} />
+                                  {machine.current_load !== undefined && machine.max_concurrent && (
+                                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                                      ({machine.current_load}/{machine.max_concurrent})
+                                    </span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
 
