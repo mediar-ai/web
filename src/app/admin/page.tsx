@@ -66,24 +66,51 @@ function AdminPageContent() {
   useEffect(() => {
     const fetchOrgDetails = async (orgId: string) => {
       try {
+        console.log('[Admin] Fetching org details for viewOrgId:', orgId);
+
         // Fetch organization details from Clerk if we have viewOrgId
         const response = await fetch('/api/admin/organizations');
         if (response.ok) {
           const data = await response.json();
           const orgs = data.organizations || [];
+          console.log('[Admin] Found organizations:', orgs.length);
+
           const targetOrg = orgs.find((org: any) =>
             org.clerk_organization_id === orgId || org.id === orgId
           );
+
           if (targetOrg) {
+            console.log('[Admin] Found target org:', targetOrg.name);
             setSelectedOrg(targetOrg);
             // Update allOrganizations if not already loaded
             if (allOrganizations.length === 0) {
               setAllOrganizations(orgs);
             }
+          } else {
+            console.log('[Admin] No org found for ID:', orgId);
+            // If we can't find the org in the list but have viewOrgId,
+            // try to create a minimal org object
+            if (orgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+              setSelectedOrg({
+                id: orgId,
+                name: 'Mediar (Legacy/Dev)',
+                clerk_organization_id: orgId,
+                member_count: 0
+              });
+            } else if (orgId === 'org_2yynzGa53bNM1GTPLp5mc2lYRyD') {
+              setSelectedOrg({
+                id: orgId,
+                name: 'Mediar',
+                clerk_organization_id: orgId,
+                member_count: 0
+              });
+            }
           }
+        } else {
+          console.error('[Admin] Failed to fetch organizations:', response.status);
         }
       } catch (error) {
-        console.error('Error fetching organization details:', error);
+        console.error('[Admin] Error fetching organization details:', error);
       }
     };
 
@@ -92,6 +119,7 @@ function AdminPageContent() {
       fetchOrgDetails(viewOrgId);
     } else if (organization) {
       // Use current organization if no viewOrgId
+      console.log('[Admin] Using current org:', organization.name);
       setSelectedOrg({
         id: organization.id,
         name: organization.name,

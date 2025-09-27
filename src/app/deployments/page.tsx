@@ -280,6 +280,7 @@ function DeploymentsPageContent() {
 
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
+    console.log('[Deployments] viewOrgId changed to:', viewOrgId);
     fetchWorkflows();
     fetchExecutions();
     fetchLiveExecutions();
