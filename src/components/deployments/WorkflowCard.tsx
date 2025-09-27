@@ -741,6 +741,10 @@ export function WorkflowCard({
         // cancelDelete
         await requestDeleteExecution(pendingAction.executionId, true);
       }
+      // Refresh the execution list after successful operation
+      if (onBatchSubmit) {
+        onBatchSubmit();
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Operation failed');
     } finally {

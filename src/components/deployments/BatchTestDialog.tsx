@@ -82,7 +82,7 @@ export function BatchTestDialog({
 
   // Machine selection state
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
-  const [selectedMachineId, setSelectedMachineId] = useState<string>('1'); // Will be updated based on workflow assignments
+  const [selectedMachineId, setSelectedMachineId] = useState<string>(''); // Start with empty, will be set when machines load
   const [loadingMachines, setLoadingMachines] = useState(false);
 
   // Version selection state
@@ -134,11 +134,29 @@ export function BatchTestDialog({
           );
           const data = await response.json();
 
-          if (data.success) {
+          if (data.success && data.machines.length > 0) {
             setAvailableMachines(data.machines);
             console.log('📋 Loaded machines for testing:', data.machines);
 
-            // After loading machines, fetch optimal machine to set preferred default
+            // Set initial selection to first machine if no machine is selected yet
+            if (!selectedMachineId && data.machines.length > 0) {
+              // Sort machines by priority (healthy first, then by load)
+              const sortedMachines = [...data.machines].sort((a, b) => {
+                // Prioritize healthy machines
+                if (a.health_status === 'healthy' && b.health_status !== 'healthy') return -1;
+                if (a.health_status !== 'healthy' && b.health_status === 'healthy') return 1;
+
+                // Then sort by available capacity (higher is better)
+                const aCapacity = a.load_info?.available_capacity || 0;
+                const bCapacity = b.load_info?.available_capacity || 0;
+                return bCapacity - aCapacity;
+              });
+
+              setSelectedMachineId(sortedMachines[0].id.toString());
+              console.log('📋 Auto-selected first priority machine:', sortedMachines[0].name);
+            }
+
+            // After loading machines, fetch optimal machine to potentially override default
             await fetchOptimalMachine(data.machines);
           } else {
             console.error('[ERROR] Failed to load machines:', data.error);
@@ -150,7 +168,7 @@ export function BatchTestDialog({
         }
       };
 
-      const fetchOptimalMachine = async (_machines: Machine[]) => {
+      const fetchOptimalMachine = async (machines: Machine[]) => {
         try {
           // Use the same logic as backend execution routes
           const response = await fetch(
@@ -164,22 +182,33 @@ export function BatchTestDialog({
           const data = await response.json();
 
           if (data.success && data.machine_id) {
-            console.log(
-              '🎯 Optimal machine assignment:',
-              data.machine_id,
-              data.machine_name,
-              data.assignment_reason
+            // Check if the optimal machine is in our available machines list
+            const optimalMachineExists = machines.some(
+              m => m.id.toString() === data.machine_id.toString()
             );
-            setSelectedMachineId(data.machine_id.toString());
+
+            if (optimalMachineExists) {
+              console.log(
+                '🎯 Optimal machine assignment:',
+                data.machine_id,
+                data.machine_name,
+                data.assignment_reason
+              );
+              setSelectedMachineId(data.machine_id.toString());
+            } else {
+              console.log(
+                '🎯 Optimal machine not in available list, keeping current selection'
+              );
+            }
           } else {
             console.log(
-              '🎯 No optimal machine found, using fallback machine 1'
+              '🎯 No optimal machine found, keeping current selection'
             );
-            setSelectedMachineId('1'); // Fallback to machine 1 if no optimal machine
+            // Don't change selection if no optimal machine found
           }
         } catch (error) {
           console.error('[ERROR] Error fetching optimal machine:', error);
-          setSelectedMachineId('1'); // Fallback to machine 1 on error
+          // Don't change selection on error
         }
       };
 
