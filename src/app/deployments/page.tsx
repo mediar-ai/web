@@ -52,6 +52,7 @@ function DeploymentsPageContent() {
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  const [executionsLoading, setExecutionsLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowOverview | null>(null);
@@ -127,8 +128,9 @@ function DeploymentsPageContent() {
     }
   }, [viewOrgId]);
 
-  const fetchExecutions = useCallback(async (_showLoading = true) => {
+  const fetchExecutions = useCallback(async (showLoading = true) => {
     try {
+      if (showLoading) setExecutionsLoading(true);
       // Use viewOrgId from searchParams (passed from parent)
       const apiUrl = viewOrgId
         ? `/api/remote-workflows/executions?limit=1000&viewOrgId=${viewOrgId}`
@@ -141,6 +143,8 @@ function DeploymentsPageContent() {
     } catch (error) {
       console.error('Failed to fetch executions:', error);
       setExecutions([]);
+    } finally {
+      if (showLoading) setExecutionsLoading(false);
     }
   }, [viewOrgId]);
 
@@ -433,13 +437,13 @@ function DeploymentsPageContent() {
         </div>
 
         {/* Recent Executions */}
-        {executions.length > 0 && (
+        {(executions.length > 0 || executionsLoading) && (
           <div className="space-y-4 mt-8">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <h2 className="text-lg font-bold font-mono uppercase">
                   Recent Executions
-                  {executionWorkflowFilter !== "all" && (
+                  {executionWorkflowFilter !== "all" && !executionsLoading && (
                     <span className="ml-2 text-sm font-normal text-gray-600">
                       ({workflows.find(w => w.id === executionWorkflowFilter)?.name})
                     </span>
@@ -453,6 +457,7 @@ function DeploymentsPageContent() {
                   e.target.value === "all" ? "all" : parseInt(e.target.value)
                 )}
                 className="px-3 py-1 border-2 border-black font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                disabled={executionsLoading}
               >
                 <option value="all">All Workflows</option>
                 {workflows.map(w => (
@@ -473,7 +478,29 @@ function DeploymentsPageContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredExecutions.slice(0, 10).map(execution => {
+                  {executionsLoading ? (
+                    // Show skeleton rows when loading
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <tr key={`skeleton-${index}`} className="border-t border-gray-200">
+                        <td className="p-3">
+                          <Skeleton className="h-4 w-32" />
+                        </td>
+                        <td className="p-3">
+                          <Skeleton className="h-6 w-20" />
+                        </td>
+                        <td className="p-3">
+                          <Skeleton className="h-4 w-40" />
+                        </td>
+                        <td className="p-3">
+                          <Skeleton className="h-4 w-16" />
+                        </td>
+                        <td className="p-3">
+                          <Skeleton className="h-8 w-8" />
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    filteredExecutions.slice(0, 10).map(execution => {
                     const workflow = workflows.find(w => w.id === execution.workflow_id);
                     const isLive = liveExecutions.some(le => le.id === execution.execution_id);
                     return (
@@ -574,7 +601,8 @@ function DeploymentsPageContent() {
                         </td>
                       </tr>
                     );
-                  })}
+                  })
+                  )}
                 </tbody>
               </table>
             </div>
