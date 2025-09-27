@@ -26,6 +26,9 @@ interface LiveExecutionStatus {
 
 export async function GET(request: NextRequest) {
   try {
+    // Import the auth helper
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -34,17 +37,77 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
+
     // Get URL parameters
     const { searchParams } = new URL(request.url);
     const status_filter = searchParams.get('status'); // 'active' for running/queued, or specific status
     const workflow_id = searchParams.get('workflow_id');
     const limit = parseInt(searchParams.get('limit') || '50'); // Default to 50 as documented
+    const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
+
+    // Get effective organization context
+    const { orgId, isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(viewOrgId);
+
+    if (!orgId) {
+      return NextResponse.json({
+        success: false,
+        error: 'No organization context',
+        data: { executions: [] }
+      }, { status: 401 });
+    }
+
+    // First, get workflow IDs this organization has access to (same logic as workflows list)
+    let accessibleWorkflowIds: number[] = [];
+
+    // Mediar org sees all workflows, OR Mediar admin not viewing a specific org
+    if (isMediarOrg || (isMediarAdmin && !viewOrgId)) {
+      // Mediar sees all workflow executions
+      const { data: allWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id');
+
+      accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
+    } else {
+      // Regular org sees only their workflows and shared workflows
+      // Get workflows owned by this org
+      const { data: ownedWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id')
+        .eq('organization_id', orgId);
+
+      // Get workflows shared with this org
+      const { data: sharedAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('workflow_id')
+        .eq('organization_id', orgId);
+
+      const ownedIds = (ownedWorkflows || []).map(w => w.id);
+      const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
+
+      // Combine and deduplicate
+      accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds])];
+    }
+
+    // If no accessible workflows, return empty
+    if (accessibleWorkflowIds.length === 0 && !(isMediarOrg || (isMediarAdmin && !viewOrgId))) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          executions: [],
+          summary: { total: 0, active: 0, running: 0, queued: 0, avgProgress: 0 }
+        }
+      });
+    }
 
     // Query the live execution status view
     let query = supabase
       .from('live_execution_status')
       .select('*');
+
+    // Filter by accessible workflows
+    if (accessibleWorkflowIds.length > 0) {
+      query = query.in('workflow_id', accessibleWorkflowIds);
+    }
 
     // Apply filters
     if (status_filter === 'active') {

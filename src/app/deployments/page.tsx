@@ -104,9 +104,7 @@ function DeploymentsPageContent() {
   const fetchWorkflows = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) setLoading(true);
-      // Include viewOrgId if present in URL params
-      const urlParams = new URLSearchParams(window.location.search);
-      const viewOrgId = urlParams.get('viewOrgId');
+      // Use viewOrgId from searchParams (passed from parent)
       const apiUrl = viewOrgId
         ? `/api/remote-workflows/list?viewOrgId=${viewOrgId}`
         : '/api/remote-workflows/list';
@@ -127,13 +125,11 @@ function DeploymentsPageContent() {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, []);
+  }, [viewOrgId]);
 
   const fetchExecutions = useCallback(async (_showLoading = true) => {
     try {
-      // Include viewOrgId if present in URL params
-      const urlParams = new URLSearchParams(window.location.search);
-      const viewOrgId = urlParams.get('viewOrgId');
+      // Use viewOrgId from searchParams (passed from parent)
       const apiUrl = viewOrgId
         ? `/api/remote-workflows/executions?limit=1000&viewOrgId=${viewOrgId}`
         : '/api/remote-workflows/executions?limit=1000';
@@ -146,13 +142,11 @@ function DeploymentsPageContent() {
       console.error('Failed to fetch executions:', error);
       setExecutions([]);
     }
-  }, []);
+  }, [viewOrgId]);
 
   const fetchLiveExecutions = useCallback(async () => {
     try {
-      // Include viewOrgId if present in URL params
-      const urlParams = new URLSearchParams(window.location.search);
-      const viewOrgId = urlParams.get('viewOrgId');
+      // Use viewOrgId from searchParams (passed from parent)
       const apiUrl = viewOrgId
         ? `/api/remote-workflows/executions/live?status=active&limit=500&viewOrgId=${viewOrgId}`
         : '/api/remote-workflows/executions/live?status=active&limit=500';
@@ -171,7 +165,7 @@ function DeploymentsPageContent() {
       console.error('Failed to fetch live executions:', error);
       setLiveExecutions([]);
     }
-  }, []);
+  }, [viewOrgId]);
 
   const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
     try {
