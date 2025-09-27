@@ -32,10 +32,34 @@ export async function GET(
 
     // Handle legacy Mediar org that might not exist in Clerk
     if (targetOrgId === 'org_REDACTED') {
-      // Return empty members for legacy org
+      // For legacy org, return Mediar staff members as placeholder
       return NextResponse.json({
-        members: [],
-        message: 'Legacy organization - no members in Clerk'
+        organization: {
+          id: targetOrgId,
+          name: 'Mediar (Legacy/Dev)',
+          membersCount: 2
+        },
+        members: [
+          {
+            id: 'legacy-1',
+            userId: 'mediar-admin-1',
+            email: 'louis@mediar.ai',
+            firstName: 'Louis',
+            lastName: 'Beaumont',
+            role: 'org:admin',
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: 'legacy-2',
+            userId: 'mediar-admin-2',
+            email: 'matt@mediar.ai',
+            firstName: 'Matt',
+            lastName: '',
+            role: 'org:admin',
+            createdAt: new Date().toISOString()
+          }
+        ],
+        message: 'Legacy organization - showing Mediar staff'
       });
     }
 

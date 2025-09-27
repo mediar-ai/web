@@ -43,7 +43,7 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
 
   return {
     orgId: effectiveOrgId || null,
-    isMediarOrg: isMediarOrg || mediarAdmin, // Mediar admins always have Mediar privileges
+    isMediarOrg: isMediarOrg, // Only true if the effective org ID is actually a Mediar org
     isMediarAdmin: mediarAdmin,
     actualOrgId: clerkOrgId || null, // The actual Clerk org context
   };
