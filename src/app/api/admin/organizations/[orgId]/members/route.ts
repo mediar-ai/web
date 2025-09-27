@@ -73,7 +73,7 @@ export async function GET(
     }
 
     // Format the data
-    const formattedMembers = memberships.data.map(membership => ({
+    const formattedMembers = memberships?.data?.map(membership => ({
       id: membership.id,
       userId: membership.publicUserData?.userId,
       email: membership.publicUserData?.identifier,
@@ -81,7 +81,7 @@ export async function GET(
       lastName: membership.publicUserData?.lastName,
       role: membership.role,
       createdAt: membership.createdAt,
-    }));
+    })) || [];
 
     return NextResponse.json({
       organization: {
