@@ -60,13 +60,13 @@ export async function GET(
     }
 
     // Format the data
-    const formattedInvitations = invitations.data.map(invitation => ({
+    const formattedInvitations = invitations?.data?.map(invitation => ({
       id: invitation.id,
       email: invitation.emailAddress,
       role: invitation.role,
       status: invitation.status,
       createdAt: invitation.createdAt,
-    }));
+    })) || [];
 
     return NextResponse.json({ invitations: formattedInvitations });
   } catch (error) {
