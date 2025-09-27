@@ -1,11 +1,6 @@
-import { auth, clerkClient } from '@clerk/nextjs/server';
+import { auth, clerkClient, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-
-// Mediar organization IDs (both old and new)
-const MEDIAR_ORG_IDS = [
-  'org_REDACTED', // Current Mediar organization
-  'org_REDACTED', // Legacy Mediar organization (has existing workflows)
-];
+import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 export async function GET(
   request: Request,
@@ -19,10 +14,16 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Check if user has @mediar.ai email
+    const user = await currentUser();
+    const isMediarAdmin = user?.emailAddresses?.some(
+      email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+    ) || false;
+
     // Check if user is in Mediar org
     const isMediarOrg = MEDIAR_ORG_IDS.includes(orgId);
 
-    if (!isMediarOrg) {
+    if (!isMediarAdmin && !isMediarOrg) {
       return NextResponse.json({ error: 'Access denied - Mediar admin only' }, { status: 403 });
     }
 
