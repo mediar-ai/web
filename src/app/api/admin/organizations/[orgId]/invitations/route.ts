@@ -30,11 +30,34 @@ export async function GET(
 
     // Fetch organization invitations from Clerk
     const clerk = await clerkClient();
-    const invitations = await clerk.organizations.getOrganizationInvitationList({
-      organizationId: targetOrgId,
-      status: ['pending'],
-      limit: 100,
-    });
+
+    // Handle legacy Mediar org that might not exist in Clerk
+    if (targetOrgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+      // Return empty invitations for legacy org
+      return NextResponse.json({
+        invitations: [],
+        message: 'Legacy organization - no invitations in Clerk'
+      });
+    }
+
+    let invitations;
+    try {
+      invitations = await clerk.organizations.getOrganizationInvitationList({
+        organizationId: targetOrgId,
+        status: ['pending'],
+        limit: 100,
+      });
+    } catch (error: any) {
+      console.error('Error fetching invitations:', error);
+      // If org not found in Clerk, return empty list
+      if (error?.status === 404) {
+        return NextResponse.json({
+          invitations: [],
+          message: 'Organization not found in Clerk'
+        });
+      }
+      throw error;
+    }
 
     // Format the data
     const formattedInvitations = invitations.data.map(invitation => ({
