@@ -12,7 +12,8 @@ import {
   ChevronLeft,
   Building2,
   Shield,
-  LogOut
+  LogOut,
+  Database
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 
@@ -65,6 +66,7 @@ export function Sidebar() {
     { label: 'Deployments', href: '/deployments', icon: Activity },
     { label: 'Settings', href: '/settings', icon: Settings },
     { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
+    { label: 'Observability', href: '/observability', icon: Database, mediarOnly: true },
   ];
 
   const filteredNav = navigation.filter(item => {
