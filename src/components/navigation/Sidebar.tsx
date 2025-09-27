@@ -13,7 +13,8 @@ import {
   Building2,
   Shield,
   LogOut,
-  Database
+  Database,
+  Lock
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 
@@ -119,19 +120,34 @@ export function Sidebar() {
                 <Link
                   href={item.href}
                   className={`
-                    flex items-center gap-3 px-3 py-2 font-mono text-sm transition-colors
+                    flex items-center gap-3 px-3 py-2 font-mono text-sm transition-colors relative
                     ${isActive
                       ? 'bg-black text-white'
                       : 'hover:bg-gray-100 text-black'
                     }
                     ${isCollapsed ? 'justify-center' : ''}
                   `}
-                  title={isCollapsed ? item.label : undefined}
+                  title={isCollapsed ? `${item.label}${item.mediarOnly ? ' (Mediar Admin Only)' : ''}` : undefined}
                 >
-                  <Icon className="w-4 h-4" />
+                  <div className="relative">
+                    <Icon className="w-4 h-4" />
+                    {isCollapsed && item.mediarOnly && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-black rounded-full" />
+                    )}
+                  </div>
                   {!isCollapsed && (
                     <>
-                      <span>{item.label}</span>
+                      <span className="flex items-center gap-2">
+                        {item.label}
+                        {item.mediarOnly && (
+                          <span
+                            className="inline-flex items-center justify-center w-4 h-4 bg-black text-white rounded-sm"
+                            title="Mediar Admin Only"
+                          >
+                            <Lock className="w-2.5 h-2.5" />
+                          </span>
+                        )}
+                      </span>
                       {isActive && <ChevronRight className="w-4 h-4 ml-auto" />}
                     </>
                   )}
