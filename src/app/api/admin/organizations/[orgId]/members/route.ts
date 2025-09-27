@@ -29,15 +29,48 @@ export async function GET(
 
     // Fetch organization members from Clerk
     const clerk = await clerkClient();
-    const memberships = await clerk.organizations.getOrganizationMembershipList({
-      organizationId: targetOrgId,
-      limit: 100,
-    });
+
+    // Handle legacy Mediar org that might not exist in Clerk
+    if (targetOrgId === 'org_REDACTED') {
+      // Return empty members for legacy org
+      return NextResponse.json({
+        members: [],
+        message: 'Legacy organization - no members in Clerk'
+      });
+    }
+
+    let memberships;
+    try {
+      memberships = await clerk.organizations.getOrganizationMembershipList({
+        organizationId: targetOrgId,
+        limit: 100,
+      });
+    } catch (error: any) {
+      console.error('Error fetching organization members:', error);
+      // If org not found in Clerk, return empty list
+      if (error?.status === 404) {
+        return NextResponse.json({
+          members: [],
+          message: 'Organization not found in Clerk'
+        });
+      }
+      throw error;
+    }
 
     // Also fetch the organization details
-    const organization = await clerk.organizations.getOrganization({
-      organizationId: targetOrgId,
-    });
+    let organization;
+    try {
+      organization = await clerk.organizations.getOrganization({
+        organizationId: targetOrgId,
+      });
+    } catch (error: any) {
+      // If org not found, create a placeholder
+      organization = {
+        id: targetOrgId,
+        name: 'Unknown Organization',
+        membersCount: 0
+      };
+    }
 
     // Format the data
     const formattedMembers = memberships.data.map(membership => ({
