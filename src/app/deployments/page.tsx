@@ -45,6 +45,7 @@ function DeploymentsPageContent() {
   const { } = useUser();
   const { organization } = useOrganization();
   const searchParams = useSearchParams();
+  const viewOrgId = searchParams.get('viewOrgId');
 
   // State
   const [workflows, setWorkflows] = useState<WorkflowWithSettings[]>([]);
@@ -103,7 +104,13 @@ function DeploymentsPageContent() {
   const fetchWorkflows = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) setLoading(true);
-      const response = await fetch("/api/remote-workflows/list");
+      // Include viewOrgId if present in URL params
+      const urlParams = new URLSearchParams(window.location.search);
+      const viewOrgId = urlParams.get('viewOrgId');
+      const apiUrl = viewOrgId
+        ? `/api/remote-workflows/list?viewOrgId=${viewOrgId}`
+        : '/api/remote-workflows/list';
+      const response = await fetch(apiUrl);
       const workflowData = await response.json();
       if (workflowData.success) {
         const sortedWorkflows = (workflowData.workflows || []).sort(
@@ -143,7 +150,13 @@ function DeploymentsPageContent() {
 
   const fetchLiveExecutions = useCallback(async () => {
     try {
-      const response = await fetch('/api/remote-workflows/executions/live?status=active&limit=500');
+      // Include viewOrgId if present in URL params
+      const urlParams = new URLSearchParams(window.location.search);
+      const viewOrgId = urlParams.get('viewOrgId');
+      const apiUrl = viewOrgId
+        ? `/api/remote-workflows/executions/live?status=active&limit=500&viewOrgId=${viewOrgId}`
+        : '/api/remote-workflows/executions/live?status=active&limit=500';
+      const response = await fetch(apiUrl);
       if (!response.ok) {
         setLiveExecutions([]);
         return;
@@ -265,12 +278,12 @@ function DeploymentsPageContent() {
     }
   }, [workflows, fetchWorkflows]);
 
-  // Initial data loading
+  // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
     fetchWorkflows();
     fetchExecutions();
     fetchLiveExecutions();
-  }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions]);
+  }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions, viewOrgId]);
 
   // Polling
   useEffect(() => {

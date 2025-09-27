@@ -64,14 +64,32 @@ function AdminPageContent() {
 
   // Set selected org based on viewOrgId or current org
   useEffect(() => {
-    if (viewOrgId && allOrganizations.length > 0) {
-      // Find the organization from the viewOrgId
-      const targetOrg = allOrganizations.find(org =>
-        org.clerk_organization_id === viewOrgId || org.id === viewOrgId
-      );
-      if (targetOrg) {
-        setSelectedOrg(targetOrg);
+    const fetchOrgDetails = async (orgId: string) => {
+      try {
+        // Fetch organization details from Clerk if we have viewOrgId
+        const response = await fetch('/api/admin/organizations');
+        if (response.ok) {
+          const data = await response.json();
+          const orgs = data.organizations || [];
+          const targetOrg = orgs.find((org: any) =>
+            org.clerk_organization_id === orgId || org.id === orgId
+          );
+          if (targetOrg) {
+            setSelectedOrg(targetOrg);
+            // Update allOrganizations if not already loaded
+            if (allOrganizations.length === 0) {
+              setAllOrganizations(orgs);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching organization details:', error);
       }
+    };
+
+    if (viewOrgId) {
+      // When viewOrgId is set, fetch that specific org's details
+      fetchOrgDetails(viewOrgId);
     } else if (organization) {
       // Use current organization if no viewOrgId
       setSelectedOrg({
@@ -81,7 +99,7 @@ function AdminPageContent() {
         member_count: organization.membersCount || 0
       });
     }
-  }, [viewOrgId, organization, allOrganizations]);
+  }, [viewOrgId, organization]);
 
   // Fetch members and invitations when selected org changes
   useEffect(() => {
