@@ -9,6 +9,7 @@ import { CommandPalette } from '@/components/deployments/CommandPalette';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
+import { OrganizationAssignmentDialog } from '@/components/deployments/OrganizationAssignmentDialog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -67,6 +68,10 @@ function DeploymentsPageContent() {
   const [templateYaml, setTemplateYaml] = useState<string>('');
   const [templateName, setTemplateName] = useState<string>('');
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [orgAssignmentOpen, setOrgAssignmentOpen] = useState(false);
+  const [selectedWorkflowForOrgAssignment, setSelectedWorkflowForOrgAssignment] = useState<WorkflowWithSettings | null>(null);
+  const [stoppingExecutions, setStoppingExecutions] = useState<Set<number>>(new Set());
+  const [deletingExecutions, setDeletingExecutions] = useState<Set<number>>(new Set());
 
   // Use keyboard navigation
   const { selectedIndex: navSelectedIndex } = useKeyboardNavigation({
@@ -276,6 +281,14 @@ function DeploymentsPageContent() {
     }
   }, [workflows, fetchWorkflows]);
 
+  const handleManageOrganizations = useCallback((workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    setSelectedWorkflowForOrgAssignment(workflow);
+    setOrgAssignmentOpen(true);
+  }, [workflows]);
+
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
     console.log('[Deployments] viewOrgId changed to:', viewOrgId);
@@ -419,6 +432,8 @@ function DeploymentsPageContent() {
                   onEdit={() => handleQuickEdit(workflow.id)}
                   onDelete={() => handleDeleteWorkflow(workflow.id)}
                   onToggleCron={() => handleToggleCron(workflow.id)}
+                  onManageOrganizations={() => handleManageOrganizations(workflow.id)}
+                  isMediarAdmin={isGlobalAdmin}
                 />
               ))}
             </div>
@@ -478,8 +493,8 @@ function DeploymentsPageContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {executionsLoading ? (
-                    // Show skeleton rows when loading
+                  {executionsLoading && filteredExecutions.length === 0 ? (
+                    // Only show skeleton rows on initial load
                     Array.from({ length: 5 }).map((_, index) => (
                       <tr key={`skeleton-${index}`} className="border-t border-gray-200">
                         <td className="p-3">
@@ -542,14 +557,16 @@ function DeploymentsPageContent() {
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8 bg-black text-white hover:bg-gray-800"
+                                disabled={stoppingExecutions.has(execution.execution_id)}
                                 onClick={async () => {
                                   if (confirm(`Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`)) {
                                     try {
+                                      setStoppingExecutions(prev => new Set(prev).add(execution.execution_id));
                                       const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/cancel`, {
                                         method: 'POST',
                                       });
                                       if (response.ok) {
-                                        await fetchExecutions();
+                                        await fetchExecutions(false);
                                         await fetchLiveExecutions();
                                       } else {
                                         const error = await response.json();
@@ -559,6 +576,12 @@ function DeploymentsPageContent() {
                                     } catch (error) {
                                       console.error('Error canceling execution:', error);
                                       alert('Error canceling execution');
+                                    } finally {
+                                      setStoppingExecutions(prev => {
+                                        const newSet = new Set(prev);
+                                        newSet.delete(execution.execution_id);
+                                        return newSet;
+                                      });
                                     }
                                   }
                                 }}
@@ -572,14 +595,16 @@ function DeploymentsPageContent() {
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8 border border-black hover:bg-red-600 hover:text-white hover:border-red-600"
+                                disabled={deletingExecutions.has(execution.execution_id)}
                                 onClick={async () => {
                                   if (confirm(`Are you sure you want to DELETE this execution? This cannot be undone.`)) {
                                     try {
+                                      setDeletingExecutions(prev => new Set(prev).add(execution.execution_id));
                                       const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/delete`, {
                                         method: 'DELETE',
                                       });
                                       if (response.ok) {
-                                        await fetchExecutions();
+                                        await fetchExecutions(false);
                                         await fetchLiveExecutions();
                                       } else {
                                         const error = await response.json();
@@ -589,6 +614,12 @@ function DeploymentsPageContent() {
                                     } catch (error) {
                                       console.error('Error deleting execution:', error);
                                       alert('Error deleting execution');
+                                    } finally {
+                                      setDeletingExecutions(prev => {
+                                        const newSet = new Set(prev);
+                                        newSet.delete(execution.execution_id);
+                                        return newSet;
+                                      });
                                     }
                                   }
                                 }}
@@ -676,6 +707,19 @@ function DeploymentsPageContent() {
             onOpenChange={setBatchTestOpen}
             onSubmit={() => {
               fetchExecutions(false);
+            }}
+          />
+        )}
+
+        {selectedWorkflowForOrgAssignment && (
+          <OrganizationAssignmentDialog
+            open={orgAssignmentOpen}
+            onOpenChange={setOrgAssignmentOpen}
+            workflowId={selectedWorkflowForOrgAssignment.id}
+            workflowName={selectedWorkflowForOrgAssignment.name}
+            onSuccess={() => {
+              setOrgAssignmentOpen(false);
+              fetchWorkflows(false);
             }}
           />
         )}

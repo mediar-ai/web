@@ -168,7 +168,8 @@ function AdminPageContent() {
   const fetchMachines = async () => {
     setLoadingMachines(true);
     try {
-      const response = await fetch('/api/machines?include_load=true');
+      // Include all machines, not just active ones
+      const response = await fetch('/api/machines?include_load=true&include_all=true');
       if (response.ok) {
         const data = await response.json();
         setMachines(data.machines || []);
@@ -216,6 +217,7 @@ function AdminPageContent() {
   const handleEditMachine = (machine: any) => {
     setEditingMachine(machine.id);
     setEditedMachineData({
+      name: machine.name,
       description: machine.description || '',
       max_concurrent_executions: machine.max_concurrent_executions,
       priority: machine.priority,
@@ -781,29 +783,38 @@ function AdminPageContent() {
                             {machines.map((machine) => (
                               <tr key={machine.id} className="hover:bg-gray-50">
                                 <td className="px-4 py-3">
-                                  {editingMachine === machine.id ? (
-                                    <span className="font-mono font-bold">{machine.name}</span>
-                                  ) : (
-                                    <div>
+                                  <div>
+                                    {editingMachine === machine.id ? (
+                                      <input
+                                        type="text"
+                                        value={editedMachineData.name}
+                                        onChange={(e) => setEditedMachineData({
+                                          ...editedMachineData,
+                                          name: e.target.value
+                                        })}
+                                        className="w-full px-2 py-1 font-mono font-bold border border-black focus:outline-none focus:ring-1 focus:ring-black"
+                                        placeholder="Machine name"
+                                      />
+                                    ) : (
                                       <p className="font-mono font-bold">{machine.name}</p>
-                                      {machine.description && (
-                                        <p className="font-mono text-xs text-gray-600 mt-1">
-                                          {editingMachine === machine.id ? (
-                                            <input
-                                              type="text"
-                                              value={editedMachineData.description}
-                                              onChange={(e) => setEditedMachineData({
-                                                ...editedMachineData,
-                                                description: e.target.value
-                                              })}
-                                              className="w-full px-2 py-1 font-mono text-xs border border-black focus:outline-none focus:ring-1 focus:ring-black"
-                                              placeholder="Description"
-                                            />
-                                          ) : machine.description}
-                                        </p>
-                                      )}
-                                    </div>
-                                  )}
+                                    )}
+                                    {(machine.description || editingMachine === machine.id) && (
+                                      <p className="font-mono text-xs text-gray-600 mt-1">
+                                        {editingMachine === machine.id ? (
+                                          <input
+                                            type="text"
+                                            value={editedMachineData.description}
+                                            onChange={(e) => setEditedMachineData({
+                                              ...editedMachineData,
+                                              description: e.target.value
+                                            })}
+                                            className="w-full px-2 py-1 font-mono text-xs border border-black focus:outline-none focus:ring-1 focus:ring-black"
+                                            placeholder="Description"
+                                          />
+                                        ) : machine.description}
+                                      </p>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="px-4 py-3">
                                   {editingMachine === machine.id ? (
