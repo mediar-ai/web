@@ -9,9 +9,6 @@
     "src/app/api/cron/scheduler/route.ts": {
       "maxDuration": 60
     },
-    "src/app/api/cron/health-check/route.ts": {
-      "maxDuration": 60
-    },
     "src/app/api/cron/health-check-supabase/route.ts": {
       "maxDuration": 60
     }
