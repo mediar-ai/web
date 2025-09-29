@@ -169,7 +169,7 @@ function AdminPageContent() {
     setLoadingMachines(true);
     try {
       // Include all machines, not just active ones
-      const response = await fetch('/api/machines?include_load=true&include_all=true');
+      const response = await fetch('/api/machines?include_load=true&status=all');
       if (response.ok) {
         const data = await response.json();
         setMachines(data.machines || []);
