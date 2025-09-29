@@ -114,12 +114,43 @@ export async function GET(request: Request) {
             ...healthData
           };
 
-          // Update the machine's health status and details
+          // Insert into health check history
+          const historyQuery = `
+            INSERT INTO health_check_history (
+              machine_id,
+              machine_name,
+              status,
+              response_time_ms,
+              http_status,
+              endpoint_type,
+              has_taskbar,
+              application_count,
+              health_details
+            ) VALUES (
+              '${machine.id}',
+              '${machine.name.replace(/'/g, "\\'")}',
+              '${newStatus}',
+              ${responseTime},
+              ${response.status},
+              'mcp',
+              ${hasTaskbar},
+              ${healthData.applicationCount || 0},
+              '${JSON.stringify(healthDetails).replace(/'/g, "\\\'")}'
+            )
+          `;
+          await clickhouse.command({ query: historyQuery });
+
+          // Update the machine's health status and details with uptime tracking
           const updateQuery = `
             ALTER TABLE remote_machines
             UPDATE
               health_status = '${newStatus}',
-              health_details = '${JSON.stringify(healthDetails).replace(/'/g, "\\'")}'
+              health_details = '${JSON.stringify(healthDetails).replace(/'/g, "\\'")}',
+              total_checks = total_checks + 1,
+              successful_checks = successful_checks + ${newStatus === 'healthy' ? 1 : 0},
+              consecutive_failures = ${newStatus === 'healthy' ? 0 : 'consecutive_failures + 1'},
+              uptime_percentage = (successful_checks + ${newStatus === 'healthy' ? 1 : 0}) * 100.0 / (total_checks + 1),
+              ${newStatus === 'healthy' ? `last_healthy_at = now(),` : `last_unhealthy_at = now(),`}
             WHERE id = '${machine.id}'
           `;
           await clickhouse.command({ query: updateQuery });
@@ -148,11 +179,37 @@ export async function GET(request: Request) {
             responseTime: responseTime
           };
 
+          // Insert into health check history
+          const historyQuery = `
+            INSERT INTO health_check_history (
+              machine_id,
+              machine_name,
+              status,
+              response_time_ms,
+              endpoint_type,
+              error_message,
+              health_details
+            ) VALUES (
+              '${machine.id}',
+              '${machine.name.replace(/'/g, "\\'")}',
+              '${newStatus}',
+              ${responseTime},
+              'mcp',
+              '${(error.message || 'MCP health check failed').replace(/'/g, "\\'")}',
+              '${JSON.stringify(healthDetails).replace(/'/g, "\\\'")}'
+            )
+          `;
+          await clickhouse.command({ query: historyQuery });
+
           const updateQuery = `
             ALTER TABLE remote_machines
             UPDATE
               health_status = '${newStatus}',
-              health_details = '${JSON.stringify(healthDetails).replace(/'/g, "\\'")}'
+              health_details = '${JSON.stringify(healthDetails).replace(/'/g, "\\'")}',
+              total_checks = total_checks + 1,
+              consecutive_failures = consecutive_failures + 1,
+              uptime_percentage = successful_checks * 100.0 / (total_checks + 1),
+              last_unhealthy_at = now()
             WHERE id = '${machine.id}'
           `;
           await clickhouse.command({ query: updateQuery });
