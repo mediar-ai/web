@@ -28,6 +28,51 @@ export async function POST(request: NextRequest) {
     // Check if this execution meets any alert conditions
     await notificationService.checkExecutionForAlerts(execution);
 
+    // Trigger error analysis for failed executions
+    if (execution.status === 'error' || execution.status === 'failed') {
+      console.log(`Triggering error analysis for failed execution: ${execution.id}`);
+      try {
+        // Get execution details from database
+        const { data: executionData } = await supabase
+          .from('workflow_executions')
+          .select('*')
+          .eq('id', execution.id || execution.execution_id)
+          .single();
+
+        if (executionData) {
+          // Call the error analysis endpoint
+          const analysisPayload = {
+            executionId: executionData.id,
+            workflowId: executionData.workflow_id,
+            error: executionData.error || { message: execution.error_message },
+            logs: executionData.logs || '',
+            results: executionData.results || {},
+          };
+
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const response = await fetch(`${baseUrl}/api/internal/analyze-error`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              // Add internal service auth if needed
+              'x-internal-service': 'monitor',
+            },
+            body: JSON.stringify(analysisPayload),
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            console.log(`Error analysis completed for execution ${execution.id}`);
+          } else {
+            console.error(`Failed to analyze error for execution ${execution.id}: ${response.status}`);
+          }
+        }
+      } catch (analysisError) {
+        console.error(`Error triggering analysis for execution ${execution.id}:`, analysisError);
+        // Don't fail the whole request if analysis fails
+      }
+    }
+
     // Also check for critical system-wide issues
     if (execution.status === 'error' || execution.status === 'failed') {
       // Check if this is part of a pattern (multiple failures)
