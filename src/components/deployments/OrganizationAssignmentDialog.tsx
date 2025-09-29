@@ -73,10 +73,19 @@ export function OrganizationAssignmentDialog({
   useEffect(() => {
     if (open) {
       fetchOrganizationAccess();
+    } else {
+      // Reset state when dialog closes
+      setLoading(true);
+      setSaving(false);
+      setOrganizations([]);
+      setSelectedOrgs([]);
+      setInitialOrgs([]);
     }
   }, [open, workflowId, fetchOrganizationAccess]);
 
   const handleSave = async () => {
+    if (saving) return; // Prevent double-click
+
     try {
       setSaving(true);
       const response = await fetch(`/api/remote-workflows/${workflowId}/org-access`, {
@@ -94,12 +103,10 @@ export function OrganizationAssignmentDialog({
         throw new Error(errorData.error || 'Failed to update organization access');
       }
 
-      // Close dialog first to prevent UI freezing
+      // Call success callback
+      onSuccess?.();
+      // Close dialog
       onOpenChange(false);
-      // Then call success callback
-      setTimeout(() => {
-        onSuccess?.();
-      }, 100);
     } catch (error) {
       console.error('Failed to update organization access:', error);
       alert('Failed to update organization access');
@@ -249,7 +256,11 @@ export function OrganizationAssignmentDialog({
         <DialogFooter className="border-t border-gray-200 pt-4">
           <Button
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => {
+              if (!saving) {
+                onOpenChange(false);
+              }
+            }}
             disabled={saving}
             className="border-2 border-black hover:bg-black hover:text-white font-mono"
           >
