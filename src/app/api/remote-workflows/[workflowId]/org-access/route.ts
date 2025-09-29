@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEffectiveOrgId } from '@/lib/mediarAuth';
-import { clerkClient } from '@clerk/nextjs/server';
+import { clerkClient, currentUser } from '@clerk/nextjs/server';
+import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 export async function GET(
   request: NextRequest,
@@ -14,12 +15,18 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Invalid workflow ID' }, { status: 400 });
     }
 
-    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId();
+    const { isMediarOrg } = await getEffectiveOrgId();
 
-    // Only Mediar org/admin can view organization access
-    if (!isMediarOrg && !isMediarAdmin) {
+    // Check if user has @mediar.ai email
+    const user = await currentUser();
+    const hasMediarEmail = user?.emailAddresses?.some(
+      email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+    ) || false;
+
+    // Only Mediar org or @mediar.ai users can view organization access
+    if (!isMediarOrg && !hasMediarEmail) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: 'Unauthorized - Mediar access required' },
         { status: 403 }
       );
     }
@@ -83,12 +90,18 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Invalid workflow ID' }, { status: 400 });
     }
 
-    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId();
+    const { isMediarOrg } = await getEffectiveOrgId();
 
-    // Only Mediar org/admin can update organization access
-    if (!isMediarOrg && !isMediarAdmin) {
+    // Check if user has @mediar.ai email
+    const user = await currentUser();
+    const hasMediarEmail = user?.emailAddresses?.some(
+      email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+    ) || false;
+
+    // Only Mediar org or @mediar.ai users can update organization access
+    if (!isMediarOrg && !hasMediarEmail) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: 'Unauthorized - Mediar access required' },
         { status: 403 }
       );
     }
@@ -120,9 +133,13 @@ export async function PUT(
       throw new Error(`Failed to remove existing access: ${deleteError.message}`);
     }
 
-    // Then, add new access entries
-    if (organizationIds.length > 0) {
-      const accessEntries = organizationIds.map(orgId => ({
+    // Ensure Mediar orgs are always included
+    const requiredOrgs = [...MEDIAR_ORG_IDS];
+    const allOrgIds = [...new Set([...requiredOrgs, ...organizationIds])];
+
+    // Add new access entries
+    if (allOrgIds.length > 0) {
+      const accessEntries = allOrgIds.map(orgId => ({
         workflow_id: workflowId,
         organization_id: orgId,
       }));
