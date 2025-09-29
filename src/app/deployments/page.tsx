@@ -739,12 +739,20 @@ function DeploymentsPageContent() {
         {selectedWorkflowForOrgAssignment && (
           <OrganizationAssignmentDialog
             open={orgAssignmentOpen}
-            onOpenChange={setOrgAssignmentOpen}
+            onOpenChange={(open) => {
+              setOrgAssignmentOpen(open);
+              if (!open) {
+                // Clean up when dialog closes
+                setSelectedWorkflowForOrgAssignment(null);
+              }
+            }}
             workflowId={selectedWorkflowForOrgAssignment.id}
             workflowName={selectedWorkflowForOrgAssignment.name}
             onSuccess={() => {
-              setOrgAssignmentOpen(false);
-              fetchWorkflows(false);
+              // Only refresh workflows after successful save
+              setTimeout(() => {
+                fetchWorkflows(false);
+              }, 100);
             }}
           />
         )}
