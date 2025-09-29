@@ -2133,13 +2133,41 @@ def execute_workflow(
                     if not params_for_mcp["applicant"]:
                         del params_for_mcp["applicant"]
 
-                results = loop.run_until_complete(
-                    execute_mcp_workflow(workflow, params_for_mcp, endpoint_full, workflow_id=workflow_id)
-                )
-                logger.info(
-                    "Received %d quotes from MCP workflow.",
-                    len(results.get("quotes", [])),
-                )
+                # Get timeout from workflow configuration, default to 25 minutes
+                timeout_minutes = workflow.get("timeout_minutes", 25)
+                # Ensure timeout is reasonable (max 29 minutes to leave buffer before Modal's 30 min timeout)
+                timeout_minutes = min(timeout_minutes, 29)
+                workflow_timeout = timeout_minutes * 60  # Convert to seconds
+                logger.info(f"Using workflow timeout of {timeout_minutes} minutes")
+                try:
+                    results = loop.run_until_complete(
+                        asyncio.wait_for(
+                            execute_mcp_workflow(workflow, params_for_mcp, endpoint_full, workflow_id=workflow_id),
+                            timeout=workflow_timeout
+                        )
+                    )
+                    logger.info(
+                        "Received %d quotes from MCP workflow.",
+                        len(results.get("quotes", [])),
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"Workflow execution timed out after {timeout_minutes} minutes")
+                    # Create a failure result for timeout
+                    results = {
+                        "workflow_result": {
+                            "success": False,
+                            "error": f"Workflow execution timed out after {timeout_minutes} minutes",
+                            "message": f"The workflow exceeded the maximum execution time of {timeout_minutes} minutes and was terminated"
+                        },
+                        "quotes": [],
+                        "performance_metrics": {
+                            "successful_steps": 0,
+                            "failed_steps": 1,
+                            "total_steps": total_steps
+                        },
+                        "execution_time": workflow_timeout
+                    }
+                    logger.error("Created timeout failure result for database update")
 
                 # Optional AI enrichment step (delegated to helper module for clarity)
                 try:

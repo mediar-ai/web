@@ -380,6 +380,10 @@ export function UnifiedWorkflowDialog({
                     <dt className="text-muted-foreground">Est. Duration:</dt>
                     <dd className="font-mono">{formatDuration(workflow.estimated_duration_seconds)}</dd>
                   </div>
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Timeout:</dt>
+                    <dd className="font-mono">{workflow.timeout_minutes || 25} minutes</dd>
+                  </div>
                 </dl>
               </div>
 
