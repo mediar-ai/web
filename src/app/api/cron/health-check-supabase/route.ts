@@ -166,6 +166,7 @@ export async function GET(request: Request) {
 
           // Update machine health status with uptime tracking
           const currentTime = new Date().toISOString();
+          const isHealthy = newStatus === 'healthy';
           const updateData: any = {
             health_status: newStatus,
             health_details: JSON.stringify(healthDetails),
