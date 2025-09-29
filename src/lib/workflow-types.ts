@@ -124,6 +124,8 @@ export interface Execution {
   execution_duration_seconds?: number;
   modal_call_id: string;
   error_message?: string;
+  error_analysis?: string; // AI-generated error analysis
+  error_analyzed_at?: string; // When the error was analyzed
   client_id?: string;
   execution_params?: Record<string, unknown>;
   // Machine assignment info
