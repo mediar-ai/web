@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/use-toast';
 import { Building2, Users, Crown } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -38,20 +37,13 @@ export function OrganizationAssignmentDialog({
   workflowName,
   onSuccess,
 }: OrganizationAssignmentDialogProps) {
-  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrgs, setSelectedOrgs] = useState<string[]>([]);
   const [initialOrgs, setInitialOrgs] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (open) {
-      fetchOrganizationAccess();
-    }
-  }, [open, workflowId]);
-
-  const fetchOrganizationAccess = async () => {
+  const fetchOrganizationAccess = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/remote-workflows/${workflowId}/org-access`);
@@ -66,15 +58,17 @@ export function OrganizationAssignmentDialog({
       setInitialOrgs(data.assignedOrganizations || []);
     } catch (error) {
       console.error('Failed to fetch organization access:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load organization access',
-        variant: 'destructive',
-      });
+      alert('Failed to load organization access');
     } finally {
       setLoading(false);
     }
-  };
+  }, [workflowId]);
+
+  useEffect(() => {
+    if (open) {
+      fetchOrganizationAccess();
+    }
+  }, [open, workflowId, fetchOrganizationAccess]);
 
   const handleSave = async () => {
     try {
@@ -93,20 +87,11 @@ export function OrganizationAssignmentDialog({
         throw new Error('Failed to update organization access');
       }
 
-      toast({
-        title: 'Success',
-        description: 'Organization access updated successfully',
-      });
-
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to update organization access:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to update organization access',
-        variant: 'destructive',
-      });
+      alert('Failed to update organization access');
     } finally {
       setSaving(false);
     }
@@ -139,7 +124,7 @@ export function OrganizationAssignmentDialog({
             ASSIGN ORGANIZATIONS
           </DialogTitle>
           <DialogDescription className="font-mono text-sm">
-            Select which organizations can access "{workflowName}"
+            Select which organizations can access &ldquo;{workflowName}&rdquo;
           </DialogDescription>
         </DialogHeader>
 
@@ -202,7 +187,9 @@ export function OrganizationAssignmentDialog({
                           >
                             {org.name}
                             {isMediar && (
-                              <Crown className="w-4 h-4 text-black" title="Mediar Organization" />
+                              <span title="Mediar Organization">
+                                <Crown className="w-4 h-4 text-black" />
+                              </span>
                             )}
                           </Label>
                           <div className="text-xs text-gray-500 font-mono mt-1">

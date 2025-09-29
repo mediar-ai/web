@@ -433,7 +433,7 @@ function DeploymentsPageContent() {
                   onDelete={() => handleDeleteWorkflow(workflow.id)}
                   onToggleCron={() => handleToggleCron(workflow.id)}
                   onManageOrganizations={() => handleManageOrganizations(workflow.id)}
-                  isMediarAdmin={isGlobalAdmin}
+                  isMediarAdmin={!!isGlobalAdmin}
                 />
               ))}
             </div>

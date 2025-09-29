@@ -31,27 +31,35 @@ export async function GET(request: Request) {
     const data = await result.json();
     const machines = data.data || [];
 
-    console.log(`Checking health for ${machines.length} machines`);
+    console.log(`Checking health for ${machines.length} machines using MCP endpoint`);
 
     // Check health for each machine
     const healthChecks = await Promise.allSettled(
       machines.map(async (machine: any) => {
         const checkStartTime = Date.now();
         try {
-          // Construct health endpoint URL
+          // Construct MCP endpoint URL
           const baseUrl = machine.url.replace(/\/$/, '');
-          const healthUrl = `${baseUrl}/health`;
+          const mcpUrl = `${baseUrl}/mcp`;
 
           // Set a timeout for the health check
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
-          const response = await fetch(healthUrl, {
-            method: 'GET',
+          // Call MCP get_applications to verify UI automation is working
+          const response = await fetch(mcpUrl, {
+            method: 'POST',
             signal: controller.signal,
             headers: {
+              'Content-Type': 'application/json',
               'Accept': 'application/json',
-            }
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'mcp_terminator-mcp-agent_get_applications',
+              params: {}
+            })
           });
 
           clearTimeout(timeoutId);
@@ -59,17 +67,42 @@ export async function GET(request: Request) {
 
           // Try to parse response body
           let healthData: any = {};
+          let hasTaskbar = false;
           try {
             const text = await response.text();
             if (text) {
-              healthData = JSON.parse(text);
+              const mcpResponse = JSON.parse(text);
+
+              // Check if we got a valid MCP response with applications
+              if (mcpResponse.result && Array.isArray(mcpResponse.result.applications)) {
+                // Look for taskbar in the applications list
+                hasTaskbar = mcpResponse.result.applications.some((app: any) =>
+                  app.name?.toLowerCase().includes('taskbar') ||
+                  app.name?.toLowerCase().includes('shell_traywnd')
+                );
+
+                console.log(`[${machine.name}] MCP response: ${mcpResponse.result.applications.length} apps, taskbar: ${hasTaskbar}`);
+
+                healthData = {
+                  method: 'mcp_get_applications',
+                  applicationCount: mcpResponse.result.applications.length,
+                  hasTaskbar,
+                  applications: mcpResponse.result.applications.slice(0, 5).map((app: any) => app.name)
+                };
+              } else if (mcpResponse.error) {
+                console.log(`[${machine.name}] MCP error: ${mcpResponse.error.message}`);
+                healthData = {
+                  method: 'mcp_get_applications',
+                  error: mcpResponse.error.message || 'MCP method error'
+                };
+              }
             }
           } catch {
             // If parsing fails, continue without health data
           }
 
-          // Determine health status
-          const isHealthy = response.ok && response.status === 200;
+          // Determine health status - healthy if we got a valid response with taskbar
+          const isHealthy = response.ok && response.status === 200 && hasTaskbar;
           const newStatus = isHealthy ? 'healthy' : 'unhealthy';
 
           // Create detailed health info
@@ -105,10 +138,13 @@ export async function GET(request: Request) {
           const newStatus = 'unknown';
           const responseTime = Date.now() - checkStartTime;
 
+          console.log(`[${machine.name}] Health check failed: ${error.message}`);
+
           const healthDetails = {
             lastCheck: new Date().toISOString(),
             status: newStatus,
-            error: error.message || 'Health check failed',
+            error: error.message || 'MCP health check failed',
+            endpoint: 'mcp',
             responseTime: responseTime
           };
 
