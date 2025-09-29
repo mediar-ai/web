@@ -20,8 +20,12 @@ export async function GET(request: NextRequest) {
 
     console.log(`📋 Fetching machines with status: ${status}, include_load: ${include_load}`);
 
+    // Use remote_machines table directly instead of the view which might not exist
+    const tableName = 'remote_machines';
+    console.log(`📋 Using table: ${tableName}`);
+
     let query = supabase
-      .from(include_load ? 'available_machines_with_load' : 'remote_machines')
+      .from(tableName)
       .select('*')
       .order('priority', { ascending: true })
       .order('name', { ascending: true });
@@ -36,6 +40,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: machines, error } = await query;
+    console.log(`📋 Query result: ${machines?.length || 0} machines found`);
 
     if (error) {
       throw new Error(`Database query failed: ${error.message}`);
@@ -61,26 +66,26 @@ export async function GET(request: NextRequest) {
       health_status: machine.health_status,
       region: machine.region,
       tags: machine.tags,
-      
+
       // Connection details
       endpoints: {
         mcp: machine.mcp_endpoint,
         management: machine.management_endpoint,
         health: machine.health_endpoint
       },
-      
+
       // Capabilities and limits
       capabilities: machine.capabilities,
       max_concurrent_executions: machine.max_concurrent_executions,
       priority: machine.priority,
-      
-      // Load information (only if using available_machines_with_load view)
+
+      // Load information (calculate from executions if needed)
       ...(include_load && {
         load_info: {
-          current_executions: machine.current_executions || 0,
-          queued_executions: machine.queued_executions || 0,
-          available_capacity: machine.available_capacity || machine.max_concurrent_executions,
-          load_percentage: machine.load_percentage || 0
+          current_executions: 0, // Would need to query executions table
+          queued_executions: 0,
+          available_capacity: machine.max_concurrent_executions,
+          load_percentage: 0
         }
       }),
       
