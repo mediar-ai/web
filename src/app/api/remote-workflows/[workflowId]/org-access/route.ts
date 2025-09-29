@@ -1,14 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEffectiveOrgId } from '@/lib/mediarAuth';
-import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { workflowId: string } }
 ) {
   try {
-    const workflowId = parseInt(params.id);
+    const workflowId = parseInt(params.workflowId);
     if (isNaN(workflowId)) {
       return NextResponse.json({ success: false, error: 'Invalid workflow ID' }, { status: 400 });
     }
@@ -71,10 +70,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { workflowId: string } }
 ) {
   try {
-    const workflowId = parseInt(params.id);
+    const workflowId = parseInt(params.workflowId);
     if (isNaN(workflowId)) {
       return NextResponse.json({ success: false, error: 'Invalid workflow ID' }, { status: 400 });
     }

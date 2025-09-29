@@ -2120,7 +2120,7 @@ def execute_workflow(
                 logger.info(" MCP Endpoint: %s", endpoint_full)
                 logger.info(" Workflow ID: %s", workflow_id)
                 logger.info(" Execution ID: %s", execution_id)
-                logger.info("⏰ Start Time: %s", datetime.now(timezone.utc).isoformat())
+                logger.info("Start Time: %s", datetime.now(timezone.utc).isoformat())
 
                 # Handle empty height parameter to avoid overriding defaults
                 params_for_mcp = execution_params.copy() if execution_params else {}
@@ -2492,10 +2492,10 @@ def execute_workflow(
                     logger.info(f"Sending alert to {monitor_url}")
                     response = requests.post(monitor_url, json=monitor_payload, timeout=5)
                     if response.status_code == 200:
-                        logger.info(f"✅ Alert check triggered successfully for failed execution {execution_id}")
+                        logger.info(f"Alert check triggered successfully for failed execution {execution_id}")
                         logger.info(f"Response: {response.text}")
                     else:
-                        logger.warning(f"❌ Failed to trigger alert check: {response.status_code} - {response.text}")
+                        logger.warning(f"Failed to trigger alert check: {response.status_code} - {response.text}")
             except Exception as alert_error:
                 logger.error(f"Error triggering alert check: {alert_error}")
 
@@ -2692,9 +2692,9 @@ def execute_workflow(
                         logger.info(f"Sending exception alert to {monitor_url}")
                         response = requests.post(monitor_url, json=monitor_payload, timeout=5)
                         if response.status_code == 200:
-                            logger.info(f"✅ Alert check triggered successfully for exception failure {execution_id}")
+                            logger.info(f"Alert check triggered successfully for exception failure {execution_id}")
                         else:
-                            logger.warning(f"❌ Failed to trigger alert check: {response.status_code}")
+                            logger.warning(f"Failed to trigger alert check: {response.status_code}")
                 except Exception as alert_error:
                     logger.error(f"Error triggering alert check in exception handler: {alert_error}")
 
