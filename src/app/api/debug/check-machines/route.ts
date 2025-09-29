@@ -30,11 +30,8 @@ export async function GET() {
       console.error('Error fetching from available_machines_with_load:', viewError);
     }
 
-    // Check if the view exists
-    const { data: views, error: viewsError } = await supabase
-      .rpc('pg_views')
-      .select('*')
-      .eq('viewname', 'available_machines_with_load');
+    // We can't easily check if view exists, so just note if the view query worked
+    const viewExists = !viewError;
 
     return NextResponse.json({
       success: true,
@@ -49,7 +46,7 @@ export async function GET() {
           data: machinesWithLoad || [],
           error: viewError?.message
         },
-        view_exists: views?.length > 0,
+        view_exists: viewExists,
         timestamp: new Date().toISOString()
       }
     });

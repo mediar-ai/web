@@ -20,9 +20,9 @@ export async function GET(request: NextRequest) {
 
     console.log(`📋 Fetching machines with status: ${status}, include_load: ${include_load}`);
 
-    // Use remote_machines table directly instead of the view which might not exist
-    const tableName = 'remote_machines';
-    console.log(`📋 Using table: ${tableName}`);
+    // Use view when include_load is true (for deployments page), otherwise use table directly
+    const tableName = include_load ? 'available_machines_with_load' : 'remote_machines';
+    console.log(`📋 Using table/view: ${tableName}`);
 
     let query = supabase
       .from(tableName)
@@ -79,13 +79,13 @@ export async function GET(request: NextRequest) {
       max_concurrent_executions: machine.max_concurrent_executions,
       priority: machine.priority,
 
-      // Load information (calculate from executions if needed)
+      // Load information (only if using available_machines_with_load view)
       ...(include_load && {
         load_info: {
-          current_executions: 0, // Would need to query executions table
-          queued_executions: 0,
-          available_capacity: machine.max_concurrent_executions,
-          load_percentage: 0
+          current_executions: machine.current_executions || 0,
+          queued_executions: machine.queued_executions || 0,
+          available_capacity: machine.available_capacity || machine.max_concurrent_executions,
+          load_percentage: machine.load_percentage || 0
         }
       }),
       
