@@ -501,7 +501,7 @@ def trigger_labeling_for_all_users():
 )
 def scheduled_labeling_processing():
     """Periodically triggers the labeling process for all users every 90 minutes."""
-    print("⏰ Starting scheduled labeling processing...")
+    print("Starting scheduled labeling processing...")
     
     try:
         # Check if any labeling coordinators are already running to prevent conflicts
