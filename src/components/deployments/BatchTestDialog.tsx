@@ -134,32 +134,37 @@ export function BatchTestDialog({
           );
           const data = await response.json();
 
-          if (data.success && data.machines.length > 0) {
-            setAvailableMachines(data.machines);
-            console.log('📋 Loaded machines for testing:', data.machines);
+          if (data.success) {
+            if (data.machines && data.machines.length > 0) {
+              setAvailableMachines(data.machines);
+              console.log('📋 Loaded machines for testing:', data.machines);
 
-            // Set initial selection to first machine if no machine is selected yet
-            if (!selectedMachineId && data.machines.length > 0) {
-              // Sort machines by priority (healthy first, then by load)
-              const sortedMachines = [...data.machines].sort((a, b) => {
-                // Prioritize healthy machines
-                if (a.health_status === 'healthy' && b.health_status !== 'healthy') return -1;
-                if (a.health_status !== 'healthy' && b.health_status === 'healthy') return 1;
+              // Set initial selection to first machine if no machine is selected yet
+              if (!selectedMachineId && data.machines.length > 0) {
+                // Sort machines by priority (healthy first, then by load)
+                const sortedMachines = [...data.machines].sort((a, b) => {
+                  // Prioritize healthy machines
+                  if (a.health_status === 'healthy' && b.health_status !== 'healthy') return -1;
+                  if (a.health_status !== 'healthy' && b.health_status === 'healthy') return 1;
 
-                // Then sort by available capacity (higher is better)
-                const aCapacity = a.load_info?.available_capacity || 0;
-                const bCapacity = b.load_info?.available_capacity || 0;
-                return bCapacity - aCapacity;
-              });
+                  // Then sort by available capacity (higher is better)
+                  const aCapacity = a.load_info?.available_capacity || 0;
+                  const bCapacity = b.load_info?.available_capacity || 0;
+                  return bCapacity - aCapacity;
+                });
 
-              setSelectedMachineId(sortedMachines[0].id.toString());
-              console.log('📋 Auto-selected first priority machine:', sortedMachines[0].name);
+                setSelectedMachineId(sortedMachines[0].id.toString());
+                console.log('📋 Auto-selected first priority machine:', sortedMachines[0].name);
+              }
+
+              // After loading machines, fetch optimal machine to potentially override default
+              await fetchOptimalMachine(data.machines);
+            } else {
+              console.warn('[WARNING] No active machines available for testing');
+              setAvailableMachines([]);
             }
-
-            // After loading machines, fetch optimal machine to potentially override default
-            await fetchOptimalMachine(data.machines);
           } else {
-            console.error('[ERROR] Failed to load machines:', data.error);
+            console.error('[ERROR] Failed to load machines:', data.error || data.details || 'Unknown error');
           }
         } catch (error) {
           console.error('[ERROR] Error fetching machines:', error);

@@ -20,26 +20,72 @@ export async function GET(request: NextRequest) {
 
     console.log(`📋 Fetching machines with status: ${status}, include_load: ${include_load}`);
 
-    // Use view when include_load is true (for deployments page), otherwise use table directly
-    const tableName = include_load ? 'available_machines_with_load' : 'remote_machines';
-    console.log(`📋 Using table/view: ${tableName}`);
+    // Try to use view first for include_load, fallback to table if view fails
+    let machines = null;
+    let error = null;
 
-    let query = supabase
-      .from(tableName)
-      .select('*')
-      .order('priority', { ascending: true })
-      .order('name', { ascending: true });
+    if (include_load) {
+      // Try the view first
+      console.log(`📋 Trying to use view: available_machines_with_load`);
+      const viewQuery = supabase
+        .from('available_machines_with_load')
+        .select('*')
+        .order('priority', { ascending: true })
+        .order('name', { ascending: true });
 
-    // Apply filters
-    if (status !== 'all') {
-      query = query.eq('status', status);
+      if (status !== 'all') {
+        viewQuery.eq('status', status);
+      }
+      if (region) {
+        viewQuery.eq('region', region);
+      }
+
+      const viewResult = await viewQuery;
+
+      if (viewResult.error) {
+        console.warn(`📋 View query failed, falling back to table: ${viewResult.error.message}`);
+        // Fallback to table
+        const tableQuery = supabase
+          .from('remote_machines')
+          .select('*')
+          .order('priority', { ascending: true })
+          .order('name', { ascending: true });
+
+        if (status !== 'all') {
+          tableQuery.eq('status', status);
+        }
+        if (region) {
+          tableQuery.eq('region', region);
+        }
+
+        const tableResult = await tableQuery;
+        machines = tableResult.data;
+        error = tableResult.error;
+      } else {
+        machines = viewResult.data;
+        error = viewResult.error;
+      }
+    } else {
+      // Use table directly when include_load is false
+      console.log(`📋 Using table: remote_machines`);
+      const tableQuery = supabase
+        .from('remote_machines')
+        .select('*')
+        .order('priority', { ascending: true })
+        .order('name', { ascending: true });
+
+      if (status !== 'all') {
+        tableQuery.eq('status', status);
+      }
+      if (region) {
+        tableQuery.eq('region', region);
+      }
+
+      const tableResult = await tableQuery;
+      machines = tableResult.data;
+      error = tableResult.error;
     }
 
-    if (region) {
-      query = query.eq('region', region);
-    }
-
-    const { data: machines, error } = await query;
     console.log(`📋 Query result: ${machines?.length || 0} machines found`);
 
     if (error) {
@@ -79,12 +125,12 @@ export async function GET(request: NextRequest) {
       max_concurrent_executions: machine.max_concurrent_executions,
       priority: machine.priority,
 
-      // Load information (only if using available_machines_with_load view)
+      // Load information (provide defaults if not from view)
       ...(include_load && {
         load_info: {
           current_executions: machine.current_executions || 0,
           queued_executions: machine.queued_executions || 0,
-          available_capacity: machine.available_capacity || machine.max_concurrent_executions,
+          available_capacity: machine.available_capacity !== undefined ? machine.available_capacity : machine.max_concurrent_executions,
           load_percentage: machine.load_percentage || 0
         }
       }),
