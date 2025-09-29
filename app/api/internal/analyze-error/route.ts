@@ -20,7 +20,7 @@ async function analyzeWithVertexAI(data: ErrorAnalysisRequest): Promise<string> 
     // Use the same Vertex AI configuration as the rest of the app
     const genAI = getVertexGenAI();
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-exp', // Using the faster model for quick error analysis
+      model: 'gemini-2.5-flash', // Using the faster model for quick error analysis
       safetySettings: [
         { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
         { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -92,7 +92,7 @@ Be specific about:
 - What SAP screen/element is problematic
 - What data validation is needed`;
 
-    console.log('🤖 Analyzing error with Vertex AI (gemini-2.0-flash-exp)');
+    console.log('🤖 Analyzing error with Vertex AI (gemini-2.5-flash)');
 
     // Generate content using Vertex AI
     const result = await model.generateContent({
