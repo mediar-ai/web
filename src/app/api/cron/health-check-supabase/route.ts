@@ -68,7 +68,7 @@ export async function GET(request: Request) {
 
           // Set a timeout for the health check
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
           // Call MCP get_applications to verify UI automation is working
           const response = await fetch(mcpUrl, {
@@ -97,6 +97,13 @@ export async function GET(request: Request) {
 
               // Check if we got a valid MCP response with applications
               if (mcpResponse.result) {
+                // Log the structure to debug
+                console.log(`[${machine.name}] MCP result structure:`, {
+                  hasDirectApps: !!mcpResponse.result.applications,
+                  hasContent: !!mcpResponse.result.content,
+                  contentLength: mcpResponse.result.content?.length
+                });
+
                 // Handle both direct applications array and nested structure
                 const applications = mcpResponse.result.applications ||
                                     (mcpResponse.result.content && mcpResponse.result.content[0]?.applications) ||
@@ -139,20 +146,20 @@ export async function GET(request: Request) {
           // Determine health status based on response
           let newStatus: string;
           if (!response.ok || response.status !== 200) {
-            newStatus = 'unknown'; // Network/connection issue
-            console.log(`[${machine.name}] Status: UNKNOWN - HTTP ${response.status}`);
+            newStatus = 'unhealthy'; // Network/connection issue = UNHEALTHY not UNKNOWN
+            console.log(`[${machine.name}] Status: UNHEALTHY - HTTP ${response.status}`);
           } else if (hasTaskbar) {
             newStatus = 'healthy'; // Taskbar detected = Windows UI accessible
             console.log(`[${machine.name}] Status: HEALTHY - Taskbar detected`);
-          } else if (healthData.applicationCount > 0) {
+          } else if (healthData.applicationCount && healthData.applicationCount > 0) {
             newStatus = 'unhealthy'; // Apps detected but no taskbar
             console.log(`[${machine.name}] Status: UNHEALTHY - ${healthData.applicationCount} apps but no taskbar`);
           } else if (healthData.applicationCount === 0) {
             newStatus = 'unhealthy'; // MCP responding but no UI access
             console.log(`[${machine.name}] Status: UNHEALTHY - No applications detected`);
           } else {
-            newStatus = 'unknown'; // Couldn't parse response properly
-            console.log(`[${machine.name}] Status: UNKNOWN - Parse error`);
+            newStatus = 'unhealthy'; // Couldn't parse response properly = UNHEALTHY not UNKNOWN
+            console.log(`[${machine.name}] Status: UNHEALTHY - Parse error or no data`);
           }
 
           // Create detailed health info
@@ -219,9 +226,9 @@ export async function GET(request: Request) {
           };
 
         } catch (error: any) {
-          // Machine is unreachable or errored
+          // Machine is unreachable or errored - should be UNHEALTHY not UNKNOWN
           const responseTime = Date.now() - checkStartTime;
-          const newStatus = 'unknown';
+          const newStatus = 'unhealthy';
 
           console.log(`[${machine.name}] Health check failed: ${error.message}`);
 
