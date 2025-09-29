@@ -20,7 +20,7 @@ import {
   WorkflowWithSettings,
 } from '@/lib/workflow-types';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
-import { SignIn, useAuth, useOrganization, useUser } from '@clerk/nextjs';
+import { SignIn, useAuth, useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
 
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
@@ -43,8 +43,9 @@ export default function DeploymentsPage() {
 
 function DeploymentsPageContent() {
   const { isLoaded, userId, has } = useAuth();
-  const { } = useUser();
+  const { user } = useUser();
   const { organization } = useOrganization();
+  const { userMemberships } = useOrganizationList();
   const searchParams = useSearchParams();
   const viewOrgId = searchParams.get('viewOrgId');
 
@@ -356,8 +357,18 @@ function DeploymentsPageContent() {
   const hasAdminRole = has({ role: "org:admin" });
   const hasMemberRole = has({ role: "org:member" });
 
+  // Check if user has @mediar.ai email OR is member of Mediar org
+  const hasMediarEmail = user?.emailAddresses?.some(
+    email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+  ) || false;
+
+  // Check if user is member of any Mediar organization
+  const isMemberOfMediarOrg = userMemberships?.data?.some(
+    membership => MEDIAR_ORG_IDS.includes(membership.organization.id)
+  ) || false;
+
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
-  const isGlobalAdmin = isMediarOrg && (hasAdminRole || hasMemberRole);
+  const isGlobalAdmin = hasMediarEmail || isMemberOfMediarOrg; // Either @mediar.ai email OR member of Mediar org
   const canDelete = isGlobalAdmin;
   const _isAdmin = hasAdminRole;
 
@@ -365,11 +376,14 @@ function DeploymentsPageContent() {
   console.log('[Deployments] Organization context:', {
     orgId: organization?.id,
     orgName: organization?.name,
+    userEmail: user?.primaryEmailAddress?.emailAddress,
+    hasMediarEmail,
+    isMemberOfMediarOrg,
     isMediarOrg,
     hasAdminRole,
     hasMemberRole,
     isGlobalAdmin,
-    MEDIAR_ORG_IDS
+    userMemberships: userMemberships?.data?.map(m => ({ id: m.organization.id, name: m.organization.name }))
   });
 
   // Filter executions
