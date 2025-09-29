@@ -30,12 +30,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Fetch all active remote machines
+    // Fetch all remote machines with MCP endpoints (ignore status since many have NULL)
     const { data: machines, error: fetchError } = await supabase
       .from('remote_machines')
       .select('*')
-      .not('mcp_endpoint', 'is', null)
-      .eq('status', 'active');
+      .not('mcp_endpoint', 'is', null);
 
     if (fetchError) {
       throw new Error(`Failed to fetch machines: ${fetchError.message}`);
@@ -59,107 +58,65 @@ export async function GET(request: Request) {
         let healthData: any = {};
 
         try {
-          // Construct MCP endpoint URL
-          const mcpUrl = machine.mcp_endpoint;
+          // Use the simple health endpoint instead of complex MCP endpoint
+          const baseUrl = machine.mcp_endpoint?.replace('/mcp', '') || machine.management_endpoint;
 
-          if (!mcpUrl) {
-            throw new Error('No MCP endpoint configured');
+          if (!baseUrl) {
+            throw new Error('No endpoint configured');
           }
+
+          const healthUrl = `${baseUrl}/health`;
+          console.log(`[${machine.name}] Checking health at: ${healthUrl}`);
 
           // Set a timeout for the health check
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-          // Call MCP get_applications to verify UI automation is working
-          const response = await fetch(mcpUrl, {
-            method: 'POST',
+          // Simple GET request to health endpoint
+          const response = await fetch(healthUrl, {
+            method: 'GET',
             signal: controller.signal,
             headers: {
-              'Content-Type': 'application/json',
               'Accept': 'application/json',
-            },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: 1,
-              method: 'mcp_terminator-mcp-agent_get_applications',
-              params: {}
-            })
+            }
           });
 
           clearTimeout(timeoutId);
           const responseTime = Date.now() - checkStartTime;
 
-          // Try to parse response body
+          // Simple health check - if we get a 200 response, it's healthy
+          let healthResponse: any = {};
           try {
             const text = await response.text();
             if (text) {
-              const mcpResponse = JSON.parse(text);
-
-              // Check if we got a valid MCP response with applications
-              if (mcpResponse.result) {
-                // Log the structure to debug
-                console.log(`[${machine.name}] MCP result structure:`, {
-                  hasDirectApps: !!mcpResponse.result.applications,
-                  hasContent: !!mcpResponse.result.content,
-                  contentLength: mcpResponse.result.content?.length
-                });
-
-                // Handle both direct applications array and nested structure
-                const applications = mcpResponse.result.applications ||
-                                    (mcpResponse.result.content && mcpResponse.result.content[0]?.applications) ||
-                                    [];
-
-                // Look for taskbar in the applications list
-                hasTaskbar = applications.some((app: any) =>
-                  app.name?.toLowerCase().includes('taskbar') ||
-                  app.name?.toLowerCase().includes('shell_traywnd')
-                );
-
-                // Update healthData with the correct application count
-                mcpResponse.result.applications = applications;
-
-                console.log(`[${machine.name}] MCP response: ${mcpResponse.result.applications.length} apps, taskbar: ${hasTaskbar}`);
-
-                // Log warning if no applications detected
-                if (mcpResponse.result.applications.length === 0) {
-                  console.warn(`[${machine.name}] WARNING: MCP returned 0 applications - possible service/permission issue`);
-                }
-
-                healthData = {
-                  method: 'mcp_get_applications',
-                  applicationCount: mcpResponse.result.applications.length,
-                  hasTaskbar,
-                  applications: mcpResponse.result.applications.slice(0, 5).map((app: any) => app.name)
-                };
-              } else if (mcpResponse.error) {
-                console.log(`[${machine.name}] MCP error: ${mcpResponse.error.message}`);
-                healthData = {
-                  method: 'mcp_get_applications',
-                  error: mcpResponse.error.message || 'MCP method error'
-                };
+              try {
+                healthResponse = JSON.parse(text);
+              } catch {
+                // Plain text response is fine too
+                healthResponse = { message: text };
               }
             }
           } catch (_parseError) {
-            console.log(`[${machine.name}] Failed to parse MCP response`);
+            console.log(`[${machine.name}] Could not parse response, but that's OK`);
           }
+
+          healthData = {
+            method: 'health_endpoint',
+            statusCode: response.status,
+            response: healthResponse
+          };
+
+          // Simple logic: if we got a 200 response, it's healthy
+          hasTaskbar = response.ok;
 
           // Determine health status based on response
           let newStatus: string;
-          if (!response.ok || response.status !== 200) {
-            newStatus = 'unhealthy'; // Network/connection issue = UNHEALTHY not UNKNOWN
-            console.log(`[${machine.name}] Status: UNHEALTHY - HTTP ${response.status}`);
-          } else if (hasTaskbar) {
-            newStatus = 'healthy'; // Taskbar detected = Windows UI accessible
-            console.log(`[${machine.name}] Status: HEALTHY - Taskbar detected`);
-          } else if (healthData.applicationCount && healthData.applicationCount > 0) {
-            newStatus = 'unhealthy'; // Apps detected but no taskbar
-            console.log(`[${machine.name}] Status: UNHEALTHY - ${healthData.applicationCount} apps but no taskbar`);
-          } else if (healthData.applicationCount === 0) {
-            newStatus = 'unhealthy'; // MCP responding but no UI access
-            console.log(`[${machine.name}] Status: UNHEALTHY - No applications detected`);
+          if (response.ok && response.status === 200) {
+            newStatus = 'healthy';
+            console.log(`[${machine.name}] Status: HEALTHY - HTTP 200`);
           } else {
-            newStatus = 'unhealthy'; // Couldn't parse response properly = UNHEALTHY not UNKNOWN
-            console.log(`[${machine.name}] Status: UNHEALTHY - Parse error or no data`);
+            newStatus = 'unhealthy';
+            console.log(`[${machine.name}] Status: UNHEALTHY - HTTP ${response.status}`);
           }
 
           // Create detailed health info
@@ -171,37 +128,51 @@ export async function GET(request: Request) {
             ...healthData
           };
 
-          // Update machine health status with uptime tracking
+          // Update machine health status - only update fields that exist
           const currentTime = new Date().toISOString();
           const isHealthy = newStatus === 'healthy';
+
+          // Simple update with just the essential fields
           const updateData: any = {
             health_status: newStatus,
-            health_details: JSON.stringify(healthDetails),
-            total_checks: machine.total_checks + 1,
-            successful_checks: machine.successful_checks + (isHealthy ? 1 : 0),
-            consecutive_failures: isHealthy ? 0 : (machine.consecutive_failures || 0) + 1,
-            last_response_time_ms: responseTime,
-            last_check_had_taskbar: hasTaskbar,
             updated_at: currentTime
           };
 
-          // Update uptime percentage
-          updateData.uptime_percentage =
-            ((updateData.successful_checks / updateData.total_checks) * 100).toFixed(2);
-
-          // Update average response time
-          if (machine.avg_response_time_ms) {
-            updateData.avg_response_time_ms = Math.round(
-              (machine.avg_response_time_ms * machine.total_checks + responseTime) / updateData.total_checks
-            );
-          } else {
-            updateData.avg_response_time_ms = responseTime;
+          // Only add optional fields if they exist on the machine
+          if ('health_details' in machine) {
+            updateData.health_details = JSON.stringify(healthDetails);
           }
 
-          // Set last healthy/unhealthy timestamps
-          if (isHealthy) {
+          if ('total_checks' in machine) {
+            updateData.total_checks = (machine.total_checks || 0) + 1;
+            updateData.successful_checks = (machine.successful_checks || 0) + (isHealthy ? 1 : 0);
+            updateData.consecutive_failures = isHealthy ? 0 : (machine.consecutive_failures || 0) + 1;
+          }
+
+          if ('last_response_time_ms' in machine) {
+            updateData.last_response_time_ms = responseTime;
+          }
+
+          if ('last_check_had_taskbar' in machine) {
+            updateData.last_check_had_taskbar = hasTaskbar;
+          }
+
+          if ('uptime_percentage' in machine && updateData.total_checks) {
+            updateData.uptime_percentage =
+              ((updateData.successful_checks / updateData.total_checks) * 100).toFixed(2);
+          }
+
+          if ('avg_response_time_ms' in machine && updateData.total_checks) {
+            updateData.avg_response_time_ms = Math.round(
+              ((machine.avg_response_time_ms || 0) * (machine.total_checks || 0) + responseTime) / updateData.total_checks
+            );
+          }
+
+          if ('last_healthy_at' in machine && isHealthy) {
             updateData.last_healthy_at = currentTime;
-          } else {
+          }
+
+          if ('last_unhealthy_at' in machine && !isHealthy) {
             updateData.last_unhealthy_at = currentTime;
           }
 
@@ -240,19 +211,38 @@ export async function GET(request: Request) {
             responseTime: responseTime
           };
 
-          // Update machine with error status
+          // Update machine with error status - only update fields that exist
           const currentTime = new Date().toISOString();
-          const updateData = {
+          const updateData: any = {
             health_status: newStatus,
-            health_details: JSON.stringify(healthDetails),
-            total_checks: machine.total_checks + 1,
-            consecutive_failures: (machine.consecutive_failures || 0) + 1,
-            last_unhealthy_at: currentTime,
-            last_response_time_ms: responseTime,
-            last_check_had_taskbar: false,
-            uptime_percentage: ((machine.successful_checks / (machine.total_checks + 1)) * 100).toFixed(2),
             updated_at: currentTime
           };
+
+          // Only add optional fields if they exist
+          if ('health_details' in machine) {
+            updateData.health_details = JSON.stringify(healthDetails);
+          }
+
+          if ('total_checks' in machine) {
+            updateData.total_checks = (machine.total_checks || 0) + 1;
+            updateData.consecutive_failures = (machine.consecutive_failures || 0) + 1;
+
+            if ('uptime_percentage' in machine) {
+              updateData.uptime_percentage = (((machine.successful_checks || 0) / updateData.total_checks) * 100).toFixed(2);
+            }
+          }
+
+          if ('last_unhealthy_at' in machine) {
+            updateData.last_unhealthy_at = currentTime;
+          }
+
+          if ('last_response_time_ms' in machine) {
+            updateData.last_response_time_ms = responseTime;
+          }
+
+          if ('last_check_had_taskbar' in machine) {
+            updateData.last_check_had_taskbar = false;
+          }
 
           const { error: updateError } = await supabase
             .from('remote_machines')
