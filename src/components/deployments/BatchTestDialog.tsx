@@ -129,42 +129,67 @@ export function BatchTestDialog({
       const fetchMachines = async () => {
         setLoadingMachines(true);
         try {
-          const response = await fetch(
-            '/api/machines?status=active&include_load=true'
+          // Fuck the API, use Supabase directly
+          const { createClient } = await import('@supabase/supabase-js');
+          const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
           );
-          const data = await response.json();
 
-          if (data.success) {
-            if (data.machines && data.machines.length > 0) {
-              setAvailableMachines(data.machines);
-              console.log('📋 Loaded machines for testing:', data.machines);
+          const { data: machines, error } = await supabase
+            .from('remote_machines')
+            .select('*')
+            .order('priority', { ascending: true })
+            .order('name', { ascending: true });
 
-              // Set initial selection to first machine if no machine is selected yet
-              if (!selectedMachineId && data.machines.length > 0) {
-                // Sort machines by priority (healthy first, then by load)
-                const sortedMachines = [...data.machines].sort((a, b) => {
-                  // Prioritize healthy machines
-                  if (a.health_status === 'healthy' && b.health_status !== 'healthy') return -1;
-                  if (a.health_status !== 'healthy' && b.health_status === 'healthy') return 1;
+          if (error) {
+            console.error('[ERROR] Failed to load machines:', error);
+            return;
+          }
 
-                  // Then sort by available capacity (higher is better)
-                  const aCapacity = a.load_info?.available_capacity || 0;
-                  const bCapacity = b.load_info?.available_capacity || 0;
-                  return bCapacity - aCapacity;
-                });
-
-                setSelectedMachineId(sortedMachines[0].id.toString());
-                console.log('📋 Auto-selected first priority machine:', sortedMachines[0].name);
+          if (machines && machines.length > 0) {
+            // Format machines to match expected structure
+            const formattedMachines = machines.map(m => ({
+              ...m,
+              endpoints: {
+                mcp: m.mcp_endpoint,
+                management: m.management_endpoint,
+                health: m.health_endpoint
+              },
+              load_info: {
+                current_executions: 0,
+                queued_executions: 0,
+                available_capacity: m.max_concurrent_executions || 1,
+                load_percentage: 0
               }
+            }));
 
-              // After loading machines, fetch optimal machine to potentially override default
-              await fetchOptimalMachine(data.machines);
-            } else {
-              console.warn('[WARNING] No active machines available for testing');
-              setAvailableMachines([]);
+            setAvailableMachines(formattedMachines);
+            console.log('📋 Loaded machines for testing:', formattedMachines);
+
+            // Set initial selection to first machine if no machine is selected yet
+            if (!selectedMachineId && formattedMachines.length > 0) {
+              // Sort machines by priority (healthy first, then by load)
+              const sortedMachines = [...formattedMachines].sort((a, b) => {
+                // Prioritize healthy machines
+                if (a.health_status === 'healthy' && b.health_status !== 'healthy') return -1;
+                if (a.health_status !== 'healthy' && b.health_status === 'healthy') return 1;
+
+                // Then sort by available capacity (higher is better)
+                const aCapacity = a.load_info?.available_capacity || 0;
+                const bCapacity = b.load_info?.available_capacity || 0;
+                return bCapacity - aCapacity;
+              });
+
+              setSelectedMachineId(sortedMachines[0].id.toString());
+              console.log('📋 Auto-selected first priority machine:', sortedMachines[0].name);
             }
+
+            // After loading machines, fetch optimal machine to potentially override default
+            await fetchOptimalMachine(formattedMachines);
           } else {
-            console.error('[ERROR] Failed to load machines:', data.error || data.details || 'Unknown error');
+            console.warn('[WARNING] No machines in database');
+            setAvailableMachines([]);
           }
         } catch (error) {
           console.error('[ERROR] Error fetching machines:', error);
