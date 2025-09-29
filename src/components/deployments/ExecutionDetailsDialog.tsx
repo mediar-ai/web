@@ -230,6 +230,32 @@ export function ExecutionDetailsDialog({
                     </Alert>
                   )}
 
+                  {execution.error_analysis && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-medium flex items-center gap-2">
+                        <span className="text-lg">🤖</span> AI Error Analysis
+                      </h3>
+                      <div className="prose prose-sm max-w-none bg-blue-50 p-4 rounded-lg border border-blue-200">
+                        <div
+                          dangerouslySetInnerHTML={{
+                            __html: execution.error_analysis
+                              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                              .replace(/^- (.*?)$/gm, '<li>$1</li>')
+                              .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+                              .replace(/\n\n/g, '</p><p>')
+                              .replace(/^/, '<p>')
+                              .replace(/$/, '</p>')
+                          }}
+                        />
+                      </div>
+                      {execution.error_analyzed_at && (
+                        <p className="text-xs text-muted-foreground">
+                          Analyzed at: {new Date(execution.error_analyzed_at).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <div>
                     <ApiRequestBlock
                       method="POST"
