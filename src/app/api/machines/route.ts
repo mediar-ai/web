@@ -34,7 +34,12 @@ export async function GET(request: NextRequest) {
         .order('name', { ascending: true });
 
       if (status !== 'all') {
-        viewQuery.eq('status', status);
+        // Include machines with NULL status when looking for active machines
+        if (status === 'active') {
+          viewQuery.or('status.eq.active,status.is.null');
+        } else {
+          viewQuery.eq('status', status);
+        }
       }
       if (region) {
         viewQuery.eq('region', region);
@@ -52,7 +57,12 @@ export async function GET(request: NextRequest) {
           .order('name', { ascending: true });
 
         if (status !== 'all') {
-          tableQuery.eq('status', status);
+          // Include machines with NULL status when looking for active machines
+          if (status === 'active') {
+            tableQuery.or('status.eq.active,status.is.null');
+          } else {
+            tableQuery.eq('status', status);
+          }
         }
         if (region) {
           tableQuery.eq('region', region);
