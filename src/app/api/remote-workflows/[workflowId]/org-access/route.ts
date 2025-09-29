@@ -4,15 +4,16 @@ import { getEffectiveOrgId } from '@/lib/mediarAuth';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { workflowId: string } }
+  { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
-    const workflowId = parseInt(params.workflowId);
+    const { workflowId: workflowIdParam } = await params;
+    const workflowId = parseInt(workflowIdParam);
     if (isNaN(workflowId)) {
       return NextResponse.json({ success: false, error: 'Invalid workflow ID' }, { status: 400 });
     }
 
-    const { orgId, isMediarOrg, isMediarAdmin } = await getEffectiveOrgId();
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId();
 
     // Only Mediar org/admin can view organization access
     if (!isMediarOrg && !isMediarAdmin) {
@@ -70,15 +71,16 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { workflowId: string } }
+  { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
-    const workflowId = parseInt(params.workflowId);
+    const { workflowId: workflowIdParam } = await params;
+    const workflowId = parseInt(workflowIdParam);
     if (isNaN(workflowId)) {
       return NextResponse.json({ success: false, error: 'Invalid workflow ID' }, { status: 400 });
     }
 
-    const { orgId, isMediarOrg, isMediarAdmin } = await getEffectiveOrgId();
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId();
 
     // Only Mediar org/admin can update organization access
     if (!isMediarOrg && !isMediarAdmin) {
