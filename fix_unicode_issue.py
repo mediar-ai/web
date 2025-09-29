@@ -18,6 +18,8 @@ def fix_unicode_in_file(filepath):
         ('✅ Alert check triggered', 'Alert check triggered'),
         ('❌ Failed to trigger', 'Failed to trigger'),
         ('⏰ Starting scheduled', 'Starting scheduled'),
+        ('⏸  ', ''),  # Remove pause emoji with extra space
+        ('⏸ ', ''),  # Remove pause emoji
     ]
 
     for old, new in replacements:

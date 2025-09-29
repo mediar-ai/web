@@ -365,7 +365,7 @@ def check_failure_patterns_for_workflow(cur, conn, workflow_id):
             if cancelled_ids:
                 logger.warning(" Cancelled execution IDs: %s", cancelled_ids)
             logger.warning(
-                "⏸ Workflow %d status changed to 'paused' to prevent new executions",
+                "Workflow %d status changed to 'paused' to prevent new executions",
                 workflow_id,
             )
 
@@ -3099,7 +3099,7 @@ def check_and_process_queued_jobs():
             )
 
             if not cur.fetchone():
-                logger.debug("⏸  Another global scheduler is already running")
+                logger.debug("Another global scheduler is already running")
                 return {
                     "status": "skipped",
                     "reason": "scheduler_already_running",
@@ -3181,7 +3181,7 @@ def check_and_process_queued_jobs():
 
         if not jobs_to_claim:
             logger.debug(
-                "⏸ No available jobs found (all machines busy or no queued jobs)"
+                "No available jobs found (all machines busy or no queued jobs)"
             )
             return {"status": "no_available_jobs", "coordinator_id": coordinator_id}
 
@@ -3227,7 +3227,7 @@ def check_and_process_queued_jobs():
                 )
 
         if not jobs_to_process:
-            logger.debug("⏸ No jobs can be claimed after capacity check")
+            logger.debug("No jobs can be claimed after capacity check")
             return {"status": "no_available_jobs", "coordinator_id": coordinator_id}
 
         #  CLAIM ALL AVAILABLE JOBS: Process multiple jobs in parallel

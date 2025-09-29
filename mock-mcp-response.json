@@ -1,0 +1,33 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "applications": [
+      {
+        "name": "Windows Shell Experience Host",
+        "process_id": 6084,
+        "main_window_handle": "0x1234"
+      },
+      {
+        "name": "Taskbar",
+        "process_id": 3456,
+        "main_window_handle": "0x5678"
+      },
+      {
+        "name": "Microsoft Edge",
+        "process_id": 8976,
+        "main_window_handle": "0x9ABC"
+      },
+      {
+        "name": "File Explorer",
+        "process_id": 2345,
+        "main_window_handle": "0xDEF0"
+      },
+      {
+        "name": "terminator-mcp-agent",
+        "process_id": 12345,
+        "main_window_handle": "0x0000"
+      }
+    ]
+  }
+}
