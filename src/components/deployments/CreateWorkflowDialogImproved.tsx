@@ -72,6 +72,7 @@ export function CreateWorkflowDialog({
   const [category, setCategory] = useState('general');
   const [difficulty, setDifficulty] = useState('medium');
   const [estimatedDuration, setEstimatedDuration] = useState(60);
+  const [timeoutMinutes, setTimeoutMinutes] = useState(25);
   const [automationSequence, setAutomationSequence] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
@@ -179,6 +180,7 @@ export function CreateWorkflowDialog({
             category,
             difficulty_level: difficulty,
             estimated_duration_seconds: estimatedDuration,
+            timeout_minutes: timeoutMinutes,
             automation_sequence: automationSequence,
             tags,
             set_as_active: true
@@ -496,6 +498,21 @@ export function CreateWorkflowDialog({
                     min={1}
                     className="mt-1"
                   />
+                </div>
+
+                <div>
+                  <Label htmlFor="timeout">Timeout (minutes)</Label>
+                  <Input
+                    id="timeout"
+                    type="number"
+                    value={timeoutMinutes}
+                    onChange={(e) => setTimeoutMinutes(Math.min(Math.max(parseInt(e.target.value) || 1, 1), 120))}
+                    min={1}
+                    max={120}
+                    className="mt-1"
+                    placeholder="25"
+                  />
+                  <p className="text-xs text-gray-600 mt-1">Max execution time before workflow is terminated</p>
                 </div>
 
                 {/* Tags */}
