@@ -79,6 +79,9 @@ export interface Workflow {
   };
   created_at: string;
   updated_at: string;
+  // Organization fields (populated for Mediar admins)
+  organization_id?: string;
+  shared_with_orgs?: string[];
 }
 
 // Workflow with nested settings workflows

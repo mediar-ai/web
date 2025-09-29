@@ -23,6 +23,8 @@ import {
   ArrowRight,
   Pause,
   Trash2,
+  Building2,
+  Share2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -52,6 +54,8 @@ interface WorkflowCardEnhancedProps {
   onEdit?: () => void;
   onDelete?: () => void;
   onToggleCron?: () => void;
+  onManageOrganizations?: () => void;
+  isMediarAdmin?: boolean;
   className?: string;
 }
 
@@ -67,6 +71,8 @@ export function WorkflowCardEnhanced({
   onEdit,
   onDelete,
   onToggleCron,
+  onManageOrganizations,
+  isMediarAdmin = false,
   className,
 }: WorkflowCardEnhancedProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -189,6 +195,15 @@ export function WorkflowCardEnhanced({
               <p className="text-sm text-gray-600 line-clamp-2">
                 {workflow.description || 'No description provided'}
               </p>
+              {/* Organization Access Info for Mediar Admins */}
+              {isMediarAdmin && workflow.shared_with_orgs && workflow.shared_with_orgs.length > 0 && (
+                <div className="mt-2 flex items-center gap-1">
+                  <Share2 className="w-3 h-3 text-gray-400" />
+                  <span className="text-xs font-mono text-gray-500">
+                    Shared with {workflow.shared_with_orgs.length} org{workflow.shared_with_orgs.length > 1 ? 's' : ''}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Action Menu */}
@@ -227,6 +242,12 @@ export function WorkflowCardEnhanced({
                 <DropdownMenuItem onClick={onDuplicate}>
                   Duplicate
                 </DropdownMenuItem>
+                {isMediarAdmin && (
+                  <DropdownMenuItem onClick={onManageOrganizations}>
+                    <Building2 className="mr-2 h-4 w-4" />
+                    Manage Organizations
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={onDelete}
