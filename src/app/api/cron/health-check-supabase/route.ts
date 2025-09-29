@@ -139,7 +139,7 @@ export async function GET(request: Request) {
                 };
               }
             }
-          } catch (parseError) {
+          } catch (_parseError) {
             console.log(`[${machine.name}] Failed to parse MCP response`);
           }
 
