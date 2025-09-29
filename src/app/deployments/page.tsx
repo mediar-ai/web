@@ -361,6 +361,17 @@ function DeploymentsPageContent() {
   const canDelete = isGlobalAdmin;
   const _isAdmin = hasAdminRole;
 
+  // Debug logging for organization assignment feature
+  console.log('[Deployments] Organization context:', {
+    orgId: organization?.id,
+    orgName: organization?.name,
+    isMediarOrg,
+    hasAdminRole,
+    hasMemberRole,
+    isGlobalAdmin,
+    MEDIAR_ORG_IDS
+  });
+
   // Filter executions
   const filteredExecutions = executionWorkflowFilter === "all"
     ? executions
