@@ -3,7 +3,7 @@
 # Test MCP health endpoint for remote machines
 # Usage: ./test-mcp-health.sh <machine_url>
 
-MACHINE_URL=${1:-"http://localhost:9000"}
+MACHINE_URL=${1:-"http://172.178.65.145:8080"}
 
 echo "Testing MCP health check on: $MACHINE_URL"
 echo "========================================="

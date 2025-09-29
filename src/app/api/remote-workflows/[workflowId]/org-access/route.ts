@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEffectiveOrgId } from '@/lib/mediarAuth';
+import { clerkClient } from '@clerk/nextjs/server';
 
 export async function GET(
   request: NextRequest,
@@ -41,19 +42,21 @@ export async function GET(
       throw new Error(`Failed to fetch access list: ${error.message}`);
     }
 
-    // Get all organizations for selection
-    const { data: organizations, error: orgsError } = await supabase
-      .from('organizations')
-      .select('id, name')
-      .order('name');
+    // Get all organizations from Clerk
+    const clerk = await clerkClient();
+    const clerkOrganizations = await clerk.organizations.getOrganizationList({
+      limit: 100,
+    });
 
-    if (orgsError) {
-      throw new Error(`Failed to fetch organizations: ${orgsError.message}`);
-    }
+    // Transform Clerk organizations to match our format
+    const organizations = clerkOrganizations.data.map(org => ({
+      id: org.id,
+      name: org.name
+    }));
 
     return NextResponse.json({
       success: true,
-      organizations: organizations || [],
+      organizations: organizations,
       assignedOrganizations: (accessList || []).map(a => a.organization_id),
     });
   } catch (error) {
