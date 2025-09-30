@@ -79,9 +79,15 @@ function AdminPageContent() {
   const isOrgAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
   const isGlobalAdmin = hasMediarEmail; // @mediar.ai users are always global admins
 
-  // Format uptime in a human-readable way
-  const formatUptime = (uptimeSeconds: number | null | undefined): string => {
-    if (!uptimeSeconds || uptimeSeconds <= 0) return '-';
+  // Calculate uptime from created_at timestamp
+  const calculateUptime = (createdAt: string | null | undefined): string => {
+    if (!createdAt) return '-';
+
+    const created = new Date(createdAt);
+    const now = new Date();
+    const uptimeSeconds = Math.floor((now.getTime() - created.getTime()) / 1000);
+
+    if (uptimeSeconds <= 0) return '-';
 
     const days = Math.floor(uptimeSeconds / 86400);
     const hours = Math.floor((uptimeSeconds % 86400) / 3600);
@@ -889,8 +895,8 @@ function AdminPageContent() {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3">
-                                  <span className="font-mono text-xs" title={machine.uptime_seconds ? `${machine.uptime_seconds} seconds` : 'No uptime data'}>
-                                    {formatUptime(machine.uptime_seconds)}
+                                  <span className="font-mono text-xs" title={machine.created_at ? `Machine created: ${new Date(machine.created_at).toLocaleString()}` : 'No creation date'}>
+                                    {calculateUptime(machine.created_at)}
                                   </span>
                                 </td>
                                 <td className="px-4 py-3">
