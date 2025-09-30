@@ -803,7 +803,7 @@ function AdminPageContent() {
                       </div>
                     ) : (
                       <div className="overflow-x-scroll w-full">
-                        <table className="min-w-full table-fixed" style={{ width: '1400px' }}>
+                        <table className="min-w-full table-fixed" style={{ width: '1100px' }}>
                           <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">NAME</th>
@@ -812,10 +812,7 @@ function AdminPageContent() {
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">RELIABILITY</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LAST CHECK</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LOAD</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">TYPE</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">PRIORITY</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">MAX EXEC</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">REGION</th>
                               <th className="px-4 py-3 text-right font-mono text-xs text-gray-600">ACTIONS</th>
                             </tr>
                           </thead>
@@ -942,11 +939,6 @@ function AdminPageContent() {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3">
-                                  <span className="font-mono text-xs">
-                                    {machine.machine_type?.replace('_', ' ').toUpperCase()}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3">
                                   {editingMachine === machine.id ? (
                                     <input
                                       type="number"
@@ -961,38 +953,6 @@ function AdminPageContent() {
                                     />
                                   ) : (
                                     <span className="font-mono text-xs">{machine.priority}</span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3">
-                                  {editingMachine === machine.id ? (
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      value={editedMachineData.max_concurrent_executions}
-                                      onChange={(e) => setEditedMachineData({
-                                        ...editedMachineData,
-                                        max_concurrent_executions: parseInt(e.target.value)
-                                      })}
-                                      className="w-16 px-2 py-1 font-mono text-xs border border-black focus:outline-none focus:ring-1 focus:ring-black"
-                                    />
-                                  ) : (
-                                    <span className="font-mono text-xs">{machine.max_concurrent_executions}</span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3">
-                                  {editingMachine === machine.id ? (
-                                    <input
-                                      type="text"
-                                      value={editedMachineData.region || ''}
-                                      onChange={(e) => setEditedMachineData({
-                                        ...editedMachineData,
-                                        region: e.target.value
-                                      })}
-                                      className="w-20 px-2 py-1 font-mono text-xs border border-black focus:outline-none focus:ring-1 focus:ring-black"
-                                      placeholder="Region"
-                                    />
-                                  ) : (
-                                    <span className="font-mono text-xs">{machine.region || '-'}</span>
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
@@ -1041,7 +1001,7 @@ function AdminPageContent() {
                             ))}
                             {machines.length === 0 && (
                               <tr>
-                                <td colSpan={11} className="px-4 py-8 text-center text-gray-500 font-mono">
+                                <td colSpan={8} className="px-4 py-8 text-center text-gray-500 font-mono">
                                   No machines registered
                                 </td>
                               </tr>
