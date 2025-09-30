@@ -251,12 +251,14 @@ export async function POST(request: NextRequest) {
 
     // Also save to GitHub for version control
     try {
-      const category = body.workflow_type === 'settings' ? 'development' : 'production';
+      const isDevelopment = body.workflow_type === 'settings' || body.category === 'development';
       const githubResult = await githubWorkflowManager.saveWorkflow(
         body.name,
         yamlContent || yaml.dump(parsedSequence),
-        category,
-        `Create workflow: ${body.name}`
+        isDevelopment,
+        `Create workflow: ${body.name}`,
+        true,
+        newWorkflow.id  // Pass workflow ID for folder naming
       );
 
       if (githubResult.success) {

@@ -1,5 +1,11 @@
 import { Octokit } from '@octokit/rest';
 import yaml from 'js-yaml';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export interface GitHubWorkflowResult {
   success: boolean;
@@ -9,15 +15,7 @@ export interface GitHubWorkflowResult {
   prUrl?: string;
   prNumber?: number;
   branch?: string;
-}
-
-export interface WorkflowContent {
-  yaml: string;
-  metadata: {
-    path: string;
-    sha: string;
-    lastModified: string;
-  };
+  workflowId?: number;
 }
 
 export class GitHubWorkflowManager {
@@ -25,11 +23,12 @@ export class GitHubWorkflowManager {
   private owner = 'mediar-ai';
   private repo = 'workflows';
   private baseBranch = 'main';
+  private devBranch = 'dev';
 
   constructor() {
     const token = process.env.GITHUB_WORKFLOW_TOKEN || process.env.GITHUB_TOKEN;
     if (!token) {
-      console.warn('GitHub token not configured - GitHub operations will fail');
+      console.warn('GitHub token not configured');
     }
     this.octokit = new Octokit({
       auth: token,
@@ -38,80 +37,115 @@ export class GitHubWorkflowManager {
   }
 
   /**
-   * Save workflow to GitHub repository (creates branch and PR)
+   * Generate clean folder name from workflow name
+   */
+  private generateFolderName(workflowName: string): string {
+    return workflowName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')  // Remove non-alphanumeric
+      .substring(0, 50);
+  }
+
+  /**
+   * Save workflow with human-readable folder name mapped to ID
    */
   async saveWorkflow(
     workflowName: string,
     yamlContent: string,
-    category: 'production' | 'development' | 'archived' = 'production',
+    isDevelopment: boolean = false,
     message?: string,
-    createPR: boolean = true
+    createPR: boolean = true,
+    workflowId?: number
   ): Promise<GitHubWorkflowResult> {
     try {
       // Validate YAML
       yaml.load(yamlContent);
 
-      // Prepare path and branch name
-      const sanitizedName = workflowName.toLowerCase().replace(/[^a-z0-9-_]/g, '_');
-      const filePath = `${category}/${sanitizedName}/workflow.yaml`;
+      if (!workflowId) {
+        throw new Error('workflowId is required');
+      }
+
+      // Generate human-readable folder name
+      const folderName = this.generateFolderName(workflowName);
+      const filePath = `${folderName}/workflow.yaml`;
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const branchName = `workflow/${sanitizedName}-${timestamp}`;
+      const branchName = `workflow/${folderName}-${timestamp}`;
+      const targetBranch = isDevelopment ? this.devBranch : this.baseBranch;
 
       if (createPR) {
-        // Create a new branch from main
-        const { data: mainRef } = await this.octokit.git.getRef({
+        // Create a new branch from target
+        const { data: ref } = await this.octokit.git.getRef({
           owner: this.owner,
           repo: this.repo,
-          ref: `heads/${this.baseBranch}`
+          ref: `heads/${targetBranch}`
         });
 
         await this.octokit.git.createRef({
           owner: this.owner,
           repo: this.repo,
           ref: `refs/heads/${branchName}`,
-          sha: mainRef.object.sha
+          sha: ref.object.sha
         });
 
         console.log(`Created branch: ${branchName}`);
       }
 
-      // Check if file exists on target branch
+      // Check if file exists
       let existingSha: string | undefined;
       try {
         const { data: existingFile } = await this.octokit.repos.getContent({
           owner: this.owner,
           repo: this.repo,
           path: filePath,
-          ref: createPR ? branchName : this.baseBranch
+          ref: createPR ? branchName : targetBranch
         });
 
         if ('sha' in existingFile) {
           existingSha = existingFile.sha;
         }
       } catch (error: any) {
-        if (error.status !== 404) {
-          throw error;
-        }
-        // File doesn't exist, will create new
+        // File doesn't exist - that's OK
       }
 
-      // Create or update file on the branch
+      // Add metadata comment to YAML
+      const metadataComment = `# Workflow: ${workflowName}
+# ID: ${workflowId}
+# Generated: ${new Date().toISOString()}
+# Branch: ${targetBranch}
+# ---
+`;
+      const fullContent = metadataComment + yamlContent;
+
+      // Create or update file
       const { data } = await this.octokit.repos.createOrUpdateFileContents({
         owner: this.owner,
         repo: this.repo,
         path: filePath,
         message: message || `Add/Update workflow: ${workflowName}`,
-        content: Buffer.from(yamlContent).toString('base64'),
-        branch: createPR ? branchName : this.baseBranch,
+        content: Buffer.from(fullContent).toString('base64'),
+        branch: createPR ? branchName : targetBranch,
         ...(existingSha && { sha: existingSha })
       });
 
+      // Update Supabase with folder mapping (folder -> ID)
+      await supabase
+        .from('deployed_workflows')
+        .update({
+          github_folder: folderName,
+          github_path: filePath,
+          github_sha: data.commit.sha,
+          github_ref: createPR ? branchName : targetBranch,
+          github_sync_status: 'synced',
+          github_last_synced_at: new Date().toISOString()
+        })
+        .eq('id', workflowId);
+
       // Create PR if requested
       if (createPR) {
-        const prBody = `## New Workflow: ${workflowName}
+        const prBody = `## Workflow: ${workflowName}
 
 ### Details
-- **Category**: ${category}
+- **Target Branch**: ${targetBranch}
 - **Path**: \`${filePath}\`
 - **Created**: ${new Date().toISOString()}
 
@@ -119,14 +153,14 @@ export class GitHubWorkflowManager {
 ${message || 'Workflow created via Mediar UI'}
 
 ---
-*This PR was automatically generated by the Mediar workflow system*`;
+*Automated PR from Mediar workflow system*`;
 
         const { data: pr } = await this.octokit.pulls.create({
           owner: this.owner,
           repo: this.repo,
           title: `Add workflow: ${workflowName}`,
           head: branchName,
-          base: this.baseBranch,
+          base: targetBranch,
           body: prBody
         });
 
@@ -138,15 +172,18 @@ ${message || 'Workflow created via Mediar UI'}
           sha: data.commit.sha,
           prUrl: pr.html_url,
           prNumber: pr.number,
-          branch: branchName
+          branch: branchName,
+          workflowId
         };
       }
 
       return {
         success: true,
         path: filePath,
-        sha: data.commit.sha
+        sha: data.commit.sha,
+        workflowId
       };
+
     } catch (error) {
       console.error('Error saving workflow to GitHub:', error);
       return {
@@ -157,25 +194,75 @@ ${message || 'Workflow created via Mediar UI'}
   }
 
   /**
-   * Get workflow from GitHub repository
+   * Handle Git pushes - map folder to workflow
    */
-  async getWorkflow(
-    githubPath: string,
-    ref?: string
-  ): Promise<WorkflowContent | null> {
+  async syncFromGitPush(folderName: string, branch: string): Promise<{
+    workflowId: number;
+    isNew: boolean;
+  } | null> {
+    // Check if folder already mapped
+    const { data: existing } = await supabase
+      .from('deployed_workflows')
+      .select('id')
+      .eq('github_folder', folderName)
+      .single();
+
+    if (existing) {
+      return { workflowId: existing.id, isNew: false };
+    }
+
+    // New workflow pushed via Git - create in Supabase
+    const workflowPath = `${folderName}/workflow.yaml`;
+    const content = await this.getWorkflow(workflowPath, branch);
+
+    if (!content) return null;
+
+    // Extract name from YAML
+    let workflowName = folderName;
+    try {
+      const parsed = yaml.load(content.yaml) as any;
+      if (parsed.name) workflowName = parsed.name;
+    } catch (e) {
+      // Use folder name as fallback
+    }
+
+    // Create new workflow entry
+    const { data: newWorkflow, error } = await supabase
+      .from('deployed_workflows')
+      .insert({
+        name: workflowName,
+        github_folder: folderName,
+        github_path: workflowPath,
+        github_sha: content.metadata.sha,
+        github_ref: branch,
+        github_sync_status: 'synced',
+        automation_sequence: yaml.load(content.yaml),
+        status: branch === 'main' ? 'deployed' : 'draft',
+        version: '1.0.0'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Failed to create workflow from Git push:', error);
+      return null;
+    }
+
+    return { workflowId: newWorkflow.id, isNew: true };
+  }
+
+  async getWorkflow(path: string, ref?: string): Promise<any> {
     try {
       const { data } = await this.octokit.repos.getContent({
         owner: this.owner,
         repo: this.repo,
-        path: githubPath,
+        path,
         ref: ref || this.baseBranch
       });
 
       if ('content' in data && data.type === 'file') {
-        const yamlContent = Buffer.from(data.content, 'base64').toString('utf-8');
-
         return {
-          yaml: yamlContent,
+          yaml: Buffer.from(data.content, 'base64').toString('utf-8'),
           metadata: {
             path: data.path,
             sha: data.sha,
@@ -185,136 +272,10 @@ ${message || 'Workflow created via Mediar UI'}
       }
 
       return null;
-    } catch (error: any) {
-      if (error.status === 404) {
-        console.log(`Workflow not found at path: ${githubPath}`);
-        return null;
-      }
-      console.error('Error fetching workflow from GitHub:', error);
+    } catch (error) {
       return null;
-    }
-  }
-
-  /**
-   * List all workflows in a category
-   */
-  async listWorkflows(category: 'production' | 'development' | 'archived' = 'production') {
-    try {
-      const { data } = await this.octokit.repos.getContent({
-        owner: this.owner,
-        repo: this.repo,
-        path: category,
-        ref: this.baseBranch
-      });
-
-      if (!Array.isArray(data)) {
-        return [];
-      }
-
-      return data
-        .filter(item => item.type === 'dir')
-        .map(item => ({
-          name: item.name,
-          path: item.path
-        }));
-    } catch (error: any) {
-      if (error.status === 404) {
-        console.log(`Category not found: ${category}`);
-        return [];
-      }
-      console.error('Error listing workflows:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get workflow with associated files
-   */
-  async getWorkflowWithFiles(githubPath: string): Promise<{
-    workflow: WorkflowContent | null;
-    files: Record<string, string>;
-  }> {
-    try {
-      // Get the directory path (remove /workflow.yaml if present)
-      const dirPath = githubPath.replace(/\/workflow\.yaml$/, '');
-
-      // Get workflow
-      const workflowPath = githubPath.endsWith('.yaml') ? githubPath : `${githubPath}/workflow.yaml`;
-      const workflow = await this.getWorkflow(workflowPath);
-
-      if (!workflow) {
-        return { workflow: null, files: {} };
-      }
-
-      // List all files in the directory
-      const { data } = await this.octokit.repos.getContent({
-        owner: this.owner,
-        repo: this.repo,
-        path: dirPath,
-        ref: this.baseBranch
-      });
-
-      const files: Record<string, string> = {};
-
-      if (Array.isArray(data)) {
-        for (const item of data) {
-          if (item.type === 'file' && !item.name.endsWith('.yaml')) {
-            const { data: fileData } = await this.octokit.repos.getContent({
-              owner: this.owner,
-              repo: this.repo,
-              path: item.path,
-              ref: this.baseBranch
-            });
-
-            if ('content' in fileData) {
-              files[item.name] = Buffer.from(fileData.content, 'base64').toString('utf-8');
-            }
-          }
-        }
-      }
-
-      return { workflow, files };
-    } catch (error) {
-      console.error('Error fetching workflow with files:', error);
-      return { workflow: null, files: {} };
-    }
-  }
-
-  /**
-   * Create a new version tag
-   */
-  async createVersion(githubPath: string, version: string): Promise<boolean> {
-    try {
-      // Get latest commit for this file
-      const { data: commits } = await this.octokit.repos.listCommits({
-        owner: this.owner,
-        repo: this.repo,
-        path: githubPath,
-        per_page: 1
-      });
-
-      if (commits.length === 0) {
-        console.error('No commits found for path:', githubPath);
-        return false;
-      }
-
-      const tagName = `${githubPath.replace(/\//g, '-')}-v${version}`;
-
-      // Create tag
-      await this.octokit.git.createRef({
-        owner: this.owner,
-        repo: this.repo,
-        ref: `refs/tags/${tagName}`,
-        sha: commits[0].sha
-      });
-
-      return true;
-    } catch (error) {
-      console.error('Error creating version tag:', error);
-      return false;
     }
   }
 }
 
-// Export singleton instance
 export const githubWorkflowManager = new GitHubWorkflowManager();

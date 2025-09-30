@@ -132,14 +132,15 @@ export class WorkflowLoader {
       return { workflow: null, files: {} };
     }
 
-    let files: Record<string, string> = {};
+    const files: Record<string, string> = {};
 
     // If loaded from GitHub, also fetch associated files
     if (workflow.metadata.source === 'github' && workflow.metadata.github_path) {
-      const result = await githubWorkflowManager.getWorkflowWithFiles(
-        workflow.metadata.github_path
-      );
-      files = result.files;
+      // Just load the main workflow file for now
+      const result = await githubWorkflowManager.getWorkflow(workflow.metadata.github_path);
+      if (result) {
+        files['workflow.yaml'] = result.yaml;
+      }
     } else {
       // Try to load files from Supabase storage if they exist
       try {
