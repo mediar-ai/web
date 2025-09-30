@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cacheResponse } from '@/lib/responseCache';
 import { auth } from '@clerk/nextjs/server';
+import { workflowLoader } from '@/lib/workflow-loader';
 
 // Simple test endpoint
 export async function POST(
@@ -25,23 +26,11 @@ export async function GET(
   try {
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
-    
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Supabase environment variables are not set');
-    }
+    // Use the new workflow loader with GitHub priority
+    const loadedWorkflow = await workflowLoader.loadWorkflow(workflowIdNum);
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows_with_sequence')
-      .select('id, name, automation_sequence, status')
-      .eq('id', workflowId)
-      .single();
-
-    if (workflowError) {
+    if (!loadedWorkflow) {
       const errorResponse = {
         success: false,
         error: `Workflow ${workflowIdNum} not found`,
@@ -61,11 +50,24 @@ export async function GET(
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
+    // Get status from Supabase (metadata is always in Supabase)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+    const supabase = createClient(supabaseUrl!, supabaseServiceKey!);
+
+    const { data: workflowMeta } = await supabase
+      .from('deployed_workflows')
+      .select('status, description, category')
+      .eq('id', workflowIdNum)
+      .single();
+
+    const status = workflowMeta?.status || 'active';
+
     // --- DYNAMICALLY GENERATE SAMPLE INPUTS ---
     let sampleInputs = {};
     try {
-        if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence) && workflow.automation_sequence.length > 0) {
-          const mainSequence = workflow.automation_sequence[0];
+        if (loadedWorkflow.automation_sequence && Array.isArray(loadedWorkflow.automation_sequence) && loadedWorkflow.automation_sequence.length > 0) {
+          const mainSequence = loadedWorkflow.automation_sequence[0];
           if (mainSequence.arguments && mainSequence.arguments.variables) {
             sampleInputs = mainSequence.arguments.variables;
           }
@@ -77,29 +79,36 @@ export async function GET(
 
     // Build comprehensive workflow details
     const workflowDetails = {
-      id: workflow.id,
-      name: workflow.name,
-      status: workflow.status,
-      
+      id: loadedWorkflow.id,
+      name: loadedWorkflow.name,
+      status: status,
+
+      // Source information
+      source: loadedWorkflow.metadata.source,
+      ...(loadedWorkflow.metadata.github_path && {
+        github_path: loadedWorkflow.metadata.github_path,
+        github_sha: loadedWorkflow.metadata.github_sha
+      }),
+
       // Execution Information
       trigger_info: {
         endpoint: `/api/remote-workflows/${workflowIdNum}/execute`,
         method: 'POST',
         required_headers: ['Content-Type: application/json'],
-        status: workflow.status,
-        is_executable: workflow.status === 'deployed'
+        status: status,
+        is_executable: status === 'deployed'
       },
-      
-      // Workflow Definition (from database)
-      automation_sequence: workflow.automation_sequence,
-      
+
+      // Workflow Definition (from GitHub or Supabase)
+      automation_sequence: loadedWorkflow.automation_sequence,
+
       // Usage Examples
       usage_examples: {
         curl_example: `curl -X POST \\
   ${process.env.VERCEL_URL || 'https://app.mediar.ai'}/api/remote-workflows/${workflowIdNum}/execute \\
   -H "Content-Type: application/json" \\
   -d '${JSON.stringify(sampleInputs, null, 2)}'`,
-        
+
         javascript_example: `fetch('/api/remote-workflows/${workflowIdNum}/execute', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
