@@ -796,8 +796,8 @@ function AdminPageContent() {
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
+                      <div className="overflow-x-auto overflow-y-visible">
+                        <table className="w-full min-w-max">
                           <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">NAME</th>
