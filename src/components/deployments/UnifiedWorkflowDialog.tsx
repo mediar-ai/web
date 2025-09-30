@@ -32,6 +32,8 @@ interface Machine {
   max_concurrent?: number;
   health_status?: string;
   health_details?: any;
+  uptime_seconds?: number;
+  last_health_check?: string;
 }
 
 interface MachineAssignment {
@@ -780,13 +782,32 @@ export function UnifiedWorkflowDialog({
                         </SelectTrigger>
                         <SelectContent>
                           {getAvailableMachinesForAssignment().map((machine) => {
-                            // Parse health details for tooltip
+                            // Parse health details for tooltip with uptime
                             let healthTooltip = '';
+
+                            // Format uptime
+                            const formatUptime = (uptimeSeconds: number | null | undefined): string => {
+                              if (!uptimeSeconds || uptimeSeconds <= 0) return 'N/A';
+                              const days = Math.floor(uptimeSeconds / 86400);
+                              const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+                              const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+                              if (days > 0) return `${days}d ${hours}h`;
+                              if (hours > 0) return `${hours}h ${minutes}m`;
+                              return `${minutes}m`;
+                            };
+
                             if (machine.health_details) {
                               try {
                                 const details = typeof machine.health_details === 'string'
                                   ? JSON.parse(machine.health_details)
                                   : machine.health_details;
+
+                                healthTooltip = `Health: ${machine.health_status || 'unknown'}\n`;
+
+                                // Add uptime if available
+                                if ((machine as any).uptime_seconds) {
+                                  healthTooltip += `Uptime: ${formatUptime((machine as any).uptime_seconds)}\n`;
+                                }
 
                                 if (details.lastCheck) {
                                   const lastCheck = new Date(details.lastCheck);
@@ -794,22 +815,27 @@ export function UnifiedWorkflowDialog({
                                   const timeStr = timeAgo < 60 ? `${timeAgo}s ago`
                                     : timeAgo < 3600 ? `${Math.floor(timeAgo / 60)}m ago`
                                     : `${Math.floor(timeAgo / 3600)}h ago`;
-
-                                  healthTooltip = `Health: ${machine.health_status || 'unknown'}\n`;
                                   healthTooltip += `Last check: ${timeStr}\n`;
+
                                   if (details.responseTime) {
-                                    healthTooltip += `Response time: ${details.responseTime}ms\n`;
+                                    healthTooltip += `Response: ${details.responseTime}ms\n`;
                                   }
                                   if (details.error) {
                                     healthTooltip += `Error: ${details.error}\n`;
                                   }
                                 }
                               } catch (e) {
-                                // If parsing fails, just show basic status
+                                // If parsing fails, show basic info
                                 healthTooltip = `Health: ${machine.health_status || 'unknown'}`;
+                                if ((machine as any).uptime_seconds) {
+                                  healthTooltip += `\nUptime: ${formatUptime((machine as any).uptime_seconds)}`;
+                                }
                               }
                             } else {
                               healthTooltip = `Health: ${machine.health_status || 'unknown'}`;
+                              if ((machine as any).uptime_seconds) {
+                                healthTooltip += `\nUptime: ${formatUptime((machine as any).uptime_seconds)}`;
+                              }
                             }
 
                             return (

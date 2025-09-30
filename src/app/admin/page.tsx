@@ -79,6 +79,38 @@ function AdminPageContent() {
   const isOrgAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
   const isGlobalAdmin = hasMediarEmail; // @mediar.ai users are always global admins
 
+  // Format uptime in a human-readable way
+  const formatUptime = (uptimeSeconds: number | null | undefined): string => {
+    if (!uptimeSeconds || uptimeSeconds <= 0) return '-';
+
+    const days = Math.floor(uptimeSeconds / 86400);
+    const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+
+    if (days > 0) {
+      return `${days}d ${hours}h`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else {
+      return `${minutes}m`;
+    }
+  };
+
+  // Format time ago from timestamp
+  const formatTimeAgo = (timestamp: string | null | undefined): string => {
+    if (!timestamp) return '-';
+
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSeconds = Math.floor(diffMs / 1000);
+
+    if (diffSeconds < 60) return `${diffSeconds}s ago`;
+    if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
+    if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+    return `${Math.floor(diffSeconds / 86400)}d ago`;
+  };
+
   // Fetch all organizations if global admin
   useEffect(() => {
     if (isGlobalAdmin) {
@@ -771,6 +803,8 @@ function AdminPageContent() {
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">NAME</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">STATUS</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">HEALTH</th>
+                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">UPTIME</th>
+                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LAST CHECK</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LOAD</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">TYPE</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">PRIORITY</th>
@@ -850,9 +884,19 @@ function AdminPageContent() {
                                       'text-gray-400'
                                     } ${machine.health_status === 'healthy' ? 'animate-pulse' : ''}`} />
                                     <span className="font-mono text-xs">
-                                      {machine.health_status?.toUpperCase()}
+                                      {machine.health_status?.toUpperCase() || 'UNKNOWN'}
                                     </span>
                                   </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="font-mono text-xs" title={machine.uptime_seconds ? `${machine.uptime_seconds} seconds` : 'No uptime data'}>
+                                    {formatUptime(machine.uptime_seconds)}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="font-mono text-xs" title={machine.last_health_check ? new Date(machine.last_health_check).toLocaleString() : 'Never checked'}>
+                                    {formatTimeAgo(machine.last_health_check)}
+                                  </span>
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="font-mono text-xs">
@@ -969,7 +1013,7 @@ function AdminPageContent() {
                             ))}
                             {machines.length === 0 && (
                               <tr>
-                                <td colSpan={9} className="px-4 py-8 text-center text-gray-500 font-mono">
+                                <td colSpan={11} className="px-4 py-8 text-center text-gray-500 font-mono">
                                   No machines registered
                                 </td>
                               </tr>
