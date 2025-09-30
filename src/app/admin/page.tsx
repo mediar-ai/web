@@ -817,7 +817,7 @@ function AdminPageContent() {
                             {machines.map((machine) => (
                               <tr key={machine.id} className="hover:bg-gray-50">
                                 <td className="px-4 py-3">
-                                  <div>
+                                  <div className="max-w-xs">
                                     {editingMachine === machine.id ? (
                                       <input
                                         type="text"
@@ -830,10 +830,10 @@ function AdminPageContent() {
                                         placeholder="Machine name"
                                       />
                                     ) : (
-                                      <p className="font-mono font-bold">{machine.name}</p>
+                                      <p className="font-mono font-bold truncate" title={machine.name}>{machine.name}</p>
                                     )}
                                     {(machine.description || editingMachine === machine.id) && (
-                                      <p className="font-mono text-xs text-gray-600 mt-1">
+                                      <p className="font-mono text-xs text-gray-600 mt-1 truncate" title={machine.description || ''}>
                                         {editingMachine === machine.id ? (
                                           <input
                                             type="text"
