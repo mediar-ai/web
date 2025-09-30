@@ -3087,7 +3087,7 @@ if __name__ == "__main__":
     secrets=secrets,
     schedule=modal.Period(seconds=1),  # Run every second to check for queued jobs
     timeout=300,  # 5 minutes max per check
-    max_containers=1,  # ENSURE ONLY ONE INSTANCE
+    max_containers=1,  # ENSURE ONLY ONE INSTANCE (prevents race conditions)
     min_containers=0,  # Do not keep warm, prevent queueing
     retries=0,  # Do not retry on failure/skip
 )
@@ -3356,77 +3356,77 @@ def check_and_process_queued_jobs():
             return {"status": "no_jobs_claimed", "coordinator_id": coordinator_id}
 
         #  DISPATCH ALL CLAIMED JOBS TO MODAL IN PARALLEL
-        dispatched_jobs = []
+        # Prepare all dispatch calls
+        from modal import Function
+        execute_fn = Function.lookup("workflow-executor", "execute_workflow")
+
+        dispatch_calls = []
         for job_to_process in claimed_jobs:
-            execution_id = job_to_process["id"]
-            workflow_id = job_to_process["workflow_id"]
-            execution_params = job_to_process["execution_params"] or {}
-            client_id = job_to_process["client_id"]
-            assigned_machine_id = job_to_process["assigned_machine_id"]
-            mcp_endpoint = job_to_process["mcp_endpoint"]
-            version_number = job_to_process["version_number"]
+            dispatch_calls.append({
+                "execution_id": job_to_process["id"],
+                "workflow_id": job_to_process["workflow_id"],
+                "execution_params": job_to_process["execution_params"] or {},
+                "client_id": job_to_process["client_id"],
+                "assigned_machine_id": job_to_process["assigned_machine_id"],
+                "mcp_endpoint": job_to_process["mcp_endpoint"],
+                "version_number": job_to_process["version_number"],
+            })
 
+        # Dispatch all jobs at once in parallel
+        dispatched_jobs = []
+        failed_dispatches = []
+
+        logger.info(" Dispatching %d jobs to Modal in parallel...", len(dispatch_calls))
+
+        # Create all remote calls at once (truly parallel)
+        futures = []
+        for call in dispatch_calls:
             try:
-                logger.info(
-                    " Dispatching job %s to Modal for machine %s...",
-                    execution_id,
-                    assigned_machine_id,
-                )
-
-                # Get a reference to the execute_workflow function
-                # This is necessary when calling from within a scheduled function
-                from modal import Function
-                execute_fn = Function.lookup("workflow-executor", "execute_workflow")
-
                 modal_future = execute_fn.remote(
-                    workflow_id=workflow_id,
-                    mcp_endpoint=mcp_endpoint,
-                    execution_params=execution_params,
-                    client_id=client_id,
-                    execution_id=execution_id,
-                    version_number=version_number,
+                    workflow_id=call["workflow_id"],
+                    mcp_endpoint=call["mcp_endpoint"],
+                    execution_params=call["execution_params"],
+                    client_id=call["client_id"],
+                    execution_id=call["execution_id"],
+                    version_number=call["version_number"],
                 )
+                futures.append((call, modal_future))
+            except Exception as e:
+                logger.error(" Failed to create remote call for job %s: %s", call["execution_id"], e)
+                failed_dispatches.append(call["execution_id"])
 
-                dispatched_jobs.append(
-                    {
-                        "execution_id": execution_id,
-                        "workflow_id": workflow_id,
-                        "machine_id": assigned_machine_id,
-                        "modal_future": str(modal_future),
-                    }
-                )
+        # Log results
+        for call, modal_future in futures:
+            dispatched_jobs.append({
+                "execution_id": call["execution_id"],
+                "workflow_id": call["workflow_id"],
+                "machine_id": call["assigned_machine_id"],
+                "modal_future": str(modal_future),
+            })
+            logger.info(
+                " Job %s dispatched to Modal for machine %s",
+                call["execution_id"],
+                call["assigned_machine_id"],
+            )
 
-                logger.info(
-                    " Job %s successfully dispatched to Modal for machine %s",
-                    execution_id,
-                    assigned_machine_id,
-                )
-
-            except Exception as dispatch_error:
-                logger.error(
-                    " Failed to dispatch job %s to Modal: %s",
-                    execution_id,
-                    dispatch_error,
-                )
-
-                # Revert the execution status back to queued since dispatch failed
+        # Handle failed dispatches
+        if failed_dispatches:
+            for execution_id in failed_dispatches:
                 try:
                     cur.execute(
                         """
-                        UPDATE workflow_executions 
+                        UPDATE workflow_executions
                         SET status = 'queued', started_at = NULL, modal_call_id = NULL
                         WHERE id = %s
                     """,
                         (execution_id,),
                     )
-                    conn.commit()
-                    logger.info(
-                        " Reverted execution %s back to queued status", execution_id
-                    )
+                    logger.info(" Reverted execution %s back to queued status", execution_id)
                 except Exception as revert_error:
-                    logger.error(
-                        " Failed to revert execution status: %s", revert_error
-                    )
+                    logger.error(" Failed to revert execution status: %s", revert_error)
+
+            if failed_dispatches:
+                conn.commit()
 
         # Return summary of all dispatched jobs
         if dispatched_jobs:
