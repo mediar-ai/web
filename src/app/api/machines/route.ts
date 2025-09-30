@@ -155,6 +155,7 @@ export async function GET(request: NextRequest) {
       // Health details
       health_details: machine.health_details || {},
       last_health_check: machine.last_health_check,
+      uptime_seconds: machine.uptime_seconds,
       
       // Metadata
       created_at: machine.created_at,
