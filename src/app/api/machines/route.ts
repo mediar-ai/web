@@ -25,10 +25,10 @@ export async function GET(request: NextRequest) {
     let error = null;
 
     if (include_load) {
-      // Try the view first
-      console.log(`📋 Trying to use view: available_machines_with_load`);
-      const viewQuery = supabase
-        .from('available_machines_with_load')
+      // Use table directly instead of view to get reliability columns (total_checks, successful_checks, uptime_percentage)
+      console.log(`📋 Using table for include_load to get reliability data`);
+      const tableQuery = supabase
+        .from('remote_machines')
         .select('*')
         .order('priority', { ascending: true })
         .order('name', { ascending: true });
@@ -36,45 +36,18 @@ export async function GET(request: NextRequest) {
       if (status !== 'all') {
         // Include machines with NULL status when looking for active machines
         if (status === 'active') {
-          viewQuery.or('status.eq.active,status.is.null');
+          tableQuery.or('status.eq.active,status.is.null');
         } else {
-          viewQuery.eq('status', status);
+          tableQuery.eq('status', status);
         }
       }
       if (region) {
-        viewQuery.eq('region', region);
+        tableQuery.eq('region', region);
       }
 
-      const viewResult = await viewQuery;
-
-      if (viewResult.error) {
-        console.warn(`📋 View query failed, falling back to table: ${viewResult.error.message}`);
-        // Fallback to table
-        const tableQuery = supabase
-          .from('remote_machines')
-          .select('*')
-          .order('priority', { ascending: true })
-          .order('name', { ascending: true });
-
-        if (status !== 'all') {
-          // Include machines with NULL status when looking for active machines
-          if (status === 'active') {
-            tableQuery.or('status.eq.active,status.is.null');
-          } else {
-            tableQuery.eq('status', status);
-          }
-        }
-        if (region) {
-          tableQuery.eq('region', region);
-        }
-
-        const tableResult = await tableQuery;
-        machines = tableResult.data;
-        error = tableResult.error;
-      } else {
-        machines = viewResult.data;
-        error = viewResult.error;
-      }
+      const tableResult = await tableQuery;
+      machines = tableResult.data;
+      error = tableResult.error;
     } else {
       // Use table directly when include_load is false
       console.log(`📋 Using table: remote_machines`);
