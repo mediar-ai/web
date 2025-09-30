@@ -809,7 +809,7 @@ function AdminPageContent() {
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">NAME</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">STATUS</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">HEALTH</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">UPTIME</th>
+                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">RELIABILITY</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LAST CHECK</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LOAD</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">TYPE</th>
@@ -895,9 +895,31 @@ function AdminPageContent() {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3">
-                                  <span className="font-mono text-xs" title={machine.created_at ? `Machine created: ${new Date(machine.created_at).toLocaleString()}` : 'No creation date'}>
-                                    {calculateUptime(machine.created_at)}
-                                  </span>
+                                  {(() => {
+                                    const totalChecks = (machine as any).total_checks || 0;
+                                    const successfulChecks = (machine as any).successful_checks || 0;
+                                    const uptimePercent = totalChecks > 0
+                                      ? ((successfulChecks / totalChecks) * 100).toFixed(1)
+                                      : null;
+
+                                    if (!uptimePercent) {
+                                      return <span className="font-mono text-xs text-gray-400">-</span>;
+                                    }
+
+                                    const percentNum = parseFloat(uptimePercent);
+                                    const color = percentNum >= 99 ? 'text-black' :
+                                                 percentNum >= 95 ? 'text-gray-700' :
+                                                 percentNum >= 90 ? 'text-gray-600' : 'text-gray-500';
+
+                                    return (
+                                      <span
+                                        className={`font-mono text-xs font-bold ${color}`}
+                                        title={`${successfulChecks}/${totalChecks} checks successful`}
+                                      >
+                                        {uptimePercent}%
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="px-4 py-3">
                                   <span className="font-mono text-xs" title={machine.last_health_check ? new Date(machine.last_health_check).toLocaleString() : 'Never checked'}>
