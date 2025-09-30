@@ -24,6 +24,7 @@ from modal_apps.lib.locks import (
     release_acquired_locks,
 )
 from modal_apps.lib.mcp_client import normalize_endpoint, post_with_503_backoff
+from modal_apps.lib.github_loader import get_github_loader
 # File manager removed - files are now accessed via rclone mount
 from modal_apps.output_enrichment import enrich_results_if_enabled
 
