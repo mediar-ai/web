@@ -417,13 +417,145 @@ export function CreateWorkflowDialog({
             </div>
 
             {selectedTemplate && (
-              <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-700 mb-2">
-                  ✅ Template selected: <strong>{templates[selectedTemplate].name}</strong>
-                </p>
-                <p className="text-xs text-blue-600">
-                  Click &quot;Manual Creation&quot; tab to customize the workflow details.
-                </p>
+              <div className="mt-4 space-y-4">
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700 mb-2">
+                    ✅ Template selected: <strong>{templates[selectedTemplate].name}</strong>
+                  </p>
+                  <p className="text-xs text-blue-600">
+                    Customize the workflow details below before creating.
+                  </p>
+                </div>
+
+                {/* Editable fields for template */}
+                <div className="space-y-4 p-4 border-2 border-black rounded-lg">
+                  <div>
+                    <Label htmlFor="template-workflow-name">Workflow Name *</Label>
+                    <Input
+                      id="template-workflow-name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="My Awesome Workflow"
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="template-workflow-description">Description</Label>
+                    <Textarea
+                      id="template-workflow-description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Describe what this workflow does..."
+                      className="mt-1"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="template-category">Category</Label>
+                      <Select value={category} onValueChange={setCategory}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((cat) => (
+                            <SelectItem key={cat} value={cat}>
+                              {cat.replace('_', ' ').toUpperCase()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="template-difficulty">Difficulty</Label>
+                      <Select value={difficulty} onValueChange={setDifficulty}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {difficultyLevels.map((level) => (
+                            <SelectItem key={level} value={level}>
+                              {level.toUpperCase()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="template-duration">Estimated Duration (seconds)</Label>
+                      <Input
+                        id="template-duration"
+                        type="number"
+                        value={estimatedDuration}
+                        onChange={(e) => setEstimatedDuration(parseInt(e.target.value) || 60)}
+                        min={1}
+                        className="mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="template-timeout">Timeout (minutes)</Label>
+                      <Input
+                        id="template-timeout"
+                        type="number"
+                        value={timeoutMinutes}
+                        onChange={(e) => setTimeoutMinutes(Math.min(Math.max(parseInt(e.target.value) || 1, 1), 120))}
+                        min={1}
+                        max={120}
+                        className="mt-1"
+                        placeholder="25"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tags */}
+                  <div>
+                    <Label>Tags</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        placeholder="Add tag..."
+                        onKeyPress={(e) => e.key === 'Enter' && addTag()}
+                        className="flex-1"
+                      />
+                      <Button onClick={addTag} variant="outline" size="sm">
+                        Add
+                      </Button>
+                    </div>
+                    {tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="secondary"
+                            className="cursor-pointer"
+                            onClick={() => removeTag(tag)}
+                          >
+                            {tag} ×
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveTab('manual')}
+                      className="w-full"
+                    >
+                      View/Edit YAML →
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </TabsContent>
