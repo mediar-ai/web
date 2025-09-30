@@ -1,5 +1,24 @@
 # CLAUDE.md - Project Style Guidelines
 
+## Architecture Context
+
+### Workflow System (GitHub-First)
+- **Workflows stored in GitHub**: `mediar-ai/workflows` repo as source of truth
+- **Folder naming**: Human-readable (e.g., `onedriveautomation/workflow.yaml`)
+- **Bidirectional sync**: UI creates workflows → pushes to GitHub → webhook syncs back
+- **Modal executor**: Loads workflows from GitHub first, database fallback (requires `GITHUB_TOKEN` secret)
+- **Database column**: `github_folder` maps folder name to workflow ID
+
+### Modal Deployment
+- **Encoding fix**: Use `export PYTHONIOENCODING=utf-8 && modal deploy` on Windows
+- **Required secrets**: `supabase-secret`, `custom-secret`, `github-token`
+- **Loading priority**: GitHub repo → DB YAML → DB JSONB (legacy)
+
+### Environment Variables
+- **Vercel**: `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` for workflow sync
+- **Modal**: Same secrets via `modal secret create`
+- **Webhook endpoint**: `/api/webhooks/github` receives push events
+
 ## UI/UX Design Principles
 
 ### Color Scheme: Black & White Minimalism
