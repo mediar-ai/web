@@ -138,7 +138,15 @@ export function CreateWorkflowDialog({
       const result = await response.json();
 
       if (result.success) {
-        alert(`Workflow "${name}" created successfully!`);
+        const workflow = result.workflow;
+        const folderName = workflow.github_folder ||
+                          name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+        alert(
+          `✅ Workflow "${name}" created successfully!\n\n` +
+          `🔄 Synced to GitHub: ${folderName}/workflow.yaml\n` +
+          `📦 Version: ${workflow.version_info?.version_number || '1.0.0'}`
+        );
         onWorkflowCreated?.(result.workflow);
         onOpenChange(false);
         resetForm();
