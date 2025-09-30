@@ -40,12 +40,17 @@ logger = logging.getLogger(__name__)
 
 
 class SequenceLoader:
-    """Handles both YAML and JSONB sequence loading with auto-detection"""
+    """Handles workflow loading with GitHub-first, database fallback strategy"""
 
     @staticmethod
     def load_workflow_sequence(workflow_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Load sequence with YAML priority, JSONB fallback
+        Load sequence with GitHub priority, database fallback
+
+        Loading priority:
+        1. GitHub repo (if github_folder is set)
+        2. Database YAML column
+        3. Database JSONB column (legacy)
 
         Args:
             workflow_data: Database record from deployed_workflows_with_sequence view
@@ -54,30 +59,49 @@ class SequenceLoader:
             List of automation sequence steps (normalized format)
 
         Raises:
-            ValueError: If no valid sequence found in either format
+            ValueError: If no valid sequence found
         """
 
-        # Priority 1: Use YAML column if available
+        # Priority 1: Try loading from GitHub if folder is mapped
+        github_folder = workflow_data.get("github_folder")
+        github_ref = workflow_data.get("github_ref", "main")
+
+        if github_folder:
+            try:
+                logger.info(f"📥 Attempting to load from GitHub: {github_folder}")
+                github_loader = get_github_loader()
+                yaml_content = github_loader.load_workflow(github_folder, github_ref)
+
+                if yaml_content:
+                    parsed = github_loader.parse_workflow_yaml(yaml_content)
+                    logger.info(f"✅ Successfully loaded workflow from GitHub")
+                    return SequenceLoader._ensure_list_format(parsed)
+                else:
+                    logger.info("GitHub load returned None, falling back to database")
+            except Exception as e:
+                logger.warning(f"⚠️ GitHub load failed: {e}, falling back to database")
+
+        # Priority 2: Use database YAML column
         yaml_sequence = workflow_data.get("automation_sequence_yaml")
         if yaml_sequence and yaml_sequence.strip():
             try:
-                logger.info(" Loading workflow from YAML column")
+                logger.info("📦 Loading workflow from database YAML column")
                 parsed = yaml.safe_load(yaml_sequence)
                 return SequenceLoader._ensure_list_format(parsed)
             except yaml.YAMLError as e:
-                logger.warning(f" YAML parsing failed, falling back to JSONB: {e}")
+                logger.warning(f"⚠️ YAML parsing failed, falling back to JSONB: {e}")
 
-        # Priority 2: Fallback to JSONB column (legacy)
+        # Priority 3: Fallback to JSONB column (legacy)
         jsonb_sequence = workflow_data.get("automation_sequence")
         if jsonb_sequence:
-            logger.info(" Loading workflow from JSONB column (legacy)")
+            logger.info("📦 Loading workflow from database JSONB column (legacy)")
             if isinstance(jsonb_sequence, str):
                 parsed = json.loads(jsonb_sequence)
             else:
                 parsed = jsonb_sequence
             return SequenceLoader._ensure_list_format(parsed)
 
-        raise ValueError("No automation sequence found in either YAML or JSONB columns")
+        raise ValueError("No automation sequence found in GitHub or database")
 
     @staticmethod
     def _ensure_list_format(sequence: Any) -> List[Dict[str, Any]]:
