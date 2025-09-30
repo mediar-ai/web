@@ -156,7 +156,12 @@ export async function GET(request: NextRequest) {
       health_details: machine.health_details || {},
       last_health_check: machine.last_health_check,
       uptime_seconds: machine.uptime_seconds,
-      
+
+      // Reliability metrics
+      total_checks: machine.total_checks || 0,
+      successful_checks: machine.successful_checks || 0,
+      uptime_percentage: machine.uptime_percentage,
+
       // Metadata
       created_at: machine.created_at,
       updated_at: machine.updated_at
