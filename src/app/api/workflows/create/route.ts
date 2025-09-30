@@ -1,5 +1,6 @@
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
 import { validateWorkflowOutputParser } from '@/lib/workflow-validation';
+import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
 import { NextRequest, NextResponse } from 'next/server';
@@ -248,6 +249,61 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Created version: ${newVersion.version_number}`);
 
+    // Also save to GitHub for version control
+    try {
+      const category = body.workflow_type === 'settings' ? 'development' : 'production';
+      const githubResult = await githubWorkflowManager.saveWorkflow(
+        body.name,
+        yamlContent || yaml.dump(parsedSequence),
+        category,
+        `Create workflow: ${body.name}`
+      );
+
+      if (githubResult.success) {
+        console.log(`✅ Saved to GitHub: ${githubResult.path}`);
+
+        if (githubResult.prUrl) {
+          console.log(`📝 Created PR: ${githubResult.prUrl}`);
+        }
+
+        // Update workflow with GitHub reference
+        await supabase
+          .from('deployed_workflows')
+          .update({
+            github_path: githubResult.path,
+            github_sha: githubResult.sha,
+            github_ref: githubResult.branch || 'main',
+            github_sync_status: 'synced',
+            github_last_synced_at: new Date().toISOString()
+          })
+          .eq('id', newWorkflow.id);
+
+        // Log sync operation
+        await supabase
+          .from('github_workflow_sync_log')
+          .insert({
+            workflow_id: newWorkflow.id,
+            operation: 'push',
+            github_path: githubResult.path,
+            github_sha: githubResult.sha,
+            status: 'success'
+          });
+
+        // Add PR info to response if created
+        if (githubResult.prUrl) {
+          newWorkflow.github_pr_url = githubResult.prUrl;
+          newWorkflow.github_pr_number = githubResult.prNumber;
+          newWorkflow.github_branch = githubResult.branch;
+        }
+      } else {
+        console.warn(`⚠️ GitHub save failed: ${githubResult.error}`);
+        // Continue anyway - GitHub is optional enhancement
+      }
+    } catch (githubError) {
+      console.error('GitHub sync error:', githubError);
+      // Don't fail the whole operation - GitHub is supplementary
+    }
+
     // Return the complete workflow data
     const response = {
       success: true,
@@ -257,6 +313,14 @@ export async function POST(request: NextRequest) {
         cron_config: cronConfig,
       },
       message: `Workflow "${body.name}" created successfully with version ${newVersion.version_number}`,
+      ...(newWorkflow.github_pr_url && {
+        github: {
+          pr_url: newWorkflow.github_pr_url,
+          pr_number: newWorkflow.github_pr_number,
+          branch: newWorkflow.github_branch,
+          message: `Pull request created for review: ${newWorkflow.github_pr_url}`
+        }
+      })
     };
 
     return NextResponse.json(response, { status: 201 });
