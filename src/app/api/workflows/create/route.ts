@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
         yamlContent || yaml.dump(parsedSequence),
         isDevelopment,
         `Create workflow: ${body.name}`,
-        true,
+        false,  // Don't create PR - push directly to main
         newWorkflow.id  // Pass workflow ID for folder naming
       );
 
@@ -268,18 +268,7 @@ export async function POST(request: NextRequest) {
           console.log(`📝 Created PR: ${githubResult.prUrl}`);
         }
 
-        // Update workflow with GitHub reference
-        await supabase
-          .from('deployed_workflows')
-          .update({
-            github_path: githubResult.path,
-            github_sha: githubResult.sha,
-            github_ref: githubResult.branch || 'main',
-            github_sync_status: 'synced',
-            github_last_synced_at: new Date().toISOString()
-          })
-          .eq('id', newWorkflow.id);
-
+        // Update workflow with GitHub reference (already done in saveWorkflow, but ensure it's set)
         // Log sync operation
         await supabase
           .from('github_workflow_sync_log')
@@ -290,13 +279,6 @@ export async function POST(request: NextRequest) {
             github_sha: githubResult.sha,
             status: 'success'
           });
-
-        // Add PR info to response if created
-        if (githubResult.prUrl) {
-          newWorkflow.github_pr_url = githubResult.prUrl;
-          newWorkflow.github_pr_number = githubResult.prNumber;
-          newWorkflow.github_branch = githubResult.branch;
-        }
       } else {
         console.warn(`⚠️ GitHub save failed: ${githubResult.error}`);
         // Continue anyway - GitHub is optional enhancement
@@ -315,14 +297,6 @@ export async function POST(request: NextRequest) {
         cron_config: cronConfig,
       },
       message: `Workflow "${body.name}" created successfully with version ${newVersion.version_number}`,
-      ...(newWorkflow.github_pr_url && {
-        github: {
-          pr_url: newWorkflow.github_pr_url,
-          pr_number: newWorkflow.github_pr_number,
-          branch: newWorkflow.github_branch,
-          message: `Pull request created for review: ${newWorkflow.github_pr_url}`
-        }
-      })
     };
 
     return NextResponse.json(response, { status: 201 });
