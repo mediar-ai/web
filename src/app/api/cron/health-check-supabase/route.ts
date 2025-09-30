@@ -135,8 +135,14 @@ export async function GET(request: Request) {
           // Simple update with just the essential fields
           const updateData: any = {
             health_status: newStatus,
-            updated_at: currentTime
+            updated_at: currentTime,
+            last_health_check: currentTime
           };
+
+          // Update uptime_seconds if the health response includes it
+          if (healthResponse.uptime_seconds !== undefined) {
+            updateData.uptime_seconds = healthResponse.uptime_seconds;
+          }
 
           // Only add optional fields if they exist on the machine
           if ('health_details' in machine) {
@@ -215,7 +221,8 @@ export async function GET(request: Request) {
           const currentTime = new Date().toISOString();
           const updateData: any = {
             health_status: newStatus,
-            updated_at: currentTime
+            updated_at: currentTime,
+            last_health_check: currentTime
           };
 
           // Only add optional fields if they exist
