@@ -1679,7 +1679,9 @@ async def execute_mcp_workflow(
             )
         else:
             # Parse the response (handle SSE format)
+            logger.info("[DEBUG] About to read response.text (this may block if server keeps connection open)...")
             response_text = response.text
+            logger.info("[DEBUG] Successfully read response.text, length=%d bytes", len(response_text))
             if not response_text:
                 raise Exception("Empty response from MCP server")
 
