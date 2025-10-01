@@ -95,13 +95,14 @@ export async function POST(request: NextRequest) {
 
     // Check for JavaScript files referenced in workflow
     const jsFiles = fileList.filter(path => path.endsWith('.js'));
-    const referencedFiles = extractReferencedFiles(workflowContent);
+    const { files: referencedFilePaths, references: fileReferences } = extractReferencedFiles(workflowContent);
 
     // Validate that referenced files exist in the ZIP
     const missingFiles: string[] = [];
+    const missingReferences: FileReference[] = [];
     const foundFiles: string[] = [];
 
-    referencedFiles.forEach(ref => {
+    referencedFilePaths.forEach(ref => {
       // Check for exact match or with common path variations
       const found = fileList.some(file => {
         // Normalize paths for comparison
@@ -118,6 +119,11 @@ export async function POST(request: NextRequest) {
         foundFiles.push(ref);
       } else {
         missingFiles.push(ref);
+        // Find the reference info for this missing file
+        const refInfo = fileReferences.find(r => r.path === ref);
+        if (refInfo) {
+          missingReferences.push(refInfo);
+        }
       }
     });
 
@@ -129,6 +135,7 @@ export async function POST(request: NextRequest) {
           error: `Missing required files in ZIP: ${missingFiles.join(', ')}`,
           details: {
             missingFiles,
+            missingReferences,
             foundFiles,
             availableFiles: jsFiles
           }
@@ -365,7 +372,7 @@ export async function POST(request: NextRequest) {
         tags: workflowData.metadata?.tags || [],
         files: fileList,
         jsFiles: jsFiles,
-        referencedFiles: referencedFiles,
+        referencedFiles: referencedFilePaths,
         missingFiles: missingFiles,
         fileUrls: fileUrls,
         hasExternalFiles: filesToUpload.length > 0,
@@ -432,9 +439,35 @@ function validateWorkflowStructure(data: any): { valid: boolean; error?: string 
   return { valid: true };
 }
 
-function extractReferencedFiles(yamlContent: string): string[] {
+interface FileReference {
+  path: string;
+  lineNumber: number;
+  context: string;
+  pattern: string;
+}
+
+function extractReferencedFiles(yamlContent: string): { files: string[]; references: FileReference[] } {
   const files: string[] = [];
+  const references: FileReference[] = [];
   const foundPaths = new Set<string>();
+  const lines = yamlContent.split('\n');
+
+  // Helper to get line number from match index
+  const getLineNumber = (matchIndex: number): number => {
+    let charCount = 0;
+    for (let i = 0; i < lines.length; i++) {
+      charCount += lines[i].length + 1; // +1 for newline
+      if (charCount > matchIndex) {
+        return i + 1;
+      }
+    }
+    return lines.length;
+  };
+
+  // Helper to get context (the line where the match was found)
+  const getContext = (lineNum: number): string => {
+    return lines[lineNum - 1]?.trim() || '';
+  };
 
   // Pattern 1: require() statements in JavaScript code blocks
   const requirePattern = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
@@ -445,6 +478,13 @@ function extractReferencedFiles(yamlContent: string): string[] {
     if (!foundPaths.has(filePath)) {
       foundPaths.add(filePath);
       files.push(filePath);
+      const lineNumber = getLineNumber(match.index);
+      references.push({
+        path: filePath,
+        lineNumber,
+        context: getContext(lineNumber),
+        pattern: 'require()'
+      });
     }
   }
 
@@ -455,6 +495,13 @@ function extractReferencedFiles(yamlContent: string): string[] {
     if (!foundPaths.has(filePath) && (filePath.endsWith('.js') || filePath.includes('/'))) {
       foundPaths.add(filePath);
       files.push(filePath);
+      const lineNumber = getLineNumber(match.index);
+      references.push({
+        path: filePath,
+        lineNumber,
+        context: getContext(lineNumber),
+        pattern: 'import'
+      });
     }
   }
 
@@ -465,6 +512,13 @@ function extractReferencedFiles(yamlContent: string): string[] {
     if (!foundPaths.has(filePath)) {
       foundPaths.add(filePath);
       files.push(filePath);
+      const lineNumber = getLineNumber(match.index);
+      references.push({
+        path: filePath,
+        lineNumber,
+        context: getContext(lineNumber),
+        pattern: 'load_file'
+      });
     }
   }
 
@@ -475,8 +529,15 @@ function extractReferencedFiles(yamlContent: string): string[] {
     if (!foundPaths.has(filePath)) {
       foundPaths.add(filePath);
       files.push(filePath);
+      const lineNumber = getLineNumber(match.index);
+      references.push({
+        path: filePath,
+        lineNumber,
+        context: getContext(lineNumber),
+        pattern: 'file path field'
+      });
     }
   }
 
-  return files;
+  return { files, references };
 }

@@ -31,6 +31,7 @@ import Link from 'next/link';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
+import { toast } from 'sonner';
 
 function AdminPageContent() {
   const { isLoaded } = useAuth();
@@ -115,6 +116,16 @@ function AdminPageContent() {
     if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
     if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
     return `${Math.floor(diffSeconds / 86400)}d ago`;
+  };
+
+  // Copy to clipboard helper
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied to clipboard`);
+    } catch (err) {
+      toast.error('Failed to copy to clipboard');
+    }
   };
 
   // Fetch all organizations if global admin
@@ -833,7 +844,13 @@ function AdminPageContent() {
                                         placeholder="Machine name"
                                       />
                                     ) : (
-                                      <p className="font-mono font-bold truncate" title={machine.name}>{machine.name}</p>
+                                      <button
+                                        onClick={() => copyToClipboard(machine.name, 'Machine name')}
+                                        className="font-mono font-bold truncate hover:bg-gray-100 px-2 py-1 -mx-2 -my-1 rounded text-left w-full"
+                                        title={`${machine.name} (click to copy)`}
+                                      >
+                                        {machine.name}
+                                      </button>
                                     )}
                                     {(machine.description || editingMachine === machine.id) && (
                                       <p className="font-mono text-xs text-gray-600 mt-1 truncate" title={machine.description || ''}>
