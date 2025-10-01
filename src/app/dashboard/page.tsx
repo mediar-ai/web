@@ -11,6 +11,7 @@ import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { OrganizationAssignmentDialog } from '@/components/deployments/OrganizationAssignmentDialog';
+import { ExecutionsDataTable } from '@/components/dashboard/ExecutionsDataTable';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
@@ -55,7 +56,6 @@ function DashboardContent() {
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
   const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
-  const [executionWorkflowFilter, setExecutionWorkflowFilter] = useState<number | "all">("all");
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
   const [batchTestOpen, setBatchTestOpen] = useState(false);
@@ -478,234 +478,53 @@ function DashboardContent() {
             {/* Recent Executions */}
             {(executions.length > 0 || executionsLoading) && (
               <div className="space-y-4 mt-8">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <h2 className="text-lg font-bold font-mono uppercase">
-                      Recent Executions
-                      {executionWorkflowFilter !== "all" && !executionsLoading && (
-                        <span className="ml-2 text-sm font-normal text-gray-600">
-                          ({workflows.find(w => w.id === executionWorkflowFilter)?.name})
-                        </span>
-                      )}
-                    </h2>
-                  </div>
+                <h2 className="text-lg font-bold font-mono uppercase">Recent Executions</h2>
 
-                  <select
-                    value={executionWorkflowFilter}
-                    onChange={e => setExecutionWorkflowFilter(
-                      e.target.value === "all" ? "all" : parseInt(e.target.value)
-                    )}
-                    className="px-3 py-1 border-2 border-black font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                    disabled={executionsLoading}
-                  >
-                    <option value="all">All Workflows</option>
-                    {workflows.map(w => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="border-2 border-black">
-                  <table className="w-full">
-                    <thead className="bg-black text-white">
-                      <tr>
-                        <th className="text-left p-3 font-mono">Workflow</th>
-                        <th className="text-left p-3 font-mono">Status</th>
-                        <th className="text-left p-3 font-mono">Message</th>
-                        <th className="text-left p-3 font-mono">Started</th>
-                        <th className="text-left p-3 font-mono">Duration</th>
-                        <th className="text-left p-3 font-mono">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {executionsLoading && filteredExecutions.length === 0 ? (
-                        Array.from({ length: 5 }).map((_, index) => (
-                          <tr key={`skeleton-${index}`} className="border-t border-gray-200">
-                            <td className="p-3">
-                              <Skeleton className="h-4 w-32" />
-                            </td>
-                            <td className="p-3">
-                              <Skeleton className="h-6 w-20" />
-                            </td>
-                            <td className="p-3">
-                              <Skeleton className="h-4 w-48" />
-                            </td>
-                            <td className="p-3">
-                              <Skeleton className="h-4 w-40" />
-                            </td>
-                            <td className="p-3">
-                              <Skeleton className="h-4 w-16" />
-                            </td>
-                            <td className="p-3">
-                              <Skeleton className="h-8 w-8" />
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        filteredExecutions.slice(0, 10).map(execution => {
-                        const workflow = workflows.find(w => w.id === execution.workflow_id);
-                        const isLive = liveExecutions.some(le => le.id === execution.execution_id);
-
-                        // Parse formatted_output if it exists
-                        let formattedResult = null;
-                        if (execution.formatted_output) {
-                          try {
-                            formattedResult = typeof execution.formatted_output === 'string'
-                              ? JSON.parse(execution.formatted_output)
-                              : execution.formatted_output;
-                          } catch (e) {
-                            // If parsing fails, treat as null
-                            formattedResult = null;
-                          }
-                        }
-
-                        let badge, badgeColor;
-                        if (execution.status === 'error' || execution.status === 'timeout') {
-                          badge = execution.status.toUpperCase();
-                          badgeColor = 'bg-black text-white font-bold';
-                        } else if (execution.status === 'skipped' || formattedResult?.skipped) {
-                          badge = 'SKIPPED';
-                          badgeColor = 'bg-gray-200 text-gray-800';
-                        } else if (execution.status === 'completed' || formattedResult?.success) {
-                          badge = 'COMPLETED';
-                          badgeColor = 'bg-white border-2 border-black';
-                        } else if (execution.status === 'failed' || formattedResult?.success === false) {
-                          badge = 'FAILED';
-                          badgeColor = 'bg-black text-white font-bold';
-                        } else if (execution.status === 'running' || isLive) {
-                          badge = 'RUNNING';
-                          badgeColor = 'bg-black text-white animate-pulse';
-                        } else if (execution.status === 'cancelled') {
-                          badge = 'CANCELLED';
-                          badgeColor = 'bg-gray-200 text-gray-800';
-                        } else {
-                          badge = execution.status.toUpperCase();
-                          badgeColor = 'bg-gray-200 text-gray-800';
-                        }
-
-                        // Treat "No message from parser" as missing and fall back to error_message
-                        const message = (formattedResult?.message && formattedResult.message !== "No message from parser")
-                          ? formattedResult.message
-                          : execution.error_message || '-';
-                        const truncatedMessage = message.length > 80 ? message.substring(0, 80) + '...' : message;
-
-                        return (
-                          <tr key={`execution-${execution.execution_id}`} className="border-t border-gray-200 hover:bg-gray-50">
-                            <td className="p-3 font-mono text-sm">
-                              {workflow?.name || `Workflow ${execution.workflow_id}`}
-                            </td>
-                            <td className="p-3">
-                              <span className={`font-mono text-xs px-2 py-1 ${badgeColor}`}>
-                                {badge}
-                              </span>
-                            </td>
-                            <td className="p-3 font-mono text-xs text-gray-700">
-                              {truncatedMessage}
-                            </td>
-                            <td className="p-3 font-mono text-sm">
-                              {new Date(execution.started_at || execution.created_at).toLocaleString()}
-                            </td>
-                            <td className="p-3 font-mono text-sm">
-                              {execution.completed_at && execution.started_at
-                                ? `${Math.round((new Date(execution.completed_at).getTime() - new Date(execution.started_at).getTime()) / 1000)}s`
-                                : isLive ? 'Running...' : '-'}
-                            </td>
-                            <td className="p-3">
-                              <div className="flex gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 border border-black hover:bg-black hover:text-white"
-                                  onClick={() => fetchExecutionDetails(execution.execution_id)}
-                                  title="View Details"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                                {(execution.status === 'running' || execution.status === 'queued') && (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 bg-black text-white hover:bg-gray-800"
-                                    disabled={stoppingExecutions.has(execution.execution_id)}
-                                    onClick={async () => {
-                                      if (confirm(`Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`)) {
-                                        try {
-                                          setStoppingExecutions(prev => new Set(prev).add(execution.execution_id));
-                                          const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/cancel`, {
-                                            method: 'POST',
-                                          });
-                                          if (response.ok) {
-                                            await fetchExecutions(false);
-                                            await fetchLiveExecutions();
-                                          } else {
-                                            const error = await response.json();
-                                            console.error('Cancel failed:', error);
-                                            alert(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
-                                          }
-                                        } catch (error) {
-                                          console.error('Error canceling execution:', error);
-                                          alert('Error canceling execution');
-                                        } finally {
-                                          setStoppingExecutions(prev => {
-                                            const newSet = new Set(prev);
-                                            newSet.delete(execution.execution_id);
-                                            return newSet;
-                                          });
-                                        }
-                                      }
-                                    }}
-                                    title={execution.status === 'queued' ? 'Cancel' : 'Stop'}
-                                  >
-                                    <StopCircle className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                {canDelete && (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 border border-black hover:bg-red-600 hover:text-white hover:border-red-600"
-                                    disabled={deletingExecutions.has(execution.execution_id)}
-                                    onClick={async () => {
-                                      if (confirm(`Are you sure you want to DELETE this execution? This cannot be undone.`)) {
-                                        try {
-                                          setDeletingExecutions(prev => new Set(prev).add(execution.execution_id));
-                                          const response = await fetch(`/api/remote-workflows/executions/${execution.execution_id}/delete`, {
-                                            method: 'DELETE',
-                                          });
-                                          if (response.ok) {
-                                            await fetchExecutions(false);
-                                            await fetchLiveExecutions();
-                                          } else {
-                                            const error = await response.json();
-                                            console.error('Delete failed:', error);
-                                            alert(`Failed to delete execution: ${error.error || 'Unknown error'}`);
-                                          }
-                                        } catch (error) {
-                                          console.error('Error deleting execution:', error);
-                                          alert('Error deleting execution');
-                                        } finally {
-                                          setDeletingExecutions(prev => {
-                                            const newSet = new Set(prev);
-                                            newSet.delete(execution.execution_id);
-                                            return newSet;
-                                          });
-                                        }
-                                      }
-                                    }}
-                                    title="Delete Execution"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <ExecutionsDataTable
+                  executions={executions}
+                  workflows={workflows}
+                  liveExecutions={liveExecutions}
+                  loading={executionsLoading}
+                  canDelete={canDelete}
+                  onViewDetails={fetchExecutionDetails}
+                  onCancelExecution={async (executionId) => {
+                    try {
+                      const response = await fetch(`/api/remote-workflows/executions/${executionId}/cancel`, {
+                        method: 'POST',
+                      });
+                      if (response.ok) {
+                        await fetchExecutions(false);
+                        await fetchLiveExecutions();
+                      } else {
+                        const error = await response.json();
+                        console.error('Cancel failed:', error);
+                        alert(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
+                      }
+                    } catch (error) {
+                      console.error('Error canceling execution:', error);
+                      alert('Error canceling execution');
+                    }
+                  }}
+                  onDeleteExecution={async (executionId) => {
+                    try {
+                      const response = await fetch(`/api/remote-workflows/executions/${executionId}/delete`, {
+                        method: 'DELETE',
+                      });
+                      if (response.ok) {
+                        await fetchExecutions(false);
+                        await fetchLiveExecutions();
+                      } else {
+                        const error = await response.json();
+                        console.error('Delete failed:', error);
+                        alert(`Failed to delete execution: ${error.error || 'Unknown error'}`);
+                      }
+                    } catch (error) {
+                      console.error('Error deleting execution:', error);
+                      alert('Error deleting execution');
+                    }
+                  }}
+                  onRefresh={() => fetchExecutions(true)}
+                />
               </div>
             )}
           </>

@@ -89,12 +89,28 @@ export async function POST(request: NextRequest) {
         // Look up workflow by github_folder
         const { data: existing } = await supabase
           .from('deployed_workflows')
-          .select('id, name')
+          .select('id, name, github_sha')
           .eq('github_folder', folderName)
           .single();
 
         if (existing) {
-          // Update existing workflow - create new version entry
+          // Check if content actually changed by comparing SHA
+          if (existing.github_sha === content.metadata.sha) {
+            console.log(`ℹ️ No changes detected for ${folderName} (SHA: ${content.metadata.sha})`);
+            // Just update sync timestamp without creating a new version
+            await supabase
+              .from('deployed_workflows')
+              .update({
+                github_last_synced_at: new Date().toISOString(),
+                github_sync_status: 'synced'
+              })
+              .eq('id', existing.id);
+
+            results.updated.push(`${existing.name} (no changes)`);
+            continue;
+          }
+
+          // Content changed - create new version entry
 
           // Get current version to increment
           const { data: latestVersion } = await supabase
