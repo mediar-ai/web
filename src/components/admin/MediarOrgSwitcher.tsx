@@ -71,7 +71,11 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
     router.refresh();
   };
 
-  const { userMemberships, setActive } = useOrganizationList();
+  const { userMemberships, setActive } = useOrganizationList({
+    userMemberships: {
+      infinite: true,
+    },
+  });
   const allUserOrgs = userMemberships?.data || [];
 
   console.log('[MediarOrgSwitcher] Debug info:', {
