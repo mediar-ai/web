@@ -83,7 +83,7 @@ export function ExecutionsDataTable({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
     execution_id: false,  // Hide execution ID by default
-    workflow_id: true,  // Show workflow ID by default
+    workflow_id: false,  // Hide workflow ID by default
     workflow_name: true, // Show workflow name by default
     error_message: false,
     machine: true,  // Show machine by default
