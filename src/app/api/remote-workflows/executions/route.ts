@@ -90,12 +90,12 @@ export async function GET(request: NextRequest) {
     // Heavy fields (execution_params, results) are only included when include_results=true
     // Include machine assignment info and client_id
     const selectFields = include_results
-      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, remote_machines(name), deployed_workflows!inner(id, name, description, category, organization_id)'
-      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, remote_machines(name), deployed_workflows!inner(id, name, description, category, organization_id)';
+      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, deployed_workflows!inner(id, name, description, category, organization_id)'
+      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, deployed_workflows!inner(id, name, description, category, organization_id)';
 
     let query = supabase
       .from('workflow_executions')
-      .select(selectFields)
+      .select(selectFields as any)
       .in('workflow_id', accessibleWorkflowIds) // Filter by accessible workflows
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -146,6 +146,24 @@ export async function GET(request: NextRequest) {
     }
 
     const { count: totalCount } = await countQuery;
+
+    // Get machine names for all executions that have assigned_machine_id
+    const machineIds = [...new Set((executions || [])
+      .map((e: any) => e.assigned_machine_id)
+      .filter(Boolean))] as number[];
+
+    let machineNames: Record<number, string> = {};
+    if (machineIds.length > 0) {
+      const { data: machines } = await supabase
+        .from('remote_machines')
+        .select('id, name')
+        .in('id', machineIds);
+
+      machineNames = (machines || []).reduce((acc: Record<number, string>, m) => {
+        acc[m.id] = m.name;
+        return acc;
+      }, {});
+    }
 
     // Format executions with computed metrics
     const formattedExecutions = (executions || []).map(execution => {
@@ -207,7 +225,9 @@ export async function GET(request: NextRequest) {
 
         // Machine assignment info
         assigned_machine_id: executionAny.assigned_machine_id,
-        assigned_machine_name: executionAny.remote_machines?.name || null,
+        assigned_machine_name: executionAny.assigned_machine_id
+          ? machineNames[executionAny.assigned_machine_id] || null
+          : null,
 
         // Client info
         client_id: executionAny.client_id,
