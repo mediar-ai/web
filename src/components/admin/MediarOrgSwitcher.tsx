@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown, Shield, Building, TestTube, Building2 } from 'lucide-react';
-import { useOrganization } from '@clerk/nextjs';
+import { useOrganization, useOrganizationList } from '@clerk/nextjs';
 
 interface Organization {
   id: string;
@@ -71,13 +71,69 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
     router.refresh();
   };
 
-  // For non-admins in sidebar, show regular org display
+  const { userMemberships, setActive } = useOrganizationList();
+  const allUserOrgs = userMemberships?.data || [];
+
+  // For non-admins in sidebar, show org switcher with ALL user orgs from Clerk
   if (!isAdmin && inSidebar) {
-    if (!organization) return null;
+    if (!organization || allUserOrgs.length === 0) return null;
+
     return (
-      <div className="flex items-center gap-2">
-        <Building2 className="w-4 h-4" />
-        <span className="font-mono text-sm truncate">{organization.name}</span>
+      <div className="relative">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full flex items-center gap-2 hover:bg-gray-100 transition-colors rounded p-1"
+        >
+          <Building2 className="w-4 h-4 flex-shrink-0" />
+          <span className="font-mono text-sm truncate flex-1 text-left">
+            {organization.name}
+          </span>
+          <ChevronDown className="w-4 h-4 flex-shrink-0" />
+        </button>
+
+        {isOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setIsOpen(false)}
+            />
+            <div className="absolute top-full mt-1 left-0 right-0 bg-white border-2 border-black shadow-lg z-50 max-h-96 overflow-y-auto">
+              <div className="p-2 bg-black text-white font-mono text-xs uppercase">
+                Switch Organization
+              </div>
+
+              {/* All user organizations from Clerk */}
+              {allUserOrgs.map(membership => {
+                const org = membership.organization;
+                const isActive = org.id === organization.id;
+
+                return (
+                  <button
+                    key={org.id}
+                    onClick={async () => {
+                      if (setActive) {
+                        await setActive({ organization: org.id });
+                        setIsOpen(false);
+                        router.push('/dashboard');
+                      }
+                    }}
+                    className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
+                      isActive ? 'bg-gray-100' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-3 h-3" />
+                      <div className="font-mono text-xs truncate">
+                        {org.name}
+                      </div>
+                      {isActive && <span className="ml-auto text-xs">✓</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     );
   }
