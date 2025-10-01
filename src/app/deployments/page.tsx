@@ -55,6 +55,7 @@ function DeploymentsPageContent() {
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [executionsLoading, setExecutionsLoading] = useState(false);
+  const [pollCount, setPollCount] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowOverview | null>(null);
@@ -139,8 +140,8 @@ function DeploymentsPageContent() {
       if (showLoading) setExecutionsLoading(true);
       // Use viewOrgId from searchParams (passed from parent)
       const apiUrl = viewOrgId
-        ? `/api/remote-workflows/executions?limit=1000&viewOrgId=${viewOrgId}`
-        : '/api/remote-workflows/executions?limit=1000';
+        ? `/api/remote-workflows/executions?limit=50&include_results=true&viewOrgId=${viewOrgId}`
+        : '/api/remote-workflows/executions?limit=50&include_results=true';
       const response = await fetch(apiUrl);
       const executionsData = await response.json();
       if (executionsData.success) {
@@ -298,15 +299,19 @@ function DeploymentsPageContent() {
     fetchLiveExecutions();
   }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions, viewOrgId]);
 
-  // Polling
+  // Polling (30 seconds, only when active)
   useEffect(() => {
+    if (liveExecutions.length === 0) return; // Don't poll if nothing active
+
     const pollTimer = setInterval(() => {
+      setPollCount(prev => prev + 1);
       fetchLiveExecutions();
-      fetchExecutions(false);
-    }, 2000);
+      // Only fetch all executions every 5th poll
+      if (pollCount % 5 === 0) fetchExecutions(false);
+    }, 30000);
 
     return () => clearInterval(pollTimer);
-  }, [fetchLiveExecutions, fetchExecutions]);
+  }, [liveExecutions.length, fetchLiveExecutions, fetchExecutions, pollCount]);
 
   // Handle URL parameters for deep linking
   useEffect(() => {
@@ -512,6 +517,7 @@ function DeploymentsPageContent() {
                   <tr>
                     <th className="text-left p-3 font-mono">Workflow</th>
                     <th className="text-left p-3 font-mono">Status</th>
+                    <th className="text-left p-3 font-mono">Message</th>
                     <th className="text-left p-3 font-mono">Started</th>
                     <th className="text-left p-3 font-mono">Duration</th>
                     <th className="text-left p-3 font-mono">Actions</th>
@@ -529,6 +535,9 @@ function DeploymentsPageContent() {
                           <Skeleton className="h-6 w-20" />
                         </td>
                         <td className="p-3">
+                          <Skeleton className="h-4 w-48" />
+                        </td>
+                        <td className="p-3">
                           <Skeleton className="h-4 w-40" />
                         </td>
                         <td className="p-3">
@@ -543,20 +552,52 @@ function DeploymentsPageContent() {
                     filteredExecutions.slice(0, 10).map(execution => {
                     const workflow = workflows.find(w => w.id === execution.workflow_id);
                     const isLive = liveExecutions.some(le => le.id === execution.execution_id);
+                    const workflowResult = execution.results?.workflow_result;
+
+                    // Determine badge based on priority: technical errors, skipped, business outcome
+                    let badge, badgeColor;
+                    if (execution.status === 'error' || execution.status === 'timeout') {
+                      badge = execution.status.toUpperCase();
+                      badgeColor = 'bg-black text-white font-bold';
+                    } else if (execution.status === 'skipped' || workflowResult?.skipped) {
+                      badge = 'SKIPPED';
+                      badgeColor = 'bg-gray-200 text-gray-800';
+                    } else if (workflowResult?.success) {
+                      badge = 'COMPLETED';
+                      badgeColor = 'bg-white border-2 border-black';
+                    } else if (execution.status === 'failed' || workflowResult?.success === false) {
+                      badge = 'FAILED';
+                      badgeColor = 'bg-black text-white font-bold';
+                    } else if (execution.status === 'running' || isLive) {
+                      badge = 'RUNNING';
+                      badgeColor = 'bg-black text-white animate-pulse';
+                    } else if (execution.status === 'cancelled') {
+                      badge = 'CANCELLED';
+                      badgeColor = 'bg-gray-200 text-gray-800';
+                    } else {
+                      badge = execution.status.toUpperCase();
+                      badgeColor = 'bg-gray-200 text-gray-800';
+                    }
+
+                    // Get message from workflow_result or error_message
+                    // Treat "No message from parser" as missing and fall back to error_message
+                    const message = (workflowResult?.message && workflowResult.message !== "No message from parser")
+                      ? workflowResult.message
+                      : execution.error_message || '-';
+                    const truncatedMessage = message.length > 80 ? message.substring(0, 80) + '...' : message;
+
                     return (
                       <tr key={`execution-${execution.execution_id}`} className="border-t border-gray-200 hover:bg-gray-50">
                         <td className="p-3 font-mono text-sm">
                           {workflow?.name || `Workflow ${execution.workflow_id}`}
                         </td>
                         <td className="p-3">
-                          <span className={`font-mono text-xs px-2 py-1 ${
-                            execution.status === 'completed' ? 'bg-white border-2 border-black' :
-                            execution.status === 'failed' ? 'bg-black text-white font-bold' :
-                            execution.status === 'running' || isLive ? 'bg-black text-white animate-pulse' :
-                            'bg-gray-200 text-gray-800'
-                          }`}>
-                            {execution.status.toUpperCase()}
+                          <span className={`font-mono text-xs px-2 py-1 ${badgeColor}`}>
+                            {badge}
                           </span>
+                        </td>
+                        <td className="p-3 font-mono text-xs text-gray-700">
+                          {truncatedMessage}
                         </td>
                         <td className="p-3 font-mono text-sm">
                           {new Date(execution.started_at || execution.created_at).toLocaleString()}

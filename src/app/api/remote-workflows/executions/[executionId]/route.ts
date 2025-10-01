@@ -116,10 +116,14 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get execution with all details including raw logs and formatted output
+    // Conditionally fetch heavy fields based on detail level requested
+    const selectFields = full_detailed_response
+      ? '*, raw_logs, raw_mcp_response, execution_logs, results, formatted_output'
+      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id';
+
     const { data: execution, error } = await supabase
       .from('workflow_executions')
-      .select('*, raw_logs, raw_mcp_response, execution_logs, results, formatted_output')
+      .select(selectFields)
       .eq('id', executionIdNum)
       .single();
 
@@ -148,20 +152,32 @@ export async function GET(
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
+    // Type assertion to handle Supabase type inference issues
+    const typedExecution = execution as any;
+
+    // Validate required fields exist
+    if (!typedExecution.workflow_id) {
+      console.error('[ERROR] Execution missing workflow_id');
+      return NextResponse.json(
+        { success: false, error: 'Invalid execution data' },
+        { status: 500 }
+      );
+    }
+
     // Get workflow details
     const { data: workflow } = await supabase
       .from('deployed_workflows')
       .select('id, name, description, version, category')
-      .eq('id', execution.workflow_id)
+      .eq('id', typedExecution.workflow_id)
       .single();
 
     // Get assigned machine details if available
     let assignedMachineName = null;
-    if (execution.assigned_machine_id) {
+    if (typedExecution.assigned_machine_id) {
       const { data: machine } = await supabase
         .from('remote_machines')
         .select('name')
-        .eq('id', execution.assigned_machine_id)
+        .eq('id', typedExecution.assigned_machine_id)
         .single();
 
       if (machine) {
@@ -170,14 +186,14 @@ export async function GET(
     }
 
     // Calculate execution metrics
-    const startedAt = execution.started_at
-      ? new Date(execution.started_at)
+    const startedAt = typedExecution.started_at
+      ? new Date(typedExecution.started_at)
       : null;
-    const completedAt = execution.completed_at
-      ? new Date(execution.completed_at)
+    const completedAt = typedExecution.completed_at
+      ? new Date(typedExecution.completed_at)
       : null;
-    const createdAt = execution.created_at
-      ? new Date(execution.created_at)
+    const createdAt = typedExecution.created_at
+      ? new Date(typedExecution.created_at)
       : null;
 
     let runtimeSeconds = 0;
@@ -194,15 +210,15 @@ export async function GET(
 
     // Determine execution state accurately
     const isRunning =
-      execution.status === 'running' || execution.status === 'queued';
+      typedExecution.status === 'running' || typedExecution.status === 'queued';
     const isCompleted =
-      execution.status === 'completed' ||
-      execution.status === 'failed' ||
-      execution.status === 'error';
-    const isSuccessful = execution.status === 'completed';
+      typedExecution.status === 'completed' ||
+      typedExecution.status === 'failed' ||
+      typedExecution.status === 'error';
+    const isSuccessful = typedExecution.status === 'completed';
     const hasFailed =
-      execution.status === 'failed' || execution.status === 'error';
-    const hasError = hasFailed || !!execution.error_message;
+      typedExecution.status === 'failed' || typedExecution.status === 'error';
+    const hasError = hasFailed || !!typedExecution.error_message;
 
     // Transform execution_logs to the format expected by the UI
     const transformExecutionLogs = (logs: any): any[] => {
@@ -247,8 +263,8 @@ export async function GET(
       success: true,
       execution: {
         // Basic info
-        execution_id: execution.id,
-        workflow_id: execution.workflow_id,
+        execution_id: typedExecution.id,
+        workflow_id: typedExecution.workflow_id,
         workflow_name: workflow?.name || 'Unknown Workflow',
         workflow_description:
           workflow?.description || 'No description available',
@@ -256,14 +272,14 @@ export async function GET(
         workflow_category: workflow?.category || 'general',
 
         // Execution version info (the actual version that was executed)
-        version_number: execution.version_number || execution.workflow_version_number,
-        workflow_version_id: execution.workflow_version_id,
+        version_number: typedExecution.version_number || typedExecution.workflow_version_number,
+        workflow_version_id: typedExecution.workflow_version_id,
 
         // Status info
-        status: execution.status,
+        status: typedExecution.status,
         // Granular execution status from results (e.g., completed_with_errors)
         execution_status:
-          execution.results?.execution_status || execution.status,
+          (typedExecution.results && typedExecution.results.execution_status) || typedExecution.status,
         is_running: isRunning,
         is_completed: isCompleted,
         is_successful: isSuccessful,
@@ -271,51 +287,51 @@ export async function GET(
         has_error: hasError,
 
         // Timing info
-        created_at: execution.created_at,
-        started_at: execution.started_at,
-        completed_at: execution.completed_at,
+        created_at: typedExecution.created_at,
+        started_at: typedExecution.started_at,
+        completed_at: typedExecution.completed_at,
         execution_duration_seconds:
-          execution.execution_duration_seconds || runtimeSeconds,
+          typedExecution.execution_duration_seconds || runtimeSeconds,
         runtime_seconds: runtimeSeconds,
 
         // Progress info
         progress_percentage:
-          execution.progress_percentage || (isCompleted ? 100 : 0),
-        current_step_index: execution.current_step_index || 0,
-        total_steps: execution.total_steps || 0,
+          typedExecution.progress_percentage || (isCompleted ? 100 : 0),
+        current_step_index: typedExecution.current_step_index || 0,
+        total_steps: typedExecution.total_steps || 0,
 
         // Error info (if any)
-        error_message: execution.error_message || null,
-        error_details: execution.results?.error_details || null,
+        error_message: typedExecution.error_message || null,
+        error_details: (typedExecution.results && typedExecution.results.error_details) || null,
 
         // Execution details
-        modal_call_id: execution.modal_call_id,
-        client_id: execution.client_id,
-        execution_params: execution.execution_params || {},
+        modal_call_id: typedExecution.modal_call_id,
+        client_id: typedExecution.client_id,
+        execution_params: typedExecution.execution_params || {},
 
         // Machine assignment info
-        assigned_machine_id: execution.assigned_machine_id || null,
+        assigned_machine_id: typedExecution.assigned_machine_id || null,
         assigned_machine_name: assignedMachineName,
 
         // Transform and include execution logs (always include for completed executions)
-        execution_logs: transformExecutionLogs(execution.execution_logs),
+        execution_logs: transformExecutionLogs(typedExecution.execution_logs),
 
         // Request Parameters - Enhanced with both original and processed formats
         request_parameters: {
           // The parameters as sent in the original request
-          original_request: execution.execution_params || {},
+          original_request: typedExecution.execution_params || {},
 
           // Parameter count for quick reference
-          parameter_count: execution.execution_params
-            ? Object.keys(execution.execution_params).length
+          parameter_count: typedExecution.execution_params
+            ? Object.keys(typedExecution.execution_params).length
             : 0,
 
           // Include expensive schema analysis only in detailed response
           ...(full_detailed_response && {
-            api_parameter_names: execution.execution_params
+            api_parameter_names: typedExecution.execution_params
               ? await getApiParameterNames(
-                  execution.workflow_id,
-                  execution.execution_params
+                  typedExecution.workflow_id,
+                  typedExecution.execution_params
                 )
               : {},
           }),
@@ -326,22 +342,22 @@ export async function GET(
             : "Use 'original_request' to see exactly what was sent. Add '?full_detailed_response=true' for schema analysis.",
         },
 
-        // Results (only if completed or failed)
-        results: isCompleted ? execution.results || {} : null,
+        // Results (only if completed and available)
+        results: isCompleted && typedExecution.results ? typedExecution.results : null,
 
         // Human-friendly formatted output (if available)
-        formatted_output: execution.formatted_output || null,
+        formatted_output: typedExecution.formatted_output || null,
 
         // Include raw data only in detailed response (for debugging)
         ...(full_detailed_response && {
           raw_data: {
-            raw_logs: execution.raw_logs || null,
-            raw_mcp_response: execution.raw_mcp_response || null,
-            execution_logs: execution.execution_logs || [],
-            has_raw_logs: !!execution.raw_logs,
-            has_mcp_response: !!execution.raw_mcp_response,
+            raw_logs: typedExecution.raw_logs || null,
+            raw_mcp_response: typedExecution.raw_mcp_response || null,
+            execution_logs: typedExecution.execution_logs || [],
+            has_raw_logs: !!typedExecution.raw_logs,
+            has_mcp_response: !!typedExecution.raw_mcp_response,
             has_execution_logs: !!(
-              execution.execution_logs && execution.execution_logs.length > 0
+              typedExecution.execution_logs && typedExecution.execution_logs.length > 0
             ),
           },
         }),
@@ -352,35 +368,47 @@ export async function GET(
           workflow_completed:
             isSuccessful ||
             (hasFailed &&
-              execution.results?.execution_summary?.workflow_completed),
+              typedExecution.results &&
+              typedExecution.results.execution_summary &&
+              typedExecution.results.execution_summary.workflow_completed),
           steps_completed:
-            execution.results?.performance_metrics?.successful_steps || 0,
+            (typedExecution.results &&
+              typedExecution.results.performance_metrics &&
+              typedExecution.results.performance_metrics.successful_steps) || 0,
           steps_failed:
-            execution.results?.performance_metrics?.failed_steps || 0,
+            (typedExecution.results &&
+              typedExecution.results.performance_metrics &&
+              typedExecution.results.performance_metrics.failed_steps) || 0,
           total_steps_attempted:
-            execution.results?.performance_metrics?.total_steps ||
-            execution.total_steps ||
+            (typedExecution.results &&
+              typedExecution.results.performance_metrics &&
+              typedExecution.results.performance_metrics.total_steps) ||
+            typedExecution.total_steps ||
             0,
-          quotes_found: execution.results?.quotes?.length || 0,
+          quotes_found:
+            (typedExecution.results &&
+              typedExecution.results.quotes &&
+              typedExecution.results.quotes.length) || 0,
           error_stage:
-            execution.results?.error_stage || (hasError ? 'execution' : null),
+            (typedExecution.results && typedExecution.results.error_stage) ||
+            (hasError ? 'execution' : null),
         },
 
         // Include detailed metadata only in detailed response
         ...(full_detailed_response && {
           timestamps: {
-            created_at: execution.created_at,
-            updated_at: execution.updated_at,
-            started_at: execution.started_at,
-            completed_at: execution.completed_at,
+            created_at: typedExecution.created_at,
+            updated_at: typedExecution.updated_at,
+            started_at: typedExecution.started_at,
+            completed_at: typedExecution.completed_at,
             checked_at: new Date().toISOString(),
           },
 
           // Navigation
           related_endpoints: {
-            workflow_details: `/api/remote-workflows/${execution.workflow_id}`,
-            all_executions: `/api/remote-workflows/executions?workflow_id=${execution.workflow_id}`,
-            execute_workflow: `/api/remote-workflows/${execution.workflow_id}/execute`,
+            workflow_details: `/api/remote-workflows/${typedExecution.workflow_id}`,
+            all_executions: `/api/remote-workflows/executions?workflow_id=${typedExecution.workflow_id}`,
+            execute_workflow: `/api/remote-workflows/${typedExecution.workflow_id}/execute`,
           },
         }),
 

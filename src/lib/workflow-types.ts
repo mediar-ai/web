@@ -91,7 +91,22 @@ export interface WorkflowWithSettings extends Workflow {
 
 export type WorkflowOverview = Omit<Workflow, 'automation_sequence'>;
 
+export interface WorkflowResult {
+  success: boolean;
+  state: 'success' | 'failure' | 'skipped';
+  execution_status: string;
+  message: string;
+  data?: any;
+  error?: string | null;
+  duration_ms: number;
+  steps_executed: number;
+  skipped?: boolean;
+  validation?: Record<string, unknown>;
+}
+
 export interface ExecutionResult {
+  // Standardized workflow result from output parser
+  workflow_result?: WorkflowResult;
   // Optional structured outputs (user-defined schema)
   mediar_parser?: Array<Record<string, unknown>>;
   quotes?: Array<{
@@ -116,7 +131,7 @@ export interface Execution {
   execution_id: number;
   workflow_id: number;
   workflow_name: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'error';
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'error' | 'timeout' | 'skipped';
   execution_status?: string; // Granular status like 'completed_with_errors'
   created_at: string;
   started_at?: string;
