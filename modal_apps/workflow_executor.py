@@ -68,33 +68,33 @@ class SequenceLoader:
 
         if github_folder:
             try:
-                logger.info(f"📥 Attempting to load from GitHub: {github_folder}")
+                logger.info(f"[GitHub] Attempting to load from GitHub: {github_folder}")
                 github_loader = get_github_loader()
                 yaml_content = github_loader.load_workflow(github_folder, github_ref)
 
                 if yaml_content:
                     parsed = github_loader.parse_workflow_yaml(yaml_content)
-                    logger.info(f"✅ Successfully loaded workflow from GitHub")
+                    logger.info(f"[GitHub] Successfully loaded workflow from GitHub")
                     return SequenceLoader._ensure_list_format(parsed)
                 else:
                     logger.info("GitHub load returned None, falling back to database")
             except Exception as e:
-                logger.warning(f"⚠️ GitHub load failed: {e}, falling back to database")
+                logger.warning(f"[GitHub] GitHub load failed: {e}, falling back to database")
 
         # Priority 2: Use database YAML column
         yaml_sequence = workflow_data.get("automation_sequence_yaml")
         if yaml_sequence and yaml_sequence.strip():
             try:
-                logger.info("📦 Loading workflow from database YAML column")
+                logger.info("[Database] Loading workflow from database YAML column")
                 parsed = yaml.safe_load(yaml_sequence)
                 return SequenceLoader._ensure_list_format(parsed)
             except yaml.YAMLError as e:
-                logger.warning(f"⚠️ YAML parsing failed, falling back to JSONB: {e}")
+                logger.warning(f"[Database] YAML parsing failed, falling back to JSONB: {e}")
 
         # Priority 3: Fallback to JSONB column (legacy)
         jsonb_sequence = workflow_data.get("automation_sequence")
         if jsonb_sequence:
-            logger.info("📦 Loading workflow from database JSONB column (legacy)")
+            logger.info("[Database] Loading workflow from database JSONB column (legacy)")
             if isinstance(jsonb_sequence, str):
                 parsed = json.loads(jsonb_sequence)
             else:
