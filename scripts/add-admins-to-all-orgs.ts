@@ -1,5 +1,14 @@
 #!/usr/bin/env tsx
 import { createClerkClient } from '@clerk/backend';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config({ path: '.env.local' });
+
+if (!process.env.CLERK_SECRET_KEY) {
+  console.error('❌ CLERK_SECRET_KEY not found in environment');
+  process.exit(1);
+}
 
 const clerkClient = createClerkClient({
   secretKey: process.env.CLERK_SECRET_KEY,
