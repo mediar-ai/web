@@ -1653,15 +1653,25 @@ async def execute_mcp_workflow(
         logger.info("  Request JSON: %s", json.dumps(tool_request, indent=2)[:500])
 
         # Add explicit timeout for workflow execution (5 minutes max)
+        logger.info("[DEBUG] About to send POST request to MCP, starting timer...")
+        request_start_time = time.time()
         try:
+            logger.info("[DEBUG] Entering asyncio.wait_for with 300s timeout...")
             response = await asyncio.wait_for(
                 _post_with_session(tool_request),
                 timeout=300.0  # 5 minutes maximum for workflow execution
             )
+            request_duration = time.time() - request_start_time
+            logger.info("[DEBUG] POST request completed in %.2fs, status_code=%s", request_duration, response.status_code)
         except asyncio.TimeoutError:
-            logger.error(f" Workflow execution timed out after 5 minutes")
+            request_duration = time.time() - request_start_time
+            logger.error(f"[DEBUG] Workflow execution timed out after {request_duration:.2f}s (expected 300s timeout)")
             await session_client.aclose()
             raise Exception(f"Workflow execution timed out after 5 minutes for tool: {tool_name}")
+        except Exception as e:
+            request_duration = time.time() - request_start_time
+            logger.error(f"[DEBUG] POST request failed after {request_duration:.2f}s with error: {type(e).__name__}: {str(e)}")
+            raise
 
         if response.status_code != 200:
             raise Exception(
