@@ -1,9 +1,10 @@
 import { Button } from '@/components/ui/button';
-import { OrganizationSwitcher, SignedIn, SignedOut, UserButton, useOrganization } from '@clerk/nextjs';
+import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 import { AlertTriangle, PictureInPicture, RefreshCw, RotateCcw, Zap } from 'lucide-react';
 import Link from 'next/link';
 import React, { useEffect, useState } from 'react';
 import type { PageHeaderControlsProps } from '../../types';
+import { CustomOrgSwitcher } from '@/components/navigation/CustomOrgSwitcher';
 
 interface StatusIndicatorProps {
   mainStatus: string;
@@ -58,26 +59,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
 };
 
 const ConditionalOrganizationSwitcher: React.FC = () => {
-  const { organization, membership } = useOrganization();
-
-  // Only show OrganizationSwitcher if user has organization membership
-  if (!organization || !membership) {
-    return null;
-  }
-
-  return (
-    <OrganizationSwitcher
-      hidePersonal={true}
-      afterSelectOrganizationUrl="/"
-      organizationProfileMode="modal"
-      skipInvitationScreen={false}
-      appearance={{
-        elements: {
-          organizationSwitcherTrigger: "px-3 py-2 text-sm border rounded-md hover:bg-gray-50"
-        }
-      }}
-    />
-  );
+  return <CustomOrgSwitcher />;
 };
 
 const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
