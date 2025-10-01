@@ -454,7 +454,6 @@ function DashboardContent() {
                       onExecute={() => handleQuickExecute(workflow.id)}
                       onView={() => fetchWorkflowOverview(workflow.id)}
                       onDuplicate={() => handleQuickDuplicate(workflow.id)}
-                      onEdit={() => handleQuickEdit(workflow.id)}
                       onDelete={() => handleDeleteWorkflow(workflow.id)}
                       onToggleCron={() => handleToggleCron(workflow.id)}
                       onManageOrganizations={() => handleManageOrganizations(workflow.id)}
@@ -721,7 +720,6 @@ function DashboardContent() {
           onExecuteWorkflow={handleQuickExecute}
           onDuplicateWorkflow={handleQuickDuplicate}
           onViewWorkflow={fetchWorkflowOverview}
-          onEditWorkflow={handleQuickEdit}
           onViewExecution={execution => {
             fetchExecutionDetails(execution.execution_id);
           }}
