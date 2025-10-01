@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
 import crypto from 'crypto';
 import yaml from 'js-yaml';
+import { Octokit } from '@octokit/rest';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const octokit = new Octokit({
+  auth: process.env.GITHUB_TOKEN
+});
 
 /**
  * GitHub Webhook - Folder name maps to workflow ID via github_folder column
@@ -154,6 +160,42 @@ export async function POST(request: NextRequest) {
           if (error) {
             results.errors.push(`${folderName}: Update failed - ${error.message}`);
           } else {
+            // Fetch and upload JS files if any exist
+            const { jsFiles, subdirectory } = await fetchWorkflowFiles(folderName, branch);
+
+            if (jsFiles.length > 0) {
+              console.log(`📦 Found ${jsFiles.length} JS files in ${folderName}, uploading to storage...`);
+
+              const fileManager = new WorkflowFileManager();
+              const uploadResult = await fileManager.uploadWorkflowFiles(
+                existing.id,
+                newVersionNumber,
+                jsFiles,
+                subdirectory
+              );
+
+              if (uploadResult.success) {
+                // Update workflow with files metadata
+                await supabase
+                  .from('deployed_workflows')
+                  .update({
+                    requires_files: true,
+                    files_config: {
+                      file_count: jsFiles.length,
+                      total_size: jsFiles.reduce((sum, f) => sum + f.content.length, 0),
+                      subdirectory: subdirectory || null,
+                      last_updated: new Date().toISOString()
+                    }
+                  })
+                  .eq('id', existing.id);
+
+                console.log(`✅ Uploaded ${jsFiles.length} files to storage for workflow ${existing.id}`);
+              } else {
+                console.error(`❌ Failed to upload files: ${uploadResult.error}`);
+                results.errors.push(`${folderName}: File upload failed - ${uploadResult.error}`);
+              }
+            }
+
             results.updated.push(`${workflowName} (v${newVersionNumber})`);
           }
         } else {
@@ -203,6 +245,42 @@ export async function POST(request: NextRequest) {
                 .from('deployed_workflows')
                 .update({ current_version_id: initialVersion.id })
                 .eq('id', newWorkflow.id);
+
+              // Fetch and upload JS files if any exist
+              const { jsFiles, subdirectory } = await fetchWorkflowFiles(folderName, branch);
+
+              if (jsFiles.length > 0) {
+                console.log(`📦 Found ${jsFiles.length} JS files in ${folderName}, uploading to storage...`);
+
+                const fileManager = new WorkflowFileManager();
+                const uploadResult = await fileManager.uploadWorkflowFiles(
+                  newWorkflow.id,
+                  '1.0.0',
+                  jsFiles,
+                  subdirectory
+                );
+
+                if (uploadResult.success) {
+                  // Update workflow with files metadata
+                  await supabase
+                    .from('deployed_workflows')
+                    .update({
+                      requires_files: true,
+                      files_config: {
+                        file_count: jsFiles.length,
+                        total_size: jsFiles.reduce((sum, f) => sum + f.content.length, 0),
+                        subdirectory: subdirectory || null,
+                        last_updated: new Date().toISOString()
+                      }
+                    })
+                    .eq('id', newWorkflow.id);
+
+                  console.log(`✅ Uploaded ${jsFiles.length} files to storage for workflow ${newWorkflow.id}`);
+                } else {
+                  console.error(`❌ Failed to upload files: ${uploadResult.error}`);
+                  results.errors.push(`${folderName}: File upload failed - ${uploadResult.error}`);
+                }
+              }
 
               results.created.push(workflowName);
             }
@@ -255,4 +333,83 @@ function verifyWebhookSignature(body: string, signature: string | null): boolean
     Buffer.from(signature),
     Buffer.from(digest)
   );
+}
+
+/**
+ * Fetch all files in a workflow folder from GitHub
+ */
+async function fetchWorkflowFiles(
+  folderName: string,
+  branch: string = 'main'
+): Promise<{ jsFiles: WorkflowFile[]; subdirectory?: string }> {
+  try {
+    // Get folder contents from GitHub
+    const { data: contents } = await octokit.repos.getContent({
+      owner: 'mediar-ai',
+      repo: 'workflows',
+      path: folderName,
+      ref: branch
+    });
+
+    if (!Array.isArray(contents)) {
+      return { jsFiles: [] };
+    }
+
+    // Filter for JS files
+    const jsFileInfos = contents.filter(
+      file => file.type === 'file' && file.name.endsWith('.js')
+    );
+
+    if (jsFileInfos.length === 0) {
+      return { jsFiles: [] };
+    }
+
+    // Fetch content for each JS file
+    const jsFiles: WorkflowFile[] = [];
+    let detectedSubdir: string | undefined;
+
+    for (const fileInfo of jsFileInfos) {
+      const { data: fileData } = await octokit.repos.getContent({
+        owner: 'mediar-ai',
+        repo: 'workflows',
+        path: fileInfo.path,
+        ref: branch
+      });
+
+      if ('content' in fileData && fileData.content) {
+        // Decode base64 content
+        const content = Buffer.from(fileData.content, 'base64');
+
+        // Determine file path relative to workflow folder
+        // e.g., "testfolder/scripts/script.js" -> "scripts/script.js"
+        const relativePath = fileInfo.path.replace(`${folderName}/`, '');
+
+        // Detect subdirectory from first file
+        if (!detectedSubdir && relativePath.includes('/')) {
+          const firstSlash = relativePath.indexOf('/');
+          const potentialSubdir = relativePath.substring(0, firstSlash);
+
+          // Check if all files start with this subdirectory
+          const allMatch = jsFileInfos.every(f => {
+            const relPath = f.path.replace(`${folderName}/`, '');
+            return relPath.startsWith(potentialSubdir + '/');
+          });
+
+          if (allMatch) {
+            detectedSubdir = potentialSubdir;
+          }
+        }
+
+        jsFiles.push({
+          path: relativePath,
+          content
+        });
+      }
+    }
+
+    return { jsFiles, subdirectory: detectedSubdir };
+  } catch (error) {
+    console.error(`Error fetching files from GitHub folder ${folderName}:`, error);
+    return { jsFiles: [] };
+  }
 }
