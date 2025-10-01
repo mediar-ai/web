@@ -158,6 +158,7 @@ export function WorkflowCard({
   const [deletingWorkflow, setDeletingWorkflow] = useState(false);
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
+  const [uploadVersionDialogOpen, setUploadVersionDialogOpen] = useState(false);
 
   // Inline editing state
   const [editingName, setEditingName] = useState(false);
@@ -1083,20 +1084,10 @@ export function WorkflowCard({
                     Duplicate Workflow
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <VersionUploadDialog
-                    workflowId={workflow.id}
-                    workflowName={workflow.name}
-                    onUploadSuccess={() => {
-                      if (onBatchSubmit) {
-                        onBatchSubmit();
-                      }
-                    }}
-                  >
-                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Upload Version
-                    </DropdownMenuItem>
-                  </VersionUploadDialog>
+                  <DropdownMenuItem onClick={() => setUploadVersionDialogOpen(true)}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload Version
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setShowUnifiedDialog(true)}>
                     <Settings className="mr-2 h-4 w-4" />
                     Settings & Details
@@ -1850,6 +1841,20 @@ export function WorkflowCard({
         currentDescription={workflow.description}
         onSuccess={() => {
           setActionsDialogOpen(false);
+          if (onBatchSubmit) {
+            onBatchSubmit();
+          }
+        }}
+      />
+
+      <CreateWorkflowDialog
+        open={uploadVersionDialogOpen}
+        onOpenChange={setUploadVersionDialogOpen}
+        mode="update"
+        workflowId={workflow.id}
+        workflowName={workflow.name}
+        onWorkflowCreated={() => {
+          setUploadVersionDialogOpen(false);
           if (onBatchSubmit) {
             onBatchSubmit();
           }

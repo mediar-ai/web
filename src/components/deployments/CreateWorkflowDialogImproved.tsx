@@ -22,8 +22,10 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import * as yaml from 'js-yaml';
-import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap, Upload, FileArchive, FileCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap, Upload, FileArchive, FileCheck, AlertTriangle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
 
@@ -40,6 +42,13 @@ interface CreateWorkflowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onWorkflowCreated?: (workflow: any) => void;
+
+  // Mode selection
+  mode?: 'create' | 'update';
+  workflowId?: number;
+  workflowName?: string;
+
+  // Legacy props (for backward compatibility)
   initialYaml?: string;
   initialName?: string;
 }
@@ -49,10 +58,19 @@ export function CreateWorkflowDialog({
   open,
   onOpenChange,
   onWorkflowCreated,
+  mode = 'create',
+  workflowId,
+  workflowName,
   initialYaml,
   initialName
 }: CreateWorkflowDialogProps) {
-  const [activeTab, setActiveTab] = useState(initialYaml ? 'manual' : 'template');
+  // Determine initial tab based on mode
+  const showTemplatesTab = mode === 'create';
+  const [activeTab, setActiveTab] = useState(
+    mode === 'update' ? 'manual' :
+    initialYaml ? 'manual' :
+    'template'
+  );
   const [loading, setLoading] = useState(false);
   const [templates, setTemplates] = useState<Record<string, WorkflowTemplate>>({});
   const [categories, setCategories] = useState<string[]>([]);
@@ -78,6 +96,7 @@ export function CreateWorkflowDialog({
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [activateImmediately, setActivateImmediately] = useState(false);
 
   // Load templates when dialog opens and handle initial data
   useEffect(() => {
@@ -146,8 +165,14 @@ export function CreateWorkflowDialog({
       return;
     }
 
-    if (!name.trim() || !automationSequence.trim()) {
+    // Validation based on mode
+    if (mode === 'create' && (!name.trim() || !automationSequence.trim())) {
       alert('Name and automation sequence are required');
+      return;
+    }
+
+    if (mode === 'update' && !automationSequence.trim()) {
+      alert('Automation sequence is required');
       return;
     }
 
@@ -155,53 +180,82 @@ export function CreateWorkflowDialog({
     try {
       let response;
 
-      // For ZIP uploads, re-upload the file with action=create to handle file uploads
-      if (activeTab === 'upload' && uploadedFile) {
-        const formData = new FormData();
-        formData.append('file', uploadedFile);
-        formData.append('action', 'create');
-        formData.append('name', name.trim());
-        formData.append('description', description.trim());
+      if (mode === 'update') {
+        // VERSION UPLOAD FLOW
+        if (activeTab === 'upload' && uploadedFile) {
+          // ZIP upload for version
+          const formData = new FormData();
+          formData.append('file', uploadedFile);
+          formData.append('workflowId', workflowId!.toString());
 
-        response = await fetch('/api/workflows/upload-zip', {
-          method: 'POST',
-          body: formData,
-        });
+          response = await fetch('/api/workflows/upload-zip', {
+            method: 'POST',
+            body: formData,
+          });
+        } else {
+          // Manual YAML version upload
+          response = await fetch(`/api/remote-workflows/${workflowId}/versions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              automation_sequence: automationSequence,
+              set_as_active: activateImmediately,
+              change_notes: `Uploaded via UI - ${activeTab === 'manual' ? 'Manual YAML' : 'ZIP Upload'}`
+            }),
+          });
+        }
       } else {
-        // For template and manual creation, use the existing endpoint
-        response = await fetch('/api/workflows/create', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: name.trim(),
-            description: description.trim(),
-            category,
-            difficulty_level: difficulty,
-            estimated_duration_seconds: estimatedDuration,
-            timeout_minutes: timeoutMinutes,
-            automation_sequence: automationSequence,
-            tags,
-            set_as_active: true
-          }),
-        });
+        // CREATE WORKFLOW FLOW (existing logic)
+        if (activeTab === 'upload' && uploadedFile) {
+          const formData = new FormData();
+          formData.append('file', uploadedFile);
+          formData.append('action', 'create');
+          formData.append('name', name.trim());
+          formData.append('description', description.trim());
+
+          response = await fetch('/api/workflows/upload-zip', {
+            method: 'POST',
+            body: formData,
+          });
+        } else {
+          // For template and manual creation, use the existing endpoint
+          response = await fetch('/api/workflows/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: name.trim(),
+              description: description.trim(),
+              category,
+              difficulty_level: difficulty,
+              estimated_duration_seconds: estimatedDuration,
+              timeout_minutes: timeoutMinutes,
+              automation_sequence: automationSequence,
+              tags,
+              set_as_active: true
+            }),
+          });
+        }
       }
 
       const result = await response.json();
 
       if (result.success) {
-        // Always use the user-chosen name for the alert message
-        alert(`Workflow "${name.trim()}" created successfully!`);
+        if (mode === 'update') {
+          alert(`Version ${result.version?.version_number} uploaded successfully!`);
+        } else {
+          alert(`Workflow "${name.trim()}" created successfully!`);
+        }
         onWorkflowCreated?.(result.workflow || result);
         onOpenChange(false);
         resetForm();
       } else {
-        alert(result.error || 'Failed to create workflow');
+        alert(result.error || `Failed to ${mode === 'update' ? 'upload version' : 'create workflow'}`);
       }
     } catch (error) {
-      console.error('Error creating workflow:', error);
-      alert('Failed to create workflow');
+      console.error(`Error ${mode === 'update' ? 'uploading version' : 'creating workflow'}:`, error);
+      alert(`Failed to ${mode === 'update' ? 'upload version' : 'create workflow'}`);
     } finally {
       setLoading(false);
     }
@@ -368,23 +422,26 @@ export function CreateWorkflowDialog({
       <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Zap className="w-5 h-5" />
-            Create New Workflow
+            {mode === 'update' ? <Upload className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
+            {mode === 'update' ? `Upload New Version - ${workflowName}` : 'Create New Workflow'}
           </DialogTitle>
           <DialogDescription>
-            Create a new workflow from scratch using templates or manual YAML definition.
-            The workflow will be created with status &quot;deployed&quot; and be immediately available for execution.
+            {mode === 'update'
+              ? 'Upload a new version of this workflow using YAML editor or ZIP file with dependencies.'
+              : 'Create a new workflow from scratch using templates or manual YAML definition. The workflow will be created with status "deployed" and be immediately available for execution.'}
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="template">Templates</TabsTrigger>
-            <TabsTrigger value="manual">Manual Creation</TabsTrigger>
+          <TabsList className={`grid w-full ${showTemplatesTab ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            {showTemplatesTab && <TabsTrigger value="template">Templates</TabsTrigger>}
+            <TabsTrigger value="manual">
+              {mode === 'update' ? 'Edit YAML' : 'Manual Creation'}
+            </TabsTrigger>
             <TabsTrigger value="upload">Upload ZIP</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="template" className="space-y-4">
+          {showTemplatesTab && <TabsContent value="template" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {Object.entries(templates).map(([key, template]) => (
                 <Card
@@ -572,98 +629,100 @@ export function CreateWorkflowDialog({
                 </div>
               </div>
             )}
-          </TabsContent>
+          </TabsContent>}
 
           <TabsContent value="manual" className="space-y-4">
             <div className="space-y-6">
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                <div className="md:col-span-2">
-                  <Label htmlFor="workflow-name">Workflow Name *</Label>
-                  <Input
-                    id="workflow-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="My Awesome Workflow"
-                    className="mt-1"
-                  />
-                </div>
+                {mode === 'create' && (
+                  <>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="workflow-name">Workflow Name *</Label>
+                      <Input
+                        id="workflow-name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="My Awesome Workflow"
+                        className="mt-1"
+                      />
+                    </div>
 
-                <div className="md:col-span-2">
-                  <Label htmlFor="workflow-description">Description</Label>
-                  <Textarea
-                    id="workflow-description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Describe what this workflow does..."
-                    className="mt-1"
-                    rows={3}
-                  />
-                </div>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="workflow-description">Description</Label>
+                      <Textarea
+                        id="workflow-description"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="Describe what this workflow does..."
+                        className="mt-1"
+                        rows={3}
+                      />
+                    </div>
 
-                  <div>
-                    <Label htmlFor="category">Category</Label>
-                    <Select value={category} onValueChange={setCategory}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat.replace('_', ' ').toUpperCase()}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    <div>
+                      <Label htmlFor="category">Category</Label>
+                      <Select value={category} onValueChange={setCategory}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((cat) => (
+                            <SelectItem key={cat} value={cat}>
+                              {cat.replace('_', ' ').toUpperCase()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                  <div>
-                    <Label htmlFor="difficulty">Difficulty</Label>
-                    <Select value={difficulty} onValueChange={setDifficulty}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {difficultyLevels.map((level) => (
-                          <SelectItem key={level} value={level}>
-                            {level.toUpperCase()}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    <div>
+                      <Label htmlFor="difficulty">Difficulty</Label>
+                      <Select value={difficulty} onValueChange={setDifficulty}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {difficultyLevels.map((level) => (
+                            <SelectItem key={level} value={level}>
+                              {level.toUpperCase()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                <div>
-                  <Label htmlFor="duration">Estimated Duration (seconds)</Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    value={estimatedDuration}
-                    onChange={(e) => setEstimatedDuration(parseInt(e.target.value) || 60)}
-                    min={1}
-                    className="mt-1"
-                  />
-                </div>
+                    <div>
+                      <Label htmlFor="duration">Estimated Duration (seconds)</Label>
+                      <Input
+                        id="duration"
+                        type="number"
+                        value={estimatedDuration}
+                        onChange={(e) => setEstimatedDuration(parseInt(e.target.value) || 60)}
+                        min={1}
+                        className="mt-1"
+                      />
+                    </div>
 
-                <div>
-                  <Label htmlFor="timeout">Timeout (minutes)</Label>
-                  <Input
-                    id="timeout"
-                    type="number"
-                    value={timeoutMinutes}
-                    onChange={(e) => setTimeoutMinutes(Math.min(Math.max(parseInt(e.target.value) || 1, 1), 120))}
-                    min={1}
-                    max={120}
-                    className="mt-1"
-                    placeholder="25"
-                  />
-                  <p className="text-xs text-gray-600 mt-1">Max execution time before workflow is terminated</p>
-                </div>
+                    <div>
+                      <Label htmlFor="timeout">Timeout (minutes)</Label>
+                      <Input
+                        id="timeout"
+                        type="number"
+                        value={timeoutMinutes}
+                        onChange={(e) => setTimeoutMinutes(Math.min(Math.max(parseInt(e.target.value) || 1, 1), 120))}
+                        min={1}
+                        max={120}
+                        className="mt-1"
+                        placeholder="25"
+                      />
+                      <p className="text-xs text-gray-600 mt-1">Max execution time before workflow is terminated</p>
+                    </div>
 
-                {/* Tags */}
-                <div className="md:col-span-2">
-                  <Label>Tags</Label>
+                    {/* Tags */}
+                    <div className="md:col-span-2">
+                      <Label>Tags</Label>
                   <div className="flex gap-2 mt-1">
                     <Input
                       value={newTag}
@@ -690,7 +749,33 @@ export function CreateWorkflowDialog({
                       ))}
                     </div>
                   )}
-                </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Activation checkbox for update mode */}
+                {mode === 'update' && (
+                  <div className="md:col-span-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="activate-immediately"
+                        checked={activateImmediately}
+                        onCheckedChange={(checked) => setActivateImmediately(checked as boolean)}
+                      />
+                      <Label htmlFor="activate-immediately" className="text-sm font-medium">
+                        Activate this version immediately after upload
+                      </Label>
+                    </div>
+                    {activateImmediately && (
+                      <Alert className="border-black bg-gray-50 mt-2">
+                        <AlertTriangle className="h-4 w-4 text-black" />
+                        <AlertDescription className="text-black">
+                          This will switch all new executions to this version.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+                )}
 
               </div>
 
@@ -910,17 +995,17 @@ arguments:
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={loading || !name.trim() || !automationSequence.trim()}
+              disabled={loading || (mode === 'create' && !name.trim()) || !automationSequence.trim()}
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating...
+                  {mode === 'update' ? 'Uploading Version...' : 'Creating Workflow...'}
                 </>
               ) : (
                 <>
-                  <Zap className="w-4 h-4 mr-2" />
-                  Create Workflow
+                  {mode === 'update' ? <Upload className="w-4 h-4 mr-2" /> : <Zap className="w-4 h-4 mr-2" />}
+                  {mode === 'update' ? 'Upload New Version' : 'Create Workflow'}
                 </>
               )}
             </Button>
