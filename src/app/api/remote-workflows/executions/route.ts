@@ -88,9 +88,10 @@ export async function GET(request: NextRequest) {
 
     // Build base query - PERFORMANCE OPTIMIZED: exclude heavy JSONB fields by default
     // Heavy fields (execution_params, results) are only included when include_results=true
+    // Include machine assignment info and client_id
     const selectFields = include_results
-      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category, organization_id)'
-      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category, organization_id)';
+      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, remote_machines(name), deployed_workflows!inner(id, name, description, category, organization_id)'
+      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, remote_machines(name), deployed_workflows!inner(id, name, description, category, organization_id)';
 
     let query = supabase
       .from('workflow_executions')
@@ -203,6 +204,13 @@ export async function GET(request: NextRequest) {
         modal_call_id: executionAny.modal_call_id,
         created_at: executionAny.created_at,
         updated_at: executionAny.updated_at,
+
+        // Machine assignment info
+        assigned_machine_id: executionAny.assigned_machine_id,
+        assigned_machine_name: executionAny.remote_machines?.name || null,
+
+        // Client info
+        client_id: executionAny.client_id,
 
         // Quick access URLs
         endpoints: {
