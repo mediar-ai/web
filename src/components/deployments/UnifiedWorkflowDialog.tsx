@@ -9,7 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, FileCode, FilePlus, Upload, Edit } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, FileCode, FilePlus, Upload, Edit, Save, X } from 'lucide-react';
 import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
 import { formatDuration } from './utils';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
@@ -69,6 +71,14 @@ export function UnifiedWorkflowDialog({
   const [isEditingYaml, setIsEditingYaml] = useState(false);
   const [uploadingVersion, setUploadingVersion] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [selectedVersionNumber, setSelectedVersionNumber] = useState<string>(''); // Track selected version for viewing
+
+  // Inline editing state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editedName, setEditedName] = useState('');
+  const [editedDescription, setEditedDescription] = useState('');
+  const [savingNameDescription, setSavingNameDescription] = useState(false);
 
   // Machine assignment state
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
@@ -94,14 +104,17 @@ export function UnifiedWorkflowDialog({
       const data = await response.json();
       if (data.success) {
         setVersions(data.versions || []);
-        // Load YAML for active version
+        // Find active version and set as default selected version
         const activeVersion = data.versions?.find((v: WorkflowVersion) => v.is_active);
-        if (activeVersion?.automation_sequence) {
-          // Check if it's already a string or needs to be converted
-          const yamlContent = typeof activeVersion.automation_sequence === 'string'
-            ? activeVersion.automation_sequence
-            : yaml.dump(activeVersion.automation_sequence);
-          setCurrentYaml(yamlContent);
+        if (activeVersion) {
+          setSelectedVersionNumber(activeVersion.version_number);
+          if (activeVersion?.automation_sequence) {
+            // Check if it's already a string or needs to be converted
+            const yamlContent = typeof activeVersion.automation_sequence === 'string'
+              ? activeVersion.automation_sequence
+              : yaml.dump(activeVersion.automation_sequence);
+            setCurrentYaml(yamlContent);
+          }
         }
       } else {
         throw new Error(data.error || 'Failed to load versions');
@@ -165,6 +178,40 @@ export function UnifiedWorkflowDialog({
     }
   }, [workflow]);
 
+  // Load YAML for a specific version
+  const loadVersionYaml = useCallback(async (versionNumber: string) => {
+    if (!workflow) return;
+
+    setLoadingYaml(true);
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/versions`);
+      if (!response.ok) throw new Error(`Failed to load versions: ${response.status}`);
+
+      const data = await response.json();
+      if (data.success) {
+        const version = data.versions?.find((v: WorkflowVersion) => v.version_number === versionNumber);
+        if (version?.automation_sequence) {
+          // Check if it's already a string or needs to be converted
+          const yamlContent = typeof version.automation_sequence === 'string'
+            ? version.automation_sequence
+            : yaml.dump(version.automation_sequence);
+          setCurrentYaml(yamlContent);
+          setEditedYaml(yamlContent);
+        } else {
+          setCurrentYaml('');
+          setErrorMessage(`No YAML found for version ${versionNumber}`);
+        }
+      } else {
+        throw new Error(data.error || 'Failed to load version');
+      }
+    } catch (error) {
+      console.error('Error loading version YAML:', error);
+      setErrorMessage(`Failed to load version: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingYaml(false);
+    }
+  }, [workflow]);
+
   const loadMachines = useCallback(async () => {
     setLoadingMachines(true);
     try {
@@ -211,6 +258,8 @@ export function UnifiedWorkflowDialog({
       loadMachines();
       loadMachineAssignments();
       loadWorkflowYaml();
+      setEditedName(workflow.name || '');
+      setEditedDescription(workflow.description || '');
     }
   }, [open, workflow, loadVersions, loadMachineAssignments, loadMachines, loadWorkflowYaml]);
 
@@ -225,6 +274,39 @@ export function UnifiedWorkflowDialog({
     }
   }, [successMessage, errorMessage]);
 
+
+  const saveNameAndDescription = async () => {
+    if (!workflow) return;
+
+    setSavingNameDescription(true);
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflow.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editedName,
+          description: editedDescription
+        })
+      });
+
+      if (!response.ok) throw new Error(`Failed to update workflow: ${response.status}`);
+
+      const data = await response.json();
+      if (data.success) {
+        setSuccessMessage('Workflow updated successfully');
+        setIsEditingName(false);
+        setIsEditingDescription(false);
+        onSettingsUpdated?.();
+      } else {
+        throw new Error(data.error || 'Failed to update workflow');
+      }
+    } catch (error) {
+      console.error('Error updating workflow:', error);
+      setErrorMessage(`Failed to update workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSavingNameDescription(false);
+    }
+  };
 
   const activateVersion = async (versionNumber: string) => {
     if (!workflow) return;
@@ -336,8 +418,128 @@ export function UnifiedWorkflowDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto !mt-8 !mb-8 !top-8 !transform-none !translate-y-0">
         <DialogHeader>
-          <DialogTitle className="text-2xl">{workflow.name}</DialogTitle>
-          <DialogDescription>{workflow.description}</DialogDescription>
+          {/* Inline Editable Title */}
+          <div className="flex items-center gap-2">
+            {isEditingName ? (
+              <>
+                <Input
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  onBlur={() => {
+                    if (editedName !== workflow.name) {
+                      saveNameAndDescription();
+                    } else {
+                      setIsEditingName(false);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      saveNameAndDescription();
+                    } else if (e.key === 'Escape') {
+                      setEditedName(workflow.name);
+                      setIsEditingName(false);
+                    }
+                  }}
+                  className="text-2xl font-bold border-2 border-black"
+                  autoFocus
+                  disabled={savingNameDescription}
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => saveNameAndDescription()}
+                  disabled={savingNameDescription}
+                  className="flex-shrink-0"
+                >
+                  {savingNameDescription ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditedName(workflow.name);
+                    setIsEditingName(false);
+                  }}
+                  disabled={savingNameDescription}
+                  className="flex-shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </>
+            ) : (
+              <DialogTitle
+                className="text-2xl cursor-pointer hover:bg-gray-50 px-2 py-1 rounded transition-colors flex-1"
+                onClick={() => setIsEditingName(true)}
+              >
+                {workflow.name}
+              </DialogTitle>
+            )}
+          </div>
+
+          {/* Inline Editable Description */}
+          {isEditingDescription ? (
+            <div className="flex items-start gap-2">
+              <Textarea
+                value={editedDescription}
+                onChange={(e) => setEditedDescription(e.target.value)}
+                onBlur={() => {
+                  if (editedDescription !== workflow.description) {
+                    saveNameAndDescription();
+                  } else {
+                    setIsEditingDescription(false);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setEditedDescription(workflow.description || '');
+                    setIsEditingDescription(false);
+                  }
+                }}
+                className="border-2 border-black resize-none"
+                rows={2}
+                autoFocus
+                disabled={savingNameDescription}
+              />
+              <div className="flex flex-col gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => saveNameAndDescription()}
+                  disabled={savingNameDescription}
+                  className="flex-shrink-0"
+                >
+                  {savingNameDescription ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditedDescription(workflow.description || '');
+                    setIsEditingDescription(false);
+                  }}
+                  disabled={savingNameDescription}
+                  className="flex-shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <DialogDescription
+              className="cursor-pointer hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+              onClick={() => setIsEditingDescription(true)}
+            >
+              {workflow.description || 'Click to add description'}
+            </DialogDescription>
+          )}
         </DialogHeader>
 
         {/* Success/Error Messages */}
@@ -414,6 +616,53 @@ export function UnifiedWorkflowDialog({
           </TabsContent>
 
           <TabsContent value="workflow" className="space-y-4">
+            {/* Version Selector */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 border-2 border-black rounded-lg">
+              <span className="font-mono font-bold text-sm uppercase">Version:</span>
+              <Select
+                value={selectedVersionNumber}
+                onValueChange={(value) => {
+                  setSelectedVersionNumber(value);
+                  loadVersionYaml(value);
+                  setIsEditingYaml(false);
+                  setUploadResult(null);
+                }}
+                disabled={loadingVersions || isEditingYaml}
+              >
+                <SelectTrigger className="w-[200px] border-2 border-black font-mono">
+                  <SelectValue placeholder="Select version" />
+                </SelectTrigger>
+                <SelectContent>
+                  {versions
+                    .sort((a, b) => {
+                      // Sort by version number descending (latest first)
+                      const aNum = parseFloat(a.version_number);
+                      const bNum = parseFloat(b.version_number);
+                      return bNum - aNum;
+                    })
+                    .map((version) => (
+                      <SelectItem key={version.version_number} value={version.version_number}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono">v{version.version_number}</span>
+                          {version.is_active && (
+                            <Badge className="bg-black text-white text-xs">ACTIVE</Badge>
+                          )}
+                          <span className="text-xs text-gray-500">
+                            {version.execution_count} runs
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {versions.find(v => v.version_number === selectedVersionNumber)?.is_active && (
+                <Badge className="bg-black text-white animate-pulse">
+                  <Star className="w-3 h-3 mr-1" />
+                  Active Version
+                </Badge>
+              )}
+            </div>
+
             <div className="flex items-center justify-between mb-2">
               <h4 className="font-semibold flex items-center gap-2">
                 <FileCode className="w-4 h-4" />

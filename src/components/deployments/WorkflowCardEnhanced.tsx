@@ -25,6 +25,7 @@ import {
   Trash2,
   Building2,
   Share2,
+  Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -51,7 +52,6 @@ interface WorkflowCardEnhancedProps {
   onExecute?: () => void;
   onView?: () => void;
   onDuplicate?: () => void;
-  onEdit?: () => void;
   onDelete?: () => void;
   onToggleCron?: () => void;
   onManageOrganizations?: () => void;
@@ -68,7 +68,6 @@ export function WorkflowCardEnhanced({
   onExecute,
   onView,
   onDuplicate,
-  onEdit,
   onDelete,
   onToggleCron,
   onManageOrganizations,
@@ -236,10 +235,8 @@ export function WorkflowCardEnhanced({
                     )}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={onEdit}>
-                  Edit Workflow
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={onDuplicate}>
+                  <Copy className="mr-2 h-4 w-4" />
                   Duplicate
                 </DropdownMenuItem>
                 {isMediarAdmin && (

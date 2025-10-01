@@ -159,6 +159,80 @@ export async function GET(
   }
 }
 
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ workflowId: string }> }
+) {
+  try {
+    const { workflowId } = await params;
+    const workflowIdNum = parseInt(workflowId);
+    const body = await request.json();
+
+    if (isNaN(workflowIdNum)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid workflow ID' },
+        { status: 400 }
+      );
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return NextResponse.json(
+        { success: false, error: 'Supabase environment variables are not set' },
+        { status: 500 }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Build update object with only provided fields
+    const updateData: any = {};
+    if (body.name !== undefined) updateData.name = body.name;
+    if (body.description !== undefined) updateData.description = body.description;
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No fields to update' },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabase
+      .from('deployed_workflows')
+      .update(updateData)
+      .eq('id', workflowIdNum)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating workflow:', error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to update workflow' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      workflow: data,
+      message: 'Workflow updated successfully'
+    });
+
+  } catch (error) {
+    console.error('[ERROR] Error updating workflow:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update workflow',
+        details: error instanceof Error ? error.message : String(error)
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }
