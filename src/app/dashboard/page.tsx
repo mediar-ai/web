@@ -13,9 +13,8 @@ import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { OrganizationAssignmentDialog } from '@/components/deployments/OrganizationAssignmentDialog';
 import { ExecutionsDataTable } from '@/components/dashboard/ExecutionsDataTable';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
-import { Activity, Workflow, TrendingUp, Zap, Plus, Search, Eye, StopCircle, Trash2 } from 'lucide-react';
+import { Activity, Workflow, TrendingUp, Zap, Plus, Search } from 'lucide-react';
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -65,8 +64,6 @@ function DashboardContent() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [orgAssignmentOpen, setOrgAssignmentOpen] = useState(false);
   const [selectedWorkflowForOrgAssignment, setSelectedWorkflowForOrgAssignment] = useState<WorkflowWithSettings | null>(null);
-  const [stoppingExecutions, setStoppingExecutions] = useState<Set<number>>(new Set());
-  const [deletingExecutions, setDeletingExecutions] = useState<Set<number>>(new Set());
 
   // Use keyboard navigation
   const { selectedIndex: navSelectedIndex } = useKeyboardNavigation({
@@ -369,11 +366,6 @@ function DashboardContent() {
   const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
   const isGlobalAdmin = hasMediarEmail || isMemberOfMediarOrg;
   const canDelete = isGlobalAdmin;
-
-  // Filter executions
-  const filteredExecutions = executionWorkflowFilter === "all"
-    ? executions
-    : executions.filter(e => e.workflow_id === executionWorkflowFilter);
 
   return (
     <DashboardLayout>
