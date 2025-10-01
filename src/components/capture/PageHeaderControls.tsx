@@ -66,9 +66,11 @@ const ConditionalOrganizationSwitcher: React.FC = () => {
   }
 
   return (
-    <OrganizationSwitcher 
+    <OrganizationSwitcher
       hidePersonal={true}
       afterSelectOrganizationUrl="/"
+      organizationProfileMode="modal"
+      skipInvitationScreen={false}
       appearance={{
         elements: {
           organizationSwitcherTrigger: "px-3 py-2 text-sm border rounded-md hover:bg-gray-50"
