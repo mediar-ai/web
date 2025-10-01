@@ -83,9 +83,10 @@ export function ExecutionsDataTable({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
     execution_id: false,
-    workflow_id: false,
+    workflow_id: true,  // Show workflow ID by default
+    workflow_name: true, // Show workflow name by default
     error_message: false,
-    machine: false,
+    machine: true,  // Show machine by default
     user: false,
     version: false,
   });
@@ -138,18 +139,44 @@ export function ExecutionsDataTable({
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-              className="h-auto p-0 font-mono hover:bg-transparent"
+              className="h-auto p-0 font-mono text-white hover:text-gray-300"
             >
-              Workflow
+              Workflow ID
               <ArrowUpDown className="ml-2 h-3 w-3" />
             </Button>
           );
         },
         cell: ({ row }) => {
-          const workflow = workflows.find((w) => w.id === row.getValue('workflow_id'));
+          return (
+            <span className="font-mono text-xs">
+              {row.getValue('workflow_id')}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'workflow_name',
+        header: ({ column }) => {
+          return (
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+              className="h-auto p-0 font-mono text-white hover:text-gray-300"
+            >
+              Workflow Name
+              <ArrowUpDown className="ml-2 h-3 w-3" />
+            </Button>
+          );
+        },
+        accessorFn: (row) => {
+          const workflow = workflows.find((w) => w.id === row.workflow_id);
+          return workflow?.name || `Workflow ${row.workflow_id}`;
+        },
+        cell: ({ row }) => {
+          const workflow = workflows.find((w) => w.id === row.original.workflow_id);
           return (
             <span className="font-mono text-sm">
-              {workflow?.name || `Workflow ${row.getValue('workflow_id')}`}
+              {workflow?.name || `Workflow ${row.original.workflow_id}`}
             </span>
           );
         },
@@ -161,7 +188,7 @@ export function ExecutionsDataTable({
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-              className="h-auto p-0 font-mono hover:bg-transparent"
+              className="h-auto p-0 font-mono text-white hover:text-gray-300"
             >
               Status
               <ArrowUpDown className="ml-2 h-3 w-3" />
@@ -267,7 +294,7 @@ export function ExecutionsDataTable({
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-              className="h-auto p-0 font-mono hover:bg-transparent"
+              className="h-auto p-0 font-mono text-white hover:text-gray-300"
             >
               Started
               <ArrowUpDown className="ml-2 h-3 w-3" />
@@ -287,7 +314,7 @@ export function ExecutionsDataTable({
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-              className="h-auto p-0 font-mono hover:bg-transparent"
+              className="h-auto p-0 font-mono text-white hover:text-gray-300"
             >
               Duration
               <ArrowUpDown className="ml-2 h-3 w-3" />
