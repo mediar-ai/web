@@ -139,7 +139,7 @@ export function ExecutionsDataTable({
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-              className="h-auto p-0 font-mono text-white hover:text-gray-300"
+              className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Workflow ID
               <ArrowUpDown className="ml-2 h-3 w-3" />
@@ -161,7 +161,7 @@ export function ExecutionsDataTable({
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-              className="h-auto p-0 font-mono text-white hover:text-gray-300"
+              className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Workflow Name
               <ArrowUpDown className="ml-2 h-3 w-3" />
@@ -188,7 +188,7 @@ export function ExecutionsDataTable({
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-              className="h-auto p-0 font-mono text-white hover:text-gray-300"
+              className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Status
               <ArrowUpDown className="ml-2 h-3 w-3" />
@@ -294,7 +294,7 @@ export function ExecutionsDataTable({
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-              className="h-auto p-0 font-mono text-white hover:text-gray-300"
+              className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Started
               <ArrowUpDown className="ml-2 h-3 w-3" />
@@ -314,7 +314,7 @@ export function ExecutionsDataTable({
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-              className="h-auto p-0 font-mono text-white hover:text-gray-300"
+              className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Duration
               <ArrowUpDown className="ml-2 h-3 w-3" />

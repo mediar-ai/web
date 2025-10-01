@@ -89,8 +89,8 @@ export async function GET(request: NextRequest) {
     // Build base query - PERFORMANCE OPTIMIZED: exclude heavy JSONB fields by default
     // Heavy fields (execution_params, results) are only included when include_results=true
     const selectFields = include_results
-      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category, organization_id)'
-      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category, organization_id)';
+      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category, organization_id)'
+      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, deployed_workflows!inner(id, name, description, category, organization_id)';
 
     let query = supabase
       .from('workflow_executions')
@@ -195,6 +195,8 @@ export async function GET(request: NextRequest) {
 
         // Error info
         error_message: executionAny.error_message,
+        error_analysis: executionAny.error_analysis,
+        error_analyzed_at: executionAny.error_analyzed_at,
         formatted_output: executionAny.formatted_output,
 
         // Metadata
