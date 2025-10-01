@@ -42,6 +42,7 @@ interface Machine {
   machine_type: string;
   status: string;
   health_status: string;
+  last_health_check?: string | null;
   load_info?: {
     current_executions: number;
     load_percentage: number;
@@ -501,18 +502,22 @@ export function BatchTestDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {availableMachines.map(machine => {
-                        const statusIndicator = machine.health_status === 'healthy' ? '●' :
-                                               machine.health_status === 'unhealthy' ? '●' : '●';
+                        // Check if machine is healthy (last health check within 5 minutes)
+                        const now = new Date();
+                        const lastCheck = machine.last_health_check ? new Date(machine.last_health_check) : null;
+                        const isHealthy = lastCheck && (now.getTime() - lastCheck.getTime()) < 5 * 60 * 1000 && machine.health_status === 'healthy';
+
+                        const statusIndicator = isHealthy ? '🟢' : '🔴';
                         const jobsInfo = machine.load_info
-                          ? `${machine.load_info.current_executions}/${machine.load_info.available_capacity + machine.load_info.current_executions} jobs`
-                          : '0/1 jobs';
+                          ? `${machine.load_info.current_executions}/${machine.load_info.available_capacity + machine.load_info.current_executions}`
+                          : '0/1';
 
                         return (
                           <SelectItem
                             key={`machine-${machine.id}`}
                             value={machine.id.toString()}
                           >
-                            {statusIndicator} {machine.name} ({machine.machine_type}) {jobsInfo}
+                            {statusIndicator} {machine.name} {jobsInfo} jobs
                           </SelectItem>
                         );
                       })}
@@ -549,20 +554,37 @@ export function BatchTestDialog({
                       <SelectValue placeholder="Active version" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableVersions.map(version => {
-                        const statusIndicator = version.is_active ? '●' : '○';
-                        const activeLabel = version.is_active ? ' (Active)' : '';
-                        const dateStr = new Date(version.created_at).toLocaleDateString();
-
-                        return (
-                          <SelectItem
-                            key={`version-${version.version_id}`}
-                            value={version.version_number}
-                          >
-                            {statusIndicator} v{version.version_number}{activeLabel} - {dateStr}
-                          </SelectItem>
-                        );
-                      })}
+                      {availableVersions.map(version => (
+                        <SelectItem
+                          key={`version-${version.version_id}`}
+                          value={version.version_number}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  version.is_active
+                                    ? 'bg-green-500'
+                                    : 'bg-gray-400'
+                                }`}
+                              />
+                              <span className="font-medium">
+                                v{version.version_number}
+                              </span>
+                              {version.is_active && (
+                                <span className="text-xs text-green-600 font-medium">
+                                  (Active)
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              {new Date(
+                                version.created_at
+                              ).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
