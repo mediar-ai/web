@@ -321,13 +321,29 @@ export function ExecutionsDataTable({
       },
       {
         id: 'machine',
+        accessorKey: 'assigned_machine_name',
         header: 'Machine',
-        cell: () => <span className="font-mono text-xs text-gray-600">-</span>,
+        cell: ({ row }) => {
+          const machineName = row.getValue('assigned_machine_name') as string;
+          return (
+            <span className="font-mono text-xs text-gray-600">
+              {machineName || '-'}
+            </span>
+          );
+        },
       },
       {
         id: 'user',
+        accessorKey: 'client_id',
         header: 'User',
-        cell: () => <span className="font-mono text-xs text-gray-600">-</span>,
+        cell: ({ row }) => {
+          const clientId = row.getValue('client_id') as string;
+          return (
+            <span className="font-mono text-xs text-gray-600">
+              {clientId || '-'}
+            </span>
+          );
+        },
       },
       {
         id: 'version',
@@ -366,7 +382,7 @@ export function ExecutionsDataTable({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => onViewDetails(execution.execution_id)}
-                  className="font-mono text-sm"
+                  className="font-mono text-sm hover:bg-gray-100"
                 >
                   <Eye className="mr-2 h-4 w-4" />
                   View Details
@@ -394,7 +410,7 @@ export function ExecutionsDataTable({
                       }
                     }}
                     disabled={isStopping}
-                    className="font-mono text-sm"
+                    className="font-mono text-sm hover:bg-gray-100"
                   >
                     <StopCircle className="mr-2 h-4 w-4" />
                     {execution.status === 'queued' ? 'Cancel' : 'Stop'}
@@ -421,7 +437,7 @@ export function ExecutionsDataTable({
                       }
                     }}
                     disabled={isDeleting}
-                    className="font-mono text-sm hover:bg-red-600 hover:text-white"
+                    className="font-mono text-sm hover:bg-red-100 hover:text-red-900"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete
@@ -538,7 +554,7 @@ export function ExecutionsDataTable({
                   return (
                     <DropdownMenuCheckboxItem
                       key={column.id}
-                      className="font-mono text-sm capitalize"
+                      className="font-mono text-sm capitalize hover:bg-gray-100"
                       checked={column.getIsVisible()}
                       onCheckedChange={(value) => column.toggleVisibility(!!value)}
                     >
