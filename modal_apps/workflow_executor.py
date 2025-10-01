@@ -1598,6 +1598,7 @@ async def execute_mcp_workflow(
 
         async def _post_with_session(payload):
             nonlocal session_client, session_id
+            logger.info("[DEBUG] _post_with_session: About to send POST request...")
             resp = await session_client.post(
                 endpoint_url,
                 json=payload,
@@ -1606,6 +1607,7 @@ async def execute_mcp_workflow(
                     "Mcp-Session-Id": session_id,
                 },
             )
+            logger.info("[DEBUG] _post_with_session: POST returned, status=%s", resp.status_code)
             if resp.status_code == 401:
                 # Session likely landed on a different VM. Re-initialize once.
                 try:
@@ -1626,6 +1628,8 @@ async def execute_mcp_workflow(
                         "Mcp-Session-Id": session_id,
                     },
                 )
+                logger.info("[DEBUG] _post_with_session: Retry POST returned, status=%s", resp.status_code)
+            logger.info("[DEBUG] _post_with_session: About to return response object")
             return resp
 
         response = await _post_with_session(initialized_request)
