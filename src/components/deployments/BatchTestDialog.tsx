@@ -500,40 +500,22 @@ export function BatchTestDialog({
                       <SelectValue placeholder="Select a machine" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableMachines.map(machine => (
-                        <SelectItem
-                          key={`machine-${machine.id}`}
-                          value={machine.id.toString()}
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <div
-                                className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                  machine.health_status === 'healthy'
-                                    ? 'bg-green-500'
-                                    : machine.health_status === 'unhealthy'
-                                      ? 'bg-red-500'
-                                      : 'bg-yellow-500'
-                                }`}
-                              />
-                              <span className="font-medium truncate max-w-[200px]" title={machine.name}>
-                                {machine.name}
-                              </span>
-                              <span className="text-xs text-muted-foreground flex-shrink-0">
-                                ({machine.machine_type})
-                              </span>
-                            </div>
-                            {machine.load_info && (
-                              <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
-                                {machine.load_info.current_executions}/
-                                {machine.load_info.available_capacity +
-                                  machine.load_info.current_executions}{' '}
-                                jobs
-                              </span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
+                      {availableMachines.map(machine => {
+                        const statusIndicator = machine.health_status === 'healthy' ? '●' :
+                                               machine.health_status === 'unhealthy' ? '●' : '●';
+                        const jobsInfo = machine.load_info
+                          ? `${machine.load_info.current_executions}/${machine.load_info.available_capacity + machine.load_info.current_executions} jobs`
+                          : '0/1 jobs';
+
+                        return (
+                          <SelectItem
+                            key={`machine-${machine.id}`}
+                            value={machine.id.toString()}
+                          >
+                            {statusIndicator} {machine.name} ({machine.machine_type}) {jobsInfo}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 )}
@@ -567,37 +549,20 @@ export function BatchTestDialog({
                       <SelectValue placeholder="Active version" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableVersions.map(version => (
-                        <SelectItem
-                          key={`version-${version.version_id}`}
-                          value={version.version_number}
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`w-2 h-2 rounded-full ${
-                                  version.is_active
-                                    ? 'bg-green-500'
-                                    : 'bg-gray-400'
-                                }`}
-                              />
-                              <span className="font-medium">
-                                v{version.version_number}
-                              </span>
-                              {version.is_active && (
-                                <span className="text-xs text-green-600 font-medium">
-                                  (Active)
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-xs text-muted-foreground ml-2">
-                              {new Date(
-                                version.created_at
-                              ).toLocaleDateString()}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
+                      {availableVersions.map(version => {
+                        const statusIndicator = version.is_active ? '●' : '○';
+                        const activeLabel = version.is_active ? ' (Active)' : '';
+                        const dateStr = new Date(version.created_at).toLocaleDateString();
+
+                        return (
+                          <SelectItem
+                            key={`version-${version.version_id}`}
+                            value={version.version_number}
+                          >
+                            {statusIndicator} v{version.version_number}{activeLabel} - {dateStr}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 )}
