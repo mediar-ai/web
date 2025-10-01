@@ -573,7 +573,11 @@ def resolve_workflow_id_for_version(
 
 
 def extract_applicant_info(workflow_data: Dict[str, Any]) -> Dict[str, str]:
-    """Extract applicant information from workflow automation sequence"""
+    """
+    DEPRECATED: Extract applicant information from workflow automation sequence
+    This function is insurance-specific and no longer used in workflow-agnostic executor.
+    Kept for backward compatibility only.
+    """
     info = {
         "height": "",
         "date_of_birth": "",
@@ -1201,7 +1205,9 @@ def extract_legacy_quotes_from_mcp_response(
     mcp_content: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
     """
-    Legacy function to extract quotes from MCP response for backward compatibility.
+    DEPRECATED: Legacy function to extract quotes from MCP response for backward compatibility.
+    This function is insurance-specific and no longer used in workflow-agnostic executor.
+    Kept for backward compatibility only.
 
     This maintains compatibility with existing quote extraction logic while we
     transition to the new standardized format.
@@ -1785,27 +1791,7 @@ async def execute_mcp_workflow(
                             "validation": {"is_valid": False, "errors": [str(parse_error)]}
                         }
 
-                    # Extract data for backward compatibility
-                    quotes = []
-                    if workflow_result["data"]:
-                        # Handle different data formats
-                        if isinstance(workflow_result["data"], list):
-                            quotes = workflow_result["data"]
-                        elif isinstance(workflow_result["data"], dict):
-                            # Look for quotes in various possible fields
-                            quotes = (
-                                workflow_result["data"].get("quotes")
-                                or workflow_result["data"].get("extracted_data")
-                                or workflow_result["data"].get("items")
-                                or []
-                            )
-
-                    # Fallback to legacy extraction if no standardized data found
-                    if not quotes and mcp_content:
-                        logger.info(" Falling back to legacy quote extraction...")
-                        quotes = extract_legacy_quotes_from_mcp_response(mcp_content)
-
-                    # Extract execution step details for metrics (backward compatibility)
+                    # Extract execution step details for metrics
                     successful_steps = 0
                     failed_steps = 0
                     executed_steps = []
@@ -1826,45 +1812,61 @@ async def execute_mcp_workflow(
                             else:
                                 failed_steps += 1
 
-                # Build execution results in the expected format (enhanced with new data)
+                # Build workflow-agnostic execution results
                 execution_results = {
-                    "execution_type": "real_browser_automation",
-                    "workflow_name": workflow_data.get(
-                        "name", "Insurance Quote Workflow"
-                    ),
-                    "executed_steps": executed_steps,
-                    "extracted_data": mcp_content if mcp_content else {},
-                    "quotes": quotes,
-                    "applicant_info": extract_applicant_info(workflow_data),
+                    "workflow_id": workflow_data.get("id"),
+                    "workflow_name": workflow_data.get("name", "Unknown Workflow"),
+
+                    # Workflow output (from parser) - workflow-agnostic
+                    "output": {
+                        "status": workflow_result.get("state", "unknown"),
+                        "success": workflow_result.get("success", False),
+                        "message": workflow_result.get("message", "No message"),
+                        "data": workflow_result.get("data")  # Full parsed output including workflow-specific fields
+                    },
+
+                    # Technical execution details
+                    "execution": {
+                        "status": workflow_result.get("execution_status", "unknown"),
+                        "duration_ms": workflow_result.get("duration_ms", 0),
+                        "steps_executed": workflow_result.get("steps_executed", 0),
+                        "total_steps": len(arguments.get("items", []))
+                    },
+
+                    # Performance metrics
                     "performance_metrics": {
                         "total_steps": len(arguments.get("items", [])),
                         "successful_steps": successful_steps,
                         "failed_steps": failed_steps,
                         "total_execution_time_seconds": execution_time,
                     },
+
+                    # Debug details (keep for troubleshooting)
+                    "step_details": mcp_content.get("results", []) if mcp_content else [],
+                    "executed_steps": executed_steps,
+                    "extracted_data": mcp_content if mcp_content else {},
                     "raw_mcp_response": result_data,
-                    "step_details": (
-                        mcp_content.get("results", []) if mcp_content else []
-                    ),
-                    # NEW: Add standardized workflow result
+
+                    # Validation info
+                    "validation_info": workflow_result.get("validation", {}),
+
+                    # Legacy fields for backward compatibility
+                    "execution_type": "real_browser_automation",
                     "workflow_result": workflow_result,
-                    "business_success": workflow_result["success"],
-                    "execution_status": workflow_result["execution_status"],
-                    "result_message": workflow_result["message"],
-                    "validation_info": workflow_result["validation"],
+                    "business_success": workflow_result.get("success", False),
+                    "execution_status": workflow_result.get("execution_status", "unknown"),
+                    "result_message": workflow_result.get("message", "No message"),
                 }
 
-                # Enhanced logging with standardized information
-                logger.info(" Enhanced Sequence Execution Result:")
+                # Workflow-agnostic logging
+                logger.info(" Workflow Execution Result:")
                 logger.info("Tool: %s", tool_name)
-                logger.info(
-                    "Business Success: %s", "" if workflow_result["success"] else ""
-                )
-                logger.info("Execution Status: %s", workflow_result["execution_status"])
-                logger.info("Message: %s", workflow_result["message"])
-                logger.info("Duration: %dms", workflow_result["duration_ms"])
-                logger.info("Steps Executed: %d", workflow_result["steps_executed"])
-                logger.info("Quotes Found: %d", len(quotes))
+                logger.info("Output Status: %s", execution_results["output"]["status"])
+                logger.info("Output Success: %s", execution_results["output"]["success"])
+                logger.info("Output Message: %s", execution_results["output"]["message"])
+                logger.info("Execution Status: %s", execution_results["execution"]["status"])
+                logger.info("Duration: %dms", execution_results["execution"]["duration_ms"])
+                logger.info("Steps Executed: %d", execution_results["execution"]["steps_executed"])
 
                 return execution_results
 
@@ -2411,66 +2413,30 @@ def execute_workflow(
 
         results["execution_summary"] = execution_summary
 
-        # Determine if this is a quote workflow (for formatting purposes)
-        # Check both from workflow data and from standardized result
-        is_quote_workflow = (
-            "quote" in workflow.get("name", "").lower() or
-            "insurance" in workflow.get("name", "").lower() or
-            workflow.get("category") == "insurance_quotes"
-        )
-
-        # Generate formatted summary for successful executions
+        # Generate formatted summary for display (workflow-agnostic)
         formatted_output = None
-        if is_quote_workflow and results.get("quotes") is not None:  # Only format quotes for quote workflows
-            try:
-                quotes_output = results.get("quotes", [])
-
-                if not workflow_completed and quotes_found == 0:
-                    # Specific handling for "failed" state due to no quotes
-                    logger.warning(
-                        "Workflow failed: No quotes found. Generating failure summary."
-                    )
-
-                    execution_metrics = results.get("performance_metrics", {})
-
-                    summary_lines = [
-                        f" {error_message_for_db}",
-                        "-" * 30,
-                        f"All {execution_metrics.get('successful_steps', 0)} automation steps completed successfully, but no insurance quotes were extracted from the final page.",
-                        "This usually means the applicant's criteria (e.g., age, health) did not result in any available products from the provider.",
-                    ]
-                    formatted_output = "\n".join(summary_lines)
-                else:
-                    # Existing logic for successful executions with quotes
-                    formatted_output = json.dumps(quotes_output, indent=2)
-                    logger.info(" Using raw quote output as formatted_output.")
-                    logger.info("\n%s", formatted_output)
-
-            except Exception as format_error:
-                logger.warning("Failed to serialize raw quote output: %s", format_error)
-                formatted_output = f"Error: Could not format results.\n{format_error}"
-        elif not is_quote_workflow:
-            # For non-quote workflows, format the output differently
-            if workflow_result:
-                # Use standardized result format
-                formatted_output = json.dumps({
-                    "success": workflow_result["success"],
-                    "message": workflow_result["message"],
-                    "data": workflow_result.get("data"),
-                    "validation": workflow_result.get("validation", {}),
-                    "execution_status": workflow_result["execution_status"],
-                }, indent=2)
-                logger.info(" Using standardized result format for non-quote workflow")
-            else:
-                # Fallback for non-quote workflows without standardized result
-                formatted_output = json.dumps({
-                    "success": workflow_completed,
-                    "message": f"Workflow {'completed successfully' if workflow_completed else 'failed'}",
-                    "execution_status": "completed" if workflow_completed else "failed",
-                    "steps_executed": total_steps,
-                    "success_rate": success_rate
-                }, indent=2)
-                logger.info(" Using fallback format for non-quote workflow")
+        if workflow_result:
+            # Use standardized workflow-agnostic format
+            formatted_output = json.dumps({
+                "status": workflow_result.get("state", "unknown"),
+                "success": workflow_result.get("success", False),
+                "message": workflow_result.get("message", "No message"),
+                "data": workflow_result.get("data"),
+                "validation": workflow_result.get("validation", {}),
+                "execution_status": workflow_result.get("execution_status", "unknown"),
+            }, indent=2)
+            logger.info(" Using workflow-agnostic formatted output")
+        else:
+            # Fallback if no workflow_result
+            formatted_output = json.dumps({
+                "status": "unknown",
+                "success": workflow_completed,
+                "message": f"Workflow {'completed successfully' if workflow_completed else 'failed'}",
+                "execution_status": "completed" if workflow_completed else "failed",
+                "steps_executed": total_steps,
+                "success_rate": success_rate
+            }, indent=2)
+            logger.info(" Using fallback formatted output")
 
         # Update execution with final results and raw data
         cur.execute(

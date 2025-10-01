@@ -64,7 +64,6 @@ export function Sidebar() {
 
   const navigation: NavItem[] = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-    { label: 'Deployments', href: '/deployments', icon: Activity },
     { label: 'Settings', href: '/settings', icon: Settings },
     { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
     { label: 'Observability', href: '/observability', icon: Database, mediarOnly: true },
