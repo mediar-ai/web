@@ -89,13 +89,13 @@
     "resend": "^6.1.0",
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
-    "svix": "^1.67.0",
     "tailwind-merge": "^3.3.0",
     "use-debounce": "^10.0.5",
     "ws": "^8.18.3",
     "zod": "^3.25.64"
   },
   "devDependencies": {
+    "@clerk/backend": "^2.17.0",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.16",
@@ -114,6 +114,7 @@
     "node-fetch": "^3.3.2",
     "prettier": "^3.6.2",
     "supabase": "^2.24.3",
+    "svix": "^1.76.1",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.4",
