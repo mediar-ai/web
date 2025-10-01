@@ -1488,12 +1488,12 @@ async def execute_mcp_workflow(
 
             # Use more granular timeout configuration
             # - connect: time to establish connection (10s)
-            # - read: time between reads from server (60s for SSE keep-alive)
+            # - read: time between reads from server (30s - detect stuck responses faster)
             # - write: time to send data (10s)
             # - pool: time to acquire connection from pool (10s)
             timeout_config = httpx.Timeout(
                 connect=10.0,
-                read=60.0,  # Shorter read timeout to detect stuck connections
+                read=30.0,  # Reduced from 60s to detect hung MCP responses faster
                 write=10.0,
                 pool=10.0
             )
@@ -1657,6 +1657,7 @@ async def execute_mcp_workflow(
         logger.info("  Request JSON: %s", json.dumps(tool_request, indent=2)[:500])
 
         # Add explicit timeout for workflow execution (5 minutes max)
+        # Note: httpx read timeout (30s) will trigger first if MCP hangs without sending data
         logger.info("[DEBUG] About to send POST request to MCP, starting timer...")
         request_start_time = time.time()
         try:
@@ -1672,6 +1673,11 @@ async def execute_mcp_workflow(
             logger.error(f"[DEBUG] Workflow execution timed out after {request_duration:.2f}s (expected 300s timeout)")
             await session_client.aclose()
             raise Exception(f"Workflow execution timed out after 5 minutes for tool: {tool_name}")
+        except httpx.ReadTimeout as e:
+            request_duration = time.time() - request_start_time
+            logger.error(f"[DEBUG] MCP server stopped sending data after {request_duration:.2f}s - httpx read timeout")
+            await session_client.aclose()
+            raise Exception(f"MCP server hung - no response data for 30+ seconds on tool: {tool_name}")
         except Exception as e:
             request_duration = time.time() - request_start_time
             logger.error(f"[DEBUG] POST request failed after {request_duration:.2f}s with error: {type(e).__name__}: {str(e)}")
