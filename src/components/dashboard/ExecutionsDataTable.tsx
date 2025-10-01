@@ -82,7 +82,7 @@ export function ExecutionsDataTable({
   ]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
-    execution_id: false,
+    execution_id: false,  // Hide execution ID by default
     workflow_id: true,  // Show workflow ID by default
     workflow_name: true, // Show workflow name by default
     error_message: false,
@@ -264,12 +264,14 @@ export function ExecutionsDataTable({
             formattedResult?.message && formattedResult.message !== 'No message from parser'
               ? formattedResult.message
               : execution.error_message || '-';
-          const truncatedMessage = message.length > 60 ? message.substring(0, 60) + '...' : message;
+          const truncatedMessage = message.length > 30 ? message.substring(0, 30) + '...' : message;
 
           return (
-            <span className="font-mono text-xs text-gray-700" title={message}>
-              {truncatedMessage}
-            </span>
+            <div className="max-w-[200px] truncate">
+              <span className="font-mono text-xs text-gray-700" title={message}>
+                {truncatedMessage}
+              </span>
+            </div>
           );
         },
       },
