@@ -158,19 +158,21 @@ export async function POST(request: NextRequest) {
           }
         } else {
           // Workflow doesn't exist - create it
-          const { error: createError } = await supabase
+          const { data: newWorkflow, error: createError } = await supabase
             .from('deployed_workflows')
             .insert({
               name: workflowName,
               status: isDevelopment ? 'draft' : 'deployed',
               automation_sequence: yaml.load(content.yaml),
+              automation_sequence_yaml: content.yaml,
               github_folder: folderName,
               github_path: filePath,
               github_sha: content.metadata.sha,
               github_ref: branch,
               github_sync_status: 'synced',
               github_last_synced_at: new Date().toISOString(),
-              version: '1.0.0'
+              version: '1.0.0',
+              total_versions: 1
             })
             .select()
             .single();
@@ -178,7 +180,32 @@ export async function POST(request: NextRequest) {
           if (createError) {
             results.errors.push(`${folderName}: Create failed - ${createError.message}`);
           } else {
-            results.created.push(workflowName);
+            // Create initial version entry
+            const { data: initialVersion, error: versionError } = await supabase
+              .from('deployed_workflow_versions')
+              .insert({
+                workflow_id: newWorkflow.id,
+                version_number: '1.0.0',
+                automation_sequence_yaml: content.yaml,
+                automation_sequence: yaml.load(content.yaml),
+                preferred_format: 'yaml',
+                is_active: true,
+                change_notes: `Created from GitHub: ${content.metadata.sha.substring(0, 7)}`
+              })
+              .select()
+              .single();
+
+            if (versionError) {
+              results.errors.push(`${folderName}: Version creation failed - ${versionError.message}`);
+            } else {
+              // Update workflow to point to this version
+              await supabase
+                .from('deployed_workflows')
+                .update({ current_version_id: initialVersion.id })
+                .eq('id', newWorkflow.id);
+
+              results.created.push(workflowName);
+            }
           }
         }
 
