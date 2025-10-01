@@ -74,8 +74,18 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
   const { userMemberships, setActive } = useOrganizationList();
   const allUserOrgs = userMemberships?.data || [];
 
-  // For non-admins in sidebar, show org switcher with ALL user orgs from Clerk
-  if (!isAdmin && inSidebar) {
+  console.log('[MediarOrgSwitcher] Debug info:', {
+    isAdmin,
+    inSidebar,
+    loading,
+    allUserOrgsCount: allUserOrgs.length,
+    organizationName: organization?.name,
+    allOrgNames: allUserOrgs.map(m => m.organization.name)
+  });
+
+  // For sidebar (both admins and non-admins), show ALL user orgs from Clerk
+  if (inSidebar && !loading) {
+    console.log('[MediarOrgSwitcher] Sidebar path (admin=' + isAdmin + '), showing', allUserOrgs.length, 'orgs');
     if (!organization || allUserOrgs.length === 0) return null;
 
     return (
@@ -145,8 +155,9 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
 
   const currentOrg = organizations.find(o => o.id === currentViewOrg);
 
-  // Sidebar view - more compact
+  // Sidebar view - more compact (ADMIN PATH - use Clerk orgs instead of API)
   if (inSidebar) {
+    console.log('[MediarOrgSwitcher] Admin sidebar path, showing', allUserOrgs.length, 'orgs from Clerk');
     return (
       <div className="relative">
         <button
@@ -155,55 +166,53 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
         >
           <Building className="w-4 h-4 flex-shrink-0" />
           <span className="font-mono text-sm truncate flex-1 text-left">
-            {currentOrg ? currentOrg.name : organizations.find(o => o.type === 'mediar')?.name || 'Select Org'}
+            {organization?.name || 'Select Org'}
           </span>
           <ChevronDown className="w-4 h-4 flex-shrink-0" />
         </button>
 
         {isOpen && (
-          <div className="absolute top-full mt-1 left-0 right-0 bg-white border-2 border-black shadow-lg z-50">
-            <div className="p-2 bg-black text-white font-mono text-xs uppercase">
-              Switch Organization
-            </div>
-
-            {/* Default Mediar view */}
-            <button
-              onClick={() => handleOrgSwitch(null)}
-              className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
-                !currentViewOrg ? 'bg-gray-100' : ''
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Shield className="w-3 h-3" />
-                <div className="font-mono text-xs">Default (All)</div>
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setIsOpen(false)}
+            />
+            <div className="absolute top-full mt-1 left-0 right-0 bg-white border-2 border-black shadow-lg z-50 max-h-96 overflow-y-auto">
+              <div className="p-2 bg-black text-white font-mono text-xs uppercase">
+                Switch Organization
               </div>
-            </button>
 
-            <div className="border-t border-gray-200" />
+              {/* All user organizations from Clerk */}
+              {allUserOrgs.map(membership => {
+                const org = membership.organization;
+                const isActive = org.id === organization?.id;
 
-            {/* Organization list */}
-            {organizations.map(org => {
-              const Icon = org.type === 'mediar' ? Shield :
-                          org.type === 'test' ? TestTube : Building;
-
-              return (
-                <button
-                  key={org.id}
-                  onClick={() => handleOrgSwitch(org.id)}
-                  className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
-                    currentViewOrg === org.id ? 'bg-gray-100' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon className="w-3 h-3" />
-                    <div className="font-mono text-xs truncate">
-                      {org.name} ({org.workflowCount})
+                return (
+                  <button
+                    key={org.id}
+                    onClick={async () => {
+                      if (setActive) {
+                        await setActive({ organization: org.id });
+                        setIsOpen(false);
+                        router.push('/dashboard');
+                      }
+                    }}
+                    className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
+                      isActive ? 'bg-gray-100' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-3 h-3" />
+                      <div className="font-mono text-xs truncate">
+                        {org.name}
+                      </div>
+                      {isActive && <span className="ml-auto text-xs">✓</span>}
                     </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     );
