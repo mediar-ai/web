@@ -281,10 +281,24 @@ export function CreateWorkflowDialog({
             <div className="space-y-2">
               <div>{result.error}</div>
               <div className="text-xs">
-                <div className="font-semibold mb-1">Missing files:</div>
-                {result.details.missingFiles.map((file: string) => (
-                  <div key={file} className="pl-2 font-mono">• {file}</div>
-                ))}
+                <div className="font-semibold mb-1">Missing files referenced in YAML:</div>
+                {result.details.missingReferences && result.details.missingReferences.length > 0 ? (
+                  result.details.missingReferences.map((ref: any) => (
+                    <div key={ref.path} className="pl-2 mb-2 border-l-2 border-red-400">
+                      <div className="font-mono font-bold text-red-600 pl-2">• {ref.path}</div>
+                      <div className="pl-2 text-gray-600">
+                        <div>Line {ref.lineNumber}: <span className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">{ref.pattern}</span></div>
+                        <div className="font-mono text-xs text-gray-500 mt-1 overflow-x-auto">
+                          {ref.context.length > 60 ? ref.context.substring(0, 60) + '...' : ref.context}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  result.details.missingFiles.map((file: string) => (
+                    <div key={file} className="pl-2 font-mono">• {file}</div>
+                  ))
+                )}
               </div>
               {result.details.availableFiles && result.details.availableFiles.length > 0 && (
                 <div className="text-xs mt-2">
