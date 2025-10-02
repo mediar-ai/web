@@ -290,7 +290,7 @@ export function BatchTestDialog({
       fetchMachines();
       fetchVersions();
     }
-  }, [open, workflow, selectedMachineId]);
+  }, [open, workflow]); // Removed selectedMachineId to prevent re-running when user manually selects
 
   // Load saved batch spec when dialog opens
   useEffect(() => {
