@@ -184,17 +184,21 @@ export function UnifiedWorkflowDialog({
 
     setLoadingYaml(true);
     try {
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/versions`);
-      if (!response.ok) throw new Error(`Failed to load versions: ${response.status}`);
+      // Fetch the actual version data with YAML content from the schema endpoint
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/schema?version=${versionNumber}`);
+      if (!response.ok) throw new Error(`Failed to load version: ${response.status}`);
 
       const data = await response.json();
       if (data.success) {
-        const version = data.versions?.find((v: WorkflowVersion) => v.version_number === versionNumber);
-        if (version?.automation_sequence) {
-          // Check if it's already a string or needs to be converted
-          const yamlContent = typeof version.automation_sequence === 'string'
-            ? version.automation_sequence
-            : yaml.dump(version.automation_sequence);
+        // Use the YAML content from the response
+        if (data.automation_sequence_yaml) {
+          setCurrentYaml(data.automation_sequence_yaml);
+          setEditedYaml(data.automation_sequence_yaml);
+        } else if (data.automation_sequence) {
+          // Fallback: Try to convert from automation_sequence if YAML not available
+          const yamlContent = typeof data.automation_sequence === 'string'
+            ? data.automation_sequence
+            : yaml.dump(data.automation_sequence);
           setCurrentYaml(yamlContent);
           setEditedYaml(yamlContent);
         } else {
