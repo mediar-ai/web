@@ -6,9 +6,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Execution } from '@/lib/workflow-types';
-import { Send, Sparkles, User, Loader2 } from 'lucide-react';
+import { Send, Sparkles, User, Loader2, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 
@@ -28,6 +29,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -44,6 +46,16 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
 
   const handleSampleQuestion = (question: string) => {
     setInputValue(question);
+  };
+
+  const copyToClipboard = async (text: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -223,48 +235,72 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                       ))}
                     </div>
                   ) : (
-                    <div className="prose prose-sm max-w-none
-                      prose-headings:font-mono prose-headings:text-black prose-headings:font-bold
-                      prose-p:text-black prose-p:my-2
-                      prose-strong:font-bold prose-strong:text-black
-                      prose-code:bg-gray-200 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-black prose-code:font-mono prose-code:text-xs
-                      prose-pre:bg-black prose-pre:text-white prose-pre:p-3 prose-pre:rounded prose-pre:border-2 prose-pre:border-black prose-pre:my-3
-                      prose-ul:my-2 prose-ol:my-2 prose-ul:list-disc prose-ol:list-decimal
-                      prose-li:text-black prose-li:marker:text-black
-                      prose-blockquote:border-l-4 prose-blockquote:border-black prose-blockquote:pl-4 prose-blockquote:my-3
-                      prose-hr:border-black prose-hr:my-4
-                      prose-a:text-black prose-a:underline prose-a:font-bold hover:prose-a:text-gray-700
-                      prose-table:border-2 prose-table:border-black prose-table:my-3
-                      prose-th:border prose-th:border-black prose-th:bg-gray-100 prose-th:px-2 prose-th:py-1 prose-th:font-mono
-                      prose-td:border prose-td:border-black prose-td:px-2 prose-td:py-1">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeHighlight]}
-                        components={{
-                          code({ inline, className, children, ...props }: any) {
-                            const match = /language-(\w+)/.exec(className || '');
-                            return !inline && match ? (
-                              <div className="relative my-3">
-                                <div className="absolute top-0 right-0 text-xs font-mono text-gray-400 bg-black px-2 py-1 border-b border-l border-gray-700">
-                                  {match[1]}
+                    <>
+                      <div className="prose prose-sm max-w-none
+                        prose-headings:font-mono prose-headings:text-black prose-headings:font-bold prose-headings:my-3
+                        prose-p:text-black prose-p:my-2 prose-p:leading-relaxed
+                        prose-strong:font-bold prose-strong:text-black
+                        prose-code:bg-gray-200 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-black prose-code:font-mono prose-code:text-xs prose-code:before:content-none prose-code:after:content-none
+                        prose-pre:bg-black prose-pre:text-white prose-pre:p-3 prose-pre:rounded prose-pre:border-2 prose-pre:border-black prose-pre:my-3
+                        prose-ul:my-2 prose-ol:my-2 prose-ul:list-disc prose-ol:list-decimal prose-ul:ml-6 prose-ol:ml-6
+                        prose-li:text-black prose-li:marker:text-black prose-li:my-1
+                        prose-blockquote:border-l-4 prose-blockquote:border-black prose-blockquote:pl-4 prose-blockquote:my-3 prose-blockquote:text-gray-700
+                        prose-hr:border-black prose-hr:my-4
+                        prose-a:text-black prose-a:underline prose-a:font-bold hover:prose-a:text-gray-700
+                        prose-table:border-2 prose-table:border-black prose-table:my-3
+                        prose-th:border prose-th:border-black prose-th:bg-gray-100 prose-th:px-2 prose-th:py-1 prose-th:font-mono
+                        prose-td:border prose-td:border-black prose-td:px-2 prose-td:py-1">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkBreaks]}
+                          rehypePlugins={[rehypeHighlight]}
+                          components={{
+                            code({ inline, className, children, ...props }: any) {
+                              const match = /language-(\w+)/.exec(className || '');
+                              return !inline && match ? (
+                                <div className="relative my-3">
+                                  <div className="absolute top-0 right-0 text-xs font-mono text-gray-400 bg-black px-2 py-1 border-b border-l border-gray-700">
+                                    {match[1]}
+                                  </div>
+                                  <pre className={`${className} overflow-x-auto`} {...props}>
+                                    <code className={className} {...props}>
+                                      {children}
+                                    </code>
+                                  </pre>
                                 </div>
-                                <pre className={`${className} overflow-x-auto`} {...props}>
-                                  <code className={className} {...props}>
-                                    {children}
-                                  </code>
-                                </pre>
-                              </div>
-                            ) : (
-                              <code className="bg-gray-200 px-1 py-0.5 rounded text-black font-mono text-xs" {...props}>
-                                {children}
-                              </code>
-                            );
-                          },
-                        }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
-                    </div>
+                              ) : (
+                                <code className="bg-gray-200 px-1 py-0.5 rounded text-black font-mono text-xs" {...props}>
+                                  {children}
+                                </code>
+                              );
+                            },
+                            p({ children, ...props }: any) {
+                              return <p className="mb-2" {...props}>{children}</p>;
+                            },
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
+                      {/* Copy button for AI messages */}
+                      <div className="flex justify-start mt-2">
+                        <button
+                          onClick={() => copyToClipboard(message.content, message.id)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black rounded hover:bg-black hover:text-white transition-colors"
+                        >
+                          {copiedMessageId === message.id ? (
+                            <>
+                              <Check className="w-3 h-3" />
+                              COPIED
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              COPY
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
                 {message.role === 'user' && (
