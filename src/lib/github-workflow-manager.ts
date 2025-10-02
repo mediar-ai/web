@@ -28,7 +28,10 @@ export class GitHubWorkflowManager {
   constructor() {
     const token = process.env.GITHUB_WORKFLOW_TOKEN || process.env.GITHUB_TOKEN;
     if (!token) {
-      console.warn('GitHub token not configured');
+      // Only log when actually running, not during static build
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        console.warn('GitHub token not configured for client-side operations');
+      }
     }
     this.octokit = new Octokit({
       auth: token,
@@ -278,4 +281,22 @@ ${message || 'Workflow created via Mediar UI'}
   }
 }
 
-export const githubWorkflowManager = new GitHubWorkflowManager();
+// Lazy-load the manager to avoid instantiation during build
+let _githubWorkflowManager: GitHubWorkflowManager | null = null;
+
+export const getGitHubWorkflowManager = (): GitHubWorkflowManager => {
+  if (!_githubWorkflowManager) {
+    _githubWorkflowManager = new GitHubWorkflowManager();
+  }
+  return _githubWorkflowManager;
+};
+
+// For backward compatibility, export a getter that returns the manager
+export const githubWorkflowManager = new Proxy({} as GitHubWorkflowManager, {
+  get(target, prop, receiver) {
+    return Reflect.get(getGitHubWorkflowManager(), prop, receiver);
+  },
+  set(target, prop, value, receiver) {
+    return Reflect.set(getGitHubWorkflowManager(), prop, value, receiver);
+  }
+});

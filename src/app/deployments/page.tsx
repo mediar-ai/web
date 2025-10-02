@@ -219,7 +219,7 @@ function DeploymentsPageContent() {
     setBatchTestOpen(true);
   }, [workflows]);
 
-  const handleQuickEdit = useCallback((workflowId: number) => {
+  const _handleQuickEdit = useCallback((workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
 

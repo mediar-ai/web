@@ -283,7 +283,7 @@ export function BatchTestDialog({
       fetchMachines();
       fetchVersions();
     }
-  }, [open, workflow]);
+  }, [open, workflow, selectedMachineId]);
 
   // Load saved batch spec when dialog opens
   useEffect(() => {

@@ -68,7 +68,7 @@ export function OrganizationAssignmentDialog({
     } finally {
       setLoading(false);
     }
-  }, [workflowId]);
+  }, [workflowId, REQUIRED_ORGS]);
 
   useEffect(() => {
     if (open) {
