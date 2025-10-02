@@ -1889,24 +1889,21 @@ async def execute_mcp_workflow(
                     # Extract environment state from MCP response
                     env_state = mcp_content.get("env", {}) if mcp_content else {}
 
-                # Build aligned execution results with version 2 structure
+                # Build clean execution results structure
                 execution_results = {
-                    # Version indicator for backward compatibility
-                    "version": 2,
-
                     "workflow_id": workflow_data.get("id"),
                     "workflow_name": workflow_data.get("name", "Unknown Workflow"),
 
                     # Core workflow result (parsed business logic)
                     "workflow_result": workflow_result,
 
-                    # NEW: Detailed step-by-step execution log (aligned with latest.txt)
+                    # Detailed step-by-step execution log (aligned with latest.txt)
                     "execution_log": execution_log,
 
-                    # NEW: Environment state after all steps
+                    # Environment state after all steps
                     "env_state": env_state,
 
-                    # Simplified output for backward compatibility
+                    # Simplified output
                     "output": {
                         "status": workflow_result.get("state", "unknown"),
                         "success": workflow_result.get("success", False),
@@ -1914,7 +1911,7 @@ async def execute_mcp_workflow(
                         "data": workflow_result.get("data")
                     },
 
-                    # Performance metrics (simplified)
+                    # Performance metrics
                     "performance_metrics": {
                         "total_steps": len(execution_log) if execution_log else len(arguments.get("items", [])),
                         "executed_steps": len(execution_log),
@@ -1926,21 +1923,15 @@ async def execute_mcp_workflow(
                     # Validation info from parser
                     "validation_info": workflow_result.get("validation", {}),
 
-                    # Keep minimal legacy fields for transition period
+                    # Execution type
                     "execution_type": "real_browser_automation",
 
-                    # REMOVED redundant fields:
-                    # - step_details (replaced by execution_log)
-                    # - executed_steps (replaced by execution_log)
-                    # - extracted_data (redundant with raw_mcp_response column)
-                    # - raw_mcp_response (moved to separate database column)
-
-                    # Store raw_mcp_response separately for debugging
-                    "_raw_mcp_response": result_data,  # Prefix with _ to indicate internal use
+                    # Store raw_mcp_response separately for debugging (will be extracted and stored in DB column)
+                    "_raw_mcp_response": result_data,
                 }
 
                 # Workflow-agnostic logging
-                logger.info(" Workflow Execution Result (v%d):", execution_results.get("version", 1))
+                logger.info(" Workflow Execution Result:")
                 logger.info("Tool: %s", tool_name)
                 logger.info("Output Status: %s", execution_results["output"]["status"])
                 logger.info("Output Success: %s", execution_results["output"]["success"])
@@ -1949,11 +1940,8 @@ async def execute_mcp_workflow(
                            execution_results["performance_metrics"]["successful_steps"],
                            execution_results["performance_metrics"]["total_steps"])
                 logger.info("Duration: %dms", execution_results["performance_metrics"]["total_duration_ms"])
-
-                # Log execution log summary if v2
-                if execution_results.get("version") == 2 and execution_results.get("execution_log"):
-                    logger.info("Execution Log: %d detailed step entries captured", len(execution_results["execution_log"]))
-                    logger.info("Environment State: %d variables in final env", len(execution_results.get("env_state", {})))
+                logger.info("Execution Log: %d detailed step entries captured", len(execution_results["execution_log"]))
+                logger.info("Environment State: %d variables in final env", len(execution_results.get("env_state", {})))
 
                 return execution_results
 
@@ -2349,9 +2337,6 @@ def execute_workflow(
         workflow_result = results.get("workflow_result")
         quotes_found = len(results.get("quotes", []))
 
-        # Check if we have the new v2 structure
-        results_version = results.get("version", 1)
-
         # Calculate traditional success rate for backward compatibility
         performance_metrics = results.get("performance_metrics", {})
         successful_steps_count = performance_metrics.get("successful_steps", 0)
@@ -2485,7 +2470,6 @@ def execute_workflow(
             "total_execution_time": execution_duration,
             "quotes_found": quotes_found,
             "execution_message": f"Found {quotes_found} insurance quotes",
-            "results_version": results_version,  # Track which version of results structure was used
         }
 
         # Add standardized workflow result information if available
@@ -2505,20 +2489,6 @@ def execute_workflow(
             execution_summary["standardized_system_used"] = False
 
         results["execution_summary"] = execution_summary
-
-        # For backward compatibility with v1 consumers, add deprecated fields if v2
-        if results_version == 2 and results.get("execution_log"):
-            # Create simplified step_details from execution_log for backward compatibility
-            # This will be removed in future versions
-            results["step_details"] = [
-                {
-                    "index": entry["step_index"],
-                    "tool_name": entry["tool"],
-                    "status": entry["status"],
-                    "duration_ms": entry["duration_ms"],
-                }
-                for entry in results.get("execution_log", [])
-            ]
 
         # Generate formatted summary for display (workflow-agnostic)
         formatted_output = None

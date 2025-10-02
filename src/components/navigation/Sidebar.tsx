@@ -32,13 +32,16 @@ export function Sidebar() {
   const { organization, membership } = useOrganization();
   const { user } = useUser();
   const { signOut } = useClerk();
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('sidebarCollapsed') === 'true';
-    }
-    return false;
-  });
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMediarAdmin, setIsMediarAdmin] = useState(false);
+
+  // Load collapsed state from localStorage after mount to avoid hydration mismatch
+  useEffect(() => {
+    const stored = localStorage.getItem('sidebarCollapsed');
+    if (stored === 'true') {
+      setIsCollapsed(true);
+    }
+  }, []);
 
   // Check if user is a Mediar admin
   useEffect(() => {

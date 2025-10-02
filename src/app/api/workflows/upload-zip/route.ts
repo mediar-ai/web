@@ -283,6 +283,68 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+    } else if (formData.get('workflowId')) {
+      // VERSION UPLOAD - when workflowId is provided but action !== 'create'
+      workflowId = parseInt(formData.get('workflowId') as string);
+      console.log(`📦 Creating new version for workflow ${workflowId} from ZIP upload`);
+
+      // Get current workflow to determine next version
+      const { data: currentWorkflow, error: fetchError } = await supabase
+        .from('deployed_workflows')
+        .select('id, name, total_versions')
+        .eq('id', workflowId)
+        .single();
+
+      if (fetchError || !currentWorkflow) {
+        return NextResponse.json(
+          { success: false, error: 'Workflow not found' },
+          { status: 404 }
+        );
+      }
+
+      // Calculate next version number
+      const nextVersionNumber = `${(currentWorkflow.total_versions || 0) + 1}.0.0`;
+
+      // Create version record
+      const versionRecord = {
+        workflow_id: workflowId,
+        version_number: nextVersionNumber,
+        automation_sequence_yaml: workflowContent,
+        automation_sequence: workflowData,
+        preferred_format: 'yaml',
+        is_active: false, // Don't activate by default
+        change_notes: 'Version uploaded via ZIP file',
+      };
+
+      const { data: newVersion, error: versionError } = await supabase
+        .from('deployed_workflow_versions')
+        .insert(versionRecord)
+        .select()
+        .single();
+
+      if (versionError) {
+        console.error('Failed to create version:', versionError);
+        return NextResponse.json(
+          { success: false, error: 'Failed to create workflow version' },
+          { status: 500 }
+        );
+      }
+
+      // Update the workflow's total_versions and automation_sequence if needed
+      await supabase
+        .from('deployed_workflows')
+        .update({
+          total_versions: (currentWorkflow.total_versions || 0) + 1,
+          automation_sequence: workflowData, // Update to latest
+          requires_files: jsFiles.length > 0
+        })
+        .eq('id', workflowId);
+
+      console.log(`✅ Created version ${nextVersionNumber} for workflow ${workflowId}`);
+
+      // Store version info for response
+      workflowData.version = nextVersionNumber;
+      workflowData.versionRecord = newVersion;
     }
 
     // Upload files to storage if there are any
@@ -361,7 +423,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract metadata and prepare response
-    const response = {
+    const response: any = {
       success: true,
       workflowId: workflowId,
       workflowData: {
@@ -383,6 +445,11 @@ export async function POST(request: NextRequest) {
       },
       message: isCreating ? `Workflow created with ID ${workflowId}` : 'ZIP file processed successfully'
     };
+
+    // Add version info if this was a version upload
+    if ((workflowData as any).versionRecord) {
+      response.version = (workflowData as any).versionRecord;
+    }
 
     // Store JavaScript files for later use (optional - for future implementation)
     // This would involve saving files to a storage location and updating workflow paths
