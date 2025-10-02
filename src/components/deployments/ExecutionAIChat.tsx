@@ -7,11 +7,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Execution } from '@/lib/workflow-types';
 import { Send, Sparkles, User, Loader2, Copy, Check } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
-import rehypeHighlight from 'rehype-highlight';
-import 'highlight.js/styles/github-dark.css';
+import { Streamdown } from 'streamdown';
+import { memo } from 'react';
 
 interface ExecutionAIChatProps {
   execution: Execution;
@@ -22,6 +19,20 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
+
+// Memoized Response component matching Vercel's implementation
+const Response = memo(
+  ({ children, className }: { children: string; className?: string }) => (
+    <Streamdown
+      className={`${className || ''} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_code]:whitespace-pre-wrap [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto`}
+    >
+      {children}
+    </Streamdown>
+  ),
+  (prevProps, nextProps) => prevProps.children === nextProps.children
+);
+
+Response.displayName = 'Response';
 
 export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -56,19 +67,6 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
     } catch (err) {
       console.error('Failed to copy:', err);
     }
-  };
-
-  // Preprocess markdown to ensure proper formatting
-  const preprocessMarkdown = (text: string): string => {
-    return text
-      // Add blank line before headers (###, ##, #) if not already present
-      .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
-      // Add blank line after headers if not already present
-      .replace(/(#{1,6}\s[^\n]+)\n([^#\n])/g, '$1\n\n$2')
-      // Ensure list items have proper spacing
-      .replace(/([^\n])\n(\*\s)/g, '$1\n\n$2')
-      // Fix multiple consecutive newlines (keep max 2)
-      .replace(/\n{3,}/g, '\n\n');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -249,7 +247,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                     </div>
                   ) : (
                     <>
-                      <div className="prose prose-sm max-w-none
+                      <Response className="prose prose-sm max-w-none
                         prose-headings:font-mono prose-headings:text-black prose-headings:font-bold
                         prose-h1:text-lg prose-h1:mt-6 prose-h1:mb-4
                         prose-h2:text-base prose-h2:mt-5 prose-h2:mb-3
@@ -265,48 +263,9 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                         prose-a:text-black prose-a:underline prose-a:font-bold hover:prose-a:text-gray-700
                         prose-table:border-2 prose-table:border-black prose-table:my-3
                         prose-th:border prose-th:border-black prose-th:bg-gray-100 prose-th:px-2 prose-th:py-1 prose-th:font-mono prose-th:text-xs
-                        prose-td:border prose-td:border-black prose-td:px-2 prose-td:py-1 prose-td:text-xs
-                        [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm, remarkBreaks]}
-                          rehypePlugins={[rehypeHighlight]}
-                          components={{
-                            code({ inline, className, children, ...props }: any) {
-                              const match = /language-(\w+)/.exec(className || '');
-                              return !inline && match ? (
-                                <div className="relative my-3">
-                                  <div className="absolute top-0 right-0 text-xs font-mono text-gray-400 bg-black px-2 py-1 border-b border-l border-gray-700">
-                                    {match[1]}
-                                  </div>
-                                  <pre className={`${className} overflow-x-auto`} {...props}>
-                                    <code className={className} {...props}>
-                                      {children}
-                                    </code>
-                                  </pre>
-                                </div>
-                              ) : (
-                                <code className="bg-gray-200 px-1 py-0.5 rounded text-black font-mono text-xs" {...props}>
-                                  {children}
-                                </code>
-                              );
-                            },
-                            h1: ({ children, ...props }: any) => (
-                              <h1 className="text-lg font-mono font-bold text-black mt-6 mb-4" {...props}>{children}</h1>
-                            ),
-                            h2: ({ children, ...props }: any) => (
-                              <h2 className="text-base font-mono font-bold text-black mt-5 mb-3" {...props}>{children}</h2>
-                            ),
-                            h3: ({ children, ...props }: any) => (
-                              <h3 className="text-sm font-mono font-bold text-black mt-4 mb-2" {...props}>{children}</h3>
-                            ),
-                            p: ({ children, ...props }: any) => (
-                              <p className="mb-3 text-sm leading-relaxed" {...props}>{children}</p>
-                            ),
-                          }}
-                        >
-                          {preprocessMarkdown(message.content)}
-                        </ReactMarkdown>
-                      </div>
+                        prose-td:border prose-td:border-black prose-td:px-2 prose-td:py-1 prose-td:text-xs">
+                        {message.content}
+                      </Response>
                       {/* Copy button for AI messages */}
                       <div className="flex justify-start mt-2">
                         <button
