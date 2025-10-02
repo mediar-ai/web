@@ -14,13 +14,9 @@ import {
   Play,
   MoreVertical,
   Activity,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   Eye,
   Zap,
   Calendar,
-  ArrowRight,
   Pause,
   Trash2,
   Building2,
@@ -78,7 +74,6 @@ export function WorkflowCardEnhanced({
   className,
 }: WorkflowCardEnhancedProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Calculate metrics
