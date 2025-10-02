@@ -105,7 +105,6 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
 
           const chunk = decoder.decode(value);
           // Process the streaming response
-          // The response format might vary, so let's handle multiple formats
           const lines = chunk.split('\n');
 
           for (const line of lines) {
