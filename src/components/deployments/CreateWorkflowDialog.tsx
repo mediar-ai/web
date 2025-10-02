@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea';
 import * as yaml from 'js-yaml';
 import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { CronScheduleEditor, type CronConfig } from './CronScheduleEditor';
 
 interface WorkflowTemplate {
   name: string;
@@ -62,6 +63,16 @@ export function CreateWorkflowDialog({
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
+
+  // Cron schedule state
+  const [cronConfig, setCronConfig] = useState<CronConfig>({
+    expression: '',
+    timezone: 'UTC',
+    enabled: false,
+    maxConcurrent: 1,
+    retryOnFailure: true,
+    retryCount: 3,
+  });
 
   // Load templates when dialog opens
   useEffect(() => {
@@ -118,6 +129,26 @@ export function CreateWorkflowDialog({
 
     setLoading(true);
     try {
+      // If cron is configured, update the YAML to include it
+      let finalAutomationSequence = automationSequence;
+      if (cronConfig.enabled && cronConfig.expression) {
+        try {
+          const parsedYaml = yaml.load(automationSequence);
+          const updatedYaml = {
+            cron: cronConfig.expression,
+            timezone: cronConfig.timezone,
+            cron_enabled: cronConfig.enabled,
+            max_concurrent: cronConfig.maxConcurrent,
+            retry_on_failure: cronConfig.retryOnFailure,
+            retry_count: cronConfig.retryCount,
+            ...(typeof parsedYaml === 'object' && parsedYaml !== null ? parsedYaml : {}),
+          };
+          finalAutomationSequence = yaml.dump(updatedYaml);
+        } catch (_yamlError) {
+          console.warn('Could not parse YAML to add cron config, sending as-is');
+        }
+      }
+
       const response = await fetch('/api/workflows/create', {
         method: 'POST',
         headers: {
@@ -129,7 +160,7 @@ export function CreateWorkflowDialog({
           category,
           difficulty_level: difficulty,
           estimated_duration_seconds: estimatedDuration,
-          automation_sequence: automationSequence,
+          automation_sequence: finalAutomationSequence,
           tags,
           set_as_active: true
         }),
@@ -172,6 +203,14 @@ export function CreateWorkflowDialog({
     setTags([]);
     setNewTag('');
     setActiveTab('template');
+    setCronConfig({
+      expression: '',
+      timezone: 'UTC',
+      enabled: false,
+      maxConcurrent: 1,
+      retryOnFailure: true,
+      retryCount: 3,
+    });
   };
 
   const copyTemplate = (templateContent: string) => {
@@ -359,6 +398,25 @@ export function CreateWorkflowDialog({
                       ))}
                     </div>
                   )}
+                </div>
+
+                {/* Schedule Configuration */}
+                <div>
+                  <Label className="font-mono text-xs text-gray-600 uppercase">
+                    Schedule (Optional)
+                  </Label>
+                  <div className="mt-2">
+                    <CronScheduleEditor
+                      cronExpression={cronConfig.expression}
+                      cronTimezone={cronConfig.timezone}
+                      cronEnabled={cronConfig.enabled}
+                      cronMaxConcurrent={cronConfig.maxConcurrent}
+                      cronRetryOnFailure={cronConfig.retryOnFailure}
+                      cronRetryCount={cronConfig.retryCount}
+                      onChange={setCronConfig}
+                      showAdvanced={false}
+                    />
+                  </div>
                 </div>
               </div>
 

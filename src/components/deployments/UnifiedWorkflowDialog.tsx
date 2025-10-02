@@ -11,11 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, FileCode, FilePlus, Upload, Edit, Save, X } from 'lucide-react';
+import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, FileCode, FilePlus, Upload, Edit, Save, X, Clock } from 'lucide-react';
 import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
 import { formatDuration } from './utils';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
 import * as yaml from 'js-yaml';
+import { CronScheduleEditor, type CronConfig } from './CronScheduleEditor';
 
 interface WorkflowVersion {
   version_number: string;
@@ -92,6 +93,18 @@ export function UnifiedWorkflowDialog({
   // Feedback state
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
+
+  // Cron schedule state
+  const [cronConfig, setCronConfig] = useState<CronConfig>({
+    expression: '',
+    timezone: 'UTC',
+    enabled: false,
+    maxConcurrent: 1,
+    retryOnFailure: true,
+    retryCount: 3,
+  });
+  const [loadingCron, setLoadingCron] = useState(false);
+  const [savingCron, setSavingCron] = useState(false);
 
   const loadVersions = useCallback(async () => {
     if (!workflow) return;
@@ -229,6 +242,66 @@ export function UnifiedWorkflowDialog({
     }
   }, [workflow]);
 
+  // Load cron configuration
+  const loadCronConfig = useCallback(async () => {
+    if (!workflow) return;
+
+    setLoadingCron(true);
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/cron`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.cron_config) {
+          setCronConfig({
+            expression: data.cron_config.cron_expression || '',
+            timezone: data.cron_config.cron_timezone || 'UTC',
+            enabled: data.cron_config.cron_enabled || false,
+            maxConcurrent: data.cron_config.cron_max_concurrent || 1,
+            retryOnFailure: data.cron_config.cron_retry_on_failure !== false,
+            retryCount: data.cron_config.cron_retry_count || 3,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading cron config:', error);
+    } finally {
+      setLoadingCron(false);
+    }
+  }, [workflow]);
+
+  // Save cron configuration
+  const saveCronConfig = useCallback(async () => {
+    if (!workflow || !cronConfig.expression) return;
+
+    setSavingCron(true);
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/cron`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cron_expression: cronConfig.expression,
+          cron_timezone: cronConfig.timezone,
+          cron_enabled: cronConfig.enabled,
+          cron_max_concurrent: cronConfig.maxConcurrent,
+          cron_retry_on_failure: cronConfig.retryOnFailure,
+          cron_retry_count: cronConfig.retryCount,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setSuccessMessage('Schedule updated successfully');
+      } else {
+        setErrorMessage(data.error || 'Failed to update schedule');
+      }
+    } catch (error) {
+      console.error('Error saving cron config:', error);
+      setErrorMessage('Failed to save schedule');
+    } finally {
+      setSavingCron(false);
+    }
+  }, [workflow, cronConfig]);
+
   // Load data when modal opens
   useEffect(() => {
     if (open && workflow) {
@@ -236,10 +309,11 @@ export function UnifiedWorkflowDialog({
       loadMachines();
       loadMachineAssignments();
       loadWorkflowYaml();
+      loadCronConfig();
       setEditedName(workflow.name || '');
       setEditedDescription(workflow.description || '');
     }
-  }, [open, workflow, loadVersions, loadMachineAssignments, loadMachines, loadWorkflowYaml]);
+  }, [open, workflow, loadVersions, loadMachineAssignments, loadMachines, loadWorkflowYaml, loadCronConfig]);
 
   // Clear messages after 3 seconds
   useEffect(() => {
@@ -536,10 +610,11 @@ export function UnifiedWorkflowDialog({
         )}
 
         <Tabs defaultValue="overview" className="mt-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="workflow">Workflow</TabsTrigger>
             <TabsTrigger value="parameters">Parameters</TabsTrigger>
+            <TabsTrigger value="schedule">Schedule</TabsTrigger>
             <TabsTrigger value="versions">Versions</TabsTrigger>
             <TabsTrigger value="machines">Machines</TabsTrigger>
             <TabsTrigger value="usage">Usage</TabsTrigger>
@@ -807,6 +882,66 @@ export function UnifiedWorkflowDialog({
                 </AlertDescription>
               </Alert>
             )}
+          </TabsContent>
+
+          <TabsContent value="schedule" className="space-y-4">
+            <Card className="border-2 border-black">
+              <CardHeader className="bg-black text-white">
+                <CardTitle className="font-mono flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  CRON SCHEDULE CONFIGURATION
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {loadingCron ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span className="ml-2">Loading schedule configuration...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <CronScheduleEditor
+                      cronExpression={cronConfig.expression}
+                      cronTimezone={cronConfig.timezone}
+                      cronEnabled={cronConfig.enabled}
+                      cronMaxConcurrent={cronConfig.maxConcurrent}
+                      cronRetryOnFailure={cronConfig.retryOnFailure}
+                      cronRetryCount={cronConfig.retryCount}
+                      onChange={setCronConfig}
+                      showAdvanced={true}
+                    />
+
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => loadCronConfig()}
+                        disabled={savingCron}
+                        className="border-2 border-black hover:bg-black hover:text-white"
+                      >
+                        Reset
+                      </Button>
+                      <Button
+                        onClick={saveCronConfig}
+                        disabled={savingCron || !cronConfig.expression}
+                        className="bg-black text-white hover:bg-gray-800"
+                      >
+                        {savingCron ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            Save Schedule
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="parameters" className="space-y-4">

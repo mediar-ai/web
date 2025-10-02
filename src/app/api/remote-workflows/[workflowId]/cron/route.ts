@@ -93,6 +93,126 @@ export async function PATCH(
 }
 
 /**
+ * PUT /api/remote-workflows/[workflowId]/cron - Update full cron configuration
+ */
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ workflowId: string }> }
+) {
+  try {
+    const { workflowId } = await params;
+    const workflowIdNum = parseInt(workflowId);
+
+    if (isNaN(workflowIdNum)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid workflow ID' },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const {
+      cron_expression,
+      cron_timezone,
+      cron_enabled,
+      cron_max_concurrent,
+      cron_retry_on_failure,
+      cron_retry_count,
+    } = body;
+
+    // Validate required fields
+    if (typeof cron_expression !== 'string' || !cron_expression.trim()) {
+      return NextResponse.json(
+        { success: false, error: 'cron_expression is required' },
+        { status: 400 }
+      );
+    }
+
+    if (typeof cron_timezone !== 'string' || !cron_timezone.trim()) {
+      return NextResponse.json(
+        { success: false, error: 'cron_timezone is required' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`📝 Updating cron configuration for workflow ${workflowIdNum}`);
+
+    // Get environment variables and check them
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('❌ Supabase environment variables are not set');
+      return NextResponse.json(
+        { success: false, error: 'Supabase configuration error' },
+        { status: 500 }
+      );
+    }
+
+    // Create Supabase client
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Update the cron configuration
+    const updateData: Record<string, any> = {
+      cron_expression,
+      cron_timezone,
+      cron_enabled: cron_enabled ?? false,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Add optional fields if provided
+    if (cron_max_concurrent !== undefined) {
+      updateData.cron_max_concurrent = cron_max_concurrent;
+    }
+    if (cron_retry_on_failure !== undefined) {
+      updateData.cron_retry_on_failure = cron_retry_on_failure;
+    }
+    if (cron_retry_count !== undefined) {
+      updateData.cron_retry_count = cron_retry_count;
+    }
+
+    const { data: updatedWorkflow, error } = await supabase
+      .from('deployed_workflows')
+      .update(updateData)
+      .eq('id', workflowIdNum)
+      .select('id, name, cron_expression, cron_enabled, cron_timezone, cron_max_concurrent, cron_retry_on_failure, cron_retry_count')
+      .single();
+
+    if (error) {
+      console.error('❌ Error updating cron configuration:', error);
+      return NextResponse.json(
+        { success: false, error: `Failed to update cron configuration: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    if (!updatedWorkflow) {
+      return NextResponse.json(
+        { success: false, error: 'Workflow not found' },
+        { status: 404 }
+      );
+    }
+
+    console.log(`✅ Cron configuration updated for workflow: ${updatedWorkflow.name}`);
+
+    return NextResponse.json({
+      success: true,
+      workflow: updatedWorkflow,
+      message: 'Cron configuration updated successfully',
+    });
+  } catch (error) {
+    console.error('❌ Cron update error:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * GET /api/remote-workflows/[workflowId]/cron - Get cron schedule info
  */
 export async function GET(
@@ -157,9 +277,9 @@ export async function GET(
   } catch (error) {
     console.error('❌ Error fetching cron config:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     );
