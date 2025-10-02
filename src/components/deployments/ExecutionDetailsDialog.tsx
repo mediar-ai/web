@@ -18,10 +18,11 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { Loader2, Terminal, XCircle, FileText, Sparkles } from 'lucide-react';
+import { Loader2, Terminal, XCircle, FileText, Sparkles, Download } from 'lucide-react';
 import { useEffect, useState, Suspense } from 'react';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
 import { ExecutionAIChat } from './ExecutionAIChat';
+import { Button } from '@/components/ui/button';
 
 interface ExecutionDetailsDialogProps {
   execution: Execution | null;
@@ -53,6 +54,110 @@ export function ExecutionDetailsDialog({
 }: ExecutionDetailsDialogProps) {
   const [activeTab, setActiveTab] = useState('summary');
   const [isTabLoading, setIsTabLoading] = useState(false);
+
+  // Helper function to download logs as text file
+  const downloadLogsAsText = () => {
+    if (!execution || !execution.execution_logs || execution.execution_logs.length === 0) {
+      return;
+    }
+
+    // Format timestamp for filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `execution-${execution.execution_id}-logs-${timestamp}.txt`;
+
+    // Build the log content with metadata header
+    let content = '='.repeat(60) + '\n';
+    content += 'EXECUTION LOG FILE\n';
+    content += '='.repeat(60) + '\n\n';
+
+    // Add execution metadata
+    content += 'Execution Details:\n';
+    content += '-'.repeat(40) + '\n';
+    content += `Execution ID: ${execution.execution_id}\n`;
+    content += `Workflow: ${execution.workflow_name || 'N/A'}\n`;
+    content += `Status: ${execution.status.toUpperCase()}\n`;
+    content += `Started: ${execution.started_at ? new Date(execution.started_at).toLocaleString() : 'N/A'}\n`;
+    content += `Completed: ${execution.completed_at ? new Date(execution.completed_at).toLocaleString() : 'N/A'}\n`;
+    content += `Duration: ${formatDuration(execution.execution_duration_seconds)}\n`;
+    if (execution.assigned_machine_name) {
+      content += `Machine: ${execution.assigned_machine_name}\n`;
+    }
+    if (execution.error_message) {
+      content += `Error: ${execution.error_message}\n`;
+    }
+    content += '\n';
+    content += '='.repeat(60) + '\n';
+    content += 'EXECUTION LOGS\n';
+    content += '='.repeat(60) + '\n\n';
+
+    // Add the actual logs
+    execution.execution_logs.forEach((log) => {
+      const timestamp = log.timestamp
+        ? new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false })
+        : 'N/A';
+      const level = (log.level || 'info').toUpperCase().padEnd(7);
+      content += `${timestamp} [${level}] ${log.message}\n`;
+    });
+
+    content += '\n' + '='.repeat(60) + '\n';
+    content += `Generated at: ${new Date().toLocaleString()}\n`;
+    content += '='.repeat(60) + '\n';
+
+    // Create blob and trigger download
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  // Helper function to download results as JSON file
+  const downloadResultsAsJson = () => {
+    if (!execution || !execution.results) {
+      return;
+    }
+
+    // Format timestamp for filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `execution-${execution.execution_id}-results-${timestamp}.json`;
+
+    // Create a comprehensive results object
+    const resultsData = {
+      execution: {
+        id: execution.execution_id,
+        workflow: execution.workflow_name || 'N/A',
+        status: execution.status,
+        started_at: execution.started_at,
+        completed_at: execution.completed_at,
+        duration_seconds: execution.execution_duration_seconds,
+        machine: execution.assigned_machine_name || null,
+        version: execution.version_number ? `v${execution.version_number}` : 'v1.0.0',
+        error: execution.error_message || null,
+      },
+      results: execution.results,
+      formatted_output: execution.formatted_output ?
+        (typeof execution.formatted_output === 'string' ?
+          JSON.parse(execution.formatted_output) :
+          execution.formatted_output) : null,
+      generated_at: new Date().toISOString(),
+    };
+
+    // Create blob and trigger download
+    const jsonString = JSON.stringify(resultsData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     // When a new execution is selected, reset to summary tab without showing loader
@@ -116,10 +221,9 @@ export function ExecutionDetailsDialog({
           className="flex-1 flex flex-col min-h-0"
         >
           <div className="px-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="summary">Summary</TabsTrigger>
-              <TabsTrigger value="logs">Logs</TabsTrigger>
-              <TabsTrigger value="results">Results</TabsTrigger>
+              <TabsTrigger value="logs">Orchestrator server logs</TabsTrigger>
               <TabsTrigger value="qa" className="flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
                 Q&A
@@ -277,6 +381,20 @@ export function ExecutionDetailsDialog({
                     />
                   </div>
 
+                  {execution.results && (
+                    <div className="flex justify-end">
+                      <Button
+                        variant="black-outline"
+                        size="sm"
+                        className="h-8 px-3"
+                        onClick={downloadResultsAsJson}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Execution logs
+                      </Button>
+                    </div>
+                  )}
+
                   {execution.formatted_output && (
                     <div>
                       <CodeBlock
@@ -308,19 +426,30 @@ export function ExecutionDetailsDialog({
                     <div className="space-y-2 flex-1 flex flex-col min-h-0">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">
-                          Real-time logs generated during the workflow
+                          Real-time server logs from the orchestrator during workflow
                           execution.
                         </p>
-                        <CopyToClipboardButton
-                          contentToCopy={
-                            execution.execution_logs
-                              ?.map(
-                                log =>
-                                  `${log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''} [${log.level}] ${log.message}`
-                              )
-                              .join('\n') || ''
-                          }
-                        />
+                        <div className="flex items-center gap-2">
+                          <CopyToClipboardButton
+                            contentToCopy={
+                              execution.execution_logs
+                                ?.map(
+                                  log =>
+                                    `${log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''} [${log.level}] ${log.message}`
+                                )
+                                .join('\n') || ''
+                            }
+                          />
+                          <Button
+                            variant="black-outline"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={downloadLogsAsText}
+                          >
+                            <Download className="w-3 h-3 mr-1" />
+                            Download
+                          </Button>
+                        </div>
                       </div>
                       <div className="flex-1 min-h-0 overflow-auto border border-black rounded-md bg-white p-4">
                         {execution.execution_logs.map((log, idx) => (
@@ -354,35 +483,7 @@ export function ExecutionDetailsDialog({
                     <Alert className="text-center">
                       <Terminal className="h-4 w-4" />
                       <AlertDescription>
-                        No structured execution logs available for this run.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              )}
-            </TabsContent>
-            <TabsContent value="results">
-              {isTabLoading || !execution ? (
-                <LoadingSkeleton />
-              ) : (
-                <div className="space-y-4">
-                  {execution.results ? (
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        The final JSON output produced by the workflow.
-                      </p>
-                      <JsonBlock
-                        data={execution.results}
-                        title="Results"
-                        size="sm"
-                        theme="light"
-                      />
-                    </div>
-                  ) : (
-                    <Alert className="text-center">
-                      <FileText className="h-4 w-4" />
-                      <AlertDescription>
-                        No results available for this execution.
+                        No orchestrator server logs available for this run.
                       </AlertDescription>
                     </Alert>
                   )}
