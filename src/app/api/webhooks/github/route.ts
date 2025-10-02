@@ -164,7 +164,9 @@ export async function POST(request: NextRequest) {
             .from('deployed_workflows')
             .update({
               name: workflowName,
+              version: newVersionNumber,  // Update the version field to match current version
               automation_sequence: yaml.load(content.yaml),
+              automation_sequence_yaml: content.yaml,  // Store YAML format as well
               current_version_id: newVersion.id,
               total_versions: (currentWorkflow?.total_versions || 0) + 1,
               github_path: filePath,

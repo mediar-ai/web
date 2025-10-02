@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { memo } from 'react';
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -148,7 +149,7 @@ function getExecutionStatus(execution: Execution, formattedResult: any, isLive: 
   }
 }
 
-export function ExecutionsDataTable({
+export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   executions,
   workflows,
   liveExecutions,
@@ -587,6 +588,7 @@ export function ExecutionsDataTable({
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getRowId: (row) => `execution-${row.execution_id}`, // Use stable execution ID
     state: {
       sorting,
       columnFilters,
@@ -808,4 +810,4 @@ export function ExecutionsDataTable({
       </div>
     </div>
   );
-}
+});

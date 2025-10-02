@@ -166,7 +166,38 @@ function DashboardContent() {
       const response = await fetch(apiUrl);
       const executionsData = await response.json();
       if (executionsData.success) {
-        setExecutions(executionsData.executions || []);
+        const newExecutions = executionsData.executions || [];
+
+        // Smart merge: only update if data actually changed
+        setExecutions(prevExecutions => {
+          // If it's the initial load or completely different set
+          if (prevExecutions.length === 0 || showLoading) {
+            return newExecutions;
+          }
+
+          // Create a map of existing executions for quick lookup
+          const existingMap = new Map(
+            prevExecutions.map(exec => [exec.execution_id, exec])
+          );
+
+          // Merge new data, preserving unchanged items
+          const merged = newExecutions.map(newExec => {
+            const existing = existingMap.get(newExec.execution_id);
+            // Only replace if the execution has actually changed
+            if (existing && JSON.stringify(existing) === JSON.stringify(newExec)) {
+              return existing; // Keep the same reference
+            }
+            return newExec;
+          });
+
+          // Check if the arrays are effectively the same
+          if (merged.length === prevExecutions.length &&
+              merged.every((exec, idx) => exec === prevExecutions[idx])) {
+            return prevExecutions; // No changes, keep same reference
+          }
+
+          return merged;
+        });
       }
     } catch (error) {
       console.error('Failed to fetch executions:', error);
@@ -225,6 +256,48 @@ function DashboardContent() {
       setExecutionDetailsOpen(false);
     }
   }, []);
+
+  const handleCancelExecution = useCallback(async (executionId: number) => {
+    try {
+      const response = await fetch(`/api/remote-workflows/executions/${executionId}/cancel`, {
+        method: 'POST',
+      });
+      if (response.ok) {
+        await fetchExecutions(false);
+        await fetchLiveExecutions();
+      } else {
+        const error = await response.json();
+        console.error('Cancel failed:', error);
+        alert(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error canceling execution:', error);
+      alert('Error canceling execution');
+    }
+  }, [fetchExecutions, fetchLiveExecutions]);
+
+  const handleDeleteExecution = useCallback(async (executionId: number) => {
+    try {
+      const response = await fetch(`/api/remote-workflows/executions/${executionId}/delete`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        await fetchExecutions(false);
+        await fetchLiveExecutions();
+      } else {
+        const error = await response.json();
+        console.error('Delete failed:', error);
+        alert(`Failed to delete execution: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting execution:', error);
+      alert('Error deleting execution');
+    }
+  }, [fetchExecutions, fetchLiveExecutions]);
+
+  const handleRefreshExecutions = useCallback(() => {
+    fetchExecutions(true);
+  }, [fetchExecutions]);
 
   // Handlers
   const handleWorkflowCreated = useCallback((_newWorkflow: any) => {
@@ -496,43 +569,9 @@ function DashboardContent() {
                   loading={executionsLoading}
                   canDelete={canDelete}
                   onViewDetails={fetchExecutionDetails}
-                  onCancelExecution={async (executionId) => {
-                    try {
-                      const response = await fetch(`/api/remote-workflows/executions/${executionId}/cancel`, {
-                        method: 'POST',
-                      });
-                      if (response.ok) {
-                        await fetchExecutions(false);
-                        await fetchLiveExecutions();
-                      } else {
-                        const error = await response.json();
-                        console.error('Cancel failed:', error);
-                        alert(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
-                      }
-                    } catch (error) {
-                      console.error('Error canceling execution:', error);
-                      alert('Error canceling execution');
-                    }
-                  }}
-                  onDeleteExecution={async (executionId) => {
-                    try {
-                      const response = await fetch(`/api/remote-workflows/executions/${executionId}/delete`, {
-                        method: 'DELETE',
-                      });
-                      if (response.ok) {
-                        await fetchExecutions(false);
-                        await fetchLiveExecutions();
-                      } else {
-                        const error = await response.json();
-                        console.error('Delete failed:', error);
-                        alert(`Failed to delete execution: ${error.error || 'Unknown error'}`);
-                      }
-                    } catch (error) {
-                      console.error('Error deleting execution:', error);
-                      alert('Error deleting execution');
-                    }
-                  }}
-                  onRefresh={() => fetchExecutions(true)}
+                  onCancelExecution={handleCancelExecution}
+                  onDeleteExecution={handleDeleteExecution}
+                  onRefresh={handleRefreshExecutions}
                 />
               </div>
             )}
