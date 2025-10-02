@@ -3,12 +3,6 @@ import { createVertex } from '@ai-sdk/google-vertex';
 import { streamText } from 'ai';
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Vertex AI client
-const vertex = createVertex({
-  project: process.env.GOOGLE_VERTEX_PROJECT || process.env.GOOGLE_PROJECT_ID || '',
-  location: process.env.GOOGLE_VERTEX_LOCATION || 'us-central1',
-});
-
 // Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,6 +13,43 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { messages, executionId } = body;
+
+    // Use existing environment variables
+    const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_VERTEX_PROJECT || process.env.GOOGLE_PROJECT_ID || 'mediar-394022';
+    const location = process.env.VERTEX_AI_LOCATION || process.env.GOOGLE_VERTEX_LOCATION || 'us-central1';
+
+    // Handle base64 credentials
+    let credentialsJson: string | undefined;
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
+      try {
+        credentialsJson = Buffer.from(
+          process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
+          'base64'
+        ).toString('utf-8');
+      } catch (error) {
+        console.error('Failed to decode base64 credentials:', error);
+      }
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+      // Fallback to JSON if available
+      credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    }
+
+    if (!project) {
+      return NextResponse.json(
+        { error: 'Google Cloud project not configured' },
+        { status: 500 }
+      );
+    }
+
+    // Initialize Vertex AI client with proper credentials
+    const vertex = createVertex({
+      project,
+      location,
+      googleAuthOptions: credentialsJson ? {
+        credentials: JSON.parse(credentialsJson),
+        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+      } : undefined
+    });
 
     // Fetch execution data from database
     const { data: execution, error } = await supabase
