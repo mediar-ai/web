@@ -1489,12 +1489,12 @@ async def execute_mcp_workflow(
 
             # Use more granular timeout configuration
             # - connect: time to establish connection (10s)
-            # - read: time between reads from server (30s - detect stuck responses faster)
+            # - read: time between reads from server (120s - allow first-time npm install)
             # - write: time to send data (10s)
             # - pool: time to acquire connection from pool (10s)
             timeout_config = httpx.Timeout(
                 connect=10.0,
-                read=30.0,  # Reduced from 60s to detect hung MCP responses faster
+                read=120.0,  # Allow 2 minutes for first-time npm install of terminator.js
                 write=10.0,
                 pool=10.0
             )
