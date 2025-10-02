@@ -237,19 +237,23 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                   ) : (
                     <>
                       <div className="prose prose-sm max-w-none
-                        prose-headings:font-mono prose-headings:text-black prose-headings:font-bold prose-headings:my-3
-                        prose-p:text-black prose-p:my-2 prose-p:leading-relaxed
+                        prose-headings:font-mono prose-headings:text-black prose-headings:font-bold
+                        prose-h1:text-lg prose-h1:mt-6 prose-h1:mb-4
+                        prose-h2:text-base prose-h2:mt-5 prose-h2:mb-3
+                        prose-h3:text-sm prose-h3:mt-4 prose-h3:mb-2
+                        prose-p:text-black prose-p:mb-3 prose-p:leading-relaxed prose-p:text-sm
                         prose-strong:font-bold prose-strong:text-black
                         prose-code:bg-gray-200 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-black prose-code:font-mono prose-code:text-xs prose-code:before:content-none prose-code:after:content-none
                         prose-pre:bg-black prose-pre:text-white prose-pre:p-3 prose-pre:rounded prose-pre:border-2 prose-pre:border-black prose-pre:my-3
                         prose-ul:my-2 prose-ol:my-2 prose-ul:list-disc prose-ol:list-decimal prose-ul:ml-6 prose-ol:ml-6
-                        prose-li:text-black prose-li:marker:text-black prose-li:my-1
+                        prose-li:text-black prose-li:marker:text-black prose-li:my-1 prose-li:text-sm
                         prose-blockquote:border-l-4 prose-blockquote:border-black prose-blockquote:pl-4 prose-blockquote:my-3 prose-blockquote:text-gray-700
                         prose-hr:border-black prose-hr:my-4
                         prose-a:text-black prose-a:underline prose-a:font-bold hover:prose-a:text-gray-700
                         prose-table:border-2 prose-table:border-black prose-table:my-3
-                        prose-th:border prose-th:border-black prose-th:bg-gray-100 prose-th:px-2 prose-th:py-1 prose-th:font-mono
-                        prose-td:border prose-td:border-black prose-td:px-2 prose-td:py-1">
+                        prose-th:border prose-th:border-black prose-th:bg-gray-100 prose-th:px-2 prose-th:py-1 prose-th:font-mono prose-th:text-xs
+                        prose-td:border prose-td:border-black prose-td:px-2 prose-td:py-1 prose-td:text-xs
+                        [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm, remarkBreaks]}
                           rehypePlugins={[rehypeHighlight]}
@@ -273,9 +277,18 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                                 </code>
                               );
                             },
-                            p({ children, ...props }: any) {
-                              return <p className="mb-2" {...props}>{children}</p>;
-                            },
+                            h1: ({ children, ...props }: any) => (
+                              <h1 className="text-lg font-mono font-bold text-black mt-6 mb-4" {...props}>{children}</h1>
+                            ),
+                            h2: ({ children, ...props }: any) => (
+                              <h2 className="text-base font-mono font-bold text-black mt-5 mb-3" {...props}>{children}</h2>
+                            ),
+                            h3: ({ children, ...props }: any) => (
+                              <h3 className="text-sm font-mono font-bold text-black mt-4 mb-2" {...props}>{children}</h3>
+                            ),
+                            p: ({ children, ...props }: any) => (
+                              <p className="mb-3 text-sm leading-relaxed" {...props}>{children}</p>
+                            ),
                           }}
                         >
                           {message.content}
