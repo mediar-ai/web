@@ -61,19 +61,6 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
     setError(null);
 
     try {
-      // Truncate large fields to avoid 413 errors
-      const truncateField = (field: any, maxLength: number = 5000) => {
-        if (!field) return field;
-        const str = typeof field === 'string' ? field : JSON.stringify(field);
-        if (str.length > maxLength) {
-          return str.substring(0, maxLength) + '... [truncated]';
-        }
-        return field;
-      };
-
-      // Only send recent logs to avoid payload size issues
-      const recentLogs = execution.execution_logs?.slice(-50) || [];
-
       const response = await fetch('/api/ai/execution-qa', {
         method: 'POST',
         headers: {
@@ -81,16 +68,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
         },
         body: JSON.stringify({
           messages: [...messages, userMessageObj],
-          executionContext: {
-            execution_id: execution.execution_id,
-            workflow_name: execution.workflow_name,
-            status: execution.status,
-            duration: execution.execution_duration_seconds,
-            error_message: truncateField(execution.error_message, 2000),
-            formatted_output: truncateField(execution.formatted_output, 10000),
-            results: truncateField(execution.results, 10000),
-            execution_logs: recentLogs,
-          },
+          executionId: execution.execution_id, // Only send the ID, server will fetch the full context
         }),
       });
 

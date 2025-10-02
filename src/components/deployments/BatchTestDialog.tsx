@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2, Server } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 
 import { BatchForm } from '@/components/deployments/BatchForm';
 import { Workflow } from '@/lib/workflow-types';
@@ -85,6 +85,7 @@ export function BatchTestDialog({
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
   const [selectedMachineId, setSelectedMachineId] = useState<string>(''); // Start with empty, will be set when machines load
   const [loadingMachines, setLoadingMachines] = useState(false);
+  const userSelectedMachineRef = useRef(false); // Track if user manually selected a machine
 
   // Version selection state
   const [availableVersions, setAvailableVersions] = useState<WorkflowVersion[]>(
@@ -127,6 +128,9 @@ export function BatchTestDialog({
   // Load available machines and versions when dialog opens
   useEffect(() => {
     if (open && workflow) {
+      // Reset user selection flag when dialog opens
+      userSelectedMachineRef.current = false;
+
       const fetchMachines = async () => {
         setLoadingMachines(true);
         try {
@@ -194,7 +198,10 @@ export function BatchTestDialog({
             }
 
             // After loading machines, fetch optimal machine to potentially override default
-            await fetchOptimalMachine(formattedMachines);
+            // Only fetch optimal if user hasn't manually selected a machine
+            if (!userSelectedMachineRef.current) {
+              await fetchOptimalMachine(formattedMachines);
+            }
           } else {
             console.warn('[WARNING] No machines in database');
             setAvailableMachines([]);
@@ -502,7 +509,10 @@ export function BatchTestDialog({
                 ) : (
                   <Select
                     value={selectedMachineId}
-                    onValueChange={setSelectedMachineId}
+                    onValueChange={(value) => {
+                      setSelectedMachineId(value);
+                      userSelectedMachineRef.current = true; // Mark that user has made a manual selection
+                    }}
                   >
                     <SelectTrigger id="machine-select">
                       <SelectValue placeholder="Select a machine" />
