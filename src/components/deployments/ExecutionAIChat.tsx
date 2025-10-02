@@ -7,6 +7,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Execution } from '@/lib/workflow-types';
 import { Send, Sparkles, User, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import 'highlight.js/styles/github-dark.css';
 
 interface ExecutionAIChatProps {
   execution: Execution;
@@ -210,17 +214,58 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                       : 'bg-gray-50 border-2 border-black'
                   } rounded-lg p-3`}
                 >
-                  <div
-                    className={`text-sm ${
-                      message.role === 'user' ? 'text-white' : 'text-black'
-                    }`}
-                  >
-                    {message.content.split('\n').map((line, idx) => (
-                      <p key={idx} className={idx > 0 ? 'mt-2' : ''}>
-                        {line}
-                      </p>
-                    ))}
-                  </div>
+                  {message.role === 'user' ? (
+                    <div className="text-sm text-white">
+                      {message.content.split('\n').map((line, idx) => (
+                        <p key={idx} className={idx > 0 ? 'mt-2' : ''}>
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="prose prose-sm max-w-none
+                      prose-headings:font-mono prose-headings:text-black prose-headings:font-bold
+                      prose-p:text-black prose-p:my-2
+                      prose-strong:font-bold prose-strong:text-black
+                      prose-code:bg-gray-200 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-black prose-code:font-mono prose-code:text-xs
+                      prose-pre:bg-black prose-pre:text-white prose-pre:p-3 prose-pre:rounded prose-pre:border-2 prose-pre:border-black prose-pre:my-3
+                      prose-ul:my-2 prose-ol:my-2 prose-ul:list-disc prose-ol:list-decimal
+                      prose-li:text-black prose-li:marker:text-black
+                      prose-blockquote:border-l-4 prose-blockquote:border-black prose-blockquote:pl-4 prose-blockquote:my-3
+                      prose-hr:border-black prose-hr:my-4
+                      prose-a:text-black prose-a:underline prose-a:font-bold hover:prose-a:text-gray-700
+                      prose-table:border-2 prose-table:border-black prose-table:my-3
+                      prose-th:border prose-th:border-black prose-th:bg-gray-100 prose-th:px-2 prose-th:py-1 prose-th:font-mono
+                      prose-td:border prose-td:border-black prose-td:px-2 prose-td:py-1">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeHighlight]}
+                        components={{
+                          code({ inline, className, children, ...props }: any) {
+                            const match = /language-(\w+)/.exec(className || '');
+                            return !inline && match ? (
+                              <div className="relative my-3">
+                                <div className="absolute top-0 right-0 text-xs font-mono text-gray-400 bg-black px-2 py-1 border-b border-l border-gray-700">
+                                  {match[1]}
+                                </div>
+                                <pre className={`${className} overflow-x-auto`} {...props}>
+                                  <code className={className} {...props}>
+                                    {children}
+                                  </code>
+                                </pre>
+                              </div>
+                            ) : (
+                              <code className="bg-gray-200 px-1 py-0.5 rounded text-black font-mono text-xs" {...props}>
+                                {children}
+                              </code>
+                            );
+                          },
+                        }}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
                 {message.role === 'user' && (
                   <div className="flex-shrink-0">

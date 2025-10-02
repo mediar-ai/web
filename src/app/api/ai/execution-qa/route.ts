@@ -1,97 +1,41 @@
+import { NextResponse } from 'next/server';
 import { createVertex } from '@ai-sdk/google-vertex';
 import { streamText } from 'ai';
-import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+
+// Initialize Vertex AI client
+const vertex = createVertex({
+  project: process.env.GOOGLE_VERTEX_PROJECT || process.env.GOOGLE_PROJECT_ID || '',
+  location: process.env.GOOGLE_VERTEX_LOCATION || 'us-central1',
+});
 
 // Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    // Use existing environment variables that are already in Vercel
-    const project = process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022';
-    const location = process.env.VERTEX_AI_LOCATION || 'us-central1';
+    const body = await request.json();
+    const { messages, executionId } = body;
 
-    // Handle base64 credentials (what's actually in Vercel)
-    let credentialsJson: string | undefined;
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-      try {
-        credentialsJson = Buffer.from(
-          process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
-          'base64'
-        ).toString('utf-8');
-      } catch (error) {
-        console.error('Failed to decode base64 credentials:', error);
-      }
-    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
-      // Fallback to JSON if available
-      credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    }
-
-    if (!project) {
-      return new Response(
-        JSON.stringify({
-          error: 'GOOGLE_CLOUD_PROJECT environment variable is not configured'
-        }),
-        {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    // Initialize Vertex AI provider with proper credentials
-    const vertex = createVertex({
-      project,
-      location,
-      googleAuthOptions: credentialsJson ? {
-        credentials: JSON.parse(credentialsJson),
-        scopes: ['https://www.googleapis.com/auth/cloud-platform']
-      } : undefined
-    });
-
-    const { messages, executionId } = await req.json();
-
-    if (!messages || !Array.isArray(messages)) {
-      return new Response(JSON.stringify({ error: 'Messages array is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (!executionId) {
-      return new Response(JSON.stringify({ error: 'Execution ID is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Fetch execution data from Supabase
-    const { data: execution, error: dbError } = await supabase
+    // Fetch execution data from database
+    const { data: execution, error } = await supabase
       .from('workflow_executions')
       .select('*')
       .eq('id', executionId)
       .single();
 
-    if (dbError || !execution) {
-      console.error('Failed to fetch execution:', dbError);
-      return new Response(
-        JSON.stringify({ error: 'Execution not found' }),
-        {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
+    if (error || !execution) {
+      return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
     }
 
-    // Truncate large fields to keep context manageable
-    const truncate = (field: any, maxLength: number = 10000) => {
-      if (!field) return field;
-      const str = typeof field === 'string' ? field : JSON.stringify(field, null, 2);
-      return str.length > maxLength ? str.substring(0, maxLength) + '\n... [truncated]' : str;
+    // Helper function to truncate long strings
+    const truncate = (obj: any, maxLength: number = 1000): string => {
+      const str = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+      if (!str) return '';
+      return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
     };
 
     // Smart log sampling for better context
@@ -125,8 +69,8 @@ export async function POST(req: NextRequest) {
       smartSample.map((log: any) => [`${log.timestamp}-${log.message}`, log])
     ).values());
 
-    // Build system prompt with execution context
-    const systemPrompt = `You are an AI assistant helping users understand workflow execution results.
+    // Build context for the AI
+    const context = `You are analyzing a workflow execution. Here's the execution data:
 
 EXECUTION SUMMARY:
 - Execution ID: ${execution.id}
@@ -138,6 +82,8 @@ EXECUTION SUMMARY:
 - Warnings: ${executionSummary.warning_count}
 ${executionSummary.first_error ? `- First Error: ${truncate(executionSummary.first_error, 500)}` : ''}
 ${execution.error_message ? `- Final Error: ${truncate(execution.error_message, 2000)}` : ''}
+
+Context: ${JSON.stringify(execution.context, null, 2)}
 
 FORMATTED OUTPUT:
 ${truncate(execution.formatted_output, 15000)}
@@ -153,44 +99,35 @@ LOG SAMPLES (${uniqueLogs.length} key entries from ${executionSummary.total_log_
 ${uniqueLogs.map((log: any) => `[${log.timestamp}] [${log.level || 'INFO'}] ${truncate(log.message, 500)}`).join('\n')}
 ` : 'No execution logs available'}
 
-Note: This is a smart sample of the execution logs. Focus on error patterns, the workflow flow, and final results. If user asks about specific details not shown, explain that you're seeing a summary and key events.`;
+Note: This is a smart sample of the execution logs. Focus on error patterns, the workflow flow, and final results. If user asks about specific details not shown, explain that you're seeing a summary and key events.
+
+Please answer questions about this workflow execution in a helpful and detailed manner. Focus on:
+- What the workflow accomplished or attempted to do
+- Any errors or issues that occurred
+- Performance metrics and timing
+- The state of the execution
+- Any relevant technical details
+
+Use markdown formatting for better readability.`;
 
     // Stream the response using Vercel AI SDK
     const result = await streamText({
       model: vertex('gemini-2.5-pro'),
       messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages,
+        { role: 'system', content: context },
+        ...messages
       ],
       temperature: 0.7,
+      maxRetries: 3,
     });
 
+    // Return the stream
     return result.toTextStreamResponse();
   } catch (error) {
     console.error('Error in execution Q&A:', error);
-
-    // Check if it's an authentication error
-    if (error instanceof Error && error.message.includes('credentials')) {
-      return new Response(
-        JSON.stringify({
-          error: 'Vertex AI authentication not configured. Please set up GOOGLE_APPLICATION_CREDENTIALS.'
-        }),
-        {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    return new Response(
-      JSON.stringify({
-        error: 'Failed to process AI request',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }
+    return NextResponse.json(
+      { error: 'Failed to process request' },
+      { status: 500 }
     );
   }
 }
