@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 
 // Mediar organization IDs (both old and new)
-const MEDIAR_ORG_IDS = [
+const _MEDIAR_ORG_IDS = [
   'org_REDACTED', // Current Mediar organization
   'org_REDACTED', // Legacy Mediar organization (has existing workflows)
 ];

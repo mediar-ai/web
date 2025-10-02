@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   ApiRequestBlock,
   CodeBlock,
-  JsonBlock,
 } from '@/components/ui/code-block';
 import {
   Dialog,
@@ -18,7 +17,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { Loader2, Terminal, XCircle, FileText, Sparkles, Download } from 'lucide-react';
+import { Loader2, Terminal, XCircle, Sparkles, Download } from 'lucide-react';
 import { useEffect, useState, Suspense } from 'react';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
 import { ExecutionAIChat } from './ExecutionAIChat';
