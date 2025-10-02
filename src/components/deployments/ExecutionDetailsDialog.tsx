@@ -466,17 +466,31 @@ export function ExecutionDetailsDialog({
                     />
                   </div>
 
-                  {execution.results && (
-                    <div className="flex justify-end">
-                      <Button
-                        variant="black-outline"
-                        size="sm"
-                        className="h-8 px-3"
-                        onClick={downloadResultsAsJson}
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Download Execution logs
-                      </Button>
+                  {(execution.results || execution.execution_logs) && (
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-medium">Full Execution Data</h3>
+                      <div className="flex gap-2">
+                        {execution.results && (
+                          <Button
+                            variant="black-outline"
+                            size="sm"
+                            className="h-8 px-3"
+                            onClick={downloadResultsAsJson}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download Results (JSON)
+                          </Button>
+                        )}
+                        <Button
+                          variant="black-outline"
+                          size="sm"
+                          className="h-8 px-3"
+                          onClick={downloadLogsAsText}
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download Logs (TXT)
+                        </Button>
+                      </div>
                     </div>
                   )}
 
