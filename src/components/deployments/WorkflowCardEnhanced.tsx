@@ -309,10 +309,10 @@ export function WorkflowCardEnhanced({
             </div>
           </div>
 
-          {/* Quick Actions (visible on hover) */}
+          {/* Quick Actions (always visible with subtle styling) */}
           <div className={cn(
             'mt-4 flex items-center gap-2 transition-all duration-200',
-            isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            isHovered ? 'opacity-100' : 'opacity-70'
           )}>
             <Button
               size="sm"
