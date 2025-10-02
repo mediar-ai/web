@@ -71,9 +71,9 @@ export async function POST(req: NextRequest) {
 
     // Fetch execution data from Supabase
     const { data: execution, error: dbError } = await supabase
-      .from('remote_executions')
+      .from('workflow_executions')
       .select('*')
-      .eq('execution_id', executionId)
+      .eq('id', executionId)
       .single();
 
     if (dbError || !execution) {

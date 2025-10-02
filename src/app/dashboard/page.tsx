@@ -181,7 +181,7 @@ function DashboardContent() {
           );
 
           // Merge new data, preserving unchanged items
-          const merged = newExecutions.map(newExec => {
+          const merged = newExecutions.map((newExec: any) => {
             const existing = existingMap.get(newExec.execution_id);
             // Only replace if the execution has actually changed
             if (existing && JSON.stringify(existing) === JSON.stringify(newExec)) {
@@ -192,7 +192,7 @@ function DashboardContent() {
 
           // Check if the arrays are effectively the same
           if (merged.length === prevExecutions.length &&
-              merged.every((exec, idx) => exec === prevExecutions[idx])) {
+              merged.every((exec: any, idx: number) => exec === prevExecutions[idx])) {
             return prevExecutions; // No changes, keep same reference
           }
 
@@ -460,22 +460,23 @@ function DashboardContent() {
     <DashboardLayout>
       <div className="p-8">
         {/* Header */}
-        <PageHeader
-          title="Dashboard"
-          subtitle={`Welcome back to ${organization?.name || 'your workspace'}`}
-        />
+        <div className="max-w-7xl mx-auto">
+          <PageHeader
+            title="Dashboard"
+            subtitle={`Welcome back to ${organization?.name || 'your workspace'}`}
+          />
 
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-4"></div>
-              <p className="text-gray-600 font-mono">Loading dashboard...</p>
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-4"></div>
+                <p className="text-gray-600 font-mono">Loading dashboard...</p>
+              </div>
             </div>
-          </div>
-        ) : (
-          <>
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          ) : (
+            <>
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {stats.map((stat) => {
                 const Icon = stat.icon;
                 return (
@@ -577,6 +578,7 @@ function DashboardContent() {
             )}
           </>
         )}
+        </div>
 
         {/* Command Palette */}
         <CommandPalette
