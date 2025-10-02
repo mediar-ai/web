@@ -166,14 +166,28 @@ export function ExecutionsDataTable({
     },
   ]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
-    execution_id: false,  // Hide execution ID by default
-    workflow_id: false,  // Hide workflow ID by default
-    workflow_name: true, // Show workflow name by default
-    error_message: false,
-    machine: true,  // Show machine by default
-    user: false,
-    version: false,
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(() => {
+    // Load saved column visibility from localStorage or use defaults
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('executions-table-columns');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error('Failed to parse saved column visibility:', e);
+        }
+      }
+    }
+    // Default column visibility
+    return {
+      execution_id: false,  // Hide execution ID by default
+      workflow_id: false,  // Hide workflow ID by default
+      workflow_name: true, // Show workflow name by default
+      error_message: false,
+      machine: true,  // Show machine by default (updated from false)
+      user: false,
+      version: false,
+    };
   });
   const [globalFilter, setGlobalFilter] = React.useState('');
   const [rowSelection, setRowSelection] = React.useState({});
@@ -181,6 +195,13 @@ export function ExecutionsDataTable({
   // Track which executions are being stopped/deleted
   const [stoppingExecutions, setStoppingExecutions] = React.useState<Set<number>>(new Set());
   const [deletingExecutions, setDeletingExecutions] = React.useState<Set<number>>(new Set());
+
+  // Save column visibility to localStorage whenever it changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('executions-table-columns', JSON.stringify(columnVisibility));
+    }
+  }, [columnVisibility]);
 
   const columns: ColumnDef<Execution>[] = React.useMemo(
     () => [
