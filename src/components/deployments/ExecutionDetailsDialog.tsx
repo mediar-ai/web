@@ -54,9 +54,71 @@ export function ExecutionDetailsDialog({
   const [activeTab, setActiveTab] = useState('summary');
   const [isTabLoading, setIsTabLoading] = useState(false);
 
+  // Lazy loaded data state
+  const [executionLogs, setExecutionLogs] = useState<any[] | null>(null);
+  const [executionResults, setExecutionResults] = useState<any | null>(null);
+  const [formattedOutput, setFormattedOutput] = useState<string | null>(null);
+  const [loadingStates, setLoadingStates] = useState({
+    logs: false,
+    results: false,
+    formattedOutput: false,
+  });
+
+  // Fetch logs on demand using dedicated endpoint
+  const fetchExecutionLogs = async () => {
+    if (!execution || executionLogs !== null || loadingStates.logs) return;
+
+    setLoadingStates(prev => ({ ...prev, logs: true }));
+    try {
+      // Use dedicated logs endpoint for better performance
+      const response = await fetch(
+        `/api/remote-workflows/executions/${execution.execution_id}/logs`
+      );
+      const data = await response.json();
+      if (data.success && data.logs) {
+        setExecutionLogs(data.logs || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch execution logs:', error);
+      setExecutionLogs([]);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, logs: false }));
+    }
+  };
+
+  // Fetch results for download
+  const fetchExecutionResults = async () => {
+    if (!execution || executionResults !== null || loadingStates.results) return;
+
+    setLoadingStates(prev => ({ ...prev, results: true }));
+    try {
+      const response = await fetch(
+        `/api/remote-workflows/executions/${execution.execution_id}?full_detailed_response=true`
+      );
+      const data = await response.json();
+      if (data.success && data.execution) {
+        setExecutionResults(data.execution.results);
+        if (data.execution.formatted_output) setFormattedOutput(data.execution.formatted_output);
+        if (data.execution.execution_logs) setExecutionLogs(data.execution.execution_logs);
+      }
+    } catch (error) {
+      console.error('Failed to fetch execution results:', error);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, results: false }));
+    }
+  };
+
   // Helper function to download logs as text file
-  const downloadLogsAsText = () => {
-    if (!execution || !execution.execution_logs || execution.execution_logs.length === 0) {
+  const downloadLogsAsText = async () => {
+    if (!execution) return;
+
+    // Fetch logs if not already loaded
+    if (!executionLogs) {
+      await fetchExecutionLogs();
+    }
+
+    const logsToDownload = executionLogs || execution.execution_logs;
+    if (!logsToDownload || logsToDownload.length === 0) {
       return;
     }
 
@@ -90,7 +152,7 @@ export function ExecutionDetailsDialog({
     content += '='.repeat(60) + '\n\n';
 
     // Add the actual logs
-    execution.execution_logs.forEach((log) => {
+    logsToDownload.forEach((log) => {
       const timestamp = log.timestamp
         ? new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false })
         : 'N/A';
@@ -115,8 +177,16 @@ export function ExecutionDetailsDialog({
   };
 
   // Helper function to download results as JSON file
-  const downloadResultsAsJson = () => {
-    if (!execution || !execution.results) {
+  const downloadResultsAsJson = async () => {
+    if (!execution) return;
+
+    // Fetch results if not already loaded
+    if (!executionResults) {
+      await fetchExecutionResults();
+    }
+
+    const resultsToDownload = executionResults || execution.results;
+    if (!resultsToDownload) {
       return;
     }
 
@@ -137,8 +207,8 @@ export function ExecutionDetailsDialog({
         version: execution.version_number ? `v${execution.version_number}` : 'v1.0.0',
         error: execution.error_message || null,
       },
-      results: execution.results,
-      formatted_output: execution.formatted_output ?
+      results: resultsToDownload,
+      formatted_output: formattedOutput || execution.formatted_output ?
         (typeof execution.formatted_output === 'string' ?
           JSON.parse(execution.formatted_output) :
           execution.formatted_output) : null,
@@ -159,12 +229,28 @@ export function ExecutionDetailsDialog({
   };
 
   useEffect(() => {
-    // When a new execution is selected, reset to summary tab without showing loader
+    // When a new execution is selected, reset to summary tab and clear lazy loaded data
     if (open) {
       setActiveTab('summary');
       setIsTabLoading(false);
+      // Clear lazy loaded data when dialog opens with new execution
+      setExecutionLogs(null);
+      setExecutionResults(null);
+      setFormattedOutput(null);
+      setLoadingStates({
+        logs: false,
+        results: false,
+        formattedOutput: false,
+      });
     }
   }, [execution, open]);
+
+  useEffect(() => {
+    // Fetch data when tab changes
+    if (activeTab === 'logs' && executionLogs === null) {
+      fetchExecutionLogs();
+    }
+  }, [activeTab, executionLogs]);
 
   useEffect(() => {
     if (isTabLoading) {
@@ -409,19 +495,11 @@ export function ExecutionDetailsDialog({
               )}
             </TabsContent>
             <TabsContent value="logs">
-              {isTabLoading || !execution ? (
+              {isTabLoading || !execution || loadingStates.logs ? (
                 <LoadingSkeleton />
               ) : (
                 <div className="space-y-4 h-full flex flex-col">
-                  {(() => {
-                    console.log('Logs tab - execution:', execution);
-                    console.log('Logs tab - execution.execution_logs:', execution.execution_logs);
-                    console.log('Logs tab - is array?', Array.isArray(execution.execution_logs));
-                    console.log('Logs tab - length:', execution.execution_logs?.length);
-                    return null;
-                  })()}
-                  {execution.execution_logs &&
-                  execution.execution_logs.length > 0 ? (
+                  {executionLogs && executionLogs.length > 0 ? (
                     <div className="space-y-2 flex-1 flex flex-col min-h-0">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">
@@ -431,7 +509,7 @@ export function ExecutionDetailsDialog({
                         <div className="flex items-center gap-2">
                           <CopyToClipboardButton
                             contentToCopy={
-                              execution.execution_logs
+                              executionLogs
                                 ?.map(
                                   log =>
                                     `${log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''} [${log.level}] ${log.message}`
@@ -451,7 +529,7 @@ export function ExecutionDetailsDialog({
                         </div>
                       </div>
                       <div className="flex-1 min-h-0 overflow-auto border border-black rounded-md bg-white p-4">
-                        {execution.execution_logs.map((log, idx) => (
+                        {executionLogs.map((log, idx) => (
                           <div
                             key={idx}
                             className="flex gap-2 text-xs font-mono"
