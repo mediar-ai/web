@@ -246,7 +246,8 @@ function DashboardContent() {
     try {
       setSelectedExecution(null);
       setExecutionDetailsOpen(true);
-      const response = await fetch(`/api/remote-workflows/executions/${executionId}?full_detailed_response=true`);
+      // Fetch only basic info first - heavy fields will be loaded on demand
+      const response = await fetch(`/api/remote-workflows/executions/${executionId}`);
       const executionData = await response.json();
       if (executionData.success) {
         setSelectedExecution(executionData.execution);
