@@ -58,6 +58,19 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
     }
   };
 
+  // Preprocess markdown to ensure proper formatting
+  const preprocessMarkdown = (text: string): string => {
+    return text
+      // Add blank line before headers (###, ##, #) if not already present
+      .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
+      // Add blank line after headers if not already present
+      .replace(/(#{1,6}\s[^\n]+)\n([^#\n])/g, '$1\n\n$2')
+      // Ensure list items have proper spacing
+      .replace(/([^\n])\n(\*\s)/g, '$1\n\n$2')
+      // Fix multiple consecutive newlines (keep max 2)
+      .replace(/\n{3,}/g, '\n\n');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -291,7 +304,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                             ),
                           }}
                         >
-                          {message.content}
+                          {preprocessMarkdown(message.content)}
                         </ReactMarkdown>
                       </div>
                       {/* Copy button for AI messages */}
