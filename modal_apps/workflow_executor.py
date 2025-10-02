@@ -1048,7 +1048,7 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
         - success: bool - Business logic success (did we achieve the goal?)
         - state: str - Workflow state ("success", "failure", "skipped")
         - message: str - Human readable success/failure message
-        - data: Any - Extracted data (null/empty on failure)
+        - data: Any - ENTIRE parser output (preserves error_summary, failure_details, etc.)
         - error: str|None - Error information if failed
         - duration_ms: int - Execution time
         - steps_executed: int - Number of steps executed
@@ -1092,7 +1092,9 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
                 result["state"] = "success" if result["success"] else "failure"
             
             result["message"] = parsed_output.get("message", "No message from parser")
-            result["data"] = parsed_output.get("data")
+            # Store the entire parser output to preserve all workflow-specific fields
+            # This allows dashboards to access error_summary, failure_details, etc.
+            result["data"] = parsed_output  # Changed from parsed_output.get("data") to preserve full structure
             result["error"] = parsed_output.get("error")
             result["validation"] = parsed_output.get("validation", {})
 
@@ -1820,71 +1822,47 @@ async def execute_mcp_workflow(
 
                     # Parse detailed step structure from MCP response
                     if "results" in mcp_content and isinstance(mcp_content["results"], list):
-                        step_counter = 0
-                        for group_idx, group in enumerate(mcp_content["results"]):
-                            group_name = group.get("group_name", f"group_{group_idx}")
-                            group_status = group.get("status", "unknown")
-                            group_duration = group.get("duration_ms", 0)
+                        for step_idx, step in enumerate(mcp_content["results"]):
+                            # Each item in results is a direct step, not a group
+                            # Extract step information
+                            step_result = step.get("result", {})
+                            step_logs = step.get("logs", [])
+                            server_logs = step.get("server_logs", [])
 
-                            # Check if this is a group with nested steps
-                            if "results" in group and isinstance(group["results"], list):
-                                # Process each step in the group
-                                for step_idx, step in enumerate(group["results"]):
-                                    # Parse step result content
-                                    step_result = None
-                                    step_logs = []
+                            # Combine all logs
+                            all_logs = []
+                            if step_logs:
+                                all_logs.extend(step_logs if isinstance(step_logs, list) else [step_logs])
+                            if server_logs:
+                                all_logs.extend(server_logs if isinstance(server_logs, list) else [server_logs])
 
-                                    # Extract content from step
-                                    if "content" in step and isinstance(step["content"], list):
-                                        for content_item in step["content"]:
-                                            if content_item.get("type") == "text":
-                                                try:
-                                                    # Try to parse as JSON result
-                                                    step_result = json.loads(content_item.get("text", "{}"))
-                                                except json.JSONDecodeError:
-                                                    # If not JSON, store as raw text
-                                                    step_result = {"raw_text": content_item.get("text", "")}
+                            # Build detailed log entry for this step
+                            log_entry = {
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "step_number": step.get("index", step_idx),
+                                "step_id": step.get("step_id", f"step_{step_idx}"),
+                                "tool_name": step.get("tool_name", "unknown"),
+                                "status": step.get("status", "unknown"),
+                                "duration_ms": step.get("duration_ms", 0),
+                                "result": step_result,
+                                "logs": all_logs,
+                                "error": step_result.get("error") if step.get("status") == "error" else None
+                            }
+                            execution_log.append(log_entry)
 
-                                            # Extract logs if present
-                                            if "logs" in content_item:
-                                                step_logs.extend(content_item["logs"])
+                            # Track metrics
+                            if step.get("status") == "success":
+                                successful_steps += 1
+                            elif step.get("status") == "error":
+                                failed_steps += 1
 
-                                    # Build detailed log entry for this step
-                                    log_entry = {
-                                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                                        "step_index": step_counter,
-                                        "group_index": group_idx,
-                                        "group_name": group_name,
-                                        "step_id": step.get("step_id", f"step_{step_counter}"),
-                                        "tool": step.get("tool_name", "unknown"),
-                                        "status": step.get("status", "unknown"),
-                                        "duration_ms": step.get("duration_ms", 0),
-                                        "result": step_result,
-                                        "logs": step_logs,
-                                        "error": step.get("error") if step.get("status") == "error" else None
-                                    }
-                                    execution_log.append(log_entry)
-
-                                    # Track metrics
-                                    if step.get("status") == "success":
-                                        successful_steps += 1
-                                    elif step.get("status") == "error":
-                                        failed_steps += 1
-
-                                    step_counter += 1
-                            else:
-                                # Single step (not in a group)
-                                step_info = {
-                                    "index": group_idx,
-                                    "duration_ms": group.get("duration_ms", 0),
-                                    "success": group.get("status") != "error",
-                                }
-                                executed_steps.append(step_info)
-
-                                if step_info["success"]:
-                                    successful_steps += 1
-                                else:
-                                    failed_steps += 1
+                            # Also add to executed_steps for compatibility
+                            step_info = {
+                                "index": step_idx,
+                                "duration_ms": step.get("duration_ms", 0),
+                                "success": step.get("status") == "success",
+                            }
+                            executed_steps.append(step_info)
 
                     # Extract environment state from MCP response
                     env_state = mcp_content.get("env", {}) if mcp_content else {}
