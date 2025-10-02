@@ -327,16 +327,16 @@ function DashboardContent() {
     fetchLiveExecutions();
   }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions, viewOrgId]);
 
-  // Polling for live executions (30 seconds, only when active)
+  // Polling for live executions (2 seconds, only when active)
   useEffect(() => {
     if (liveExecutions.length === 0) return; // Don't poll if nothing active
 
     const pollTimer = setInterval(() => {
       setPollCount(prev => prev + 1);
       fetchLiveExecutions();
-      // Only fetch all executions every 5th poll
-      if (pollCount % 5 === 0) fetchExecutions(false);
-    }, 30000);
+      // Only fetch all executions every 15th poll (every 30 seconds)
+      if (pollCount % 15 === 0) fetchExecutions(false);
+    }, 2000);
 
     return () => clearInterval(pollTimer);
   }, [liveExecutions.length, fetchLiveExecutions, fetchExecutions, pollCount]);
