@@ -1,0 +1,369 @@
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import { parseCronExpression, describeCronExpression } from '@/lib/cronParser';
+import { Clock, ChevronDown, ChevronUp, AlertCircle, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+// Common cron presets
+const CRON_PRESETS = [
+  { label: 'Custom', value: 'custom' },
+  { label: 'Every minute', value: '0 * * * * *' },
+  { label: 'Every 5 minutes', value: '0 */5 * * * *' },
+  { label: 'Every 15 minutes', value: '0 */15 * * * *' },
+  { label: 'Every 30 minutes', value: '0 */30 * * * *' },
+  { label: 'Every hour', value: '0 0 * * * *' },
+  { label: 'Every 2 hours', value: '0 0 */2 * * *' },
+  { label: 'Daily at midnight', value: '0 0 0 * * *' },
+  { label: 'Daily at 9 AM', value: '0 0 9 * * *' },
+  { label: 'Daily at noon', value: '0 0 12 * * *' },
+  { label: 'Daily at 6 PM', value: '0 0 18 * * *' },
+  { label: 'Weekdays at 9 AM', value: '0 0 9 * * 1-5' },
+  { label: 'Weekends at 10 AM', value: '0 0 10 * * 0,6' },
+  { label: 'Every Monday at 9 AM', value: '0 0 9 * * 1' },
+  { label: 'Every Friday at 5 PM', value: '0 0 17 * * 5' },
+  { label: 'First day of month at midnight', value: '0 0 0 1 * *' },
+  { label: 'Last day of month at 11 PM', value: '0 0 23 L * *' },
+];
+
+// Common timezones
+const TIMEZONES = [
+  'UTC',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Toronto',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Asia/Tokyo',
+  'Asia/Shanghai',
+  'Asia/Singapore',
+  'Asia/Dubai',
+  'Australia/Sydney',
+  'Australia/Melbourne',
+  'Pacific/Auckland',
+];
+
+export interface CronConfig {
+  expression: string;
+  timezone: string;
+  enabled: boolean;
+  maxConcurrent?: number;
+  retryOnFailure?: boolean;
+  retryCount?: number;
+}
+
+interface CronScheduleEditorProps {
+  cronExpression?: string;
+  cronTimezone?: string;
+  cronEnabled?: boolean;
+  cronMaxConcurrent?: number;
+  cronRetryOnFailure?: boolean;
+  cronRetryCount?: number;
+  onChange: (config: CronConfig) => void;
+  showAdvanced?: boolean;
+  className?: string;
+}
+
+export function CronScheduleEditor({
+  cronExpression = '',
+  cronTimezone = 'UTC',
+  cronEnabled = false,
+  cronMaxConcurrent = 1,
+  cronRetryOnFailure = true,
+  cronRetryCount = 3,
+  onChange,
+  showAdvanced = false,
+  className = '',
+}: CronScheduleEditorProps) {
+  const [enabled, setEnabled] = useState(cronEnabled);
+  const [expression, setExpression] = useState(cronExpression);
+  const [selectedPreset, setSelectedPreset] = useState('custom');
+  const [timezone, setTimezone] = useState(cronTimezone);
+  const [maxConcurrent, setMaxConcurrent] = useState(cronMaxConcurrent);
+  const [retryOnFailure, setRetryOnFailure] = useState(cronRetryOnFailure);
+  const [retryCount, setRetryCount] = useState(cronRetryCount);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Parse and validate the cron expression
+  const validation = useMemo(() => {
+    if (!expression) return null;
+    return parseCronExpression(expression);
+  }, [expression]);
+
+  const description = useMemo(() => {
+    if (!expression || !validation?.isValid) return '';
+    return describeCronExpression(expression);
+  }, [expression, validation]);
+
+  // Calculate next 5 execution times
+  const nextExecutions = useMemo(() => {
+    if (!expression || !validation?.isValid) return [];
+
+    const executions: string[] = [];
+    const now = new Date();
+
+    // Simple calculation for demonstration - in production, use a proper cron library
+    for (let i = 0; i < 5; i++) {
+      const futureDate = new Date(now.getTime() + (i + 1) * 60 * 60 * 1000); // Add hours
+      executions.push(
+        futureDate.toLocaleString('en-US', {
+          timeZone: timezone,
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZoneName: 'short',
+        })
+      );
+    }
+
+    return executions;
+  }, [expression, validation, timezone]);
+
+  // Update parent when any value changes
+  useEffect(() => {
+    onChange({
+      expression,
+      timezone,
+      enabled,
+      maxConcurrent,
+      retryOnFailure,
+      retryCount,
+    });
+  }, [expression, timezone, enabled, maxConcurrent, retryOnFailure, retryCount, onChange]);
+
+  const handlePresetChange = (value: string) => {
+    setSelectedPreset(value);
+    if (value !== 'custom') {
+      setExpression(value);
+    }
+  };
+
+  const handleExpressionChange = (value: string) => {
+    setExpression(value);
+    // Check if it matches a preset
+    const matchingPreset = CRON_PRESETS.find(p => p.value === value);
+    setSelectedPreset(matchingPreset ? matchingPreset.value : 'custom');
+  };
+
+  return (
+    <Card className={cn('border-2 border-black', className)}>
+      <CardContent className="p-6 space-y-4">
+        {/* Enable/Disable Toggle */}
+        <div className="flex items-center justify-between">
+          <Label htmlFor="cron-enabled" className="font-mono text-sm uppercase">
+            Schedule Enabled
+          </Label>
+          <Switch
+            id="cron-enabled"
+            checked={enabled}
+            onCheckedChange={setEnabled}
+            className="data-[state=checked]:bg-black"
+          />
+        </div>
+
+        {enabled && (
+          <>
+            {/* Preset Selector */}
+            <div className="space-y-2">
+              <Label htmlFor="cron-preset" className="font-mono text-xs text-gray-600 uppercase">
+                Quick Presets
+              </Label>
+              <Select value={selectedPreset} onValueChange={handlePresetChange}>
+                <SelectTrigger
+                  id="cron-preset"
+                  className="border-2 border-black font-mono"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CRON_PRESETS.map((preset) => (
+                    <SelectItem key={preset.value} value={preset.value}>
+                      {preset.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Cron Expression Input */}
+            <div className="space-y-2">
+              <Label htmlFor="cron-expression" className="font-mono text-xs text-gray-600 uppercase">
+                Cron Expression (6-field format: SEC MIN HOUR DAY MONTH DOW)
+              </Label>
+              <Input
+                id="cron-expression"
+                value={expression}
+                onChange={(e) => handleExpressionChange(e.target.value)}
+                placeholder="0 0 9 * * 1-5"
+                className={cn(
+                  'font-mono border-2',
+                  validation && !validation.isValid
+                    ? 'border-red-600 focus:ring-red-600'
+                    : 'border-black focus:ring-black'
+                )}
+              />
+
+              {/* Validation Message */}
+              {expression && (
+                <div
+                  className={cn(
+                    'flex items-start gap-2 text-sm',
+                    validation?.isValid ? 'text-gray-600' : 'text-red-600'
+                  )}
+                >
+                  {validation?.isValid ? (
+                    <>
+                      <Check className="w-4 h-4 mt-0.5" />
+                      <span>{description}</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 mt-0.5" />
+                      <span>{validation?.error || 'Invalid expression'}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Timezone Selector */}
+            <div className="space-y-2">
+              <Label htmlFor="cron-timezone" className="font-mono text-xs text-gray-600 uppercase">
+                Timezone
+              </Label>
+              <Select value={timezone} onValueChange={setTimezone}>
+                <SelectTrigger
+                  id="cron-timezone"
+                  className="border-2 border-black font-mono"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIMEZONES.map((tz) => (
+                    <SelectItem key={tz} value={tz}>
+                      {tz}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Next Executions Preview */}
+            {validation?.isValid && nextExecutions.length > 0 && (
+              <div className="space-y-2">
+                <Label className="font-mono text-xs text-gray-600 uppercase flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  Next 5 Executions
+                </Label>
+                <div className="bg-gray-50 border border-gray-200 rounded p-3">
+                  <ul className="space-y-1 text-xs font-mono">
+                    {nextExecutions.map((exec, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <span className="text-gray-400">{i + 1}.</span>
+                        <span>{exec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Advanced Settings */}
+            {showAdvanced && (
+              <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full border-2 border-black hover:bg-black hover:text-white font-mono text-xs uppercase"
+                  >
+                    {advancedOpen ? (
+                      <>
+                        <ChevronUp className="w-4 h-4 mr-2" />
+                        Hide Advanced Settings
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-4 h-4 mr-2" />
+                        Show Advanced Settings
+                      </>
+                    )}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-4 mt-4">
+                  {/* Max Concurrent Executions */}
+                  <div className="space-y-2">
+                    <Label htmlFor="max-concurrent" className="font-mono text-xs text-gray-600 uppercase">
+                      Max Concurrent Executions
+                    </Label>
+                    <Input
+                      id="max-concurrent"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={maxConcurrent}
+                      onChange={(e) => setMaxConcurrent(parseInt(e.target.value) || 1)}
+                      className="border-2 border-black font-mono"
+                    />
+                  </div>
+
+                  {/* Retry on Failure */}
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="retry-failure" className="font-mono text-xs text-gray-600 uppercase">
+                      Retry on Failure
+                    </Label>
+                    <Switch
+                      id="retry-failure"
+                      checked={retryOnFailure}
+                      onCheckedChange={setRetryOnFailure}
+                      className="data-[state=checked]:bg-black"
+                    />
+                  </div>
+
+                  {/* Retry Count */}
+                  {retryOnFailure && (
+                    <div className="space-y-2">
+                      <Label htmlFor="retry-count" className="font-mono text-xs text-gray-600 uppercase">
+                        Retry Count
+                      </Label>
+                      <Input
+                        id="retry-count"
+                        type="number"
+                        min="0"
+                        max="10"
+                        value={retryCount}
+                        onChange={(e) => setRetryCount(parseInt(e.target.value) || 0)}
+                        className="border-2 border-black font-mono"
+                      />
+                    </div>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
