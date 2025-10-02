@@ -101,8 +101,8 @@ export async function POST(req: NextRequest) {
     const systemPrompt = `You are an AI assistant helping users understand workflow execution results.
 
 Context about this execution:
-- Execution ID: ${execution.execution_id}
-- Workflow: ${execution.workflow_name}
+- Execution ID: ${execution.id}
+- Workflow ID: ${execution.workflow_id}
 - Status: ${execution.status}
 - Duration: ${execution.execution_duration_seconds} seconds
 ${execution.error_message ? `- Error: ${truncate(execution.error_message, 2000)}` : ''}
