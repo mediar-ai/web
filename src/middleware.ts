@@ -35,6 +35,7 @@ const isProtectedApiRoute = createRouteMatcher([
   '/api/mcp/(.*)',
   '/api/edit-workflow(.*)',
   '/api/workflows/(.*)',
+  '/api/ai/(.*)',  // Add all /api/ai routes as protected
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
