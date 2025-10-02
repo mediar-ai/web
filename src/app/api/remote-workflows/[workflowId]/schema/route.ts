@@ -504,13 +504,14 @@ export async function GET(
         automation_sequence: Array.isArray(automationSequence)
           ? automationSequence
           : [automationSequence],
+        automation_sequence_yaml: versionData.automation_sequence_yaml,
       };
     } else {
       // Fetch workflow data with active version (existing behavior)
       const { data: activeWorkflow, error: workflowError } = await supabase
         .from('deployed_workflows_with_sequence')
         .select(
-          'id, name, description, version, status, automation_sequence, estimated_duration_seconds'
+          'id, name, description, version, status, automation_sequence, automation_sequence_yaml, estimated_duration_seconds'
         )
         .eq('id', workflowIdNum)
         .single();
@@ -668,6 +669,8 @@ export async function GET(
         is_executable: workflow.status === 'deployed',
         estimated_duration_seconds: workflow.estimated_duration_seconds,
       },
+      automation_sequence: workflow.automation_sequence,
+      automation_sequence_yaml: workflow.automation_sequence_yaml || null,
       schema: {
         input_parameters: inputParameters,
         sample_request: sampleRequest,
