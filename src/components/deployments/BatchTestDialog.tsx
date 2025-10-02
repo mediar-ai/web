@@ -137,6 +137,7 @@ export function BatchTestDialog({
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
           );
 
+          // Load all machines, regardless of status (including inactive/failed ones)
           const { data: machines, error } = await supabase
             .from('remote_machines')
             .select('*')
@@ -152,6 +153,8 @@ export function BatchTestDialog({
             // Format machines to match expected structure
             const formattedMachines = machines.map(m => ({
               ...m,
+              // Ensure health_status is set properly (fallback to status if health_status is missing)
+              health_status: m.health_status || m.status || 'unknown',
               endpoints: {
                 mcp: m.mcp_endpoint,
                 management: m.management_endpoint,
@@ -170,13 +173,17 @@ export function BatchTestDialog({
 
             // Set initial selection to first machine if no machine is selected yet
             if (!selectedMachineId && formattedMachines.length > 0) {
-              // Sort machines by priority (healthy first, then by load)
+              // Sort machines by priority (active & healthy first, then by load)
               const sortedMachines = [...formattedMachines].sort((a, b) => {
-                // Prioritize healthy machines
+                // First prioritize active status
+                if (a.status === 'active' && b.status !== 'active') return -1;
+                if (a.status !== 'active' && b.status === 'active') return 1;
+
+                // Then prioritize healthy machines
                 if (a.health_status === 'healthy' && b.health_status !== 'healthy') return -1;
                 if (a.health_status !== 'healthy' && b.health_status === 'healthy') return 1;
 
-                // Then sort by available capacity (higher is better)
+                // Finally sort by available capacity (higher is better)
                 const aCapacity = a.load_info?.available_capacity || 0;
                 const bCapacity = b.load_info?.available_capacity || 0;
                 return bCapacity - aCapacity;
@@ -502,22 +509,36 @@ export function BatchTestDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {availableMachines.map(machine => {
-                        // Check if machine is healthy (last health check within 5 minutes)
+                        // Determine machine status for display
+                        const isActive = machine.status === 'active';
                         const now = new Date();
                         const lastCheck = machine.last_health_check ? new Date(machine.last_health_check) : null;
                         const isHealthy = lastCheck && (now.getTime() - lastCheck.getTime()) < 5 * 60 * 1000 && machine.health_status === 'healthy';
 
-                        const statusIndicator = isHealthy ? '🟢' : '🔴';
+                        // Show different indicators based on machine state
+                        let statusIndicator = '⚫'; // Default unknown
+                        if (isActive && isHealthy) {
+                          statusIndicator = '🟢'; // Active and healthy
+                        } else if (isActive && !isHealthy) {
+                          statusIndicator = '🟡'; // Active but unhealthy
+                        } else if (!isActive) {
+                          statusIndicator = '🔴'; // Inactive/maintenance/failed
+                        }
+
                         const jobsInfo = machine.load_info
                           ? `${machine.load_info.current_executions}/${machine.load_info.available_capacity + machine.load_info.current_executions}`
                           : '0/1';
+
+                        // Show machine status in display text
+                        const statusText = !isActive ? ` (${machine.status})` : '';
 
                         return (
                           <SelectItem
                             key={`machine-${machine.id}`}
                             value={machine.id.toString()}
+                            disabled={false} // Explicitly allow selection even for unhealthy machines
                           >
-                            {statusIndicator} {machine.name} {jobsInfo} jobs
+                            {statusIndicator} {machine.name}{statusText} {jobsInfo} jobs
                           </SelectItem>
                         );
                       })}
