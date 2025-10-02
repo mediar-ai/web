@@ -30,7 +30,8 @@ export async function POST(request: NextRequest) {
 
     // Send organization invitation using Clerk SDK
     try {
-      const invitation = await clerkClient().organizations.createOrganizationInvitation({
+      const client = await clerkClient();
+      const invitation = await client.organizations.createOrganizationInvitation({
         organizationId: orgId,
         emailAddress: email,
         role: role,

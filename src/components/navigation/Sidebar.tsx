@@ -7,7 +7,6 @@ import { useState, Suspense, useEffect } from 'react';
 import {
   LayoutGrid,
   Settings,
-  Activity,
   ChevronRight,
   ChevronLeft,
   Building2,

@@ -92,7 +92,8 @@ export async function DELETE(
       const { clerkClient } = await import('@clerk/nextjs/server');
 
       // Get organization memberships for the user
-      const memberships = await clerkClient().organizations.getOrganizationMembershipList({
+      const client = await clerkClient();
+      const memberships = await client.organizations.getOrganizationMembershipList({
         organizationId: orgId,
         limit: 100
       });
@@ -107,7 +108,7 @@ export async function DELETE(
       }
 
       // Remove the user from the organization using Clerk
-      await clerkClient().organizations.deleteOrganizationMembership({
+      await client.organizations.deleteOrganizationMembership({
         organizationId: orgId,
         userId: userId
       });

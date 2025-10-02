@@ -19,7 +19,8 @@ export async function GET() {
     }
 
     // Get organization members from Clerk
-    const memberships = await clerkClient().organizations.getOrganizationMembershipList({
+    const client = await clerkClient();
+    const memberships = await client.organizations.getOrganizationMembershipList({
       organizationId: orgId,
       limit: 100, // Adjust as needed
     });
@@ -27,7 +28,7 @@ export async function GET() {
     // Transform the data to match the expected format
     const users = await Promise.all(
       memberships.data.map(async (membership) => {
-        const user = await clerkClient().users.getUser(membership.publicUserData?.userId || '');
+        const user = await client.users.getUser(membership.publicUserData?.userId || '');
 
         return {
           userId: membership.publicUserData?.userId || '',
