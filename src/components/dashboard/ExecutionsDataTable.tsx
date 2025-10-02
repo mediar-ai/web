@@ -197,6 +197,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   const [stoppingExecutions, setStoppingExecutions] = React.useState<Set<number>>(new Set());
   const [deletingExecutions, setDeletingExecutions] = React.useState<Set<number>>(new Set());
 
+  // Track which dropdown is open to preserve state during re-renders
+  const [openDropdownId, setOpenDropdownId] = React.useState<number | null>(null);
+
   // Save column visibility to localStorage whenever it changes
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -480,7 +483,13 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           const isDeleting = deletingExecutions.has(execution.execution_id);
 
           return (
-            <DropdownMenu modal={false}>
+            <DropdownMenu
+              modal={false}
+              open={openDropdownId === execution.execution_id}
+              onOpenChange={(open) => {
+                setOpenDropdownId(open ? execution.execution_id : null);
+              }}
+            >
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
@@ -494,7 +503,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                 <DropdownMenuLabel className="font-mono uppercase">Actions</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => onViewDetails(execution.execution_id)}
+                  onClick={() => {
+                    setOpenDropdownId(null);
+                    onViewDetails(execution.execution_id);
+                  }}
                   className="font-mono text-sm hover:bg-gray-100"
                 >
                   <Eye className="mr-2 h-4 w-4" />
@@ -503,6 +515,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                 {isRunning && onCancelExecution && (
                   <DropdownMenuItem
                     onClick={async () => {
+                      setOpenDropdownId(null);
                       if (
                         confirm(
                           `Are you sure you want to ${
@@ -532,6 +545,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                 {canDelete && onDeleteExecution && (
                   <DropdownMenuItem
                     onClick={async () => {
+                      setOpenDropdownId(null);
                       if (
                         confirm(
                           `Are you sure you want to DELETE this execution? This cannot be undone.`
@@ -573,6 +587,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       onViewDetails,
       onCancelExecution,
       onDeleteExecution,
+      openDropdownId,
     ]
   );
 

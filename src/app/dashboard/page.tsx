@@ -181,7 +181,7 @@ function DashboardContent() {
           );
 
           // Merge new data, preserving unchanged items
-          const merged = newExecutions.map((newExec: any) => {
+          const merged = newExecutions.map((newExec: Execution) => {
             const existing = existingMap.get(newExec.execution_id);
             // Only replace if the execution has actually changed
             if (existing && JSON.stringify(existing) === JSON.stringify(newExec)) {
@@ -192,7 +192,7 @@ function DashboardContent() {
 
           // Check if the arrays are effectively the same
           if (merged.length === prevExecutions.length &&
-              merged.every((exec: any, idx: number) => exec === prevExecutions[idx])) {
+              merged.every((exec: Execution, idx: number) => exec === prevExecutions[idx])) {
             return prevExecutions; // No changes, keep same reference
           }
 
