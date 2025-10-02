@@ -2520,6 +2520,7 @@ def execute_workflow(
                             "workflow_name": execution_data["workflow_name"],
                             "status": workflow_status,
                             "error_message": error_message_for_db,
+                            "formatted_output": formatted_output,  # Include formatted output for business logic checks
                             "started_at": execution_data["started_at"].isoformat() if execution_data["started_at"] else None,
                             "completed_at": completion_time.isoformat(),
                             "execution_time_seconds": execution_duration,

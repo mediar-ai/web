@@ -29,8 +29,25 @@ export async function POST(request: NextRequest) {
     await notificationService.checkExecutionForAlerts(execution);
 
     // Trigger error analysis for failed executions
-    if (execution.status === 'error' || execution.status === 'failed') {
-      console.log(`Triggering error analysis for failed execution: ${execution.id}`);
+    // Also check formatted_output for business logic failures
+    let shouldAnalyze = execution.status === 'error' || execution.status === 'failed';
+
+    // Check if formatted_output indicates failure even if technical execution succeeded
+    if (execution.formatted_output) {
+      try {
+        const formatted = typeof execution.formatted_output === 'string'
+          ? JSON.parse(execution.formatted_output)
+          : execution.formatted_output;
+        if (formatted.success === false) {
+          shouldAnalyze = true;
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+
+    if (shouldAnalyze) {
+      console.log(`Triggering error analysis for execution: ${execution.id} (status: ${execution.status}, business success: false)`);
       try {
         // Get execution details from database
         const { data: executionData } = await supabase
