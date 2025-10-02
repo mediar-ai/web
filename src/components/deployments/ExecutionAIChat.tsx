@@ -69,6 +69,19 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
     }
   };
 
+  // Preprocess markdown to ensure proper formatting
+  const preprocessMarkdown = (text: string): string => {
+    return text
+      // Add blank line before headers (###, ##, #) if not already present
+      .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
+      // Add blank line after headers if not already present
+      .replace(/(#{1,6}\s[^\n]+)\n([^#\n])/g, '$1\n\n$2')
+      // Ensure list items have proper spacing
+      .replace(/([^\n])\n(\*\s)/g, '$1\n\n$2')
+      // Fix multiple consecutive newlines (keep max 2)
+      .replace(/\n{3,}/g, '\n\n');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -264,7 +277,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                         prose-table:border-2 prose-table:border-black prose-table:my-3
                         prose-th:border prose-th:border-black prose-th:bg-gray-100 prose-th:px-2 prose-th:py-1 prose-th:font-mono prose-th:text-xs
                         prose-td:border prose-td:border-black prose-td:px-2 prose-td:py-1 prose-td:text-xs">
-                        {message.content}
+                        {preprocessMarkdown(message.content)}
                       </Response>
                       {/* Copy button for AI messages */}
                       <div className="flex justify-start mt-2">
