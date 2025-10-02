@@ -39,19 +39,50 @@ export async function POST(request: NextRequest) {
 
     // Find changed workflow folders and their filenames
     const changedWorkflows = new Map<string, string>(); // folder -> filename
+    const foldersWithJsChanges = new Set<string>(); // folders with only JS changes
 
     for (const commit of payload.commits) {
       const allFiles = [...(commit.added || []), ...(commit.modified || [])];
 
       for (const file of allFiles) {
         // Match pattern: onedriveautomation/workflow.yaml or terminator.yml
-        const match = file.match(/^([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
-        if (match) {
-          const folderName = match[1];
-          const fileName = match[2];
+        const yamlMatch = file.match(/^([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
+        if (yamlMatch) {
+          const folderName = yamlMatch[1];
+          const fileName = yamlMatch[2];
           // Store the actual filename for this folder
           changedWorkflows.set(folderName, fileName);
+          // Remove from JS-only set if it was added there
+          foldersWithJsChanges.delete(folderName);
+        } else {
+          // Match .js files in workflow folders
+          const jsMatch = file.match(/^([^\/]+)\/(.+\.js)$/);
+          if (jsMatch) {
+            const folderName = jsMatch[1];
+            // Only add to JS-only set if not already in YAML changes
+            if (!changedWorkflows.has(folderName)) {
+              foldersWithJsChanges.add(folderName);
+            }
+          }
         }
+      }
+    }
+
+    // Process JS-only changes - verify workflow exists and add to processing queue
+    for (const folderName of foldersWithJsChanges) {
+      // Look up workflow by github_folder to verify it exists
+      const { data: existing } = await supabase
+        .from('deployed_workflows')
+        .select('id, github_path')
+        .eq('github_folder', folderName)
+        .single();
+
+      if (existing && existing.github_path) {
+        // Extract the YAML filename from the stored path
+        const fileName = existing.github_path.split('/').pop() || 'workflow.yaml';
+        changedWorkflows.set(folderName, fileName);
+      } else {
+        console.log(`ℹ️ Skipping JS changes in ${folderName} - no workflow found in DB`);
       }
     }
 
