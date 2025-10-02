@@ -479,7 +479,7 @@ export function ExecutionsDataTable({
           const isDeleting = deletingExecutions.has(execution.execution_id);
 
           return (
-            <DropdownMenu>
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
