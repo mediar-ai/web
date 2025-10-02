@@ -159,7 +159,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
           <Sparkles className="w-5 h-5" />
           <h3 className="font-mono font-bold uppercase">AI Assistant</h3>
           <Badge className="bg-black text-white text-xs">
-            GEMINI 2.5 FLASH
+            GEMINI 2.5 PRO
           </Badge>
         </div>
         <p className="text-sm text-gray-600 mt-1">
