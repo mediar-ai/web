@@ -78,20 +78,21 @@ export function Sidebar() {
   });
 
   return (
-    <div className={`fixed left-0 top-0 h-full ${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r-2 border-black flex flex-col transition-all duration-200 relative`}>
-      {/* Logo/Brand with Toggle Button */}
-      <div className="p-6 border-b-2 border-black flex items-center justify-between relative">
-        <h1 className={`font-mono font-bold text-xl transition-opacity ${isCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>
+    <div className={`fixed left-0 top-0 h-full ${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r-2 border-black flex flex-col transition-all duration-200`}>
+      {/* Toggle Button - Inside sidebar at right edge */}
+      <button
+        onClick={toggleSidebar}
+        className="absolute right-2 top-6 p-1.5 bg-white border border-black hover:bg-black hover:text-white transition-colors z-10"
+        aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+      </button>
+
+      {/* Logo/Brand */}
+      <div className="p-6 border-b-2 border-black">
+        <h1 className={`font-mono font-bold text-xl transition-opacity ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>
           MEDIAR
         </h1>
-        {/* Toggle Button - Inside sidebar, aligned to right */}
-        <button
-          onClick={toggleSidebar}
-          className={`${isCollapsed ? 'mx-auto' : 'ml-auto'} p-1 hover:bg-gray-100 rounded transition-colors`}
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-        </button>
       </div>
 
       {/* Organization Switcher */}
