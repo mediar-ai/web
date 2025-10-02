@@ -327,19 +327,25 @@ function DashboardContent() {
     fetchLiveExecutions();
   }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions, viewOrgId]);
 
-  // Polling for live executions (2 seconds, only when active)
+  // Polling for executions - always poll to catch new executions
   useEffect(() => {
-    if (liveExecutions.length === 0) return; // Don't poll if nothing active
-
+    // Always poll for executions
     const pollTimer = setInterval(() => {
       setPollCount(prev => prev + 1);
+
+      // Always fetch live executions
       fetchLiveExecutions();
-      // Only fetch all executions every 15th poll (every 30 seconds)
-      if (pollCount % 15 === 0) fetchExecutions(false);
-    }, 2000);
+
+      // Fetch all executions every 5 seconds to catch new ones quickly
+      // This ensures new executions appear within 5 seconds
+      if (pollCount % 2 === 0) {
+        console.log('[Dashboard] Polling executions...');
+        fetchExecutions(false);
+      }
+    }, 2500); // Poll every 2.5 seconds
 
     return () => clearInterval(pollTimer);
-  }, [liveExecutions.length, fetchLiveExecutions, fetchExecutions, pollCount]);
+  }, [fetchLiveExecutions, fetchExecutions, pollCount]);
 
   // Handle URL parameters for deep linking
   useEffect(() => {
@@ -598,7 +604,11 @@ function DashboardContent() {
             open={batchTestOpen}
             onOpenChange={setBatchTestOpen}
             onSubmit={() => {
-              fetchExecutions(false);
+              // Immediately fetch new executions after submission
+              setTimeout(() => {
+                fetchExecutions(false);
+                fetchLiveExecutions();
+              }, 500); // Small delay to ensure DB write completes
             }}
           />
         )}
