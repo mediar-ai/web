@@ -1,6 +1,13 @@
 import { createVertex } from '@ai-sdk/google-vertex';
 import { streamText } from 'ai';
 import { NextRequest } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+);
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,7 +53,7 @@ export async function POST(req: NextRequest) {
       } : undefined
     });
 
-    const { messages, executionContext } = await req.json();
+    const { messages, executionId } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: 'Messages array is required' }), {
@@ -55,25 +62,60 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (!executionId) {
+      return new Response(JSON.stringify({ error: 'Execution ID is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Fetch execution data from Supabase
+    const { data: execution, error: dbError } = await supabase
+      .from('remote_executions')
+      .select('*')
+      .eq('execution_id', executionId)
+      .single();
+
+    if (dbError || !execution) {
+      console.error('Failed to fetch execution:', dbError);
+      return new Response(
+        JSON.stringify({ error: 'Execution not found' }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Truncate large fields to keep context manageable
+    const truncate = (field: any, maxLength: number = 10000) => {
+      if (!field) return field;
+      const str = typeof field === 'string' ? field : JSON.stringify(field, null, 2);
+      return str.length > maxLength ? str.substring(0, maxLength) + '\n... [truncated]' : str;
+    };
+
+    // Only use recent logs to avoid token limits
+    const recentLogs = execution.execution_logs?.slice(-50) || [];
+
     // Build system prompt with execution context
     const systemPrompt = `You are an AI assistant helping users understand workflow execution results.
 
 Context about this execution:
-- Execution ID: ${executionContext.execution_id}
-- Workflow: ${executionContext.workflow_name}
-- Status: ${executionContext.status}
-- Duration: ${executionContext.duration}
-${executionContext.error_message ? `- Error: ${executionContext.error_message}` : ''}
+- Execution ID: ${execution.execution_id}
+- Workflow: ${execution.workflow_name}
+- Status: ${execution.status}
+- Duration: ${execution.execution_duration_seconds} seconds
+${execution.error_message ? `- Error: ${truncate(execution.error_message, 2000)}` : ''}
 
 Formatted Output:
-${JSON.stringify(executionContext.formatted_output, null, 2)}
+${truncate(execution.formatted_output)}
 
 Results:
-${JSON.stringify(executionContext.results, null, 2)}
+${truncate(execution.results)}
 
-${executionContext.execution_logs?.length > 0 ? `
-Recent Logs:
-${executionContext.execution_logs.slice(-20).map((log: any) => `[${log.level}] ${log.message}`).join('\n')}
+${recentLogs.length > 0 ? `
+Recent Logs (last ${recentLogs.length} entries):
+${recentLogs.map((log: any) => `[${log.level || 'INFO'}] ${log.message}`).join('\n')}
 ` : ''}
 
 Answer questions about this execution, explain the results, help debug issues, and provide insights based on the data above.`;
