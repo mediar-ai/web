@@ -64,6 +64,8 @@ function DashboardContent() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [orgAssignmentOpen, setOrgAssignmentOpen] = useState(false);
   const [selectedWorkflowForOrgAssignment, setSelectedWorkflowForOrgAssignment] = useState<WorkflowWithSettings | null>(null);
+  const [uploadVersionOpen, setUploadVersionOpen] = useState(false);
+  const [selectedWorkflowForVersion, setSelectedWorkflowForVersion] = useState<WorkflowWithSettings | null>(null);
 
   // Use keyboard navigation
   const { selectedIndex: navSelectedIndex } = useKeyboardNavigation({
@@ -309,6 +311,14 @@ function DashboardContent() {
     setOrgAssignmentOpen(true);
   }, [workflows]);
 
+  const handleUploadVersion = useCallback((workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    setSelectedWorkflowForVersion(workflow);
+    setUploadVersionOpen(true);
+  }, [workflows]);
+
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
     console.log('[Dashboard] viewOrgId changed to:', viewOrgId);
@@ -449,6 +459,7 @@ function DashboardContent() {
                       onDelete={() => handleDeleteWorkflow(workflow.id)}
                       onToggleCron={() => handleToggleCron(workflow.id)}
                       onManageOrganizations={() => handleManageOrganizations(workflow.id)}
+                      onUploadVersion={() => handleUploadVersion(workflow.id)}
                       isMediarAdmin={!!isGlobalAdmin}
                     />
                   ))}
@@ -607,6 +618,25 @@ function DashboardContent() {
               setTimeout(() => {
                 fetchWorkflows(false);
               }, 100);
+            }}
+          />
+        )}
+
+        {selectedWorkflowForVersion && (
+          <CreateWorkflowDialog
+            open={uploadVersionOpen}
+            onOpenChange={(open) => {
+              setUploadVersionOpen(open);
+              if (!open) {
+                setSelectedWorkflowForVersion(null);
+              }
+            }}
+            mode="update"
+            workflowId={selectedWorkflowForVersion.id}
+            workflowName={selectedWorkflowForVersion.name}
+            onWorkflowCreated={() => {
+              setUploadVersionOpen(false);
+              fetchWorkflows(false);
             }}
           />
         )}

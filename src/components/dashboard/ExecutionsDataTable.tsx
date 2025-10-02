@@ -63,6 +63,91 @@ interface ExecutionsDataTableProps {
   onRefresh?: () => void;
 }
 
+// Helper function to extract the most informative message from parser output
+function getParserMessage(formattedResult: any, execution: Execution): string {
+  // Priority 1: Error summary from parser (e.g., SAP workflows)
+  if (formattedResult?.error_summary?.error_reason) {
+    return formattedResult.error_summary.error_reason;
+  }
+
+  // Priority 2: Standard message field (if not the default)
+  if (formattedResult?.message && formattedResult.message !== "No message from parser") {
+    return formattedResult.message;
+  }
+
+  // Priority 3: Data summary field
+  if (formattedResult?.data?.summary) {
+    return formattedResult.data.summary;
+  }
+
+  // Priority 4: Failure details with financial state (SAP specific)
+  if (formattedResult?.failure_details?.financial_state) {
+    const state = formattedResult.failure_details.financial_state;
+    if (state.difference) {
+      return `Unbalanced: Debit=${state.debit_total} Credit=${state.credit_total} Diff=${state.difference}`;
+    }
+  }
+
+  // Priority 5: Generic error field in data
+  if (formattedResult?.data?.error) {
+    return formattedResult.data.error;
+  }
+
+  // Priority 6: Execution error message
+  if (execution.error_message) {
+    return execution.error_message;
+  }
+
+  // Default
+  return '-';
+}
+
+// Helper function to determine execution status from parser output
+function getExecutionStatus(execution: Execution, formattedResult: any, isLive: boolean): { badge: string; badgeColor: string } {
+  // Check if currently running
+  if (execution.status === 'running' || isLive) {
+    return { badge: 'RUNNING', badgeColor: 'bg-black text-white animate-pulse' };
+  }
+
+  // Check parser-determined status first
+  if (formattedResult?.meta_type === 'failed' || formattedResult?.status === 'failed') {
+    return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
+  }
+
+  // Check for error summary (indicates failure)
+  if (formattedResult?.error_summary) {
+    return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
+  }
+
+  // Check skipped status
+  if (formattedResult?.skipped || execution.status === 'skipped') {
+    return { badge: 'SKIPPED', badgeColor: 'bg-gray-200 text-gray-800' };
+  }
+
+  // Check success/failure from parser
+  if (formattedResult?.success === false) {
+    return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
+  }
+  if (formattedResult?.success === true) {
+    return { badge: 'COMPLETED', badgeColor: 'bg-white border-2 border-black' };
+  }
+
+  // Fall back to execution status
+  switch (execution.status) {
+    case 'error':
+    case 'timeout':
+      return { badge: execution.status.toUpperCase(), badgeColor: 'bg-black text-white font-bold' };
+    case 'completed':
+      return { badge: 'COMPLETED', badgeColor: 'bg-white border-2 border-black' };
+    case 'failed':
+      return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
+    case 'cancelled':
+      return { badge: 'CANCELLED', badgeColor: 'bg-gray-200 text-gray-800' };
+    default:
+      return { badge: execution.status.toUpperCase(), badgeColor: 'bg-gray-200 text-gray-800' };
+  }
+}
+
 export function ExecutionsDataTable({
   executions,
   workflows,
@@ -212,29 +297,8 @@ export function ExecutionsDataTable({
             }
           }
 
-          let badge, badgeColor;
-          if (execution.status === 'error' || execution.status === 'timeout') {
-            badge = execution.status.toUpperCase();
-            badgeColor = 'bg-black text-white font-bold';
-          } else if (execution.status === 'skipped' || formattedResult?.skipped) {
-            badge = 'SKIPPED';
-            badgeColor = 'bg-gray-200 text-gray-800';
-          } else if (execution.status === 'completed' || formattedResult?.success) {
-            badge = 'COMPLETED';
-            badgeColor = 'bg-white border-2 border-black';
-          } else if (execution.status === 'failed' || formattedResult?.success === false) {
-            badge = 'FAILED';
-            badgeColor = 'bg-black text-white font-bold';
-          } else if (execution.status === 'running' || isLive) {
-            badge = 'RUNNING';
-            badgeColor = 'bg-black text-white animate-pulse';
-          } else if (execution.status === 'cancelled') {
-            badge = 'CANCELLED';
-            badgeColor = 'bg-gray-200 text-gray-800';
-          } else {
-            badge = execution.status.toUpperCase();
-            badgeColor = 'bg-gray-200 text-gray-800';
-          }
+          // Use the helper function to get status
+          const { badge, badgeColor } = getExecutionStatus(execution, formattedResult, isLive);
 
           return (
             <span className={cn('font-mono text-xs px-2 py-1 inline-block', badgeColor)}>
@@ -260,14 +324,12 @@ export function ExecutionsDataTable({
             }
           }
 
-          const message =
-            formattedResult?.message && formattedResult.message !== 'No message from parser'
-              ? formattedResult.message
-              : execution.error_message || '-';
-          const truncatedMessage = message.length > 30 ? message.substring(0, 30) + '...' : message;
+          // Use the helper function to get the message
+          const message = getParserMessage(formattedResult, execution);
+          const truncatedMessage = message.length > 80 ? message.substring(0, 80) + '...' : message;
 
           return (
-            <div className="max-w-[200px] truncate">
+            <div className="max-w-[300px] truncate">
               <span className="font-mono text-xs text-gray-700" title={message}>
                 {truncatedMessage}
               </span>
@@ -350,10 +412,10 @@ export function ExecutionsDataTable({
       },
       {
         id: 'machine',
-        accessorKey: 'assigned_machine_name',
+        accessorFn: (row) => row.assigned_machine_name || '',
         header: 'Machine',
         cell: ({ row }) => {
-          const machineName = row.getValue('assigned_machine_name') as string;
+          const machineName = row.original.assigned_machine_name;
           return (
             <span className="font-mono text-xs text-gray-600">
               {machineName || '-'}
@@ -407,9 +469,10 @@ export function ExecutionsDataTable({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="border-2 border-black">
-                <DropdownMenuLabel className="font-mono uppercase">Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
+                <DropdownMenuLabel key="label" className="font-mono uppercase">Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator key="separator-1" />
                 <DropdownMenuItem
+                  key="view-details"
                   onClick={() => onViewDetails(execution.execution_id)}
                   className="font-mono text-sm hover:bg-gray-100"
                 >
@@ -418,6 +481,7 @@ export function ExecutionsDataTable({
                 </DropdownMenuItem>
                 {isRunning && onCancelExecution && (
                   <DropdownMenuItem
+                    key="cancel-execution"
                     onClick={async () => {
                       if (
                         confirm(
@@ -447,6 +511,7 @@ export function ExecutionsDataTable({
                 )}
                 {canDelete && onDeleteExecution && (
                   <DropdownMenuItem
+                    key="delete-execution"
                     onClick={async () => {
                       if (
                         confirm(
@@ -643,7 +708,7 @@ export function ExecutionsDataTable({
                 </TableRow>
               ))
             ) : (
-              <TableRow>
+              <TableRow key="no-results">
                 <TableCell colSpan={columns.length} className="h-24 text-center">
                   <p className="text-gray-600 font-mono">No executions found.</p>
                 </TableCell>
