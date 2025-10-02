@@ -18,9 +18,10 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { Loader2, Terminal, XCircle, FileText } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Loader2, Terminal, XCircle, FileText, Sparkles } from 'lucide-react';
+import { useEffect, useState, Suspense } from 'react';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
+import { ExecutionAIChat } from './ExecutionAIChat';
 
 interface ExecutionDetailsDialogProps {
   execution: Execution | null;
@@ -115,10 +116,14 @@ export function ExecutionDetailsDialog({
           className="flex-1 flex flex-col min-h-0"
         >
           <div className="px-6">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
               <TabsTrigger value="results">Results</TabsTrigger>
+              <TabsTrigger value="qa" className="flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                Q&A
+              </TabsTrigger>
             </TabsList>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-6">
@@ -381,6 +386,17 @@ export function ExecutionDetailsDialog({
                       </AlertDescription>
                     </Alert>
                   )}
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="qa" className="h-full">
+              {isTabLoading || !execution ? (
+                <LoadingSkeleton />
+              ) : (
+                <div className="h-full">
+                  <Suspense fallback={<LoadingSkeleton />}>
+                    <ExecutionAIChat execution={execution} />
+                  </Suspense>
                 </div>
               )}
             </TabsContent>
