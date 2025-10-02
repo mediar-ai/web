@@ -215,7 +215,7 @@ export function ExecutionsDataTable({
               if (el) el.indeterminate = table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected();
             }}
             onChange={(e) => table.toggleAllPageRowsSelected(!!e.target.checked)}
-            className="h-4 w-4 border-2 border-black focus:ring-2 focus:ring-black"
+            className="h-3 w-3 border border-black focus:ring-1 focus:ring-black"
             aria-label="Select all"
           />
         ),
@@ -224,7 +224,7 @@ export function ExecutionsDataTable({
             type="checkbox"
             checked={row.getIsSelected()}
             onChange={(e) => row.toggleSelected(!!e.target.checked)}
-            className="h-4 w-4 border-2 border-black focus:ring-2 focus:ring-black"
+            className="h-3 w-3 border border-black focus:ring-1 focus:ring-black"
             aria-label="Select row"
           />
         ),
@@ -235,7 +235,7 @@ export function ExecutionsDataTable({
         accessorKey: 'execution_id',
         header: 'ID',
         cell: ({ row }) => (
-          <span className="font-mono text-xs">{row.getValue('execution_id')}</span>
+          <span className="font-mono text-[10px]">{row.getValue('execution_id')}</span>
         ),
       },
       {
@@ -254,7 +254,7 @@ export function ExecutionsDataTable({
         },
         cell: ({ row }) => {
           return (
-            <span className="font-mono text-xs">
+            <span className="font-mono text-[10px]">
               {row.getValue('workflow_id')}
             </span>
           );
@@ -281,7 +281,7 @@ export function ExecutionsDataTable({
         cell: ({ row }) => {
           const workflow = workflows.find((w) => w.id === row.original.workflow_id);
           return (
-            <span className="font-mono text-sm">
+            <span className="font-mono text-xs">
               {workflow?.name || `Workflow ${row.original.workflow_id}`}
             </span>
           );
@@ -322,7 +322,7 @@ export function ExecutionsDataTable({
           const { badge, badgeColor } = getExecutionStatus(execution, formattedResult, isLive);
 
           return (
-            <span className={cn('font-mono text-xs px-2 py-1 inline-block', badgeColor)}>
+            <span className={cn('font-mono text-[10px] px-1 py-0.5 inline-block', badgeColor)}>
               {badge}
             </span>
           );
@@ -350,8 +350,8 @@ export function ExecutionsDataTable({
           const truncatedMessage = message.length > 80 ? message.substring(0, 80) + '...' : message;
 
           return (
-            <div className="max-w-[300px] truncate">
-              <span className="font-mono text-xs text-gray-700" title={message}>
+            <div className="max-w-[250px] truncate">
+              <span className="font-mono text-[10px] text-gray-700" title={message}>
                 {truncatedMessage}
               </span>
             </div>
@@ -363,10 +363,10 @@ export function ExecutionsDataTable({
         header: 'Error',
         cell: ({ row }) => {
           const message = row.getValue('error_message') as string;
-          if (!message) return '-';
+          if (!message) return <span className="text-[10px]">-</span>;
           const truncated = message.length > 50 ? message.substring(0, 50) + '...' : message;
           return (
-            <span className="font-mono text-xs text-red-600" title={message}>
+            <span className="font-mono text-[10px] text-red-600" title={message}>
               {truncated}
             </span>
           );
@@ -389,7 +389,7 @@ export function ExecutionsDataTable({
         cell: ({ row }) => {
           const execution = row.original;
           const date = new Date(execution.started_at || execution.created_at);
-          return <span className="font-mono text-sm">{date.toLocaleString()}</span>;
+          return <span className="font-mono text-[10px]">{date.toLocaleString()}</span>;
         },
       },
       {
@@ -424,11 +424,11 @@ export function ExecutionsDataTable({
                 new Date(execution.started_at).getTime()) /
                 1000
             );
-            return <span className="font-mono text-sm">{duration}s</span>;
+            return <span className="font-mono text-[10px]">{duration}s</span>;
           } else if (isLive || execution.status === 'running') {
-            return <span className="font-mono text-sm animate-pulse">Running...</span>;
+            return <span className="font-mono text-[10px] animate-pulse">Running...</span>;
           }
-          return <span className="font-mono text-sm">-</span>;
+          return <span className="font-mono text-[10px]">-</span>;
         },
       },
       {
@@ -438,7 +438,7 @@ export function ExecutionsDataTable({
         cell: ({ row }) => {
           const machineName = row.original.assigned_machine_name;
           return (
-            <span className="font-mono text-xs text-gray-600">
+            <span className="font-mono text-[10px] text-gray-600">
               {machineName || '-'}
             </span>
           );
@@ -451,7 +451,7 @@ export function ExecutionsDataTable({
         cell: ({ row }) => {
           const clientId = row.getValue('client_id') as string;
           return (
-            <span className="font-mono text-xs text-gray-600">
+            <span className="font-mono text-[10px] text-gray-600">
               {clientId || '-'}
             </span>
           );
@@ -463,7 +463,7 @@ export function ExecutionsDataTable({
         cell: ({ row }) => {
           const workflow = workflows.find((w) => w.id === row.original.workflow_id);
           return (
-            <span className="font-mono text-xs text-gray-600">
+            <span className="font-mono text-[10px] text-gray-600">
               v{workflow?.version || '1.0'}
             </span>
           );
@@ -483,10 +483,10 @@ export function ExecutionsDataTable({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="h-8 w-8 p-0 border border-black hover:bg-black hover:text-white"
+                  className="h-6 w-6 p-0 border border-black hover:bg-black hover:text-white"
                 >
                   <span className="sr-only">Open menu</span>
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreHorizontal className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="border-2 border-black">
@@ -604,27 +604,27 @@ export function ExecutionsDataTable({
   return (
     <div className="w-full">
       {/* Table Controls */}
-      <div className="flex items-center justify-between gap-2 py-4">
+      <div className="flex items-center justify-between gap-2 py-2">
         <div className="flex items-center gap-2 flex-1">
           <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-600" />
+            <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-600" />
             <Input
               placeholder="Search executions..."
               value={globalFilter ?? ''}
               onChange={(event) => setGlobalFilter(event.target.value)}
-              className="pl-8 font-mono border-2 border-black focus:ring-2 focus:ring-black"
+              className="h-8 pl-7 text-xs font-mono border-2 border-black focus:ring-2 focus:ring-black"
             />
           </div>
           {table.getFilteredSelectedRowModel().rows.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 font-mono">
+              <span className="text-xs text-gray-600 font-mono">
                 {table.getFilteredSelectedRowModel().rows.length} selected
               </span>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => table.toggleAllRowsSelected(false)}
-                className="border-2 border-black hover:bg-black hover:text-white"
+                className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
               >
                 Clear
               </Button>
@@ -637,9 +637,9 @@ export function ExecutionsDataTable({
               variant="outline"
               size="sm"
               onClick={onRefresh}
-              className="border-2 border-black hover:bg-black hover:text-white"
+              className="h-7 w-7 p-0 border-2 border-black hover:bg-black hover:text-white"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="h-3 w-3" />
             </Button>
           )}
           <DropdownMenu>
@@ -647,11 +647,11 @@ export function ExecutionsDataTable({
               <Button
                 variant="outline"
                 size="sm"
-                className="border-2 border-black hover:bg-black hover:text-white"
+                className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
               >
-                <Columns3 className="mr-2 h-4 w-4" />
+                <Columns3 className="mr-1 h-3 w-3" />
                 Columns
-                <ChevronDown className="ml-2 h-3 w-3" />
+                <ChevronDown className="ml-1 h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="border-2 border-black">
@@ -689,7 +689,7 @@ export function ExecutionsDataTable({
                   return (
                     <TableHead
                       key={header.id}
-                      className="text-white font-mono font-bold uppercase text-xs"
+                      className="text-white font-mono font-bold uppercase text-[10px] py-1 px-2"
                     >
                       {header.isPlaceholder
                         ? null
@@ -703,10 +703,10 @@ export function ExecutionsDataTable({
           <TableBody>
             {loading ? (
               Array.from({ length: 5 }).map((_, index) => (
-                <TableRow key={`skeleton-${index}`}>
+                <TableRow key={`skeleton-${index}`} className="h-8">
                   {columns.map((column, colIndex) => (
-                    <TableCell key={`${column.id || colIndex}`}>
-                      <Skeleton className="h-4 w-full" />
+                    <TableCell key={`${column.id || colIndex}`} className="py-1 px-2">
+                      <Skeleton className="h-3 w-full" />
                     </TableCell>
                   ))}
                 </TableRow>
@@ -716,10 +716,10 @@ export function ExecutionsDataTable({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
-                  className="hover:bg-gray-50"
+                  className="hover:bg-gray-50 h-8"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="font-mono">
+                    <TableCell key={cell.id} className="font-mono py-1 px-2">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -727,8 +727,8 @@ export function ExecutionsDataTable({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  <p className="text-gray-600 font-mono">No executions found.</p>
+                <TableCell colSpan={columns.length} className="h-12 text-center">
+                  <p className="text-gray-600 font-mono text-xs">No executions found.</p>
                 </TableCell>
               </TableRow>
             )}
@@ -737,8 +737,8 @@ export function ExecutionsDataTable({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between py-4">
-        <div className="text-sm text-gray-600 font-mono">
+      <div className="flex items-center justify-between py-2">
+        <div className="text-xs text-gray-600 font-mono">
           {table.getFilteredSelectedRowModel().rows.length} of{' '}
           {table.getFilteredRowModel().rows.length} row(s) selected.
         </div>
@@ -749,23 +749,23 @@ export function ExecutionsDataTable({
               size="sm"
               onClick={() => table.setPageIndex(0)}
               disabled={!table.getCanPreviousPage()}
-              className="border border-black hover:bg-black hover:text-white disabled:opacity-50"
+              className="h-7 w-7 p-0 border border-black hover:bg-black hover:text-white disabled:opacity-50"
             >
-              <ChevronsLeft className="h-4 w-4" />
+              <ChevronsLeft className="h-3 w-3" />
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="border border-black hover:bg-black hover:text-white disabled:opacity-50"
+              className="h-7 w-7 p-0 border border-black hover:bg-black hover:text-white disabled:opacity-50"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3 w-3" />
             </Button>
           </div>
 
           <div className="flex items-center gap-1">
-            <span className="font-mono text-sm">
+            <span className="font-mono text-xs">
               Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
             </span>
           </div>
@@ -776,18 +776,18 @@ export function ExecutionsDataTable({
               size="sm"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="border border-black hover:bg-black hover:text-white disabled:opacity-50"
+              className="h-7 w-7 p-0 border border-black hover:bg-black hover:text-white disabled:opacity-50"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3 w-3" />
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => table.setPageIndex(table.getPageCount() - 1)}
               disabled={!table.getCanNextPage()}
-              className="border border-black hover:bg-black hover:text-white disabled:opacity-50"
+              className="h-7 w-7 p-0 border border-black hover:bg-black hover:text-white disabled:opacity-50"
             >
-              <ChevronsRight className="h-4 w-4" />
+              <ChevronsRight className="h-3 w-3" />
             </Button>
           </div>
 
@@ -796,7 +796,7 @@ export function ExecutionsDataTable({
             onChange={(e) => {
               table.setPageSize(Number(e.target.value));
             }}
-            className="ml-4 px-3 py-1 border-2 border-black font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
+            className="ml-2 h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
             {[10, 20, 30, 40, 50].map((pageSize) => (
               <option key={pageSize} value={pageSize}>
