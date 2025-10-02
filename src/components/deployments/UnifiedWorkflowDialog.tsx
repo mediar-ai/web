@@ -132,44 +132,23 @@ export function UnifiedWorkflowDialog({
 
     setLoadingYaml(true);
     try {
-      // First try to get YAML from the workflow overview API
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/overview`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.workflow?.automation_sequence) {
-          // Check if it's already a string or needs to be converted
-          const yamlContent = typeof data.workflow.automation_sequence === 'string'
-            ? data.workflow.automation_sequence
-            : yaml.dump(data.workflow.automation_sequence);
-          setCurrentYaml(yamlContent);
-          setEditedYaml(yamlContent);
-          setLoadingYaml(false);
-          return;
-        }
+      // Fetch YAML from GitHub (with database fallback for legacy workflows)
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/github-yaml`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch YAML: ${response.status}`);
       }
 
-      // If that doesn't work, try the versions API
-      const versionsResponse = await fetch(`/api/remote-workflows/${workflow.id}/versions`);
-      if (versionsResponse.ok) {
-        const versionsData = await versionsResponse.json();
-        if (versionsData.success && versionsData.versions) {
-          const activeVersion = versionsData.versions.find((v: any) => v.is_active);
-          if (activeVersion?.automation_sequence) {
-            // Check if it's already a string or needs to be converted
-            const yamlContent = typeof activeVersion.automation_sequence === 'string'
-              ? activeVersion.automation_sequence
-              : yaml.dump(activeVersion.automation_sequence);
-            setCurrentYaml(yamlContent);
-            setEditedYaml(yamlContent);
-            setLoadingYaml(false);
-            return;
-          }
-        }
-      }
+      const data = await response.json();
 
-      // If still no YAML, set empty
-      console.warn('No YAML content found for workflow');
-      setCurrentYaml('');
+      if (data.success && data.yaml) {
+        console.log(`📄 Loaded YAML for workflow ${workflow.id} from:`, data.source);
+        setCurrentYaml(data.yaml);
+        setEditedYaml(data.yaml);
+      } else {
+        console.warn('No YAML content found for workflow');
+        setCurrentYaml('');
+      }
     } catch (error) {
       console.error('Error loading workflow YAML:', error);
       setCurrentYaml('');
@@ -184,29 +163,24 @@ export function UnifiedWorkflowDialog({
 
     setLoadingYaml(true);
     try {
-      // Fetch the actual version data with YAML content from the schema endpoint
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/schema?version=${versionNumber}`);
+      // Fetch YAML directly from GitHub (or database fallback)
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/github-yaml?version=${versionNumber}`);
       if (!response.ok) throw new Error(`Failed to load version: ${response.status}`);
 
       const data = await response.json();
-      if (data.success) {
-        // Use the YAML content from the response
-        if (data.automation_sequence_yaml) {
-          setCurrentYaml(data.automation_sequence_yaml);
-          setEditedYaml(data.automation_sequence_yaml);
-        } else if (data.automation_sequence) {
-          // Fallback: Try to convert from automation_sequence if YAML not available
-          const yamlContent = typeof data.automation_sequence === 'string'
-            ? data.automation_sequence
-            : yaml.dump(data.automation_sequence);
-          setCurrentYaml(yamlContent);
-          setEditedYaml(yamlContent);
-        } else {
-          setCurrentYaml('');
-          setErrorMessage(`No YAML found for version ${versionNumber}`);
+      if (data.success && data.yaml) {
+        setCurrentYaml(data.yaml);
+        setEditedYaml(data.yaml);
+
+        // Show source info
+        if (data.source === 'github') {
+          console.log(`✅ Loaded YAML from GitHub: ${data.github?.path}`);
+        } else if (data.source === 'database_fallback') {
+          console.warn('⚠️ Using cached version from database');
         }
       } else {
-        throw new Error(data.error || 'Failed to load version');
+        setCurrentYaml('');
+        setErrorMessage(`No YAML found for version ${versionNumber}`);
       }
     } catch (error) {
       console.error('Error loading version YAML:', error);
