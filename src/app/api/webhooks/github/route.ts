@@ -37,22 +37,25 @@ export async function POST(request: NextRequest) {
     const branch = payload.ref.split('/').pop();
     const isDevelopment = branch === 'dev';
 
-    // Find changed workflow folders
-    const changedFolders = new Set<string>();
+    // Find changed workflow folders and their filenames
+    const changedWorkflows = new Map<string, string>(); // folder -> filename
 
     for (const commit of payload.commits) {
       const allFiles = [...(commit.added || []), ...(commit.modified || [])];
 
       for (const file of allFiles) {
-        // Match pattern: onedriveautomation/workflow.yaml
+        // Match pattern: onedriveautomation/workflow.yaml or terminator.yml
         const match = file.match(/^([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
         if (match) {
-          changedFolders.add(match[1]);
+          const folderName = match[1];
+          const fileName = match[2];
+          // Store the actual filename for this folder
+          changedWorkflows.set(folderName, fileName);
         }
       }
     }
 
-    if (changedFolders.size === 0) {
+    if (changedWorkflows.size === 0) {
       return NextResponse.json({ message: 'No workflow changes' });
     }
 
@@ -62,10 +65,10 @@ export async function POST(request: NextRequest) {
       errors: [] as string[]
     };
 
-    for (const folderName of changedFolders) {
+    for (const [folderName, fileName] of changedWorkflows) {
       try {
-        // Get workflow content
-        const filePath = `${folderName}/workflow.yaml`;
+        // Get workflow content using the actual filename
+        const filePath = `${folderName}/${fileName}`;
         const content = await githubWorkflowManager.getWorkflow(filePath, branch);
 
         if (!content) {
@@ -322,7 +325,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: results.errors.length === 0,
-      message: `Processed ${changedFolders.size} workflows`,
+      message: `Processed ${changedWorkflows.size} workflows`,
       branch,
       results
     });
