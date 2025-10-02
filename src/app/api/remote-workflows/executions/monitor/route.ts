@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
           });
 
           if (response.ok) {
-            const result = await response.json();
+            const _result = await response.json();
             console.log(`Error analysis completed for execution ${execution.id}`);
           } else {
             console.error(`Failed to analyze error for execution ${execution.id}: ${response.status}`);

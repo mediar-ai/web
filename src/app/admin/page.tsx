@@ -81,7 +81,7 @@ function AdminPageContent() {
   const isGlobalAdmin = hasMediarEmail; // @mediar.ai users are always global admins
 
   // Calculate uptime from created_at timestamp
-  const calculateUptime = (createdAt: string | null | undefined): string => {
+  const _calculateUptime = (createdAt: string | null | undefined): string => {
     if (!createdAt) return '-';
 
     const created = new Date(createdAt);
@@ -202,7 +202,7 @@ function AdminPageContent() {
         member_count: organization.membersCount || 0
       });
     }
-  }, [viewOrgId, organization]);
+  }, [viewOrgId, organization, allOrganizations.length]);
 
   // Fetch members and invitations when selected org changes
   useEffect(() => {

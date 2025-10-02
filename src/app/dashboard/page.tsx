@@ -26,7 +26,7 @@ import {
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 function DashboardContent() {
-  const { organization, isLoaded: orgLoaded } = useOrganization();
+  const { organization, isLoaded: _orgLoaded } = useOrganization();
   const { user } = useUser();
   const { userMemberships } = useOrganizationList();
   const searchParams = useSearchParams();
@@ -239,7 +239,7 @@ function DashboardContent() {
     setBatchTestOpen(true);
   }, [workflows]);
 
-  const handleQuickEdit = useCallback((workflowId: number) => {
+  const _handleQuickEdit = useCallback((workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
 
@@ -373,7 +373,7 @@ function DashboardContent() {
     membership => MEDIAR_ORG_IDS.includes(membership.organization.id)
   ) || false;
 
-  const isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
+  const _isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
   const isGlobalAdmin = hasMediarEmail || isMemberOfMediarOrg;
   const canDelete = isGlobalAdmin;
 

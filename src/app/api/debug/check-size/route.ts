@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     const logsSize = execution?.raw_logs ? execution.raw_logs.length : 0;
 
     // Get multiple executions to find large ones
-    const { data: largeExecutions, error: largeError } = await supabase
+    const { data: largeExecutions, error: _largeError } = await supabase
       .from('workflow_executions')
       .select('id, workflow_id, status, created_at')
       .not('results', 'is', null)
