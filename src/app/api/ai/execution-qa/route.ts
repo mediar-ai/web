@@ -80,7 +80,7 @@ Answer questions about this execution, explain the results, help debug issues, a
 
     // Stream the response using Vercel AI SDK
     const result = await streamText({
-      model: vertex('gemini-1.5-flash'),
+      model: vertex('gemini-2.5-flash'),
       messages: [
         { role: 'system', content: systemPrompt },
         ...messages,
