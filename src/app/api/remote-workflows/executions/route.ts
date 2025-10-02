@@ -89,9 +89,20 @@ export async function GET(request: NextRequest) {
     // Build base query - PERFORMANCE OPTIMIZED: exclude heavy JSONB fields by default
     // Heavy fields (execution_params, results) are only included when include_results=true
     // Include machine assignment info and client_id
+    const baseFields = [
+      'id', 'workflow_id', 'status', 'started_at', 'completed_at',
+      'execution_duration_seconds', 'error_message', 'error_analysis',
+      'error_analyzed_at', 'modal_call_id', 'created_at', 'updated_at',
+      'progress_percentage', 'current_step_index', 'total_steps',
+      'formatted_output', 'version_number', 'workflow_version_id',
+      'client_id', 'assigned_machine_id',
+      'remote_machines(name)',
+      'deployed_workflows!inner(id, name, description, category, organization_id)'
+    ];
+
     const selectFields = include_results
-      ? 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, execution_params, results, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, deployed_workflows!inner(id, name, description, category, organization_id)'
-      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, error_analysis, error_analyzed_at, modal_call_id, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, deployed_workflows!inner(id, name, description, category, organization_id)';
+      ? [...baseFields, 'execution_params', 'results'].join(', ')
+      : baseFields.join(', ');
 
     let query = supabase
       .from('workflow_executions')
