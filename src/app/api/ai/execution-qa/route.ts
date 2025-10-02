@@ -94,35 +94,70 @@ export async function POST(req: NextRequest) {
       return str.length > maxLength ? str.substring(0, maxLength) + '\n... [truncated]' : str;
     };
 
-    // Only use recent logs to avoid token limits
-    const recentLogs = execution.execution_logs?.slice(-50) || [];
+    // Smart log sampling for better context
+    const allLogs = execution.execution_logs || [];
+    const errorLogs = allLogs.filter((log: any) =>
+      log.level === 'ERROR' || log.message?.toLowerCase().includes('error')
+    );
+    const warningLogs = allLogs.filter((log: any) =>
+      log.level === 'WARN' || log.level === 'WARNING'
+    );
+
+    // Create execution summary
+    const executionSummary = {
+      total_log_entries: allLogs.length,
+      error_count: errorLogs.length,
+      warning_count: warningLogs.length,
+      first_error: errorLogs[0] ? `[${errorLogs[0].level}] ${errorLogs[0].message}` : null,
+      last_activity: allLogs.length > 0 ? `[${allLogs[allLogs.length - 1].level || 'INFO'}] ${allLogs[allLogs.length - 1].message}` : null,
+    };
+
+    // Smart sampling: first 10, up to 20 errors, last 20
+    const smartSample = [
+      ...allLogs.slice(0, 10),  // First 10 logs (initialization)
+      ...errorLogs.slice(0, 20), // Up to 20 error logs
+      ...warningLogs.slice(0, 10), // Up to 10 warning logs
+      ...allLogs.slice(-20)      // Last 20 logs (completion)
+    ];
+
+    // Remove duplicates while preserving order
+    const uniqueLogs = Array.from(new Map(
+      smartSample.map((log: any) => [`${log.timestamp}-${log.message}`, log])
+    ).values());
 
     // Build system prompt with execution context
     const systemPrompt = `You are an AI assistant helping users understand workflow execution results.
 
-Context about this execution:
+EXECUTION SUMMARY:
 - Execution ID: ${execution.id}
 - Workflow ID: ${execution.workflow_id}
 - Status: ${execution.status}
 - Duration: ${execution.execution_duration_seconds} seconds
-${execution.error_message ? `- Error: ${truncate(execution.error_message, 2000)}` : ''}
+- Total Logs: ${executionSummary.total_log_entries}
+- Errors: ${executionSummary.error_count}
+- Warnings: ${executionSummary.warning_count}
+${executionSummary.first_error ? `- First Error: ${truncate(executionSummary.first_error, 500)}` : ''}
+${execution.error_message ? `- Final Error: ${truncate(execution.error_message, 2000)}` : ''}
 
-Formatted Output:
-${truncate(execution.formatted_output)}
+FORMATTED OUTPUT:
+${truncate(execution.formatted_output, 15000)}
 
-Results:
-${truncate(execution.results)}
+RESULTS STRUCTURE:
+${execution.results ? Object.keys(execution.results).join(', ') : 'No structured results'}
 
-${recentLogs.length > 0 ? `
-Recent Logs (last ${recentLogs.length} entries):
-${recentLogs.map((log: any) => `[${log.level || 'INFO'}] ${log.message}`).join('\n')}
-` : ''}
+RESULTS DATA:
+${truncate(execution.results, 15000)}
 
-Answer questions about this execution, explain the results, help debug issues, and provide insights based on the data above.`;
+${uniqueLogs.length > 0 ? `
+LOG SAMPLES (${uniqueLogs.length} key entries from ${executionSummary.total_log_entries} total):
+${uniqueLogs.map((log: any) => `[${log.timestamp}] [${log.level || 'INFO'}] ${truncate(log.message, 500)}`).join('\n')}
+` : 'No execution logs available'}
+
+Note: This is a smart sample of the execution logs. Focus on error patterns, the workflow flow, and final results. If user asks about specific details not shown, explain that you're seeing a summary and key events.`;
 
     // Stream the response using Vercel AI SDK
     const result = await streamText({
-      model: vertex('gemini-2.5-flash'),
+      model: vertex('gemini-2.5-pro'),
       messages: [
         { role: 'system', content: systemPrompt },
         ...messages,
