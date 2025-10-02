@@ -469,10 +469,9 @@ export function ExecutionsDataTable({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="border-2 border-black">
-                <DropdownMenuLabel key="label" className="font-mono uppercase">Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator key="separator-1" />
+                <DropdownMenuLabel className="font-mono uppercase">Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  key="view-details"
                   onClick={() => onViewDetails(execution.execution_id)}
                   className="font-mono text-sm hover:bg-gray-100"
                 >
@@ -481,7 +480,6 @@ export function ExecutionsDataTable({
                 </DropdownMenuItem>
                 {isRunning && onCancelExecution && (
                   <DropdownMenuItem
-                    key="cancel-execution"
                     onClick={async () => {
                       if (
                         confirm(
@@ -511,7 +509,6 @@ export function ExecutionsDataTable({
                 )}
                 {canDelete && onDeleteExecution && (
                   <DropdownMenuItem
-                    key="delete-execution"
                     onClick={async () => {
                       if (
                         confirm(
@@ -686,8 +683,8 @@ export function ExecutionsDataTable({
             {loading ? (
               Array.from({ length: 5 }).map((_, index) => (
                 <TableRow key={`skeleton-${index}`}>
-                  {columns.map((column) => (
-                    <TableCell key={column.id}>
+                  {columns.map((column, colIndex) => (
+                    <TableCell key={`${column.id || colIndex}`}>
                       <Skeleton className="h-4 w-full" />
                     </TableCell>
                   ))}
@@ -708,7 +705,7 @@ export function ExecutionsDataTable({
                 </TableRow>
               ))
             ) : (
-              <TableRow key="no-results">
+              <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
                   <p className="text-gray-600 font-mono">No executions found.</p>
                 </TableCell>
