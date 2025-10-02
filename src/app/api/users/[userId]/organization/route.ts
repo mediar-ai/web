@@ -68,51 +68,78 @@ export async function DELETE(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const { userId: sessionUserId, has } = await auth();
+    const { userId: sessionUserId, has, orgId } = await auth();
     const { userId } = await params;
-    
-    if (!sessionUserId) {
+
+    if (!sessionUserId || !orgId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Only owners can remove users from organization
     const isOwner = has({ role: 'org:owner' });
-    
+
     if (!isOwner) {
       return NextResponse.json({ error: 'Only organization owners can remove users' }, { status: 403 });
     }
 
-    // Remove user from mediar_users table
-    const { error: mediarError } = await supabaseAdmin
-      .from('mediar_users')
-      .delete()
-      .eq('user_id', userId);
-
-    if (mediarError) {
-      console.error('Error removing user from mediar_users:', mediarError);
-      throw mediarError;
+    // Don't allow removing yourself
+    if (userId === sessionUserId) {
+      return NextResponse.json({ error: 'Cannot remove yourself from the organization' }, { status: 400 });
     }
 
-    // Remove user from users table
-    const { error: usersError } = await supabaseAdmin
-      .from('users')
-      .delete()
-      .eq('id', userId);
+    try {
+      // Import clerkClient at the top of the file if not already imported
+      const { clerkClient } = await import('@clerk/nextjs/server');
 
-    if (usersError) {
-      console.error('Error removing user from users table:', usersError);
-      // Don't fail for this as it's secondary
+      // Get organization memberships for the user
+      const memberships = await clerkClient().organizations.getOrganizationMembershipList({
+        organizationId: orgId,
+        limit: 100
+      });
+
+      // Find the membership for the user we want to remove
+      const membershipToRemove = memberships.data.find(
+        membership => membership.publicUserData?.userId === userId
+      );
+
+      if (!membershipToRemove) {
+        return NextResponse.json({ error: 'User is not a member of this organization' }, { status: 404 });
+      }
+
+      // Remove the user from the organization using Clerk
+      await clerkClient().organizations.deleteOrganizationMembership({
+        organizationId: orgId,
+        userId: userId
+      });
+
+      // Optionally, also clean up any app-specific data
+      // Note: You may want to keep user data for audit purposes
+      // Only delete if you really want to remove all traces
+      const { error: mediarError } = await supabaseAdmin
+        .from('mediar_users')
+        .update({ organization_id: null }) // Just unlink from org, don't delete
+        .eq('user_id', userId);
+
+      if (mediarError) {
+        console.error('Error unlinking user from organization in database:', mediarError);
+        // Don't fail the request as the main action (Clerk removal) succeeded
+      }
+
+      return NextResponse.json({
+        message: 'User removed from organization successfully',
+        userId
+      });
+    } catch (clerkError: any) {
+      console.error('Error removing user from Clerk organization:', clerkError);
+      return NextResponse.json(
+        { error: clerkError?.errors?.[0]?.message || 'Failed to remove user from organization' },
+        { status: 500 }
+      );
     }
-
-    return NextResponse.json({ 
-      message: 'User removed from organization successfully',
-      userId
-    });
-
   } catch (error) {
     console.error('Error removing user from organization:', error);
     return NextResponse.json(
-      { error: 'Failed to remove user from organization' }, 
+      { error: 'Failed to remove user from organization' },
       { status: 500 }
     );
   }
