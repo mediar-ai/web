@@ -2,7 +2,6 @@
 
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { DeleteWorkflowDialog } from '@/components/deployments/DeleteWorkflowDialog';
-import { VersionUploadDialog } from '@/components/deployments/VersionUploadDialog';
 import { UnifiedWorkflowDialog } from '@/components/deployments/UnifiedWorkflowDialog';
 import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';

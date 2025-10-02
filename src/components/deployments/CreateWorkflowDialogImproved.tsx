@@ -939,27 +939,32 @@ arguments:
               {uploadValidation.status === 'valid' && uploadValidation.workflowData && (
                 <Card className="border-black">
                   <CardHeader>
-                    <CardTitle className="text-base">Extracted Workflow</CardTitle>
+                    <CardTitle className="text-base">
+                      {mode === 'update' ? `New Version for: ${workflowName}` : 'Extracted Workflow'}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>Name</Label>
-                        <Input
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          placeholder="Workflow name"
-                        />
+                    {/* Name and Description - only show in create mode */}
+                    {mode === 'create' && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Name</Label>
+                          <Input
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="Workflow name"
+                          />
+                        </div>
+                        <div>
+                          <Label>Description</Label>
+                          <Input
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            placeholder="Brief description"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <Label>Description</Label>
-                        <Input
-                          value={description}
-                          onChange={(e) => setDescription(e.target.value)}
-                          placeholder="Brief description"
-                        />
-                      </div>
-                    </div>
+                    )}
 
                     {uploadValidation.workflowData.files && (
                       <div>

@@ -1812,81 +1812,148 @@ async def execute_mcp_workflow(
                             "validation": {"is_valid": False, "errors": [str(parse_error)]}
                         }
 
-                    # Extract execution step details for metrics
+                    # Extract execution step details and build detailed execution log
                     successful_steps = 0
                     failed_steps = 0
                     executed_steps = []
+                    execution_log = []
 
-                    if "results" in mcp_content and isinstance(
-                        mcp_content["results"], list
-                    ):
-                        for idx, step_result in enumerate(mcp_content["results"]):
-                            step_info = {
-                                "index": idx,
-                                "duration_ms": step_result.get("duration_ms", 0),
-                                "success": "error" not in step_result,
-                            }
-                            executed_steps.append(step_info)
+                    # Parse detailed step structure from MCP response
+                    if "results" in mcp_content and isinstance(mcp_content["results"], list):
+                        step_counter = 0
+                        for group_idx, group in enumerate(mcp_content["results"]):
+                            group_name = group.get("group_name", f"group_{group_idx}")
+                            group_status = group.get("status", "unknown")
+                            group_duration = group.get("duration_ms", 0)
 
-                            if step_info["success"]:
-                                successful_steps += 1
+                            # Check if this is a group with nested steps
+                            if "results" in group and isinstance(group["results"], list):
+                                # Process each step in the group
+                                for step_idx, step in enumerate(group["results"]):
+                                    # Parse step result content
+                                    step_result = None
+                                    step_logs = []
+
+                                    # Extract content from step
+                                    if "content" in step and isinstance(step["content"], list):
+                                        for content_item in step["content"]:
+                                            if content_item.get("type") == "text":
+                                                try:
+                                                    # Try to parse as JSON result
+                                                    step_result = json.loads(content_item.get("text", "{}"))
+                                                except json.JSONDecodeError:
+                                                    # If not JSON, store as raw text
+                                                    step_result = {"raw_text": content_item.get("text", "")}
+
+                                            # Extract logs if present
+                                            if "logs" in content_item:
+                                                step_logs.extend(content_item["logs"])
+
+                                    # Build detailed log entry for this step
+                                    log_entry = {
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                                        "step_index": step_counter,
+                                        "group_index": group_idx,
+                                        "group_name": group_name,
+                                        "step_id": step.get("step_id", f"step_{step_counter}"),
+                                        "tool": step.get("tool_name", "unknown"),
+                                        "status": step.get("status", "unknown"),
+                                        "duration_ms": step.get("duration_ms", 0),
+                                        "result": step_result,
+                                        "logs": step_logs,
+                                        "error": step.get("error") if step.get("status") == "error" else None
+                                    }
+                                    execution_log.append(log_entry)
+
+                                    # Track metrics
+                                    if step.get("status") == "success":
+                                        successful_steps += 1
+                                    elif step.get("status") == "error":
+                                        failed_steps += 1
+
+                                    step_counter += 1
                             else:
-                                failed_steps += 1
+                                # Single step (not in a group)
+                                step_info = {
+                                    "index": group_idx,
+                                    "duration_ms": group.get("duration_ms", 0),
+                                    "success": group.get("status") != "error",
+                                }
+                                executed_steps.append(step_info)
 
-                # Build workflow-agnostic execution results
+                                if step_info["success"]:
+                                    successful_steps += 1
+                                else:
+                                    failed_steps += 1
+
+                    # Extract environment state from MCP response
+                    env_state = mcp_content.get("env", {}) if mcp_content else {}
+
+                # Build aligned execution results with version 2 structure
                 execution_results = {
+                    # Version indicator for backward compatibility
+                    "version": 2,
+
                     "workflow_id": workflow_data.get("id"),
                     "workflow_name": workflow_data.get("name", "Unknown Workflow"),
 
-                    # Workflow output (from parser) - workflow-agnostic
+                    # Core workflow result (parsed business logic)
+                    "workflow_result": workflow_result,
+
+                    # NEW: Detailed step-by-step execution log (aligned with latest.txt)
+                    "execution_log": execution_log,
+
+                    # NEW: Environment state after all steps
+                    "env_state": env_state,
+
+                    # Simplified output for backward compatibility
                     "output": {
                         "status": workflow_result.get("state", "unknown"),
                         "success": workflow_result.get("success", False),
                         "message": workflow_result.get("message", "No message"),
-                        "data": workflow_result.get("data")  # Full parsed output including workflow-specific fields
+                        "data": workflow_result.get("data")
                     },
 
-                    # Technical execution details
-                    "execution": {
-                        "status": workflow_result.get("state", "unknown"),
-                        "duration_ms": workflow_result.get("duration_ms", 0),
-                        "steps_executed": workflow_result.get("steps_executed", 0),
-                        "total_steps": len(arguments.get("items", []))
-                    },
-
-                    # Performance metrics
+                    # Performance metrics (simplified)
                     "performance_metrics": {
-                        "total_steps": len(arguments.get("items", [])),
+                        "total_steps": len(execution_log) if execution_log else len(arguments.get("items", [])),
+                        "executed_steps": len(execution_log),
                         "successful_steps": successful_steps,
                         "failed_steps": failed_steps,
-                        "total_execution_time_seconds": execution_time,
+                        "total_duration_ms": workflow_result.get("duration_ms", int(execution_time * 1000)),
                     },
 
-                    # Debug details (keep for troubleshooting)
-                    "step_details": mcp_content.get("results", []) if mcp_content else [],
-                    "executed_steps": executed_steps,
-                    "extracted_data": mcp_content if mcp_content else {},
-                    "raw_mcp_response": result_data,
-
-                    # Validation info
+                    # Validation info from parser
                     "validation_info": workflow_result.get("validation", {}),
 
-                    # Legacy fields for backward compatibility
+                    # Keep minimal legacy fields for transition period
                     "execution_type": "real_browser_automation",
-                    "workflow_result": workflow_result,
-                    "business_success": workflow_result.get("success", False),
-                    "result_message": workflow_result.get("message", "No message"),
+
+                    # REMOVED redundant fields:
+                    # - step_details (replaced by execution_log)
+                    # - executed_steps (replaced by execution_log)
+                    # - extracted_data (redundant with raw_mcp_response column)
+                    # - raw_mcp_response (moved to separate database column)
+
+                    # Store raw_mcp_response separately for debugging
+                    "_raw_mcp_response": result_data,  # Prefix with _ to indicate internal use
                 }
 
                 # Workflow-agnostic logging
-                logger.info(" Workflow Execution Result:")
+                logger.info(" Workflow Execution Result (v%d):", execution_results.get("version", 1))
                 logger.info("Tool: %s", tool_name)
                 logger.info("Output Status: %s", execution_results["output"]["status"])
                 logger.info("Output Success: %s", execution_results["output"]["success"])
                 logger.info("Output Message: %s", execution_results["output"]["message"])
-                logger.info("Execution Status: %s", execution_results["execution"]["status"])
-                logger.info("Duration: %dms", execution_results["execution"]["duration_ms"])
-                logger.info("Steps Executed: %d", execution_results["execution"]["steps_executed"])
+                logger.info("Performance Metrics: %d/%d steps successful",
+                           execution_results["performance_metrics"]["successful_steps"],
+                           execution_results["performance_metrics"]["total_steps"])
+                logger.info("Duration: %dms", execution_results["performance_metrics"]["total_duration_ms"])
+
+                # Log execution log summary if v2
+                if execution_results.get("version") == 2 and execution_results.get("execution_log"):
+                    logger.info("Execution Log: %d detailed step entries captured", len(execution_results["execution_log"]))
+                    logger.info("Environment State: %d variables in final env", len(execution_results.get("env_state", {})))
 
                 return execution_results
 
@@ -2252,7 +2319,8 @@ def execute_workflow(
 """
 
         # Extract raw MCP response from results (if present)
-        raw_mcp_response = results.pop("raw_mcp_response", None)
+        # Check both old field name and new field name for compatibility
+        raw_mcp_response = results.pop("_raw_mcp_response", None) or results.pop("raw_mcp_response", None)
 
         # Create structured logs array
         execution_logs = []
@@ -2281,10 +2349,14 @@ def execute_workflow(
         workflow_result = results.get("workflow_result")
         quotes_found = len(results.get("quotes", []))
 
+        # Check if we have the new v2 structure
+        results_version = results.get("version", 1)
+
         # Calculate traditional success rate for backward compatibility
-        success_rate = (
-            results["performance_metrics"]["successful_steps"] / max(total_steps, 1)
-        ) * 100
+        performance_metrics = results.get("performance_metrics", {})
+        successful_steps_count = performance_metrics.get("successful_steps", 0)
+        total_steps_count = performance_metrics.get("total_steps", total_steps)
+        success_rate = (successful_steps_count / max(total_steps_count, 1)) * 100
 
         # Determine workflow completion using new standardized system
         if workflow_result:
@@ -2413,6 +2485,7 @@ def execute_workflow(
             "total_execution_time": execution_duration,
             "quotes_found": quotes_found,
             "execution_message": f"Found {quotes_found} insurance quotes",
+            "results_version": results_version,  # Track which version of results structure was used
         }
 
         # Add standardized workflow result information if available
@@ -2432,6 +2505,20 @@ def execute_workflow(
             execution_summary["standardized_system_used"] = False
 
         results["execution_summary"] = execution_summary
+
+        # For backward compatibility with v1 consumers, add deprecated fields if v2
+        if results_version == 2 and results.get("execution_log"):
+            # Create simplified step_details from execution_log for backward compatibility
+            # This will be removed in future versions
+            results["step_details"] = [
+                {
+                    "index": entry["step_index"],
+                    "tool_name": entry["tool"],
+                    "status": entry["status"],
+                    "duration_ms": entry["duration_ms"],
+                }
+                for entry in results.get("execution_log", [])
+            ]
 
         # Generate formatted summary for display (workflow-agnostic)
         formatted_output = None
