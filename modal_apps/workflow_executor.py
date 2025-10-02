@@ -1046,7 +1046,7 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dict containing:
         - success: bool - Business logic success (did we achieve the goal?)
-        - execution_status: str - Technical execution status
+        - state: str - Workflow state ("success", "failure", "skipped")
         - message: str - Human readable success/failure message
         - data: Any - Extracted data (null/empty on failure)
         - error: str|None - Error information if failed
@@ -1064,7 +1064,6 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
         # Initialize result structure
         result = {
             "success": False,
-            "execution_status": execution_status,
             "message": "Unknown status",
             "data": None,
             "error": None,
@@ -1130,7 +1129,7 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(" Failed to parse workflow result: %s", e)
         return {
             "success": False,
-            "execution_status": "parse_error",
+            "state": "failure",
             "message": f"Failed to parse workflow result: {str(e)}",
             "data": None,
             "error": str(e),
@@ -2438,23 +2437,19 @@ def execute_workflow(
         # Generate formatted summary for display (workflow-agnostic)
         formatted_output = None
         if workflow_result:
-            # Use standardized workflow-agnostic format
+            # Use simplified format with only success boolean
             formatted_output = json.dumps({
-                "status": workflow_result.get("state", "unknown"),
                 "success": workflow_result.get("success", False),
                 "message": workflow_result.get("message", "No message"),
                 "data": workflow_result.get("data"),
                 "validation": workflow_result.get("validation", {}),
-                "execution_status": workflow_result.get("execution_status", "unknown"),
             }, indent=2)
-            logger.info(" Using workflow-agnostic formatted output")
+            logger.info(" Using simplified formatted output with success boolean only")
         else:
             # Fallback if no workflow_result
             formatted_output = json.dumps({
-                "status": "unknown",
                 "success": workflow_completed,
                 "message": f"Workflow {'completed successfully' if workflow_completed else 'failed'}",
-                "execution_status": "completed" if workflow_completed else "failed",
                 "steps_executed": total_steps,
                 "success_rate": success_rate
             }, indent=2)
