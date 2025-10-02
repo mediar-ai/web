@@ -1157,7 +1157,7 @@ def display_workflow_result(result: Dict[str, Any]) -> int:
             logger.error(" FAILURE: %s", result["message"])
 
         # Execution details
-        logger.info(" Execution: %s", result["execution_status"])
+        logger.info(" Execution: %s", result.get("state", "unknown"))
         logger.info("   Duration: %dms", result["duration_ms"])
         logger.info("   Steps: %d", result["steps_executed"])
 
@@ -1804,7 +1804,7 @@ async def execute_mcp_workflow(
                         # Create a default workflow_result for error cases
                         workflow_result = {
                             "success": False,
-                            "execution_status": "error",
+                            "state": "failure",
                             "message": f"Failed to parse result: {str(parse_error)}",
                             "duration_ms": int(execution_time * 1000),
                             "steps_executed": 0,
@@ -1848,7 +1848,7 @@ async def execute_mcp_workflow(
 
                     # Technical execution details
                     "execution": {
-                        "status": workflow_result.get("execution_status", "unknown"),
+                        "status": workflow_result.get("state", "unknown"),
                         "duration_ms": workflow_result.get("duration_ms", 0),
                         "steps_executed": workflow_result.get("steps_executed", 0),
                         "total_steps": len(arguments.get("items", []))
@@ -1875,7 +1875,6 @@ async def execute_mcp_workflow(
                     "execution_type": "real_browser_automation",
                     "workflow_result": workflow_result,
                     "business_success": workflow_result.get("success", False),
-                    "execution_status": workflow_result.get("execution_status", "unknown"),
                     "result_message": workflow_result.get("message", "No message"),
                 }
 
@@ -2421,11 +2420,11 @@ def execute_workflow(
             execution_summary.update(
                 {
                     "business_success": workflow_result["success"],
-                    "execution_status": workflow_result["execution_status"],
+                    "execution_state": workflow_result.get("state", "unknown"),
                     "result_message": workflow_result["message"],
                     "duration_ms": workflow_result["duration_ms"],
                     "steps_executed": workflow_result["steps_executed"],
-                    "validation_info": workflow_result["validation"],
+                    "validation_info": workflow_result.get("validation", {}),
                     "standardized_system_used": True,
                 }
             )
