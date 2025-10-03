@@ -271,6 +271,49 @@ export function extractCronConfigFromYAML(yamlContent: string): CronConfig | nul
 }
 
 /**
+ * Calculate next N execution times for a cron expression
+ */
+export function calculateNextExecutions(
+  expression: string,
+  timezone: string,
+  count: number = 5
+): string[] {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const cronParser = require('cron-parser');
+    const interval = cronParser.parseExpression(expression, {
+      currentDate: new Date(),
+      tz: timezone,
+      iterator: true
+    });
+
+    const executions: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const next = interval.next();
+      if (!next.done && next.value) {
+        const date = next.value.toDate();
+        executions.push(
+          date.toLocaleString('en-US', {
+            timeZone: timezone,
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZoneName: 'short',
+          })
+        );
+      }
+    }
+
+    return executions;
+  } catch (error) {
+    console.error('Error calculating next executions:', error);
+    return [];
+  }
+}
+
+/**
  * Generate human-readable description of cron expression
  */
 export function describeCronExpression(expression: string): string {

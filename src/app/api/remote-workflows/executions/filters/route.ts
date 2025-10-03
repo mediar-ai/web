@@ -29,12 +29,15 @@ export async function GET(request: NextRequest) {
     // Get workflow IDs this organization has access to (same logic as executions endpoint)
     let accessibleWorkflowIds: number[] = [];
 
+    console.log('[Filters API] orgId:', orgId, 'isMediarOrg:', isMediarOrg, 'isMediarAdmin:', isMediarAdmin);
+
     // Mediar org sees all workflows, OR Mediar admin not viewing a specific org
     if (isMediarOrg || (isMediarAdmin && !viewOrgId)) {
       const { data: allWorkflows } = await supabase
         .from('deployed_workflows')
         .select('id');
       accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
+      console.log('[Filters API] Mediar/Admin - accessible workflows:', accessibleWorkflowIds.length);
     } else {
       // Regular org sees only their workflows and shared workflows
       const { data: ownedWorkflows } = await supabase
@@ -50,9 +53,11 @@ export async function GET(request: NextRequest) {
       const ownedIds = (ownedWorkflows || []).map(w => w.id);
       const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
       accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds])];
+      console.log('[Filters API] Regular org - owned:', ownedIds.length, 'shared:', sharedIds.length, 'total:', accessibleWorkflowIds.length);
     }
 
     if (accessibleWorkflowIds.length === 0) {
+      console.log('[Filters API] No accessible workflows, returning empty filters');
       return NextResponse.json({
         success: true,
         filters: { workflowNames: [], statuses: [], machines: [] },
@@ -60,38 +65,53 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch unique workflow names from accessible workflows
-    const { data: workflowsData } = await supabase
+    const { data: workflowsData, error: workflowsError } = await supabase
       .from('deployed_workflows')
       .select('name')
       .in('id', accessibleWorkflowIds)
       .order('name');
 
+    if (workflowsError) {
+      console.error('[Filters API] Error fetching workflows:', workflowsError);
+    }
+
     const uniqueWorkflowNames = workflowsData
       ? Array.from(new Set(workflowsData.map((w: any) => w.name).filter(Boolean))).sort()
       : [];
+    console.log('[Filters API] Workflow names:', uniqueWorkflowNames.length, uniqueWorkflowNames);
 
     // Fetch unique statuses from executions of accessible workflows
-    const { data: statusesData } = await supabase
+    const { data: statusesData, error: statusesError } = await supabase
       .from('workflow_executions')
       .select('status')
       .in('workflow_id', accessibleWorkflowIds)
       .order('status');
 
+    if (statusesError) {
+      console.error('[Filters API] Error fetching statuses:', statusesError);
+    }
+
     const uniqueStatuses = statusesData
       ? Array.from(new Set(statusesData.map((e: any) => e.status).filter(Boolean))).sort()
       : [];
+    console.log('[Filters API] Statuses:', uniqueStatuses.length, uniqueStatuses);
 
     // Fetch unique machines from executions of accessible workflows
-    const { data: machinesData } = await supabase
+    const { data: machinesData, error: machinesError } = await supabase
       .from('workflow_executions')
       .select('assigned_machine_name')
       .in('workflow_id', accessibleWorkflowIds)
       .not('assigned_machine_name', 'is', null)
       .order('assigned_machine_name');
 
+    if (machinesError) {
+      console.error('[Filters API] Error fetching machines:', machinesError);
+    }
+
     const uniqueMachines = machinesData
       ? Array.from(new Set(machinesData.map((e: any) => e.assigned_machine_name).filter(Boolean))).sort()
       : [];
+    console.log('[Filters API] Machines:', uniqueMachines.length, uniqueMachines);
 
     return NextResponse.json({
       success: true,

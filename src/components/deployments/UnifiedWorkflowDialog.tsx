@@ -248,26 +248,62 @@ export function UnifiedWorkflowDialog({
 
     setLoadingCron(true);
     try {
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/cron`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.cron_config) {
-          setCronConfig({
-            expression: data.cron_config.cron_expression || '',
-            timezone: data.cron_config.cron_timezone || 'UTC',
-            enabled: data.cron_config.cron_enabled || false,
-            maxConcurrent: data.cron_config.cron_max_concurrent || 1,
-            retryOnFailure: data.cron_config.cron_retry_on_failure !== false,
-            retryCount: data.cron_config.cron_retry_count || 3,
-          });
+      // First, try to load cron config from active version's YAML
+      let cronConfigFromYaml: CronConfig | null = null;
+
+      if (currentYaml) {
+        try {
+          const parsedYaml = yaml.load(currentYaml) as any;
+          if (parsedYaml?.cron) {
+            cronConfigFromYaml = {
+              expression: parsedYaml.cron || '',
+              timezone: parsedYaml.timezone || 'UTC',
+              enabled: parsedYaml.cron_enabled !== false,
+              maxConcurrent: parsedYaml.max_concurrent || 1,
+              retryOnFailure: parsedYaml.retry_on_failure !== false,
+              retryCount: parsedYaml.retry_count || 3,
+            };
+            console.log('✅ Loaded cron config from active version YAML');
+          }
+        } catch (yamlError) {
+          console.warn('Failed to parse cron from YAML:', yamlError);
         }
       }
+
+      // Fallback: Load from database if not found in YAML
+      if (!cronConfigFromYaml) {
+        const response = await fetch(`/api/remote-workflows/${workflow.id}/cron`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.cron_config) {
+            cronConfigFromYaml = {
+              expression: data.cron_config.cron_expression || '',
+              timezone: data.cron_config.cron_timezone || 'UTC',
+              enabled: data.cron_config.cron_enabled || false,
+              maxConcurrent: data.cron_config.cron_max_concurrent || 1,
+              retryOnFailure: data.cron_config.cron_retry_on_failure !== false,
+              retryCount: data.cron_config.cron_retry_count || 3,
+            };
+            console.log('✅ Loaded cron config from database');
+          }
+        }
+      }
+
+      // Set the loaded config or defaults
+      setCronConfig(cronConfigFromYaml || {
+        expression: '',
+        timezone: 'UTC',
+        enabled: false,
+        maxConcurrent: 1,
+        retryOnFailure: true,
+        retryCount: 3,
+      });
     } catch (error) {
       console.error('Error loading cron config:', error);
     } finally {
       setLoadingCron(false);
     }
-  }, [workflow]);
+  }, [workflow, currentYaml]);
 
   // Save cron configuration
   const saveCronConfig = useCallback(async () => {
