@@ -16,6 +16,7 @@ import { Building2, Users, Crown } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
+import { toast } from 'sonner';
 
 interface OrganizationAssignmentDialogProps {
   open: boolean;
@@ -64,7 +65,7 @@ export function OrganizationAssignmentDialog({
       setInitialOrgs(orgsWithRequired);
     } catch (error) {
       console.error('Failed to fetch organization access:', error);
-      alert('Failed to load organization access');
+      toast.error('Failed to load organization access');
     } finally {
       setLoading(false);
     }
@@ -109,7 +110,7 @@ export function OrganizationAssignmentDialog({
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to update organization access:', error);
-      alert('Failed to update organization access');
+      toast.error('Failed to update organization access');
     } finally {
       setSaving(false);
     }

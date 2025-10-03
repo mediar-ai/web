@@ -7,6 +7,7 @@ import { useUser } from '@/context/UserContext';
 import type { Session, UserSessionData } from '@/lib/db';
 import type { LowLevelEvent } from '@/types';
 import { createRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import type {
   CanvasContent,
   DatabaseWorkflow,
@@ -407,7 +408,7 @@ export function useWorkflowPageLogic(userId: string) {
   const runInitialAnalysis = async () => {
     // 🔧 NEW: Require timeframe selection for workflow analysis initiation
     if (!timeBoundary.startDate || !timeBoundary.endDate) {
-      alert('Please select a timeframe before initiating workflow analysis. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      toast.warning('Please select a timeframe before initiating workflow analysis. Use the timeframe selector to choose the time period containing the events you want to analyze.');
       return;
     }
 
@@ -527,7 +528,7 @@ export function useWorkflowPageLogic(userId: string) {
   const refineAndIdentifyWorkflows = async () => {
     // 🔧 NEW: Require timeframe selection for workflow refinement
     if (!timeBoundary.startDate || !timeBoundary.endDate) {
-      alert('Please select a timeframe before refining workflow lists. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      toast.warning('Please select a timeframe before refining workflow lists. Use the timeframe selector to choose the time period containing the events you want to analyze.');
       return;
     }
 
@@ -573,7 +574,7 @@ export function useWorkflowPageLogic(userId: string) {
   const processAllWorkflows = async (approvedWorkflows: string[]) => {
     // 🔧 NEW: Require timeframe selection for boundary definition
     if (!timeBoundary.startDate || !timeBoundary.endDate) {
-      alert('Please select a timeframe before defining workflow boundaries. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      toast.warning('Please select a timeframe before defining workflow boundaries. Use the timeframe selector to choose the time period containing the events you want to analyze.');
       return;
     }
 
@@ -644,13 +645,13 @@ export function useWorkflowPageLogic(userId: string) {
 
   const generateAndSaveTimelineMapping = async () => {
     if (!workflows.length) {
-      alert("No workflows available for timeline mapping");
+      toast.warning("No workflows available for timeline mapping");
       return;
     }
 
     // 🔧 NEW: Require timeframe selection
     if (!timeBoundary.startDate || !timeBoundary.endDate) {
-      alert('Please select a timeframe before processing timeline annotations. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      toast.warning('Please select a timeframe before processing timeline annotations. Use the timeframe selector to choose the time period containing the events you want to analyze.');
       return;
     }
 
@@ -958,7 +959,7 @@ export function useWorkflowPageLogic(userId: string) {
   const proceedToSynthesis = async (approvedBoundaries: WorkflowBoundaries) => {
     // 🔧 NEW: Require timeframe selection for synthesis
     if (!timeBoundary.startDate || !timeBoundary.endDate) {
-      alert('Please select a timeframe before synthesizing workflows. Use the timeframe selector to choose the time period containing the events you want to analyze.');
+      toast.warning('Please select a timeframe before synthesizing workflows. Use the timeframe selector to choose the time period containing the events you want to analyze.');
       return;
     }
 
@@ -1425,7 +1426,7 @@ export function useWorkflowPageLogic(userId: string) {
 
   const runFullProcess = async () => {
     if (!timeBoundary.startDate || !timeBoundary.endDate) {
-      alert("Please select a time boundary first.");
+      toast.warning("Please select a time boundary first.");
       return;
     }
     
@@ -1521,7 +1522,7 @@ export function useWorkflowPageLogic(userId: string) {
       console.error('Error during full orchestration:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setOrchestrationStatus(`Error: ${errorMessage}`);
-      alert(`Orchestration failed: ${errorMessage}`);
+      toast.error(`Orchestration failed: ${errorMessage}`);
       setIsOrchestrating(false);
     } finally {
       if (orchestrationTimerRef.current) {

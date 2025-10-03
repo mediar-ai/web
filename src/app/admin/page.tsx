@@ -255,11 +255,11 @@ function AdminPageContent() {
         });
       } else {
         const error = await response.json();
-        alert(`Failed to add machine: ${error.error}`);
+        toast.error(`Failed to add machine: ${error.error}`);
       }
     } catch (error) {
       console.error('Error adding machine:', error);
-      alert('Failed to add machine');
+      toast.error('Failed to add machine');
     }
   };
 
@@ -290,11 +290,11 @@ function AdminPageContent() {
         setEditedMachineData({});
       } else {
         const error = await response.json();
-        alert(`Failed to update machine: ${error.error}`);
+        toast.error(`Failed to update machine: ${error.error}`);
       }
     } catch (error) {
       console.error('Error updating machine:', error);
-      alert('Failed to update machine');
+      toast.error('Failed to update machine');
     }
   };
 
@@ -322,12 +322,12 @@ function AdminPageContent() {
             }
           }
         } else {
-          alert(`Failed to delete machine: ${error.error}`);
+          toast.error(`Failed to delete machine: ${error.error}`);
         }
       }
     } catch (error) {
       console.error('Error deleting machine:', error);
-      alert('Failed to delete machine');
+      toast.error('Failed to delete machine');
     }
   };
 
@@ -393,11 +393,11 @@ function AdminPageContent() {
         // Refresh invitations
         await fetchOrgInvitations(selectedOrg.clerk_organization_id || selectedOrg.id);
       } else {
-        alert('Failed to send invitation. Please check the email address.');
+        toast.error('Failed to send invitation. Please check the email address.');
       }
     } catch (error) {
       console.error('Failed to invite member:', error);
-      alert('Failed to send invitation.');
+      toast.error('Failed to send invitation.');
     } finally {
       setInviting(false);
     }
@@ -416,7 +416,7 @@ function AdminPageContent() {
       if (response.ok) {
         await fetchOrgMembers(selectedOrg.clerk_organization_id || selectedOrg.id);
       } else {
-        alert('Failed to remove member');
+        toast.error('Failed to remove member');
       }
     } catch (error) {
       console.error('Failed to remove member:', error);

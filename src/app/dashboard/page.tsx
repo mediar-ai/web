@@ -24,6 +24,7 @@ import {
   WorkflowWithSettings,
 } from '@/lib/workflow-types';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
+import { toast } from 'sonner';
 
 function DashboardContent() {
   const { organization, isLoaded: _orgLoaded } = useOrganization();
@@ -326,11 +327,11 @@ function DashboardContent() {
       } else {
         const error = await response.json();
         console.error('Cancel failed:', error);
-        alert(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
+        toast.error(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error canceling execution:', error);
-      alert('Error canceling execution');
+      toast.error('Error canceling execution');
     }
   }, [fetchExecutions, fetchLiveExecutions]);
 
@@ -345,11 +346,11 @@ function DashboardContent() {
       } else {
         const error = await response.json();
         console.error('Delete failed:', error);
-        alert(`Failed to delete execution: ${error.error || 'Unknown error'}`);
+        toast.error(`Failed to delete execution: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error deleting execution:', error);
-      alert('Error deleting execution');
+      toast.error('Error deleting execution');
     }
   }, [fetchExecutions, fetchLiveExecutions]);
 

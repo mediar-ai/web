@@ -58,6 +58,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useCallback, useEffect, useState, useRef } from 'react';
+import { toast } from 'sonner';
 
 interface WorkflowCardProps {
   workflow: WorkflowWithSettings;
@@ -359,11 +360,11 @@ export function WorkflowCard({
         }
       } else {
         console.error('Failed to resume workflow:', data.error);
-        alert(`Failed to resume workflow: ${data.error}`);
+        toast.error(`Failed to resume workflow: ${data.error}`);
       }
     } catch (error) {
       console.error('Error resuming workflow:', error);
-      alert('Failed to resume workflow. Please try again.');
+      toast.error('Failed to resume workflow. Please try again.');
     } finally {
       setResumingWorkflow(false);
     }
@@ -424,7 +425,7 @@ export function WorkflowCard({
           if (errorText) errorMessage = errorText;
         }
 
-        alert(`Failed to ${!workflow.cron_enabled ? 'enable' : 'disable'} schedule: ${errorMessage}`);
+        toast.error(`Failed to ${!workflow.cron_enabled ? 'enable' : 'disable'} schedule: ${errorMessage}`);
         return;
       }
 
@@ -439,14 +440,14 @@ export function WorkflowCard({
         }
       } else {
         console.error('Failed to toggle cron schedule:', result.error);
-        alert(
+        toast.error(
           `Failed to ${!workflow.cron_enabled ? 'enable' : 'disable'} schedule: ${result.error}`
         );
       }
     } catch (error) {
       console.error('Error toggling cron schedule:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      alert(
+      toast.error(
         `Error ${!workflow.cron_enabled ? 'enabling' : 'disabling'} schedule: ${errorMessage}`
       );
     } finally {
@@ -582,13 +583,13 @@ export function WorkflowCard({
           onBatchSubmit();
         }
       } else {
-        alert(result.error || 'Failed to rename workflow');
+        toast.error(result.error || 'Failed to rename workflow');
         setTempName(workflow.name);
         setEditingName(false);
       }
     } catch (error) {
       console.error('Error renaming workflow:', error);
-      alert('Failed to rename workflow');
+      toast.error('Failed to rename workflow');
       setTempName(workflow.name);
       setEditingName(false);
     }
@@ -620,13 +621,13 @@ export function WorkflowCard({
           onBatchSubmit();
         }
       } else {
-        alert(result.error || 'Failed to update description');
+        toast.error(result.error || 'Failed to update description');
         setTempDescription(workflow.description || '');
         setEditingDescription(false);
       }
     } catch (error) {
       console.error('Error updating description:', error);
-      alert('Failed to update description');
+      toast.error('Failed to update description');
       setTempDescription(workflow.description || '');
       setEditingDescription(false);
     }
@@ -696,7 +697,7 @@ export function WorkflowCard({
           }
         }
 
-        alert(`❌ Failed to delete workflow: ${errorMessage}`);
+        toast.error(`Failed to delete workflow: ${errorMessage}`);
         return;
       }
 
@@ -706,7 +707,7 @@ export function WorkflowCard({
         console.log(`✅ Successfully deleted workflow: ${workflow.name}`);
 
         // Show success feedback
-        alert(`✅ Workflow "${workflow.name}" deleted successfully!`);
+        toast.success(`Workflow "${workflow.name}" deleted successfully!`);
 
         // Close the dialog first
         setDeleteDialogOpen(false);
@@ -718,12 +719,12 @@ export function WorkflowCard({
         }
       } else {
         console.error('Failed to delete workflow:', result.error);
-        alert(`❌ Failed to delete workflow: ${result.error}`);
+        toast.error(`Failed to delete workflow: ${result.error}`);
       }
     } catch (error) {
       console.error('Error deleting workflow:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      alert(`❌ Error deleting workflow: ${errorMessage}. Please check the console for details.`);
+      toast.error(`Error deleting workflow: ${errorMessage}. Please check the console for details.`);
     } finally {
       setDeletingWorkflow(false);
     }
@@ -746,7 +747,7 @@ export function WorkflowCard({
         onBatchSubmit();
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Operation failed');
+      toast.error(err instanceof Error ? err.message : 'Operation failed');
     } finally {
       setActionLoading(false);
       setConfirmOpen(false);
