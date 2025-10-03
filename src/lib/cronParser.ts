@@ -279,9 +279,20 @@ export function calculateNextExecutions(
   count: number = 5
 ): string[] {
   try {
+    // Convert 6-field format (SEC MIN HOUR DAY MONTH DOW) to 5-field format (MIN HOUR DAY MONTH DOW)
+    // cron-parser expects standard 5-field cron format
+    const fields = expression.trim().split(/\s+/);
+    let cronExpression = expression;
+
+    if (fields.length === 6) {
+      // Remove the seconds field (first field) for cron-parser
+      cronExpression = fields.slice(1).join(' ');
+      console.log(`Converted 6-field (${expression}) to 5-field (${cronExpression}) for cron-parser`);
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const cronParser = require('cron-parser');
-    const interval = cronParser.parseExpression(expression, {
+    const interval = cronParser.parseExpression(cronExpression, {
       currentDate: new Date(),
       tz: timezone,
       iterator: true
