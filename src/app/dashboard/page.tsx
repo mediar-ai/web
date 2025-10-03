@@ -264,20 +264,13 @@ function DashboardContent() {
       const apiUrl = viewOrgId
         ? `/api/remote-workflows/executions/filters?viewOrgId=${viewOrgId}`
         : '/api/remote-workflows/executions/filters';
-      console.log('[Dashboard] Fetching execution filters from:', apiUrl);
       const response = await fetch(apiUrl);
       if (!response.ok) {
         console.error('[Dashboard] Failed to fetch filters:', response.status);
         return;
       }
       const data = await response.json();
-      console.log('[Dashboard] Filter data received:', data);
       if (data.success && data.filters) {
-        console.log('[Dashboard] Setting filters:', {
-          workflows: data.filters.workflowNames?.length,
-          statuses: data.filters.statuses?.length,
-          machines: data.filters.machines?.length,
-        });
         setFilterWorkflowNames(data.filters.workflowNames || []);
         setFilterStatuses(data.filters.statuses || []);
         setFilterMachines(data.filters.machines || []);
@@ -469,7 +462,6 @@ function DashboardContent() {
 
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
-    console.log('[Dashboard] viewOrgId changed to:', viewOrgId);
     fetchWorkflows();
     fetchExecutions();
     fetchLiveExecutions();
@@ -488,7 +480,6 @@ function DashboardContent() {
       // Fetch all executions every 5 seconds to catch new ones quickly
       // This ensures new executions appear within 5 seconds
       if (pollCount % 2 === 0) {
-        console.log('[Dashboard] Polling executions...');
         fetchExecutions(false, activeWorkflowFilter, activeStatusFilter, activeMachineFilter);
       }
     }, 2500); // Poll every 2.5 seconds
