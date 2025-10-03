@@ -76,29 +76,19 @@ export function WorkflowCardEnhanced({
   const [isHovered, setIsHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Calculate metrics
+  // Calculate metrics from workflow stats (not from limited executions array)
   const metrics = useMemo(() => {
-    const recentExecutions = executions.slice(0, 10);
-    const successCount = recentExecutions.filter(
-      e => e.status === 'completed'
-    ).length;
-    const successRate = recentExecutions.length > 0
-      ? (successCount / recentExecutions.length) * 100
-      : 0;
+    // Use workflow's database stats instead of calculating from limited executions
+    const successRate = workflow.success_rate ??
+      (workflow.current_version_stats?.success_rate) ??
+      (workflow.total_executions > 0
+        ? (workflow.successful_runs / workflow.total_executions) * 100
+        : 0);
 
-    const avgDuration = recentExecutions.length > 0
-      ? recentExecutions.reduce((acc, e) => {
-          // Use execution_duration_seconds if available, otherwise calculate from timestamps
-          if (e.execution_duration_seconds) {
-            return acc + e.execution_duration_seconds;
-          } else if (e.completed_at && e.started_at) {
-            const duration = (new Date(e.completed_at).getTime() - new Date(e.started_at).getTime()) / 1000;
-            return acc + duration;
-          }
-          return acc;
-        }, 0) / recentExecutions.length
-      : 0;
+    const avgDuration = workflow.current_version_stats?.average_duration_seconds ?? 0;
+    const totalRuns = workflow.total_executions ?? 0;
 
+    // Calculate trend from recent executions if available
     const trend = executions.length >= 2
       ? (() => {
           const duration0 = executions[0].execution_duration_seconds ||
@@ -114,10 +104,10 @@ export function WorkflowCardEnhanced({
     return {
       successRate,
       avgDuration,
-      totalRuns: executions.length,
+      totalRuns,
       trend,
     };
-  }, [executions]);
+  }, [workflow, executions]);
 
   // Determine workflow status
   const getWorkflowStatus = () => {
