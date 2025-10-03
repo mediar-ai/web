@@ -40,15 +40,15 @@ export async function GET(request: NextRequest) {
         // Service health overview
         query = `
           SELECT
-            service_name as ServiceName,
+            ScopeName as ServiceName,
             count() as total_spans,
-            countIf(status_code = 'STATUS_CODE_ERROR') as errors,
+            countIf(StatusCode = 'STATUS_CODE_ERROR') as errors,
             round((errors / total_spans) * 100, 2) as error_rate,
-            max(timestamp) as last_seen,
-            round(avg(duration_ns)/1e9, 3) as avg_duration_seconds
+            formatDateTime(max(Timestamp), '%Y-%m-%dT%H:%M:%SZ') as last_seen,
+            round(avg(Duration)/1e9, 3) as avg_duration_seconds
           FROM otel_traces
-          WHERE timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
-          GROUP BY service_name
+          WHERE Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
+          GROUP BY ScopeName
           ORDER BY total_spans DESC
         `;
         break;
@@ -57,17 +57,17 @@ export async function GET(request: NextRequest) {
         // Recent workflow executions
         query = `
           SELECT
-            timestamp as Timestamp,
-            trace_id as TraceId,
-            service_name as ServiceName,
-            operation_name as SpanName,
-            duration_ns/1e9 as duration_seconds,
-            status_code as StatusCode,
-            attributes as SpanAttributes
+            formatDateTime(Timestamp, '%Y-%m-%dT%H:%M:%SZ') as Timestamp,
+            TraceId,
+            ScopeName as ServiceName,
+            SpanName,
+            Duration/1e9 as duration_seconds,
+            StatusCode,
+            SpanAttributes
           FROM otel_traces
-          WHERE operation_name = 'execute_sequence'
-            AND timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
-          ORDER BY timestamp DESC
+          WHERE SpanName = 'execute_sequence'
+            AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
+          ORDER BY Timestamp DESC
           LIMIT 100
         `;
         break;
@@ -76,15 +76,15 @@ export async function GET(request: NextRequest) {
         // Tool usage statistics
         query = `
           SELECT
-            attributes['tool_name'] as tool,
+            SpanAttributes['tool.name'] as tool,
             count() as executions,
-            round(avg(duration_ns)/1e9, 3) as avg_seconds,
-            round(max(duration_ns)/1e9, 3) as max_seconds,
-            countIf(status_code = 'STATUS_CODE_ERROR') as failures,
+            round(avg(Duration)/1e9, 3) as avg_seconds,
+            round(max(Duration)/1e9, 3) as max_seconds,
+            countIf(StatusCode = 'STATUS_CODE_ERROR') as failures,
             round((failures / executions) * 100, 2) as failure_rate
           FROM otel_traces
-          WHERE operation_name = 'tool_execution'
-            AND timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
+          WHERE SpanName = 'tool_execution'
+            AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
           GROUP BY tool
           HAVING tool != ''
           ORDER BY executions DESC
@@ -95,16 +95,16 @@ export async function GET(request: NextRequest) {
         // Performance over time
         query = `
           SELECT
-            toStartOfMinute(timestamp) as time,
-            service_name as ServiceName,
+            formatDateTime(toStartOfMinute(Timestamp), '%Y-%m-%dT%H:%M:%SZ') as time,
+            ScopeName as ServiceName,
             count() as span_count,
-            round(avg(duration_ns)/1e9, 3) as avg_duration_seconds,
-            round(max(duration_ns)/1e9, 3) as max_duration_seconds,
-            countIf(status_code = 'STATUS_CODE_ERROR') as errors
+            round(avg(Duration)/1e9, 3) as avg_duration_seconds,
+            round(max(Duration)/1e9, 3) as max_duration_seconds,
+            countIf(StatusCode = 'STATUS_CODE_ERROR') as errors
           FROM otel_traces
-          WHERE timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
-          GROUP BY time, service_name
-          ORDER BY time DESC
+          WHERE Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
+          GROUP BY toStartOfMinute(Timestamp), ScopeName
+          ORDER BY toStartOfMinute(Timestamp) DESC
           LIMIT 1000
         `;
         break;
@@ -113,17 +113,17 @@ export async function GET(request: NextRequest) {
         // Recent errors
         query = `
           SELECT
-            timestamp as Timestamp,
-            trace_id as TraceId,
-            span_id as SpanId,
-            service_name as ServiceName,
-            operation_name as SpanName,
-            duration_ns/1e9 as duration_seconds,
-            attributes as SpanAttributes
+            formatDateTime(Timestamp, '%Y-%m-%dT%H:%M:%SZ') as Timestamp,
+            TraceId,
+            SpanId,
+            ScopeName as ServiceName,
+            SpanName,
+            Duration/1e9 as duration_seconds,
+            SpanAttributes
           FROM otel_traces
-          WHERE status_code = 'STATUS_CODE_ERROR'
-            AND timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
-          ORDER BY timestamp DESC
+          WHERE StatusCode = 'STATUS_CODE_ERROR'
+            AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
+          ORDER BY Timestamp DESC
           LIMIT 100
         `;
         break;
