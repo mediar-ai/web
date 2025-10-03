@@ -150,9 +150,16 @@ export function WorkflowCardEnhanced({
           <div className="flex items-center gap-3">
             {/* Name and Status */}
             <div className="flex items-center gap-2 w-80 flex-shrink-0">
-              <h3 className="text-sm font-semibold text-gray-900 truncate min-w-0">
-                {workflow.name}
-              </h3>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <h3 className="text-sm font-semibold text-gray-900 truncate min-w-0 cursor-default">
+                    {workflow.name}
+                  </h3>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="font-mono text-xs">{workflow.name}</p>
+                </TooltipContent>
+              </Tooltip>
               {/* Only show status badge if it's meaningful (not deployed/running) */}
               {status !== 'deployed' && status !== 'running' && (
                 <AnimatedBadge status={status as any} className="text-xs py-0.5 px-2 flex-shrink-0">
