@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -13,13 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { parseCronExpression, describeCronExpression, calculateNextExecutions } from '@/lib/cronParser';
-import { Clock, ChevronDown, ChevronUp, AlertCircle, Check } from 'lucide-react';
+import { Clock, AlertCircle, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Common cron presets
@@ -88,21 +82,26 @@ export function CronScheduleEditor({
   cronExpression = '',
   cronTimezone = 'UTC',
   cronEnabled = false,
-  cronMaxConcurrent = 1,
-  cronRetryOnFailure = true,
-  cronRetryCount = 3,
+  cronMaxConcurrent: _cronMaxConcurrent = 1,
+  cronRetryOnFailure: _cronRetryOnFailure = true,
+  cronRetryCount: _cronRetryCount = 3,
   onChange,
-  showAdvanced = false,
+  showAdvanced: _showAdvanced = false,
   className = '',
 }: CronScheduleEditorProps) {
   const [enabled, setEnabled] = useState(cronEnabled);
   const [expression, setExpression] = useState(cronExpression);
-  const [selectedPreset, setSelectedPreset] = useState('custom');
+  const [selectedPreset, setSelectedPreset] = useState(() => {
+    // Find matching preset on initialization
+    const match = CRON_PRESETS.find(p => p.value === cronExpression);
+    return match ? match.value : 'custom';
+  });
   const [timezone, setTimezone] = useState(cronTimezone);
-  const [maxConcurrent, setMaxConcurrent] = useState(cronMaxConcurrent);
-  const [retryOnFailure, setRetryOnFailure] = useState(cronRetryOnFailure);
-  const [retryCount, setRetryCount] = useState(cronRetryCount);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Fixed values for advanced settings (not configurable)
+  const maxConcurrent = 1;
+  const retryOnFailure = true;
+  const retryCount = 3;
 
   // Parse and validate the cron expression
   const validation = useMemo(() => {
@@ -134,9 +133,14 @@ export function CronScheduleEditor({
   }, [expression, timezone, enabled, maxConcurrent, retryOnFailure, retryCount, onChange]);
 
   const handlePresetChange = (value: string) => {
+    console.log('📅 Preset changed:', value);
+    const preset = CRON_PRESETS.find(p => p.value === value);
+    console.log('📅 Selected preset:', preset);
+
     setSelectedPreset(value);
     if (value !== 'custom') {
       setExpression(value);
+      console.log('📅 Expression set to:', value);
     }
   };
 
@@ -270,77 +274,6 @@ export function CronScheduleEditor({
               </div>
             )}
 
-            {/* Advanced Settings */}
-            {showAdvanced && (
-              <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full border-2 border-black hover:bg-black hover:text-white font-mono text-xs uppercase"
-                  >
-                    {advancedOpen ? (
-                      <>
-                        <ChevronUp className="w-4 h-4 mr-2" />
-                        Hide Advanced Settings
-                      </>
-                    ) : (
-                      <>
-                        <ChevronDown className="w-4 h-4 mr-2" />
-                        Show Advanced Settings
-                      </>
-                    )}
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-4 mt-4">
-                  {/* Max Concurrent Executions */}
-                  <div className="space-y-2">
-                    <Label htmlFor="max-concurrent" className="font-mono text-xs text-gray-600 uppercase">
-                      Max Concurrent Executions
-                    </Label>
-                    <Input
-                      id="max-concurrent"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={maxConcurrent}
-                      onChange={(e) => setMaxConcurrent(parseInt(e.target.value) || 1)}
-                      className="border-2 border-black font-mono"
-                    />
-                  </div>
-
-                  {/* Retry on Failure */}
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="retry-failure" className="font-mono text-xs text-gray-600 uppercase">
-                      Retry on Failure
-                    </Label>
-                    <Switch
-                      id="retry-failure"
-                      checked={retryOnFailure}
-                      onCheckedChange={setRetryOnFailure}
-                      className="data-[state=checked]:bg-black"
-                    />
-                  </div>
-
-                  {/* Retry Count */}
-                  {retryOnFailure && (
-                    <div className="space-y-2">
-                      <Label htmlFor="retry-count" className="font-mono text-xs text-gray-600 uppercase">
-                        Retry Count
-                      </Label>
-                      <Input
-                        id="retry-count"
-                        type="number"
-                        min="0"
-                        max="10"
-                        value={retryCount}
-                        onChange={(e) => setRetryCount(parseInt(e.target.value) || 0)}
-                        className="border-2 border-black font-mono"
-                      />
-                    </div>
-                  )}
-                </CollapsibleContent>
-              </Collapsible>
-            )}
           </>
         )}
       </CardContent>
