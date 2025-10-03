@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
     const changedWorkflows = new Map<string, string>(); // folder -> filename
     const foldersWithJsChanges = new Set<string>(); // folders with only JS changes
     const jsOnlyWorkflows = new Set<string>(); // track which workflows had JS-only changes
+    const changedJsFiles = new Map<string, string[]>(); // folder -> list of changed JS files
 
     for (const commit of payload.commits) {
       const allFiles = [...(commit.added || []), ...(commit.modified || [])];
@@ -60,6 +61,14 @@ export async function POST(request: NextRequest) {
           const jsMatch = file.match(/^([^\/]+)\/(.+\.js)$/);
           if (jsMatch) {
             const folderName = jsMatch[1];
+            // const jsFileName = jsMatch[2]; // Not used currently but available if needed
+
+            // Track specific JS files that changed
+            if (!changedJsFiles.has(folderName)) {
+              changedJsFiles.set(folderName, []);
+            }
+            changedJsFiles.get(folderName)!.push(file); // Store full path
+
             // Only add to JS-only set if not already in YAML changes
             if (!changedWorkflows.has(folderName)) {
               foldersWithJsChanges.add(folderName);
@@ -231,40 +240,65 @@ export async function POST(request: NextRequest) {
           if (error) {
             results.errors.push(`${folderName}: Update failed - ${error.message}`);
           } else {
-            // Fetch and upload JS files if any exist
-            const { jsFiles, subdirectory } = await fetchWorkflowFiles(folderName, branch);
+            // Fetch and upload only CHANGED JS files
+            const changedFiles = changedJsFiles.get(folderName) || [];
 
-            if (jsFiles.length > 0) {
-              console.log(`📦 Found ${jsFiles.length} JS files in ${folderName}, uploading to storage...`);
+            if (changedFiles.length > 0) {
+              console.log(`📦 Processing ${changedFiles.length} changed JS files in ${folderName}...`);
 
-              const fileManager = new WorkflowFileManager();
-              const uploadResult = await fileManager.uploadWorkflowFiles(
-                existing.id,
-                newVersionNumber,
-                jsFiles,
-                subdirectory
-              );
+              // Fetch only the changed files
+              const jsFiles = await fetchChangedFiles(changedFiles, branch);
 
-              if (uploadResult.success) {
-                // Update workflow with files metadata
-                await supabase
-                  .from('deployed_workflows')
-                  .update({
-                    requires_files: true,
-                    files_config: {
-                      file_count: jsFiles.length,
-                      total_size: jsFiles.reduce((sum, f) => sum + f.content.length, 0),
-                      subdirectory: subdirectory || null,
-                      last_updated: new Date().toISOString()
-                    }
-                  })
-                  .eq('id', existing.id);
+              if (jsFiles.length > 0) {
+                console.log(`📤 Uploading ${jsFiles.length} changed files to storage...`);
 
-                console.log(`✅ Uploaded ${jsFiles.length} files to storage for workflow ${existing.id}`);
+                const fileManager = new WorkflowFileManager();
+
+                // Upload files one at a time to avoid timeout
+                let uploadedCount = 0;
+                let totalSize = 0;
+
+                for (const file of jsFiles) {
+                  console.log(`  Uploading: ${file.path}`);
+
+                  const singleFileResult = await fileManager.uploadWorkflowFiles(
+                    existing.id,
+                    newVersionNumber,
+                    [file],  // Upload one file at a time
+                    undefined
+                  );
+
+                  if (singleFileResult.success) {
+                    uploadedCount++;
+                    totalSize += file.content.length;
+                    console.log(`    ✓ Uploaded ${file.path}`);
+                  } else {
+                    console.error(`    ✗ Failed to upload ${file.path}: ${singleFileResult.error}`);
+                  }
+                }
+
+                // Update workflow metadata after all files uploaded
+                if (uploadedCount > 0) {
+                  await supabase
+                    .from('deployed_workflows')
+                    .update({
+                      requires_files: true,
+                      files_config: {
+                        file_count: uploadedCount,
+                        total_size: totalSize,
+                        subdirectory: null,
+                        last_updated: new Date().toISOString()
+                      }
+                    })
+                    .eq('id', existing.id);
+
+                  console.log(`✅ Uploaded ${uploadedCount}/${jsFiles.length} changed files for workflow ${existing.id}`);
+                }
               } else {
-                console.error(`❌ Failed to upload files: ${uploadResult.error}`);
-                results.errors.push(`${folderName}: File upload failed - ${uploadResult.error}`);
+                console.log(`⚠️ Could not fetch changed files for ${folderName}`);
               }
+            } else {
+              console.log(`ℹ️ No JS files changed in ${folderName}`);
             }
 
             results.updated.push(`${workflowName} (v${newVersionNumber})`);
@@ -328,40 +362,57 @@ export async function POST(request: NextRequest) {
                 .update({ current_version_id: initialVersion.id })
                 .eq('id', newWorkflow.id);
 
-              // Fetch and upload JS files if any exist
+              // For new workflows, we need to fetch ALL JS files (not just changed ones)
+              // since this is the initial upload
               const { jsFiles, subdirectory } = await fetchWorkflowFiles(folderName, branch);
 
               if (jsFiles.length > 0) {
                 console.log(`📦 Found ${jsFiles.length} JS files in ${folderName}, uploading to storage...`);
 
                 const fileManager = new WorkflowFileManager();
-                const uploadResult = await fileManager.uploadWorkflowFiles(
-                  newWorkflow.id,
-                  '1.0.0',
-                  jsFiles,
-                  subdirectory
-                );
 
-                if (uploadResult.success) {
-                  // Update workflow with files metadata
+                // Upload files one at a time to avoid timeouts
+                let uploadedCount = 0;
+                let totalSize = 0;
+
+                for (const file of jsFiles) {
+                  console.log(`  Uploading ${file.path} (${uploadedCount + 1}/${jsFiles.length})...`);
+
+                  const uploadResult = await fileManager.uploadWorkflowFiles(
+                    newWorkflow.id,
+                    '1.0.0',
+                    [file], // Upload single file
+                    subdirectory
+                  );
+
+                  if (uploadResult.success) {
+                    uploadedCount++;
+                    totalSize += file.content.length;
+                    console.log(`    ✓ Uploaded ${file.path}`);
+                  } else {
+                    console.error(`    ✗ Failed to upload ${file.path}: ${uploadResult.error}`);
+                  }
+                }
+
+                // Update workflow metadata
+                if (uploadedCount > 0) {
                   await supabase
                     .from('deployed_workflows')
                     .update({
                       requires_files: true,
                       files_config: {
-                        file_count: jsFiles.length,
-                        total_size: jsFiles.reduce((sum, f) => sum + f.content.length, 0),
+                        file_count: uploadedCount,
+                        total_size: totalSize,
                         subdirectory: subdirectory || null,
                         last_updated: new Date().toISOString()
                       }
                     })
                     .eq('id', newWorkflow.id);
 
-                  console.log(`✅ Uploaded ${jsFiles.length} files to storage for workflow ${newWorkflow.id}`);
-                } else {
-                  console.error(`❌ Failed to upload files: ${uploadResult.error}`);
-                  results.errors.push(`${folderName}: File upload failed - ${uploadResult.error}`);
+                  console.log(`✅ Uploaded ${uploadedCount}/${jsFiles.length} files for new workflow ${newWorkflow.id}`);
                 }
+              } else {
+                console.log(`ℹ️ No JS files found in new workflow ${folderName}`);
               }
 
               results.created.push(workflowName);
@@ -494,4 +545,61 @@ async function fetchWorkflowFiles(
     console.error(`Error fetching files from GitHub folder ${folderName}:`, error);
     return { jsFiles: [] };
   }
+}
+
+/**
+ * Fetch only specific changed files from GitHub
+ * More efficient than fetching all files in a folder
+ */
+async function fetchChangedFiles(
+  changedFilePaths: string[], // e.g., ["imperial_treasure_1/add_adjustments.js"]
+  branch: string = 'main'
+): Promise<WorkflowFile[]> {
+  const jsFiles: WorkflowFile[] = [];
+
+  // Filter for JS files only
+  const jsFilePaths = changedFilePaths.filter(path => path.endsWith('.js'));
+
+  if (jsFilePaths.length === 0) {
+    console.log('No JavaScript files in the changed files list');
+    return [];
+  }
+
+  console.log(`📄 Fetching ${jsFilePaths.length} changed JS files from GitHub...`);
+
+  // Fetch each file one by one
+  for (const filePath of jsFilePaths) {
+    try {
+      console.log(`  Fetching: ${filePath}`);
+
+      const { data: fileData } = await octokit.repos.getContent({
+        owner: 'mediar-ai',
+        repo: 'workflows',
+        path: filePath,
+        ref: branch
+      });
+
+      if ('content' in fileData && fileData.content) {
+        // Decode base64 content
+        const content = Buffer.from(fileData.content, 'base64');
+
+        // Extract relative path (remove folder prefix)
+        const folderName = filePath.split('/')[0];
+        const relativePath = filePath.replace(`${folderName}/`, '');
+
+        jsFiles.push({
+          path: relativePath,
+          content
+        });
+
+        console.log(`    ✓ Fetched ${relativePath} (${content.length} bytes)`);
+      }
+    } catch (error) {
+      console.error(`    ✗ Failed to fetch ${filePath}:`, error instanceof Error ? error.message : error);
+      // Continue with other files even if one fails
+    }
+  }
+
+  console.log(`📦 Successfully fetched ${jsFiles.length} JS files`);
+  return jsFiles;
 }
