@@ -64,6 +64,10 @@ interface ExecutionsDataTableProps {
   onCancelExecution?: (executionId: number) => Promise<void>;
   onDeleteExecution?: (executionId: number) => Promise<void>;
   onRefresh?: () => void;
+  // Optional filter values from database (all unique values, not just current page)
+  filterWorkflowNames?: string[];
+  filterStatuses?: string[];
+  filterMachines?: string[];
 }
 
 // Helper function to extract the most informative message from parser output
@@ -161,6 +165,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   onCancelExecution,
   onDeleteExecution,
   onRefresh,
+  filterWorkflowNames,
+  filterStatuses,
+  filterMachines,
 }: ExecutionsDataTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([
     {
@@ -626,8 +633,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     },
   });
 
-  // Get unique workflow names for filter
+  // Get unique workflow names for filter (use prop if provided, else compute from executions)
   const uniqueWorkflowNames = React.useMemo(() => {
+    if (filterWorkflowNames) return filterWorkflowNames;
     const names = new Set<string>();
     executions.forEach((execution) => {
       const workflow = workflows.find((w) => w.id === execution.workflow_id);
@@ -636,19 +644,21 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       }
     });
     return Array.from(names).sort();
-  }, [executions, workflows]);
+  }, [executions, workflows, filterWorkflowNames]);
 
-  // Get unique statuses for filter
+  // Get unique statuses for filter (use prop if provided, else compute from executions)
   const uniqueStatuses = React.useMemo(() => {
+    if (filterStatuses) return filterStatuses;
     const statuses = new Set<string>();
     executions.forEach((execution) => {
       statuses.add(execution.status);
     });
     return Array.from(statuses).sort();
-  }, [executions]);
+  }, [executions, filterStatuses]);
 
-  // Get unique machines for filter
+  // Get unique machines for filter (use prop if provided, else compute from executions)
   const uniqueMachines = React.useMemo(() => {
+    if (filterMachines) return filterMachines;
     const machines = new Set<string>();
     executions.forEach((execution) => {
       if (execution.assigned_machine_name) {
@@ -656,7 +666,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       }
     });
     return Array.from(machines).sort();
-  }, [executions]);
+  }, [executions, filterMachines]);
 
   // Active filters count
   const activeFiltersCount = columnFilters.length;
