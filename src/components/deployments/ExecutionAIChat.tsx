@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Execution } from '@/lib/workflow-types';
 import { Send, Sparkles, User, Loader2, Copy, Check } from 'lucide-react';
 import { Streamdown } from 'streamdown';
-import { memo } from 'react';
 
 interface ExecutionAIChatProps {
   execution: Execution;
@@ -19,20 +18,6 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
-
-// Memoized Response component matching Vercel's implementation
-const Response = memo(
-  ({ children, className }: { children: string; className?: string }) => (
-    <Streamdown
-      className={`${className || ''} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_code]:whitespace-pre-wrap [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto`}
-    >
-      {children}
-    </Streamdown>
-  ),
-  (prevProps, nextProps) => prevProps.children === nextProps.children
-);
-
-Response.displayName = 'Response';
 
 export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -260,25 +245,12 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                     </div>
                   ) : (
                     <>
-                      <Response className="prose prose-sm max-w-none
-                        prose-headings:font-mono prose-headings:text-black prose-headings:font-bold
-                        prose-h1:text-lg prose-h1:mt-6 prose-h1:mb-4
-                        prose-h2:text-base prose-h2:mt-5 prose-h2:mb-3
-                        prose-h3:text-sm prose-h3:mt-4 prose-h3:mb-2
-                        prose-p:text-black prose-p:mb-3 prose-p:leading-relaxed prose-p:text-sm
-                        prose-strong:font-bold prose-strong:text-black
-                        prose-code:bg-gray-200 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-black prose-code:font-mono prose-code:text-xs prose-code:before:content-none prose-code:after:content-none
-                        prose-pre:bg-black prose-pre:text-white prose-pre:p-3 prose-pre:rounded prose-pre:border-2 prose-pre:border-black prose-pre:my-3
-                        prose-ul:my-2 prose-ol:my-2 prose-ul:list-disc prose-ol:list-decimal prose-ul:ml-6 prose-ol:ml-6
-                        prose-li:text-black prose-li:marker:text-black prose-li:my-1 prose-li:text-sm
-                        prose-blockquote:border-l-4 prose-blockquote:border-black prose-blockquote:pl-4 prose-blockquote:my-3 prose-blockquote:text-gray-700
-                        prose-hr:border-black prose-hr:my-4
-                        prose-a:text-black prose-a:underline prose-a:font-bold hover:prose-a:text-gray-700
-                        prose-table:border-2 prose-table:border-black prose-table:my-3
-                        prose-th:border prose-th:border-black prose-th:bg-gray-100 prose-th:px-2 prose-th:py-1 prose-th:font-mono prose-th:text-xs
-                        prose-td:border prose-td:border-black prose-td:px-2 prose-td:py-1 prose-td:text-xs">
+                      <Streamdown
+                        parseIncompleteMarkdown={true}
+                        shikiTheme={['github-light', 'github-dark']}
+                      >
                         {preprocessMarkdown(message.content)}
-                      </Response>
+                      </Streamdown>
                       {/* Copy button for AI messages */}
                       <div className="flex justify-start mt-2">
                         <button
