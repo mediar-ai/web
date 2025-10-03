@@ -216,33 +216,36 @@ export async function POST(
     // Generate next version number if not provided
     let newVersionNumber = version_number;
     if (!newVersionNumber) {
-      // [FIX] FIX: Auto-increment from LATEST version in DB, not active version
-      // This prevents version collisions when multiple uploads happen before activation
-      const { data: latestVersion, error: latestVersionError } = await supabase
+      // [FIX] Auto-increment from LATEST version in DB
+      // Use limit(1) instead of single() to avoid errors with zero/multiple rows
+      const { data: latestVersions, error: latestVersionError } = await supabase
         .from('deployed_workflow_versions')
         .select('version_number')
         .eq('workflow_id', workflowIdNum)
-        .order('version_number', { ascending: false })
-        .limit(1)
-        .single();
-      
+        .order('created_at', { ascending: false })  // Use created_at for reliable ordering
+        .limit(1);
+
       let baseVersion = workflow.version; // fallback to active version
-      if (latestVersion && !latestVersionError) {
-        baseVersion = latestVersion.version_number;
-        console.log(`[FIX] Using latest DB version ${baseVersion} instead of active ${workflow.version} for increment`);
+
+      if (latestVersionError) {
+        console.error(`[ERROR] Failed to fetch latest version:`, latestVersionError);
+        console.log(`[FALLBACK] Using active version ${baseVersion} for increment`);
+      } else if (latestVersions && latestVersions.length > 0) {
+        baseVersion = latestVersions[0].version_number;
+        console.log(`[SUCCESS] Using latest DB version ${baseVersion} (instead of active ${workflow.version}) for increment`);
       } else {
-        console.log(`[WARN] No versions found in DB, using active version ${baseVersion} for increment`);
+        console.log(`[INFO] No versions found in DB, using active version ${baseVersion} for increment`);
       }
-      
+
       const { data: incrementResult, error: incrementError } = await supabase
         .rpc('increment_version', { version_text: baseVersion });
-      
+
       if (incrementError) {
         throw new Error(`Failed to generate version number: ${incrementError.message}`);
       }
-      
+
       newVersionNumber = incrementResult;
-      console.log(`[SUCCESS] Generated version number: ${newVersionNumber} (incremented from ${baseVersion})`);
+      console.log(`[VERSION] Generated ${newVersionNumber} (incremented from ${baseVersion})`);
     }
 
     // Check if version already exists

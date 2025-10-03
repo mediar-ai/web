@@ -366,6 +366,13 @@ export function UnifiedWorkflowDialog({
 
       const updatedYaml = yaml.dump(parsedYaml);
 
+      console.log('📅 Updated YAML with cron config:', {
+        cron: cronConfig.expression,
+        timezone: cronConfig.timezone,
+        enabled: cronConfig.enabled,
+        yamlPreview: updatedYaml.substring(0, 200) + '...'
+      });
+
       // Step 3: Create new version with updated YAML
       const versionResponse = await fetch(`/api/remote-workflows/${workflow.id}/versions`, {
         method: 'POST',
@@ -377,7 +384,11 @@ export function UnifiedWorkflowDialog({
         }),
       });
 
+      console.log('📦 Version creation response status:', versionResponse.status);
+
       const versionData = await versionResponse.json();
+
+      console.log('📦 Version creation result:', versionData);
 
       if (!versionData.success) {
         setErrorMessage(versionData.error || 'Failed to create new version');
@@ -385,6 +396,13 @@ export function UnifiedWorkflowDialog({
       }
 
       const newVersionNumber = versionData.version?.version_number;
+
+      // Log GitHub sync result
+      if (versionData.github_sync) {
+        console.log('🐙 GitHub sync result:', versionData.github_sync);
+      } else {
+        console.warn('⚠️ No GitHub sync info in response');
+      }
 
       // Step 4: Update workflow-level cron config in database for scheduler
       const cronDbResponse = await fetch(`/api/remote-workflows/${workflow.id}/cron`, {
