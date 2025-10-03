@@ -72,9 +72,21 @@ export async function POST(request: NextRequest) {
     const foldersWithJsChanges = new Set<string>(); // folders with only JS changes
     const jsOnlyWorkflows = new Set<string>(); // track which workflows had JS-only changes
     const changedJsFiles = new Map<string, string[]>(); // folder -> list of changed JS files
+    const deletedWorkflows = new Set<string>(); // folders with deleted workflows
 
     for (const commit of payload.commits) {
       const allFiles = [...(commit.added || []), ...(commit.modified || [])];
+      const removedFiles = commit.removed || [];
+
+      // Process removed files first to detect workflow deletions
+      for (const file of removedFiles) {
+        const yamlMatch = file.match(/^([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
+        if (yamlMatch) {
+          const folderName = yamlMatch[1];
+          deletedWorkflows.add(folderName);
+          console.log(`🗑️ Detected workflow deletion: ${folderName}`);
+        }
+      }
 
       for (const file of allFiles) {
         // Match pattern: onedriveautomation/workflow.yaml or terminator.yml
@@ -127,15 +139,103 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (changedWorkflows.size === 0) {
-      return NextResponse.json({ message: 'No workflow changes' });
-    }
-
     const results = {
       updated: [] as string[],
       created: [] as string[],
+      deleted: [] as string[],
       errors: [] as string[]
     };
+
+    // Process workflow deletions first
+    for (const folderName of deletedWorkflows) {
+      try {
+        console.log(`🔍 Looking up workflow for deletion: ${folderName}`);
+
+        // Find workflow by github_folder
+        const { data: workflow } = await supabase
+          .from('deployed_workflows')
+          .select('id, name')
+          .eq('github_folder', folderName)
+          .single();
+
+        if (!workflow) {
+          console.log(`ℹ️ Workflow ${folderName} not found in database - already deleted or never existed`);
+          continue;
+        }
+
+        console.log(`🗑️ Deleting workflow ${workflow.name} (ID: ${workflow.id}) from folder ${folderName}`);
+
+        // Step 1: Get all storage file paths BEFORE deleting DB records
+        const { data: files } = await supabase
+          .from('workflow_files')
+          .select('storage_path')
+          .eq('workflow_id', workflow.id);
+
+        // Step 2: Delete files from storage
+        if (files && files.length > 0) {
+          console.log(`📦 Deleting ${files.length} storage files for workflow ${workflow.id}`);
+          const storagePaths = files.map(f => f.storage_path);
+
+          const { error: storageError } = await supabase.storage
+            .from('workflow-files')
+            .remove(storagePaths);
+
+          if (storageError) {
+            console.error(`⚠️ Warning: Failed to delete some storage files: ${storageError.message}`);
+            // Continue anyway - don't block DB deletion
+          } else {
+            console.log(`✅ Deleted ${storagePaths.length} files from storage`);
+          }
+        }
+
+        // Step 3: Log deletion to sync log BEFORE deleting workflow
+        await supabase
+          .from('github_workflow_sync_log')
+          .insert({
+            workflow_id: workflow.id,
+            sync_action: 'deleted',
+            github_sha: null,
+            github_commit_message: `Deleted from GitHub by ${payload.pusher?.name || 'unknown'}`,
+            success: true,
+            sync_metadata: {
+              deleted_from_github: true,
+              github_folder: folderName,
+              deleted_at: new Date().toISOString()
+            }
+          });
+
+        // Step 4: Delete workflow (CASCADE will delete related records)
+        const { error: deleteError } = await supabase
+          .from('deployed_workflows')
+          .delete()
+          .eq('id', workflow.id);
+
+        if (deleteError) {
+          results.errors.push(`${folderName}: Failed to delete - ${deleteError.message}`);
+          console.error(`❌ Failed to delete workflow ${workflow.id}: ${deleteError.message}`);
+        } else {
+          results.deleted.push(`${workflow.name} (${folderName})`);
+          console.log(`✅ Successfully deleted workflow ${workflow.name} (ID: ${workflow.id})`);
+        }
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.errors.push(`${folderName}: Deletion failed - ${errorMessage}`);
+        console.error(`❌ Error deleting workflow ${folderName}:`, error);
+      }
+    }
+
+    if (changedWorkflows.size === 0 && deletedWorkflows.size === 0) {
+      return NextResponse.json({ message: 'No workflow changes' });
+    }
+
+    if (changedWorkflows.size === 0) {
+      // Only deletions, return early
+      return NextResponse.json({
+        message: 'Workflow deletions processed',
+        results
+      });
+    }
 
     for (const [folderName, fileName] of changedWorkflows) {
       try {
