@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
-import cronstrue from 'cronstrue';
 import {
   WorkflowWithSettings,
   Execution,
   LiveExecutionStatus
 } from '@/lib/workflow-types';
 import { AnimatedBadge } from '@/components/ui/animated-badge';
+import { describeCronExpression } from '@/lib/cronParser';
 import { ExecutionSparkline } from '@/components/ui/sparkline';
 import {
   Clock,
@@ -163,22 +163,39 @@ export function WorkflowCardEnhanced({
               <h3 className="text-sm font-semibold text-gray-900 truncate">
                 {workflow.name}
               </h3>
-              <AnimatedBadge status={status as any} className="text-xs py-0.5 px-2">
-                {status.toUpperCase()}
-              </AnimatedBadge>
-              {workflow.cron_expression && (
+              {/* Only show status badge if it's meaningful (not deployed/running) */}
+              {status !== 'deployed' && status !== 'running' && (
+                <AnimatedBadge status={status as any} className="text-xs py-0.5 px-2">
+                  {status.toUpperCase()}
+                </AnimatedBadge>
+              )}
+              {/* Show calendar icon with schedule info for cron workflows */}
+              {workflow.cron_expression && workflow.cron_enabled && (
                 <Tooltip>
                   <TooltipTrigger>
-                    <Calendar className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                    <div className="flex items-center gap-1 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5">
+                      <Calendar className="w-3 h-3 text-gray-600 flex-shrink-0" />
+                      <span className="text-[10px] font-mono text-gray-600 uppercase">Scheduled</span>
+                    </div>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{(() => {
-                      try {
-                        return cronstrue.toString(workflow.cron_expression || '', { verbose: false });
-                      } catch {
-                        return `Schedule: ${workflow.cron_expression}`;
-                      }
-                    })()}</p>
+                  <TooltipContent className="max-w-xs">
+                    <p className="font-mono text-xs">{describeCronExpression(workflow.cron_expression)}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Timezone: {workflow.cron_timezone || 'UTC'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {/* Show paused schedule indicator */}
+              {workflow.cron_expression && !workflow.cron_enabled && (
+                <Tooltip>
+                  <TooltipTrigger>
+                    <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 opacity-50">
+                      <Calendar className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-[10px] font-mono text-gray-400 uppercase">Paused</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-xs text-gray-500">Schedule is paused</p>
+                    <p className="font-mono text-xs mt-1">{describeCronExpression(workflow.cron_expression)}</p>
                   </TooltipContent>
                 </Tooltip>
               )}
