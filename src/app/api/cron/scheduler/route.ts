@@ -196,12 +196,15 @@ export async function POST(_request: NextRequest) {
       try {
         console.log(`🚀 Triggering execution for workflow: ${workflow.name}`);
 
-        // Get preferred machine for this workflow
+        // Get preferred machine for this workflow (only if healthy)
         let preferredMachineId: number | undefined = undefined;
         try {
           const { data: preferredAssignment } = await supabase
             .from('workflow_machine_assignments')
-            .select('machine_id')
+            .select(`
+              machine_id,
+              remote_machines!inner(id, name, status, health_status)
+            `)
             .eq('workflow_id', workflow.id)
             .eq('is_active', true)
             .in('assignment_type', ['exclusive', 'preferred'])
@@ -210,8 +213,17 @@ export async function POST(_request: NextRequest) {
             .single();
 
           if (preferredAssignment) {
-            preferredMachineId = preferredAssignment.machine_id;
-            console.log(`   Using preferred machine ID ${preferredMachineId} for workflow ${workflow.id}`);
+            const machine = Array.isArray(preferredAssignment.remote_machines)
+              ? preferredAssignment.remote_machines[0]
+              : preferredAssignment.remote_machines;
+
+            // Only use preferred machine if it's active and healthy
+            if (machine && machine.status === 'active' && machine.health_status === 'healthy') {
+              preferredMachineId = preferredAssignment.machine_id;
+              console.log(`   Using preferred machine ${machine.name} (ID: ${preferredMachineId}) for workflow ${workflow.id}`);
+            } else {
+              console.log(`   Preferred machine ${machine?.name} (ID: ${preferredAssignment.machine_id}) is ${machine?.status}/${machine?.health_status}, using auto-assignment`);
+            }
           }
         } catch (_machineErr) {
           // No preferred machine - continue with auto-assignment
