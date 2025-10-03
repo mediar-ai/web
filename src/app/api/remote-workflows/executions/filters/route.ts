@@ -96,22 +96,40 @@ export async function GET(request: NextRequest) {
       : [];
     console.log('[Filters API] Statuses:', uniqueStatuses.length, uniqueStatuses);
 
-    // Fetch unique machines from executions of accessible workflows
-    const { data: machinesData, error: machinesError } = await supabase
+    // Fetch unique machine IDs from executions of accessible workflows
+    const { data: machineIdsData, error: machineIdsError } = await supabase
       .from('workflow_executions')
-      .select('assigned_machine_name')
+      .select('assigned_machine_id')
       .in('workflow_id', accessibleWorkflowIds)
-      .not('assigned_machine_name', 'is', null)
-      .order('assigned_machine_name');
+      .not('assigned_machine_id', 'is', null);
 
-    if (machinesError) {
-      console.error('[Filters API] Error fetching machines:', machinesError);
+    if (machineIdsError) {
+      console.error('[Filters API] Error fetching machine IDs:', machineIdsError);
     }
 
-    const uniqueMachines = machinesData
-      ? Array.from(new Set(machinesData.map((e: any) => e.assigned_machine_name).filter(Boolean))).sort()
+    const uniqueMachineIds = machineIdsData
+      ? Array.from(new Set(machineIdsData.map((e: any) => e.assigned_machine_id).filter(Boolean)))
       : [];
-    console.log('[Filters API] Machines:', uniqueMachines.length, uniqueMachines);
+    console.log('[Filters API] Unique machine IDs:', uniqueMachineIds.length, uniqueMachineIds);
+
+    // Fetch machine names from remote_machines table
+    let uniqueMachines: string[] = [];
+    if (uniqueMachineIds.length > 0) {
+      const { data: machinesData, error: machinesError } = await supabase
+        .from('remote_machines')
+        .select('name')
+        .in('id', uniqueMachineIds)
+        .order('name');
+
+      if (machinesError) {
+        console.error('[Filters API] Error fetching machine names:', machinesError);
+      }
+
+      uniqueMachines = machinesData
+        ? Array.from(new Set(machinesData.map((m: any) => m.name).filter(Boolean))).sort()
+        : [];
+      console.log('[Filters API] Machine names:', uniqueMachines.length, uniqueMachines);
+    }
 
     return NextResponse.json({
       success: true,

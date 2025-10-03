@@ -44,9 +44,10 @@ export async function POST(_request: NextRequest) {
   console.log(`🕐 [${currentTime.toISOString()}] Cron scheduler started`);
 
   try {
-    // 1. Get all active cron jobs
+    // 1. Get all active cron jobs from deployed_workflows_with_sequence view
+    // This view joins with the active version, so we can check the YAML
     const { data: workflows, error: fetchError } = await supabase
-      .from('deployed_workflows')
+      .from('deployed_workflows_with_sequence')
       .select(
         `
         id,
@@ -58,11 +59,12 @@ export async function POST(_request: NextRequest) {
         next_scheduled_execution,
         cron_max_concurrent,
         cron_retry_on_failure,
-        cron_retry_count
+        cron_retry_count,
+        automation_sequence_yaml
       `
       )
       .eq('cron_enabled', true)
-      .in('status', ['active', 'deployed'])
+      .eq('status', 'active')
       .not('cron_expression', 'is', null);
 
     if (fetchError) {
@@ -92,8 +94,29 @@ export async function POST(_request: NextRequest) {
       next_scheduled_execution: string;
     }> = [];
 
-    for (const workflow of workflows as ScheduledWorkflow[]) {
+    for (const workflow of workflows as (ScheduledWorkflow & { automation_sequence_yaml?: string })[]) {
       try {
+        // IMPORTANT: Verify that the active version's YAML actually has cron enabled
+        // This prevents workflows from running when they shouldn't
+        if (workflow.automation_sequence_yaml) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const yaml = require('js-yaml');
+            const yamlContent = yaml.load(workflow.automation_sequence_yaml);
+
+            // Check if cron is actually enabled in the YAML
+            if (!yamlContent?.cron || yamlContent?.cron_enabled === false) {
+              console.log(
+                `⏭️  Workflow ${workflow.name} has cron_enabled in DB but not in active version YAML, skipping`
+              );
+              continue;
+            }
+          } catch (yamlError) {
+            console.error(`❌ Failed to parse YAML for workflow ${workflow.id}:`, yamlError);
+            continue;
+          }
+        }
+
         const cronExpression = workflow.cron_expression;
         const timezone = workflow.cron_timezone || 'UTC';
 
