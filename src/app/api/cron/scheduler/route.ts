@@ -64,7 +64,7 @@ export async function POST(_request: NextRequest) {
       `
       )
       .eq('cron_enabled', true)
-      .eq('status', 'active')
+      .eq('status', 'deployed')
       .not('cron_expression', 'is', null);
 
     if (fetchError) {
