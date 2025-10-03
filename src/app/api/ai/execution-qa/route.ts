@@ -250,7 +250,7 @@ Be specific and detailed in your answers. If you need more information, use the 
       }
     });
 
-    // Return the stream
+    // Return the stream with data stream protocol (supports tool calls)
     return result.toTextStreamResponse();
   } catch (error) {
     console.error('Error in execution Q&A:', error);
