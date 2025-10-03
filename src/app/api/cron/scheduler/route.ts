@@ -217,12 +217,13 @@ export async function POST(_request: NextRequest) {
               ? preferredAssignment.remote_machines[0]
               : preferredAssignment.remote_machines;
 
-            // Only use preferred machine if it's active and healthy
-            if (machine && machine.status === 'active' && machine.health_status === 'healthy') {
+            // Use preferred machine if active (even if unhealthy - user explicitly chose it)
+            // Only skip if machine is inactive
+            if (machine && machine.status === 'active') {
               preferredMachineId = preferredAssignment.machine_id;
-              console.log(`   Using preferred machine ${machine.name} (ID: ${preferredMachineId}) for workflow ${workflow.id}`);
+              console.log(`   Using preferred machine ${machine.name} (ID: ${preferredMachineId}, health: ${machine.health_status}) for workflow ${workflow.id}`);
             } else {
-              console.log(`   Preferred machine ${machine?.name} (ID: ${preferredAssignment.machine_id}) is ${machine?.status}/${machine?.health_status}, using auto-assignment`);
+              console.log(`   Preferred machine ${machine?.name} (ID: ${preferredAssignment.machine_id}) is inactive, using auto-assignment`);
             }
           }
         } catch (_machineErr) {
