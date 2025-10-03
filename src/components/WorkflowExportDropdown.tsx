@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Download, FileText, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 interface WorkflowItem {
   id: number;
@@ -154,9 +155,8 @@ export function WorkflowExportDropdown({ workflows, userId, disabled = false }: 
         totalTimeMs: errorTime,
         timestamp: new Date().toISOString()
       });
-      
-      // You could add a toast notification here if available
-      alert(`Failed to export workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      toast.error(`Failed to export workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       console.log('🏁 [UI-EXPORT] Export process finished:', {
         exportId,

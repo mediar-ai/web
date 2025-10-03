@@ -29,6 +29,7 @@ import {
   Search,
   Download
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 // Risk levels for different tool types
 const TOOL_RISK_LEVELS: Record<string, { level: 'high' | 'medium' | 'low'; label: string; icon: any }> = {
@@ -318,7 +319,7 @@ export default function InternalDashboard() {
       workflow.steps.findLastIndex(s => s.status === 'completed' && s.riskLevel === 'low');
     
     if (rollbackToStep < 0) {
-      alert('No safe rollback point found');
+      toast.warning('No safe rollback point found');
       return;
     }
 

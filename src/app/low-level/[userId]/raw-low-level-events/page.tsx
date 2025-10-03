@@ -28,6 +28,7 @@ import { type LowLevelEvent } from '@/types';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowDown, ArrowUp, Calendar, Check, ChevronDown, ChevronUp, Clipboard, Database, Download, HardDrive, RefreshCw } from 'lucide-react';
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 // Helper function to estimate memory usage of events data
 const estimateMemoryUsage = (events: LowLevelEvent[]): number => {
@@ -627,7 +628,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     // Check memory limit before loading more
     const currentMemoryMB = memoryUsage / (1024 * 1024);
     if (currentMemoryMB > MAX_MEMORY_MB) {
-      alert(`Memory limit reached (${formatBytes(memoryUsage)}). Please use filters or clear the view to load more data.`);
+      toast.warning(`Memory limit reached (${formatBytes(memoryUsage)}). Please use filters or clear the view to load more data.`);
       return;
     }
     
@@ -675,13 +676,14 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     
     // DANGER ZONE: Loading from API
     const estimatedMemoryMB = remaining * 2048 / (1024 * 1024); // 2KB per event estimate
-    
+
     if (remaining > 50000) {
-      alert(
+      toast.error(
         `[WARN] EXTREME DANGER [WARN]\n\n` +
         `You're trying to load ${remaining.toLocaleString()} events (${estimatedMemoryMB.toFixed(1)}MB).\n` +
         `This WILL crash your browser and could freeze your computer.\n\n` +
-        `Consider using filters or Load More instead.`
+        `Consider using filters or Load More instead.`,
+        { duration: 10000 }
       );
       return;
     }
@@ -708,11 +710,12 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       currentLoadedCount += result.events.length;
       
       setLoadAllProgress({ loaded: currentLoadedCount, total: totalAvailable });
-        
+
+
         // Check memory usage during loading
         const currentMem = estimateMemoryUsage(displayEvents) / (1024 * 1024);
         if (currentMem > MAX_MEMORY_MB) {
-          alert(`Memory limit reached (${currentMem.toFixed(1)}MB). Stopping load.`);
+          toast.warning(`Memory limit reached (${currentMem.toFixed(1)}MB). Stopping load.`);
           break;
         }
       
@@ -884,19 +887,20 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       // Update storage info (should show 0 now)
       const info = await storageRef.current.getStorageInfo();
       setStorageInfo(info);
-      
+
       console.log('[RawEvents] [SUCCESS] Successfully cleared IndexedDB storage');
-      alert('[SUCCESS] IndexedDB storage cleared successfully!\n\nFresh data will be loaded automatically.');
-      
+      toast.success('IndexedDB storage cleared successfully! Fresh data will be loaded automatically.');
+
       // Trigger a fresh fetch after clearing
       await fetchRawEvents(INITIAL_CHUNK_SIZE, 0);
       
     } catch (error) {
       console.error('[RawEvents] [ERROR] Failed to clear IndexedDB:', error);
-      alert(
-        '[ERROR] Failed to clear IndexedDB storage.\n\n' +
-        'Error: ' + (error instanceof Error ? error.message : String(error)) + '\n\n' +
-        'Try refreshing the page or closing other tabs with this app open.'
+      toast.error(
+        'Failed to clear IndexedDB storage. ' +
+        'Error: ' + (error instanceof Error ? error.message : String(error)) + '. ' +
+        'Try refreshing the page or closing other tabs with this app open.',
+        { duration: 8000 }
       );
     }
   };
