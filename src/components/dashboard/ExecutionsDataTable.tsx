@@ -888,7 +888,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
       {/* Table */}
       <div className="border-2 border-black executions-table-wrapper">
-          <Table style={{ minWidth: '1200px' }}>
+          <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="bg-black hover:bg-black">
