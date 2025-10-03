@@ -162,22 +162,46 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch machine names from remote_machines table
-    let uniqueMachines: string[] = [];
-    if (uniqueMachineIds.length > 0) {
-      const { data: machinesData, error: machinesError } = await supabase
-        .from('remote_machines')
-        .select('name')
-        .in('id', uniqueMachineIds)
-        .order('name');
+    // Option 1: Show only machines that have been used in executions
+    // Option 2: Show ALL machines in remote_machines table
 
-      if (machinesError) {
-        console.error('[Filters API] Error fetching machine names:', machinesError);
+    // For now, let's show ALL machines to match the user's expectation
+    // Later we can add a toggle if they want to filter to "used only"
+
+    let uniqueMachines: string[] = [];
+
+    // Get all machines from remote_machines table
+    const { data: allMachinesData, error: allMachinesError } = await supabase
+      .from('remote_machines')
+      .select('name, organization_id')
+      .order('name');
+
+    if (allMachinesError) {
+      console.error('[Filters API] Error fetching all machines:', allMachinesError);
+    }
+
+    console.log('[Filters API] All machines in DB:', allMachinesData?.length, allMachinesData);
+
+    // Filter by org if remote_machines has organization_id
+    if (allMachinesData && allMachinesData.length > 0) {
+      let filteredMachines = allMachinesData;
+
+      if ('organization_id' in allMachinesData[0]) {
+        console.log('[Filters API] remote_machines has organization_id column');
+        if (isMediarOrg || (isMediarAdmin && !viewOrgId)) {
+          // Mediar sees all machines
+          filteredMachines = allMachinesData;
+        } else {
+          // Regular org sees only their machines
+          filteredMachines = allMachinesData.filter((m: any) => m.organization_id === orgId);
+        }
+        console.log('[Filters API] After org filter on machines:', filteredMachines.length);
+      } else {
+        console.log('[Filters API] remote_machines does NOT have organization_id column - showing all');
       }
 
-      uniqueMachines = machinesData
-        ? Array.from(new Set(machinesData.map((m: any) => m.name).filter(Boolean))).sort()
-        : [];
-      console.log('[Filters API] Machine names:', uniqueMachines.length, uniqueMachines);
+      uniqueMachines = Array.from(new Set(filteredMachines.map((m: any) => m.name).filter(Boolean))).sort();
+      console.log('[Filters API] Final machine names:', uniqueMachines.length, uniqueMachines);
     }
 
     return NextResponse.json({
