@@ -26,6 +26,7 @@ import * as yaml from 'js-yaml';
 import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { CronScheduleEditor, type CronConfig } from './CronScheduleEditor';
+import { toast } from 'sonner';
 
 interface WorkflowTemplate {
   name: string;
@@ -123,7 +124,7 @@ export function CreateWorkflowDialog({
 
   const handleCreate = async () => {
     if (!name.trim() || !automationSequence.trim()) {
-      alert('Name and automation sequence are required');
+      toast.error('Name and automation sequence are required');
       return;
     }
 
@@ -173,20 +174,18 @@ export function CreateWorkflowDialog({
         const folderName = workflow.github_folder ||
                           name.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-        alert(
-          `✅ Workflow "${name}" created successfully!\n\n` +
-          `🔄 Synced to GitHub: ${folderName}/workflow.yaml\n` +
-          `📦 Version: ${workflow.version_info?.version_number || '1.0.0'}`
+        toast.success(
+          `Workflow "${name}" created successfully! Synced to GitHub: ${folderName}/workflow.yaml - Version: ${workflow.version_info?.version_number || '1.0.0'}`
         );
         onWorkflowCreated?.(result.workflow);
         onOpenChange(false);
         resetForm();
       } else {
-        alert(result.error || 'Failed to create workflow');
+        toast.error(result.error || 'Failed to create workflow');
       }
     } catch (error) {
       console.error('Error creating workflow:', error);
-      alert('Failed to create workflow');
+      toast.error('Failed to create workflow');
     } finally {
       setLoading(false);
     }
