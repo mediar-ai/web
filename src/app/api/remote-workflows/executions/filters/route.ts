@@ -100,47 +100,74 @@ export async function GET(request: NextRequest) {
     // This section is kept for debugging but not used
     console.log('[Filters API] Skipping execution-based machine lookup, querying remote_machines directly');
 
-    // Fetch machine names from remote_machines table
-    // Option 1: Show only machines that have been used in executions
-    // Option 2: Show ALL machines in remote_machines table
-
-    // For now, let's show ALL machines to match the user's expectation
-    // Later we can add a toggle if they want to filter to "used only"
-
+    // Fetch ALL machines from remote_machines table
     let uniqueMachines: string[] = [];
 
-    // Get all machines from remote_machines table
+    console.log('[Filters API] Querying remote_machines table...');
     const { data: allMachinesData, error: allMachinesError } = await supabase
       .from('remote_machines')
       .select('name, organization_id')
       .order('name');
 
     if (allMachinesError) {
-      console.error('[Filters API] Error fetching all machines:', allMachinesError);
+      console.error('[Filters API] Error fetching machines from remote_machines:', allMachinesError);
+      // Return empty machines on error
+      return NextResponse.json({
+        success: true,
+        filters: {
+          workflowNames: uniqueWorkflowNames,
+          statuses: uniqueStatuses,
+          machines: [],
+        },
+      });
     }
 
-    console.log('[Filters API] All machines in DB:', allMachinesData?.length, allMachinesData);
+    console.log('[Filters API] Raw machines from DB:', {
+      count: allMachinesData?.length,
+      data: allMachinesData,
+      hasOrgColumn: allMachinesData && allMachinesData.length > 0 ? 'organization_id' in allMachinesData[0] : 'no data'
+    });
 
     // Filter by org if remote_machines has organization_id
     if (allMachinesData && allMachinesData.length > 0) {
       let filteredMachines = allMachinesData;
 
       if ('organization_id' in allMachinesData[0]) {
-        console.log('[Filters API] remote_machines has organization_id column');
+        console.log('[Filters API] Filtering machines by org. Current context:', {
+          orgId,
+          isMediarOrg,
+          isMediarAdmin,
+          viewOrgId
+        });
+
         if (isMediarOrg || (isMediarAdmin && !viewOrgId)) {
           // Mediar sees all machines
+          console.log('[Filters API] Mediar/Admin view - showing all machines');
           filteredMachines = allMachinesData;
         } else {
           // Regular org sees only their machines
-          filteredMachines = allMachinesData.filter((m: any) => m.organization_id === orgId);
+          console.log('[Filters API] Regular org view - filtering by orgId:', orgId);
+          const beforeFilter = allMachinesData.length;
+          filteredMachines = allMachinesData.filter((m: any) => {
+            const matches = m.organization_id === orgId;
+            if (!matches) {
+              console.log('[Filters API] Excluding machine:', m.name, 'org:', m.organization_id, 'vs', orgId);
+            }
+            return matches;
+          });
+          console.log('[Filters API] Filtered from', beforeFilter, 'to', filteredMachines.length, 'machines');
         }
-        console.log('[Filters API] After org filter on machines:', filteredMachines.length);
       } else {
-        console.log('[Filters API] remote_machines does NOT have organization_id column - showing all');
+        console.log('[Filters API] No organization_id column - showing all machines');
       }
 
       uniqueMachines = Array.from(new Set(filteredMachines.map((m: any) => m.name).filter(Boolean))).sort();
-      console.log('[Filters API] Final machine names:', uniqueMachines.length, uniqueMachines);
+      console.log('[Filters API] Final unique machine names:', {
+        count: uniqueMachines.length,
+        names: uniqueMachines
+      });
+    } else {
+      console.log('[Filters API] No machines data to process');
     }
 
     return NextResponse.json({
