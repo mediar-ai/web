@@ -305,6 +305,12 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             </span>
           );
         },
+        filterFn: (row, columnId, filterValue) => {
+          if (!filterValue) return true; // Show all if no filter
+          const workflow = workflows.find((w) => w.id === row.original.workflow_id);
+          const workflowName = workflow?.name || `Workflow ${row.original.workflow_id}`;
+          return workflowName === filterValue;
+        },
       },
       {
         accessorKey: 'status',
@@ -461,6 +467,11 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
               {machineName || '-'}
             </span>
           );
+        },
+        filterFn: (row, columnId, filterValue) => {
+          if (!filterValue) return true; // Show all if no filter
+          const machineValue = row.original.assigned_machine_name || '';
+          return machineValue === filterValue;
         },
       },
       {
