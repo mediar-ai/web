@@ -134,10 +134,9 @@ export function WorkflowCardEnhanced({
       <div
         ref={cardRef}
         className={cn(
-          'group relative bg-white border border-black transition-all duration-200',
-          isHovered && 'shadow-md',
-          isSelected && 'border-2',
-          'hover:shadow-sm',
+          'group relative bg-white transition-all duration-200',
+          isHovered && 'bg-gray-50',
+          isSelected && 'bg-gray-100',
           className
         )}
         onMouseEnter={() => setIsHovered(true)}
@@ -145,9 +144,9 @@ export function WorkflowCardEnhanced({
         onClick={onSelect}
       >
         {/* Compact Card Content */}
-        <div className="p-3">
+        <div className="p-2">
           {/* Main Single Line */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {/* Name and Status */}
             <div className="flex items-center gap-2 w-80 flex-shrink-0">
               <Tooltip>
@@ -212,37 +211,35 @@ export function WorkflowCardEnhanced({
             <div className="text-gray-300">|</div>
 
             {/* Metrics - Compact */}
-            <div className="flex items-center gap-4 text-xs flex-1">
+            <div className="flex items-center gap-3 text-xs flex-1">
               {/* Success Rate */}
               <div className="flex items-center gap-1">
-                <span className="font-mono font-medium">
+                <span className="font-mono font-medium text-[11px]">
                   {metrics.successRate.toFixed(0)}%
                 </span>
-                <span className="text-gray-500">success</span>
+                <span className="text-gray-500 text-[11px]">success</span>
               </div>
 
               {/* Average Duration */}
               <div className="flex items-center gap-1">
                 <Clock className="w-3 h-3 text-gray-400" />
-                <span className="font-mono font-medium">
+                <span className="font-mono font-medium text-[11px]">
                   {formatDuration(metrics.avgDuration)}
                 </span>
-                <span className="text-gray-500">avg</span>
               </div>
 
               {/* Total Runs */}
               <div className="flex items-center gap-1">
                 <Activity className="w-3 h-3 text-gray-400" />
-                <span className="font-mono font-medium">{metrics.totalRuns}</span>
-                <span className="text-gray-500">runs</span>
+                <span className="font-mono font-medium text-[11px]">{metrics.totalRuns}</span>
               </div>
 
               {/* Execution Sparkline */}
-              <div className="ml-auto mr-2">
+              <div className="ml-auto mr-1">
                 <ExecutionSparkline
                   executions={executions}
-                  width={60}
-                  height={20}
+                  width={50}
+                  height={16}
                 />
               </div>
             </div>
@@ -256,7 +253,7 @@ export function WorkflowCardEnhanced({
                   e.stopPropagation();
                   onExecute?.();
                 }}
-                className="h-7 px-2 text-xs border-black hover:bg-black hover:text-white"
+                className="h-6 px-2 text-[11px] border-black hover:bg-black hover:text-white"
               >
                 <Zap className="w-3 h-3 mr-1" />
                 Run
@@ -268,7 +265,7 @@ export function WorkflowCardEnhanced({
                   e.stopPropagation();
                   onView?.();
                 }}
-                className="h-7 px-2 text-xs border-black hover:bg-black hover:text-white"
+                className="h-6 px-2 text-[11px] border-black hover:bg-black hover:text-white"
               >
                 <Eye className="w-3 h-3 mr-1" />
                 View
@@ -280,7 +277,7 @@ export function WorkflowCardEnhanced({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0 hover:bg-gray-100"
+                    className="h-6 w-6 p-0 hover:bg-gray-100"
                   >
                     <MoreVertical className="h-3 w-3" />
                   </Button>
@@ -333,7 +330,7 @@ export function WorkflowCardEnhanced({
 
           {/* Optional Description Line */}
           {workflow.description && (
-            <p className="mt-2 text-xs text-gray-600 line-clamp-1 pl-0">
+            <p className="mt-1 text-[11px] text-gray-600 line-clamp-1 pl-0">
               {workflow.description}
             </p>
           )}
