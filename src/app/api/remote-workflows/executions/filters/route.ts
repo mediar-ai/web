@@ -96,21 +96,70 @@ export async function GET(request: NextRequest) {
       : [];
     console.log('[Filters API] Statuses:', uniqueStatuses.length, uniqueStatuses);
 
-    // Fetch unique machine IDs from executions of accessible workflows
+    // Fetch unique machine IDs from executions
+    // Try to query with organization_id if it exists on workflow_executions
     const { data: machineIdsData, error: machineIdsError } = await supabase
       .from('workflow_executions')
-      .select('assigned_machine_id')
-      .in('workflow_id', accessibleWorkflowIds)
-      .not('assigned_machine_id', 'is', null);
+      .select('assigned_machine_id, organization_id')
+      .not('assigned_machine_id', 'is', null)
+      .limit(100); // Get sample to check schema
+
+    console.log('[Filters API] Sample execution data:', machineIdsData?.slice(0, 3));
+
+    let uniqueMachineIds: number[] = [];
 
     if (machineIdsError) {
       console.error('[Filters API] Error fetching machine IDs:', machineIdsError);
-    }
+      // If error (e.g., column doesn't exist), fall back to workflow-based filtering
+      const { data: fallbackData } = await supabase
+        .from('workflow_executions')
+        .select('assigned_machine_id')
+        .in('workflow_id', accessibleWorkflowIds)
+        .not('assigned_machine_id', 'is', null);
 
-    const uniqueMachineIds = machineIdsData
-      ? Array.from(new Set(machineIdsData.map((e: any) => e.assigned_machine_id).filter(Boolean)))
-      : [];
-    console.log('[Filters API] Unique machine IDs:', uniqueMachineIds.length, uniqueMachineIds);
+      uniqueMachineIds = fallbackData
+        ? Array.from(new Set(fallbackData.map((e: any) => e.assigned_machine_id).filter(Boolean)))
+        : [];
+      console.log('[Filters API] Machine IDs (via workflow filter):', uniqueMachineIds.length, uniqueMachineIds);
+    } else {
+      // Check if organization_id column exists in the result
+      const hasOrgId = machineIdsData && machineIdsData.length > 0 && 'organization_id' in machineIdsData[0];
+      console.log('[Filters API] workflow_executions has organization_id?', hasOrgId);
+
+      let filteredData: any[] = machineIdsData || [];
+      if (hasOrgId) {
+        // Filter by organization_id
+        if (isMediarOrg || (isMediarAdmin && !viewOrgId)) {
+          // Mediar sees all - remove limit to get ALL executions
+          const { data: allMachineData } = await supabase
+            .from('workflow_executions')
+            .select('assigned_machine_id, organization_id')
+            .not('assigned_machine_id', 'is', null);
+          filteredData = allMachineData || [];
+        } else {
+          // Filter by current org - remove limit to get ALL org executions
+          const { data: orgMachineData } = await supabase
+            .from('workflow_executions')
+            .select('assigned_machine_id, organization_id')
+            .eq('organization_id', orgId)
+            .not('assigned_machine_id', 'is', null);
+          filteredData = orgMachineData || [];
+        }
+        console.log('[Filters API] After org filter:', filteredData.length, 'executions');
+      } else {
+        // No org_id column, so query again with workflow filter
+        const { data: workflowFilteredData } = await supabase
+          .from('workflow_executions')
+          .select('assigned_machine_id')
+          .in('workflow_id', accessibleWorkflowIds)
+          .not('assigned_machine_id', 'is', null);
+        filteredData = workflowFilteredData || [];
+        console.log('[Filters API] Using workflow filter (no org_id column):', filteredData.length, 'executions');
+      }
+
+      uniqueMachineIds = Array.from(new Set(filteredData.map((e: any) => e.assigned_machine_id).filter(Boolean)));
+      console.log('[Filters API] Unique machine IDs:', uniqueMachineIds.length, uniqueMachineIds);
+    }
 
     // Fetch machine names from remote_machines table
     let uniqueMachines: string[] = [];
