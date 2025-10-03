@@ -698,6 +698,24 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
   return (
     <div className="w-full">
+      <style dangerouslySetInnerHTML={{__html: `
+        .executions-table-wrapper::-webkit-scrollbar {
+          height: 14px;
+        }
+        .executions-table-wrapper::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-top: 2px solid black;
+        }
+        .executions-table-wrapper::-webkit-scrollbar-thumb {
+          background: black;
+          border: 1px solid black;
+        }
+        .executions-table-wrapper {
+          overflow-x: scroll !important;
+          scrollbar-width: thin;
+          scrollbar-color: black #f1f1f1;
+        }
+      `}} />
       {/* Table Controls */}
       <div className="flex flex-col gap-2 py-2">
         <div className="flex items-center justify-between gap-2">
@@ -869,8 +887,8 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       </div>
 
       {/* Table */}
-      <div className="border-2 border-black overflow-x-scroll">
-        <Table>
+      <div className="border-2 border-black executions-table-wrapper">
+          <Table style={{ minWidth: '1200px' }}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="bg-black hover:bg-black">
