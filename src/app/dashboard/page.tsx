@@ -525,7 +525,7 @@ function DashboardContent() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <div className="p-4">
         {/* Header */}
         <div className="max-w-7xl mx-auto">
           <PageHeader
@@ -542,26 +542,25 @@ function DashboardContent() {
             </div>
           ) : (
             <>
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              {/* Stats Bar - Inline */}
+              <div className="border-2 border-black p-2 mb-4 flex items-center gap-6">
               {stats.map((stat) => {
                 const Icon = stat.icon;
                 return (
-                  <div key={stat.label} className="border-2 border-black p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <Icon className="w-5 h-5" />
-                      <span className="font-mono text-xs text-gray-600">{stat.change}</span>
+                  <div key={stat.label} className="flex items-center gap-2">
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="font-mono text-sm font-medium text-gray-600 uppercase">{stat.label}</span>
+                      <span className="font-mono text-lg font-bold">{stat.value}</span>
                     </div>
-                    <p className="font-mono text-2xl font-bold mb-1">{stat.value}</p>
-                    <p className="font-mono text-xs text-gray-600">{stat.label}</p>
                   </div>
                 );
               })}
             </div>
 
             {/* Header with Actions */}
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold font-mono uppercase">Available Workflows</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold font-mono uppercase">Available Workflows</h2>
               <div className="flex items-center gap-2">
                 {/* Command Bar */}
                 <button
@@ -589,9 +588,9 @@ function DashboardContent() {
             </div>
 
             {/* Workflows List */}
-            <div className="space-y-4 mb-8">
+            <div className="mb-4">
               {workflows.length > 0 ? (
-                <div className="grid gap-4">
+                <div className="border-2 border-black divide-y divide-gray-200">
                   {workflows.map((workflow, index) => (
                     <WorkflowCardEnhanced
                       key={workflow.id}
@@ -627,8 +626,8 @@ function DashboardContent() {
 
             {/* Recent Executions */}
             {(executions.length > 0 || executionsLoading) && (
-              <div className="space-y-4 mt-8">
-                <h2 className="text-lg font-bold font-mono uppercase">Recent Executions</h2>
+              <div className="space-y-3 mt-4">
+                <h2 className="text-sm font-bold font-mono uppercase">Recent Executions</h2>
 
                 <ExecutionsDataTable
                   executions={executions}
