@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders } from '@/lib/cors';
 
 /**
  * GET /api/remote-workflows/executions/[executionId]/results
@@ -19,7 +18,7 @@ export async function GET(
     if (!supabaseUrl || !supabaseServiceKey) {
       return NextResponse.json(
         { success: false, error: 'Missing required environment variables' },
-        { status: 500, headers: corsHeaders }
+        { status: 500 }
       );
     }
 
@@ -38,7 +37,7 @@ export async function GET(
           success: false,
           error: error?.message || 'Execution not found'
         },
-        { status: 404, headers: corsHeaders }
+        { status: 404 }
       );
     }
 
@@ -51,8 +50,7 @@ export async function GET(
           status: execution.status,
           results: execution.results
         }
-      },
-      { headers: corsHeaders }
+      }
     );
   } catch (error) {
     console.error('Error fetching execution results:', error);
@@ -61,11 +59,11 @@ export async function GET(
         success: false,
         error: error instanceof Error ? error.message : 'Internal server error'
       },
-      { status: 500, headers: corsHeaders }
+      { status: 500 }
     );
   }
 }
 
 export async function OPTIONS() {
-  return new NextResponse(null, { status: 200, headers: corsHeaders });
+  return new NextResponse(null, { status: 200 });
 }

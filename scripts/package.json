@@ -19,7 +19,9 @@
     "quote:test:local": "node test_specific_quote.js --local"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@octokit/rest": "^22.0.0",
+    "dotenv": "^17.2.3"
   },
   "keywords": [
     "mcp",
@@ -29,4 +31,4 @@
   ],
   "author": "Browser Workflow Capture Team",
   "license": "MIT"
-} 
+}
