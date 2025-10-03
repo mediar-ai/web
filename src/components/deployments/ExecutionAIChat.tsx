@@ -91,6 +91,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let assistantContent = '';
+      let buffer = '';
 
       if (reader) {
         const assistantMessage: Message = {
@@ -106,42 +107,26 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value);
-          // Process the streaming response
-          const lines = chunk.split('\n');
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+
+          // Keep the last incomplete line in the buffer
+          buffer = lines.pop() || '';
 
           for (const line of lines) {
-            if (line.trim()) {
-              // Handle different streaming formats
-              // Format 1: "0:content"
-              if (line.startsWith('0:')) {
-                const content = line.slice(2).replace(/^"|"$/g, '').trim();
-                if (content) {
-                  assistantContent += content;
-                }
-              }
-              // Format 2: Plain text
-              else if (!line.startsWith('data:') && !line.includes(':')) {
-                assistantContent += line;
-              }
-              // Format 3: SSE data format
-              else if (line.startsWith('data: ')) {
-                const data = line.slice(6).trim();
-                if (data && data !== '[DONE]') {
-                  try {
-                    const parsed = JSON.parse(data);
-                    if (parsed.content) {
-                      assistantContent += parsed.content;
-                    }
-                  } catch {
-                    // If not JSON, treat as plain text
-                    assistantContent += data;
-                  }
-                }
-              }
+            if (!line.trim() || !line.startsWith('data: ')) continue;
 
-              // Update the message in real-time
-              if (assistantContent) {
+            const data = line.slice(6).trim();
+            if (!data || data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              // Handle text delta chunks
+              if (parsed.type === 'text-delta' && parsed.textDelta) {
+                assistantContent += parsed.textDelta;
+
+                // Update the message in real-time
                 setMessages(prev => {
                   const newMessages = [...prev];
                   const lastMessage = newMessages[newMessages.length - 1];
@@ -151,6 +136,16 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                   return newMessages;
                 });
               }
+              // Log tool calls for debugging
+              else if (parsed.type === 'tool-input-start') {
+                console.log('[Tool Call]:', parsed.toolName);
+              }
+              else if (parsed.type === 'tool-result') {
+                console.log('[Tool Result]:', parsed.toolName);
+              }
+            } catch (e) {
+              // Ignore parse errors for malformed chunks
+              console.debug('Failed to parse chunk:', data);
             }
           }
         }
