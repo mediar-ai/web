@@ -196,6 +196,28 @@ export async function POST(_request: NextRequest) {
       try {
         console.log(`🚀 Triggering execution for workflow: ${workflow.name}`);
 
+        // Get preferred machine for this workflow
+        let preferredMachineId: number | undefined = undefined;
+        try {
+          const { data: preferredAssignment } = await supabase
+            .from('workflow_machine_assignments')
+            .select('machine_id')
+            .eq('workflow_id', workflow.id)
+            .eq('is_active', true)
+            .in('assignment_type', ['exclusive', 'preferred'])
+            .order('priority', { ascending: true })
+            .limit(1)
+            .single();
+
+          if (preferredAssignment) {
+            preferredMachineId = preferredAssignment.machine_id;
+            console.log(`   Using preferred machine ID ${preferredMachineId} for workflow ${workflow.id}`);
+          }
+        } catch (_machineErr) {
+          // No preferred machine - continue with auto-assignment
+          console.log(`   No preferred machine found for workflow ${workflow.id}, using auto-assignment`);
+        }
+
         // Use public URL with service role key for authentication
         // Add the Vercel bypass token if available, otherwise fall back to public URL
         const vercelBypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
@@ -228,6 +250,7 @@ export async function POST(_request: NextRequest) {
           body: JSON.stringify({
             parameters: {}, // Changed from execution_params to parameters
             client_id: 'cron-scheduler',
+            ...(preferredMachineId && { machine_id: preferredMachineId }), // Include preferred machine if found
           }),
         });
 
