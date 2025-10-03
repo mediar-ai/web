@@ -37,6 +37,36 @@ export async function POST(request: NextRequest) {
     const branch = payload.ref.split('/').pop();
     const isDevelopment = branch === 'dev';
 
+    // CRITICAL: Ignore pushes made by our own API to prevent circular version creation
+    // When the UI creates a version, it pushes to GitHub. We don't want the webhook
+    // to then create another version, which would push again, triggering another webhook...
+    const pusher = payload.pusher?.name || payload.pusher?.email || '';
+    const headCommit = payload.head_commit;
+    const commitAuthor = headCommit?.author?.username || headCommit?.author?.email || '';
+
+    // Check if this push was made by the Mediar automation system
+    const isAutomatedPush =
+      pusher.includes('mediar') ||
+      pusher.includes('workflow-manager') ||
+      commitAuthor.includes('mediar') ||
+      commitAuthor.includes('workflow-manager') ||
+      (headCommit?.message && (
+        headCommit.message.includes('Update workflow:') ||
+        headCommit.message.includes('Add/Update workflow:')
+      ));
+
+    if (isAutomatedPush) {
+      console.log('🤖 Ignoring automated push from Mediar system to prevent circular version creation');
+      console.log('   Pusher:', pusher);
+      console.log('   Author:', commitAuthor);
+      console.log('   Message:', headCommit?.message?.substring(0, 50));
+      return NextResponse.json({
+        message: 'Ignored automated push (prevents duplicate versions)',
+        pusher,
+        commitAuthor
+      });
+    }
+
     // Find changed workflow folders and their filenames
     const changedWorkflows = new Map<string, string>(); // folder -> filename
     const foldersWithJsChanges = new Set<string>(); // folders with only JS changes
