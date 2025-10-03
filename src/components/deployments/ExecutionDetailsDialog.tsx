@@ -65,6 +65,8 @@ export function ExecutionDetailsDialog({
     formattedOutput: false,
     rawMcpResponse: false,
   });
+  const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
+  const [isDownloadingResults, setIsDownloadingResults] = useState(false);
 
   // Fetch logs on demand using dedicated endpoint
   const fetchExecutionLogs = async () => {
@@ -139,108 +141,118 @@ export function ExecutionDetailsDialog({
   const downloadLogsAsText = async () => {
     if (!execution) return;
 
-    // Fetch results if not already loaded
-    let resultsToDownload = rawMcpResponse || executionResults || execution.results;
+    setIsDownloadingLogs(true);
+    try {
+      // Fetch results if not already loaded
+      let resultsToDownload = rawMcpResponse || executionResults || execution.results;
 
-    if (!resultsToDownload) {
-      const fetchedResults = await fetchRawMcpResponse();
-      resultsToDownload = fetchedResults;
+      if (!resultsToDownload) {
+        const fetchedResults = await fetchRawMcpResponse();
+        resultsToDownload = fetchedResults;
+      }
+
+      if (!resultsToDownload) {
+        alert('No execution data available for download. The execution may not have completed or results were not stored.');
+        return;
+      }
+
+      // Format timestamp for filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `execution-${execution.execution_id}-complete-execution-${timestamp}.json`;
+
+      // Create a comprehensive execution data object with metadata
+      const completeExecutionData = {
+        execution_metadata: {
+          execution_id: execution.execution_id,
+          workflow_name: execution.workflow_name || 'N/A',
+          workflow_id: execution.workflow_id,
+          status: execution.status,
+          created_at: execution.created_at,
+          started_at: execution.started_at,
+          completed_at: execution.completed_at,
+          duration_seconds: execution.execution_duration_seconds,
+          machine: execution.assigned_machine_name || null,
+          version: execution.version_number ? `v${execution.version_number}` : 'v1.0.0',
+          client_id: execution.client_id || null,
+          modal_call_id: execution.modal_call_id || null,
+          error_message: execution.error_message || null,
+        },
+        execution_results: resultsToDownload,
+        download_timestamp: new Date().toISOString(),
+        download_note: 'This file contains the complete execution data including all step results, environment variables, and logs'
+      };
+
+      // Create blob and trigger download as JSON
+      const jsonString = JSON.stringify(completeExecutionData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setIsDownloadingLogs(false);
     }
-
-    if (!resultsToDownload) {
-      alert('No execution data available for download. The execution may not have completed or results were not stored.');
-      return;
-    }
-
-    // Format timestamp for filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `execution-${execution.execution_id}-complete-execution-${timestamp}.json`;
-
-    // Create a comprehensive execution data object with metadata
-    const completeExecutionData = {
-      execution_metadata: {
-        execution_id: execution.execution_id,
-        workflow_name: execution.workflow_name || 'N/A',
-        workflow_id: execution.workflow_id,
-        status: execution.status,
-        created_at: execution.created_at,
-        started_at: execution.started_at,
-        completed_at: execution.completed_at,
-        duration_seconds: execution.execution_duration_seconds,
-        machine: execution.assigned_machine_name || null,
-        version: execution.version_number ? `v${execution.version_number}` : 'v1.0.0',
-        client_id: execution.client_id || null,
-        modal_call_id: execution.modal_call_id || null,
-        error_message: execution.error_message || null,
-      },
-      execution_results: resultsToDownload,
-      download_timestamp: new Date().toISOString(),
-      download_note: 'This file contains the complete execution data including all step results, environment variables, and logs'
-    };
-
-    // Create blob and trigger download as JSON
-    const jsonString = JSON.stringify(completeExecutionData, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
   };
 
   // Helper function to download results as JSON file
   const downloadResultsAsJson = async () => {
     if (!execution) return;
 
-    // Fetch results if not already loaded
-    if (!executionResults) {
-      await fetchExecutionResults();
+    setIsDownloadingResults(true);
+    try {
+      // Fetch results if not already loaded
+      if (!executionResults) {
+        await fetchExecutionResults();
+      }
+
+      const resultsToDownload = executionResults || execution.results;
+      if (!resultsToDownload) {
+        return;
+      }
+
+      // Format timestamp for filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `execution-${execution.execution_id}-results-${timestamp}.json`;
+
+      // Create a comprehensive results object
+      const resultsData = {
+        execution: {
+          id: execution.execution_id,
+          workflow: execution.workflow_name || 'N/A',
+          status: execution.status,
+          started_at: execution.started_at,
+          completed_at: execution.completed_at,
+          duration_seconds: execution.execution_duration_seconds,
+          machine: execution.assigned_machine_name || null,
+          version: execution.version_number ? `v${execution.version_number}` : 'v1.0.0',
+          error: execution.error_message || null,
+        },
+        results: resultsToDownload,
+        formatted_output: formattedOutput || execution.formatted_output ?
+          (typeof execution.formatted_output === 'string' ?
+            JSON.parse(execution.formatted_output) :
+            execution.formatted_output) : null,
+        generated_at: new Date().toISOString(),
+      };
+
+      // Create blob and trigger download
+      const jsonString = JSON.stringify(resultsData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setIsDownloadingResults(false);
     }
-
-    const resultsToDownload = executionResults || execution.results;
-    if (!resultsToDownload) {
-      return;
-    }
-
-    // Format timestamp for filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `execution-${execution.execution_id}-results-${timestamp}.json`;
-
-    // Create a comprehensive results object
-    const resultsData = {
-      execution: {
-        id: execution.execution_id,
-        workflow: execution.workflow_name || 'N/A',
-        status: execution.status,
-        started_at: execution.started_at,
-        completed_at: execution.completed_at,
-        duration_seconds: execution.execution_duration_seconds,
-        machine: execution.assigned_machine_name || null,
-        version: execution.version_number ? `v${execution.version_number}` : 'v1.0.0',
-        error: execution.error_message || null,
-      },
-      results: resultsToDownload,
-      formatted_output: formattedOutput || execution.formatted_output ?
-        (typeof execution.formatted_output === 'string' ?
-          JSON.parse(execution.formatted_output) :
-          execution.formatted_output) : null,
-      generated_at: new Date().toISOString(),
-    };
-
-    // Create blob and trigger download
-    const jsonString = JSON.stringify(resultsData, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
   };
 
   useEffect(() => {
@@ -493,8 +505,13 @@ export function ExecutionDetailsDialog({
                             size="sm"
                             className="h-8 px-3"
                             onClick={downloadResultsAsJson}
+                            disabled={isDownloadingResults}
                           >
-                            <Download className="w-4 h-4 mr-2" />
+                            {isDownloadingResults ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Download className="w-4 h-4 mr-2" />
+                            )}
                             Download Results (JSON)
                           </Button>
                         )}
@@ -503,8 +520,13 @@ export function ExecutionDetailsDialog({
                           size="sm"
                           className="h-8 px-3"
                           onClick={downloadLogsAsText}
+                          disabled={isDownloadingLogs}
                         >
-                          <Download className="w-4 h-4 mr-2" />
+                          {isDownloadingLogs ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4 mr-2" />
+                          )}
                           Download Complete Logs (JSON)
                         </Button>
                       </div>
@@ -553,8 +575,13 @@ export function ExecutionDetailsDialog({
                             size="sm"
                             className="h-7 px-2"
                             onClick={downloadLogsAsText}
+                            disabled={isDownloadingLogs}
                           >
-                            <Download className="w-3 h-3 mr-1" />
+                            {isDownloadingLogs ? (
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            ) : (
+                              <Download className="w-3 h-3 mr-1" />
+                            )}
                             Download Complete (JSON)
                           </Button>
                         </div>
