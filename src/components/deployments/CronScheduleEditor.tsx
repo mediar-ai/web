@@ -18,7 +18,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { parseCronExpression, describeCronExpression } from '@/lib/cronParser';
+import { parseCronExpression, describeCronExpression, calculateNextExecutions } from '@/lib/cronParser';
 import { Clock, ChevronDown, ChevronUp, AlertCircle, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -118,27 +118,7 @@ export function CronScheduleEditor({
   // Calculate next 5 execution times
   const nextExecutions = useMemo(() => {
     if (!expression || !validation?.isValid) return [];
-
-    const executions: string[] = [];
-    const now = new Date();
-
-    // Simple calculation for demonstration - in production, use a proper cron library
-    for (let i = 0; i < 5; i++) {
-      const futureDate = new Date(now.getTime() + (i + 1) * 60 * 60 * 1000); // Add hours
-      executions.push(
-        futureDate.toLocaleString('en-US', {
-          timeZone: timezone,
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZoneName: 'short',
-        })
-      );
-    }
-
-    return executions;
+    return calculateNextExecutions(expression, timezone, 5);
   }, [expression, validation, timezone]);
 
   // Update parent when any value changes
