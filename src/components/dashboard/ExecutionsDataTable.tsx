@@ -869,7 +869,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       </div>
 
       {/* Table */}
-      <div className="border-2 border-black">
+      <div className="border-2 border-black overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
