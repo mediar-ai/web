@@ -113,7 +113,7 @@ export function ExecutionDetailsDialog({
 
   // Fetch raw MCP response for complete logs download
   const fetchRawMcpResponse = async () => {
-    if (!execution || rawMcpResponse !== null || loadingStates.rawMcpResponse) return;
+    if (!execution || rawMcpResponse !== null || loadingStates.rawMcpResponse) return rawMcpResponse;
 
     setLoadingStates(prev => ({ ...prev, rawMcpResponse: true }));
     try {
@@ -124,9 +124,12 @@ export function ExecutionDetailsDialog({
       if (data.success && data.execution && data.execution.results) {
         // Store results in the same state variable for compatibility
         setRawMcpResponse(data.execution.results);
+        return data.execution.results;
       }
+      return null;
     } catch (error) {
       console.error('Failed to fetch execution results:', error);
+      return null;
     } finally {
       setLoadingStates(prev => ({ ...prev, rawMcpResponse: false }));
     }
@@ -137,47 +140,15 @@ export function ExecutionDetailsDialog({
     if (!execution) return;
 
     // Fetch results if not already loaded
-    if (!rawMcpResponse && !executionResults) {
-      await fetchRawMcpResponse();
-    }
-
-    // Use results field for download (already contains all execution data)
-    const resultsToDownload = rawMcpResponse || executionResults || execution.results;
+    let resultsToDownload = rawMcpResponse || executionResults || execution.results;
 
     if (!resultsToDownload) {
-      // If no results available, fallback to execution logs
-      const logsToDownload = executionLogs || execution.execution_logs;
-      if (!logsToDownload || logsToDownload.length === 0) {
-        console.warn('No execution data available for download');
-        return;
-      }
+      const fetchedResults = await fetchRawMcpResponse();
+      resultsToDownload = fetchedResults;
+    }
 
-      // Old text format fallback
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const filename = `execution-${execution.execution_id}-logs-${timestamp}.txt`;
-
-      let content = '='.repeat(60) + '\n';
-      content += 'EXECUTION LOG FILE (Limited)\n';
-      content += '='.repeat(60) + '\n\n';
-      content += 'Note: This is limited orchestrator logs only. Full execution data not available.\n\n';
-
-      logsToDownload.forEach((log) => {
-        const logTime = log.timestamp
-          ? new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false })
-          : 'N/A';
-        const level = (log.level || 'info').toUpperCase().padEnd(7);
-        content += `${logTime} [${level}] ${log.message}\n`;
-      });
-
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+    if (!resultsToDownload) {
+      alert('No execution data available for download. The execution may not have completed or results were not stored.');
       return;
     }
 
