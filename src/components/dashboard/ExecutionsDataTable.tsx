@@ -209,6 +209,12 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     }
   }, [columnVisibility]);
 
+  // Reset to first page when filters change
+  React.useEffect(() => {
+    table.setPageIndex(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnFilters, globalFilter]);
+
   const columns: ColumnDef<Execution>[] = React.useMemo(
     () => [
       {
