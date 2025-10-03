@@ -279,7 +279,7 @@ export function describeCronExpression(expression: string): string {
     return `Invalid cron expression: ${parsed.error}`;
   }
 
-  // Simple descriptions for common patterns
+  // Simple descriptions for common exact patterns
   if (expression === '* * * * * *') return 'Every second';
   if (expression === '0 * * * * *') return 'Every minute';
   if (expression === '0 0 * * * *') return 'Every hour';
@@ -288,7 +288,96 @@ export function describeCronExpression(expression: string): string {
   if (expression === '0 0 0 * * 1') return 'Every Monday at midnight';
   if (expression === '0 0 */2 * * *') return 'Every 2 hours';
   if (expression === '0 */5 * * * *') return 'Every 5 minutes';
-  
-  // Generic description
-  return `At ${parsed.second}s ${parsed.minute}m ${parsed.hour}h on day ${parsed.day} of month ${parsed.month}, day of week ${parsed.dayOfWeek}`;
+
+  // Build description piece by piece
+  const parts: string[] = [];
+
+  // Frequency (minute field is most important for describing frequency)
+  if (parsed.minute === '*') {
+    parts.push('Every minute');
+  } else if (parsed.minute.startsWith('*/')) {
+    const interval = parsed.minute.substring(2);
+    parts.push(`Every ${interval} minutes`);
+  } else if (parsed.minute.includes(',')) {
+    const minutes = parsed.minute.split(',').join(', ');
+    parts.push(`At minutes ${minutes}`);
+  } else if (parsed.minute.includes('-')) {
+    const [start, end] = parsed.minute.split('-');
+    parts.push(`Minutes ${start}-${end}`);
+  } else {
+    parts.push(`At minute ${parsed.minute}`);
+  }
+
+  // Hour
+  if (parsed.hour !== '*') {
+    if (parsed.hour.startsWith('*/')) {
+      const interval = parsed.hour.substring(2);
+      parts.push(`of every ${interval} hours`);
+    } else if (parsed.hour.includes(',')) {
+      const hours = parsed.hour.split(',').map(h => {
+        const hour = parseInt(h);
+        return hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+      }).join(', ');
+      parts.push(`at ${hours}`);
+    } else if (parsed.hour.includes('-')) {
+      const [start, end] = parsed.hour.split('-');
+      const startHour = parseInt(start);
+      const endHour = parseInt(end);
+      const startStr = startHour === 0 ? '12 AM' : startHour < 12 ? `${startHour} AM` : startHour === 12 ? '12 PM' : `${startHour - 12} PM`;
+      const endStr = endHour === 0 ? '12 AM' : endHour < 12 ? `${endHour} AM` : endHour === 12 ? '12 PM' : `${endHour - 12} PM`;
+      parts.push(`between ${startStr} and ${endStr}`);
+    } else {
+      const hour = parseInt(parsed.hour);
+      const hourStr = hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+      parts.push(`at ${hourStr}`);
+    }
+  }
+
+  // Day of week
+  if (parsed.dayOfWeek !== '*') {
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    if (parsed.dayOfWeek.includes(',')) {
+      const days = parsed.dayOfWeek.split(',').map(d => dayNames[parseInt(d)]).join(', ');
+      parts.push(`on ${days}`);
+    } else if (parsed.dayOfWeek.includes('-')) {
+      const [start, end] = parsed.dayOfWeek.split('-');
+      const startDay = dayNames[parseInt(start)];
+      const endDay = dayNames[parseInt(end)];
+      parts.push(`on ${startDay} through ${endDay}`);
+    } else {
+      parts.push(`on ${dayNames[parseInt(parsed.dayOfWeek)]}`);
+    }
+  }
+
+  // Day of month
+  if (parsed.day !== '*') {
+    if (parsed.day === '1') {
+      parts.push('on the 1st of the month');
+    } else if (parsed.day === 'L') {
+      parts.push('on the last day of the month');
+    } else if (parsed.day.includes(',')) {
+      const days = parsed.day.split(',').join(', ');
+      parts.push(`on days ${days} of the month`);
+    } else {
+      parts.push(`on day ${parsed.day} of the month`);
+    }
+  }
+
+  // Month
+  if (parsed.month !== '*') {
+    const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    if (parsed.month.includes(',')) {
+      const months = parsed.month.split(',').map(m => monthNames[parseInt(m)]).join(', ');
+      parts.push(`in ${months}`);
+    } else if (parsed.month.includes('-')) {
+      const [start, end] = parsed.month.split('-');
+      const startMonth = monthNames[parseInt(start)];
+      const endMonth = monthNames[parseInt(end)];
+      parts.push(`from ${startMonth} to ${endMonth}`);
+    } else {
+      parts.push(`in ${monthNames[parseInt(parsed.month)]}`);
+    }
+  }
+
+  return parts.join(' ');
 }
