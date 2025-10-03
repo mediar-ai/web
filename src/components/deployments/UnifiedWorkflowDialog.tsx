@@ -326,13 +326,35 @@ export function UnifiedWorkflowDialog({
         }
       }
 
+      // Step 1.5: If still no YAML, try to get JSON and convert to YAML
       if (!yamlToUpdate) {
-        setErrorMessage('No workflow YAML found. Cannot update schedule.');
+        console.log('⚠️ No YAML found, fetching JSON from active version...');
+        const { data: activeVersion } = await fetch(`/api/remote-workflows/${workflow.id}/versions`).then(r => r.json());
+
+        if (activeVersion?.versions) {
+          const active = activeVersion.versions.find((v: any) => v.is_active);
+          if (active?.automation_sequence) {
+            // Convert JSON to YAML
+            console.log('📝 Converting JSON to YAML format...');
+            yamlToUpdate = yaml.dump(active.automation_sequence);
+          }
+        }
+      }
+
+      if (!yamlToUpdate) {
+        setErrorMessage('No workflow configuration found. Please ensure the workflow has a valid configuration.');
         return;
       }
 
       // Step 2: Parse YAML and update cron fields
-      const parsedYaml = yaml.load(yamlToUpdate) as any;
+      let parsedYaml: any;
+      try {
+        parsedYaml = yaml.load(yamlToUpdate) as any;
+      } catch (parseError) {
+        console.error('Failed to parse YAML:', parseError);
+        setErrorMessage('Failed to parse workflow configuration. Please check the YAML syntax.');
+        return;
+      }
 
       // Update cron fields in YAML
       parsedYaml.cron = cronConfig.expression;

@@ -167,7 +167,7 @@ function DashboardContent() {
     }
   }, [viewOrgId]);
 
-  const fetchExecutions = useCallback(async (showLoading = true, filterWorkflow?: string, filterStatus?: string, filterMachine?: string) => {
+  const fetchExecutions = useCallback(async (showLoading = true, filterWorkflow?: string, filterStatus?: string, _filterMachine?: string) => {
     try {
       if (showLoading) setExecutionsLoading(true);
 
