@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select';
 import { CornerDownLeft, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 type JsonValue =
   | string
@@ -919,9 +920,9 @@ export function BatchForm({
                           onClick={() => {
                             try {
                               JSON.parse(current || '{}');
-                              alert('Schema is valid JSON');
+                              toast.success('Schema is valid JSON');
                             } catch (e: any) {
-                              alert(
+                              toast.error(
                                 'Invalid JSON: ' + (e?.message || 'parse error')
                               );
                             }

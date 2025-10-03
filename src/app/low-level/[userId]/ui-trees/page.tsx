@@ -14,6 +14,7 @@ import { JsonBlock } from '@/components/ui/code-block';
 import DiffView from '@/components/low-level/DiffView';
 import { preprocessTree } from '@/lib/diff';
 import { diffLines } from 'diff';
+import { toast } from 'sonner';
 
 type UITreePayload = {
   type?: string;
@@ -211,11 +212,11 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
         // Small delay to prevent browser freezing
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      
+
       if (currentCount >= 10000) {
-        alert('Auto-loading stopped at 10,000 UI trees for performance reasons.');
+        toast.warning('Auto-loading stopped at 10,000 UI trees for performance reasons.');
       }
-      
+
     } catch (error) {
       console.error('[UI Trees] Auto-loading failed:', error);
     } finally {
@@ -250,10 +251,10 @@ export default function UITreesPage({ params }: { params: Promise<{ userId: stri
         await sharedStorage.saveEvents(data.events);
         console.log(`[UI Trees] Loaded and cached ${data.events.length} UI trees`);
       }
-      
+
     } catch (error) {
       console.error('[UI Trees] Load all failed:', error);
-      alert('Failed to load all UI trees. Please try again.');
+      toast.error('Failed to load all UI trees. Please try again.');
     } finally {
       setIsLoadingMore(false);
     }

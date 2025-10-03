@@ -28,6 +28,7 @@ import * as yaml from 'js-yaml';
 import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap, Upload, FileArchive, FileCheck, AlertTriangle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
+import { toast } from 'sonner';
 
 interface WorkflowTemplate {
   name: string;
@@ -161,18 +162,18 @@ export function CreateWorkflowDialog({
   const handleCreate = async () => {
     // For ZIP uploads, check if we have valid workflow data
     if (activeTab === 'upload' && uploadValidation.status !== 'valid') {
-      alert('Please upload a valid workflow ZIP file');
+      toast.error('Please upload a valid workflow ZIP file');
       return;
     }
 
     // Validation based on mode
     if (mode === 'create' && (!name.trim() || !automationSequence.trim())) {
-      alert('Name and automation sequence are required');
+      toast.error('Name and automation sequence are required');
       return;
     }
 
     if (mode === 'update' && !automationSequence.trim()) {
-      alert('Automation sequence is required');
+      toast.error('Automation sequence is required');
       return;
     }
 
@@ -243,19 +244,19 @@ export function CreateWorkflowDialog({
 
       if (result.success) {
         if (mode === 'update') {
-          alert(`Version ${result.version?.version_number} uploaded successfully!`);
+          toast.success(`Version ${result.version?.version_number} uploaded successfully!`);
         } else {
-          alert(`Workflow "${name.trim()}" created successfully!`);
+          toast.success(`Workflow "${name.trim()}" created successfully!`);
         }
         onWorkflowCreated?.(result.workflow || result);
         onOpenChange(false);
         resetForm();
       } else {
-        alert(result.error || `Failed to ${mode === 'update' ? 'upload version' : 'create workflow'}`);
+        toast.error(result.error || `Failed to ${mode === 'update' ? 'upload version' : 'create workflow'}`);
       }
     } catch (error) {
       console.error(`Error ${mode === 'update' ? 'uploading version' : 'creating workflow'}:`, error);
-      alert(`Failed to ${mode === 'update' ? 'upload version' : 'create workflow'}`);
+      toast.error(`Failed to ${mode === 'update' ? 'upload version' : 'create workflow'}`);
     } finally {
       setLoading(false);
     }
@@ -789,7 +790,7 @@ export function CreateWorkflowDialog({
                     size="sm"
                     onClick={() => {
                       navigator.clipboard.writeText(automationSequence);
-                      alert('YAML copied to clipboard');
+                      toast.success('YAML copied to clipboard');
                     }}
                     disabled={!automationSequence}
                   >

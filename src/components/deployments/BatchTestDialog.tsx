@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 
 import { BatchForm } from '@/components/deployments/BatchForm';
 import { Workflow } from '@/lib/workflow-types';
+import { toast } from 'sonner';
 
 type JsonValue =
   | string
@@ -454,14 +455,14 @@ export function BatchTestDialog({
           '[ERROR] BatchTestDialog: Failed to submit test run:',
           data.error
         );
-        alert(`Failed to submit test run: ${data.error}`);
+        toast.error(`Failed to submit test run: ${data.error}`);
       }
     } catch (error) {
       console.error(
         '[ERROR] BatchTestDialog: Error submitting test run:',
         error
       );
-      alert('Failed to submit test run execution');
+      toast.error('Failed to submit test run execution');
     } finally {
       setIsSubmitting(false);
     }

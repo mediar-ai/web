@@ -25,6 +25,7 @@ import { SignIn, useAuth, useOrganization, useOrganizationList, useUser } from '
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { Eye, StopCircle, Trash2, Plus, Search } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function DeploymentsPage() {
   return (
@@ -636,11 +637,11 @@ function DeploymentsPageContent() {
                                       } else {
                                         const error = await response.json();
                                         console.error('Cancel failed:', error);
-                                        alert(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
+                                        toast.error(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
                                       }
                                     } catch (error) {
                                       console.error('Error canceling execution:', error);
-                                      alert('Error canceling execution');
+                                      toast.error('Error canceling execution');
                                     } finally {
                                       setStoppingExecutions(prev => {
                                         const newSet = new Set(prev);
@@ -674,11 +675,11 @@ function DeploymentsPageContent() {
                                       } else {
                                         const error = await response.json();
                                         console.error('Delete failed:', error);
-                                        alert(`Failed to delete execution: ${error.error || 'Unknown error'}`);
+                                        toast.error(`Failed to delete execution: ${error.error || 'Unknown error'}`);
                                       }
                                     } catch (error) {
                                       console.error('Error deleting execution:', error);
-                                      alert('Error deleting execution');
+                                      toast.error('Error deleting execution');
                                     } finally {
                                       setDeletingExecutions(prev => {
                                         const newSet = new Set(prev);
