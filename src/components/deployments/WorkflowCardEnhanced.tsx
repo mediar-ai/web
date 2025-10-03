@@ -159,13 +159,13 @@ export function WorkflowCardEnhanced({
           {/* Main Single Line */}
           <div className="flex items-center gap-3">
             {/* Name and Status */}
-            <div className="flex items-center gap-2 min-w-0 flex-shrink">
-              <h3 className="text-sm font-semibold text-gray-900 truncate">
+            <div className="flex items-center gap-2 w-80 flex-shrink-0">
+              <h3 className="text-sm font-semibold text-gray-900 truncate min-w-0">
                 {workflow.name}
               </h3>
               {/* Only show status badge if it's meaningful (not deployed/running) */}
               {status !== 'deployed' && status !== 'running' && (
-                <AnimatedBadge status={status as any} className="text-xs py-0.5 px-2">
+                <AnimatedBadge status={status as any} className="text-xs py-0.5 px-2 flex-shrink-0">
                   {status.toUpperCase()}
                 </AnimatedBadge>
               )}
@@ -173,7 +173,7 @@ export function WorkflowCardEnhanced({
               {workflow.cron_expression && workflow.cron_enabled && (
                 <Tooltip>
                   <TooltipTrigger>
-                    <div className="flex items-center gap-1 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5">
+                    <div className="flex items-center gap-1 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 flex-shrink-0">
                       <Calendar className="w-3 h-3 text-gray-600 flex-shrink-0" />
                       <span className="text-[10px] font-mono text-gray-600 uppercase">Scheduled</span>
                     </div>
@@ -188,7 +188,7 @@ export function WorkflowCardEnhanced({
               {workflow.cron_expression && !workflow.cron_enabled && (
                 <Tooltip>
                   <TooltipTrigger>
-                    <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 opacity-50">
+                    <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 opacity-50 flex-shrink-0">
                       <Calendar className="w-3 h-3 text-gray-400 flex-shrink-0" />
                       <span className="text-[10px] font-mono text-gray-400 uppercase">Paused</span>
                     </div>
