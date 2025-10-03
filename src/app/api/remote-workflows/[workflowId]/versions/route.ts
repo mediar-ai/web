@@ -320,6 +320,45 @@ export async function POST(
       }
     }
 
+    // Push to GitHub if YAML format (will create github_folder if doesn't exist)
+    let githubSyncResult = null;
+    if (yamlContent) {
+      try {
+        const { githubWorkflowManager } = await import('@/lib/github-workflow-manager');
+
+        console.log(`📤 Pushing version ${newVersionNumber} to GitHub...`);
+
+        githubSyncResult = await githubWorkflowManager.saveWorkflow(
+          workflow.name,
+          yamlContent,
+          false, // Not development
+          `Update workflow: ${workflow.name} (v${newVersionNumber})`,
+          false, // Don't create PR - push directly
+          workflowIdNum
+        );
+
+        if (githubSyncResult.success) {
+          console.log(`✅ Pushed to GitHub: ${githubSyncResult.path}`);
+
+          // Log sync operation
+          await supabase
+            .from('github_workflow_sync_log')
+            .insert({
+              workflow_id: workflowIdNum,
+              operation: 'push',
+              github_path: githubSyncResult.path,
+              github_sha: githubSyncResult.sha,
+              status: 'success'
+            });
+        } else {
+          console.warn(`⚠️ GitHub push failed: ${githubSyncResult.error}`);
+        }
+      } catch (githubError) {
+        console.error('GitHub sync error:', githubError);
+        // Don't fail version creation if GitHub sync fails
+      }
+    }
+
     const response = {
       success: true,
       message: `Version ${newVersionNumber} created successfully`,
@@ -336,7 +375,12 @@ export async function POST(
         name: workflow.name,
         total_versions: workflow.total_versions + 1,
         current_version: set_as_active ? newVersionNumber : workflow.version
-      }
+      },
+      github_sync: githubSyncResult ? {
+        success: githubSyncResult.success,
+        path: githubSyncResult.path,
+        error: githubSyncResult.error
+      } : null
     };
 
     return NextResponse.json(response, { status: 201 });
