@@ -78,18 +78,8 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
   });
   const allUserOrgs = userMemberships?.data || [];
 
-  console.log('[MediarOrgSwitcher] Debug info:', {
-    isAdmin,
-    inSidebar,
-    loading,
-    allUserOrgsCount: allUserOrgs.length,
-    organizationName: organization?.name,
-    allOrgNames: allUserOrgs.map(m => m.organization.name)
-  });
-
   // For sidebar (both admins and non-admins), show ALL user orgs from Clerk
   if (inSidebar && !loading) {
-    console.log('[MediarOrgSwitcher] Sidebar path (admin=' + isAdmin + '), showing', allUserOrgs.length, 'orgs');
     if (!organization || allUserOrgs.length === 0) return null;
 
     return (
@@ -161,7 +151,6 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
 
   // Sidebar view - more compact (ADMIN PATH - use Clerk orgs instead of API)
   if (inSidebar) {
-    console.log('[MediarOrgSwitcher] Admin sidebar path, showing', allUserOrgs.length, 'orgs from Clerk');
     return (
       <div className="relative">
         <button
