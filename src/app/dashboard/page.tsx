@@ -48,6 +48,11 @@ function DashboardContent() {
   const [executionsLoading, setExecutionsLoading] = useState(false);
   const [pollCount, setPollCount] = useState(0);
 
+  // Filter values state
+  const [filterWorkflowNames, setFilterWorkflowNames] = useState<string[]>([]);
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
+  const [filterMachines, setFilterMachines] = useState<string[]>([]);
+
   // UI state
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
@@ -229,6 +234,26 @@ function DashboardContent() {
     }
   }, [viewOrgId]);
 
+  const fetchExecutionFilters = useCallback(async () => {
+    try {
+      const apiUrl = viewOrgId
+        ? `/api/remote-workflows/executions/filters?viewOrgId=${viewOrgId}`
+        : '/api/remote-workflows/executions/filters';
+      const response = await fetch(apiUrl);
+      if (!response.ok) {
+        return;
+      }
+      const data = await response.json();
+      if (data.success && data.filters) {
+        setFilterWorkflowNames(data.filters.workflowNames || []);
+        setFilterStatuses(data.filters.statuses || []);
+        setFilterMachines(data.filters.machines || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch execution filters:', error);
+    }
+  }, [viewOrgId]);
+
   const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
     try {
       const response = await fetch(`/api/remote-workflows/${workflowId}/overview`);
@@ -399,7 +424,8 @@ function DashboardContent() {
     fetchWorkflows();
     fetchExecutions();
     fetchLiveExecutions();
-  }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions, viewOrgId]);
+    fetchExecutionFilters();
+  }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions, fetchExecutionFilters, viewOrgId]);
 
   // Polling for executions - always poll to catch new executions
   useEffect(() => {
@@ -574,6 +600,9 @@ function DashboardContent() {
                   onCancelExecution={handleCancelExecution}
                   onDeleteExecution={handleDeleteExecution}
                   onRefresh={handleRefreshExecutions}
+                  filterWorkflowNames={filterWorkflowNames}
+                  filterStatuses={filterStatuses}
+                  filterMachines={filterMachines}
                 />
               </div>
             )}
