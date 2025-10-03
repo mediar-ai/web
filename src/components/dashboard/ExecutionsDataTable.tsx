@@ -28,6 +28,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   RefreshCw,
+  Filter,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -618,81 +620,181 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     },
   });
 
+  // Get unique workflow names for filter
+  const uniqueWorkflowNames = React.useMemo(() => {
+    const names = new Set<string>();
+    executions.forEach((execution) => {
+      const workflow = workflows.find((w) => w.id === execution.workflow_id);
+      if (workflow?.name) {
+        names.add(workflow.name);
+      }
+    });
+    return Array.from(names).sort();
+  }, [executions, workflows]);
+
+  // Get unique statuses for filter
+  const uniqueStatuses = React.useMemo(() => {
+    const statuses = new Set<string>();
+    executions.forEach((execution) => {
+      statuses.add(execution.status);
+    });
+    return Array.from(statuses).sort();
+  }, [executions]);
+
+  // Get unique machines for filter
+  const uniqueMachines = React.useMemo(() => {
+    const machines = new Set<string>();
+    executions.forEach((execution) => {
+      if (execution.assigned_machine_name) {
+        machines.add(execution.assigned_machine_name);
+      }
+    });
+    return Array.from(machines).sort();
+  }, [executions]);
+
+  // Active filters count
+  const activeFiltersCount = columnFilters.length;
+
   return (
     <div className="w-full">
       {/* Table Controls */}
-      <div className="flex items-center justify-between gap-2 py-2">
-        <div className="flex items-center gap-2 flex-1">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-600" />
-            <Input
-              placeholder="Search executions..."
-              value={globalFilter ?? ''}
-              onChange={(event) => setGlobalFilter(event.target.value)}
-              className="h-8 pl-7 text-xs font-mono border-2 border-black focus:ring-2 focus:ring-black"
-            />
+      <div className="flex flex-col gap-2 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-1">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-600" />
+              <Input
+                placeholder="Search executions..."
+                value={globalFilter ?? ''}
+                onChange={(event) => setGlobalFilter(event.target.value)}
+                className="h-8 pl-7 text-xs font-mono border-2 border-black focus:ring-2 focus:ring-black"
+              />
+            </div>
+            {table.getFilteredSelectedRowModel().rows.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-600 font-mono">
+                  {table.getFilteredSelectedRowModel().rows.length} selected
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => table.toggleAllRowsSelected(false)}
+                  className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
+                >
+                  Clear
+                </Button>
+              </div>
+            )}
           </div>
-          {table.getFilteredSelectedRowModel().rows.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-600 font-mono">
-                {table.getFilteredSelectedRowModel().rows.length} selected
-              </span>
+          <div className="flex items-center gap-2">
+            {onRefresh && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => table.toggleAllRowsSelected(false)}
-                className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
+                onClick={onRefresh}
+                className="h-7 w-7 p-0 border-2 border-black hover:bg-black hover:text-white"
               >
-                Clear
+                <RefreshCw className="h-3 w-3" />
               </Button>
-            </div>
-          )}
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
+                >
+                  <Columns3 className="mr-1 h-3 w-3" />
+                  Columns
+                  <ChevronDown className="ml-1 h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="border-2 border-black">
+                <DropdownMenuLabel className="font-mono uppercase text-xs">
+                  Toggle Columns
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {table
+                  .getAllColumns()
+                  .filter((column) => column.getCanHide())
+                  .map((column) => {
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={column.id}
+                        className="font-mono text-sm capitalize hover:bg-gray-100"
+                        checked={column.getIsVisible()}
+                        onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                      >
+                        {column.id.replace(/_/g, ' ')}
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {onRefresh && (
+
+        {/* Column Filters */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1">
+            <Filter className="h-3 w-3 text-gray-600" />
+            <span className="text-xs font-mono text-gray-600 uppercase">Filters:</span>
+          </div>
+
+          {/* Workflow Name Filter */}
+          <select
+            value={(table.getColumn('workflow_name')?.getFilterValue() as string) ?? ''}
+            onChange={(e) => table.getColumn('workflow_name')?.setFilterValue(e.target.value || undefined)}
+            className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+          >
+            <option value="">All Workflows</option>
+            {uniqueWorkflowNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+
+          {/* Status Filter */}
+          <select
+            value={(table.getColumn('status')?.getFilterValue() as string) ?? ''}
+            onChange={(e) => table.getColumn('status')?.setFilterValue(e.target.value || undefined)}
+            className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+          >
+            <option value="">All Statuses</option>
+            {uniqueStatuses.map((status) => (
+              <option key={status} value={status}>
+                {status.toUpperCase()}
+              </option>
+            ))}
+          </select>
+
+          {/* Machine Filter */}
+          <select
+            value={(table.getColumn('machine')?.getFilterValue() as string) ?? ''}
+            onChange={(e) => table.getColumn('machine')?.setFilterValue(e.target.value || undefined)}
+            className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+          >
+            <option value="">All Machines</option>
+            {uniqueMachines.map((machine) => (
+              <option key={machine} value={machine}>
+                {machine}
+              </option>
+            ))}
+          </select>
+
+          {/* Clear Filters Button */}
+          {activeFiltersCount > 0 && (
             <Button
               variant="outline"
               size="sm"
-              onClick={onRefresh}
-              className="h-7 w-7 p-0 border-2 border-black hover:bg-black hover:text-white"
+              onClick={() => table.resetColumnFilters()}
+              className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
             >
-              <RefreshCw className="h-3 w-3" />
+              <X className="mr-1 h-3 w-3" />
+              Clear Filters ({activeFiltersCount})
             </Button>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
-              >
-                <Columns3 className="mr-1 h-3 w-3" />
-                Columns
-                <ChevronDown className="ml-1 h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="border-2 border-black">
-              <DropdownMenuLabel className="font-mono uppercase text-xs">
-                Toggle Columns
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {table
-                .getAllColumns()
-                .filter((column) => column.getCanHide())
-                .map((column) => {
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      className="font-mono text-sm capitalize hover:bg-gray-100"
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                    >
-                      {column.id.replace(/_/g, ' ')}
-                    </DropdownMenuCheckboxItem>
-                  );
-                })}
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
 
