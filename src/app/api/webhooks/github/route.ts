@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     // Find changed workflow folders and their filenames
     const changedWorkflows = new Map<string, string>(); // folder -> filename
     const foldersWithJsChanges = new Set<string>(); // folders with only JS changes
+    const jsOnlyWorkflows = new Set<string>(); // track which workflows had JS-only changes
 
     for (const commit of payload.commits) {
       const allFiles = [...(commit.added || []), ...(commit.modified || [])];
@@ -81,6 +82,7 @@ export async function POST(request: NextRequest) {
         // Extract the YAML filename from the stored path
         const fileName = existing.github_path.split('/').pop() || 'workflow.yaml';
         changedWorkflows.set(folderName, fileName);
+        jsOnlyWorkflows.add(folderName); // Mark as JS-only change
       } else {
         console.log(`ℹ️ Skipping JS changes in ${folderName} - no workflow found in DB`);
       }
@@ -129,7 +131,9 @@ export async function POST(request: NextRequest) {
 
         if (existing) {
           // Check if content actually changed by comparing SHA
-          if (existing.github_sha === content.metadata.sha) {
+          // Skip SHA check for JS-only changes (YAML hasn't changed but JS files have)
+          const isJsOnly = jsOnlyWorkflows.has(folderName);
+          if (!isJsOnly && existing.github_sha === content.metadata.sha) {
             console.log(`ℹ️ No changes detected for ${folderName} (SHA: ${content.metadata.sha})`);
             // Just update sync timestamp without creating a new version
             await supabase
@@ -142,6 +146,10 @@ export async function POST(request: NextRequest) {
 
             results.updated.push(`${existing.name} (no changes)`);
             continue;
+          }
+
+          if (isJsOnly) {
+            console.log(`📦 JS-only changes detected for ${folderName}, creating new version...`);
           }
 
           // Content changed - create new version entry
