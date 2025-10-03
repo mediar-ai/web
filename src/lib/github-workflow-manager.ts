@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_KEY!
 );
 
 export interface GitHubWorkflowResult {
@@ -276,6 +276,7 @@ ${message || 'Workflow created via Mediar UI'}
 
       return null;
     } catch (error) {
+      console.error(`Failed to fetch workflow from GitHub (${this.owner}/${this.repo}/${path}@${ref || this.baseBranch}):`, error);
       return null;
     }
   }

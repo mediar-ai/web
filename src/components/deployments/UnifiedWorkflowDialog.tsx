@@ -626,8 +626,8 @@ export function UnifiedWorkflowDialog({
                 <h4 className="font-semibold mb-2">Metadata</h4>
                 <dl className="space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Version:</dt>
-                    <dd className="font-mono">{workflow.version}</dd>
+                    <dt className="text-muted-foreground">Active Version:</dt>
+                    <dd className="font-mono">v{getActiveVersion()?.version_number || workflow.version}</dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Category:</dt>

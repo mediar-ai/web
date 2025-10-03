@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createVertex } from '@ai-sdk/google-vertex';
 import { streamText } from 'ai';
 import { createClient } from '@supabase/supabase-js';
+import { z } from 'zod';
+import * as queryTools from '@/lib/execution-query-tools';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -62,94 +64,190 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
     }
 
-    // Helper function to truncate long strings
-    const truncate = (obj: any, maxLength: number = 1000): string => {
-      const str = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
-      if (!str) return '';
-      return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
-    };
+    // Extract execution data from the results field
+    const executionData = execution.results ? queryTools.extractExecutionData(execution.results) : null;
 
-    // Smart log sampling for better context
-    const allLogs = execution.execution_logs || [];
-    const errorLogs = allLogs.filter((log: any) =>
-      log.level === 'ERROR' || log.message?.toLowerCase().includes('error')
-    );
-    const warningLogs = allLogs.filter((log: any) =>
-      log.level === 'WARN' || log.level === 'WARNING'
-    );
+    // Get basic summary
+    const stepCount = executionData?.results?.length || 0;
+    const summary = executionData ? queryTools.getExecutionSummary(executionData) : 'No detailed execution data available';
 
-    // Create execution summary
-    const executionSummary = {
-      total_log_entries: allLogs.length,
-      error_count: errorLogs.length,
-      warning_count: warningLogs.length,
-      first_error: errorLogs[0] ? `[${errorLogs[0].level}] ${errorLogs[0].message}` : null,
-      last_activity: allLogs.length > 0 ? `[${allLogs[allLogs.length - 1].level || 'INFO'}] ${allLogs[allLogs.length - 1].message}` : null,
-    };
+    // Build context with tool usage instructions
+    const context = `You are an AI assistant analyzing workflow execution #${execution.id}.
 
-    // Smart sampling: first 10, up to 20 errors, last 20
-    const smartSample = [
-      ...allLogs.slice(0, 10),  // First 10 logs (initialization)
-      ...errorLogs.slice(0, 20), // Up to 20 error logs
-      ...warningLogs.slice(0, 10), // Up to 10 warning logs
-      ...allLogs.slice(-20)      // Last 20 logs (completion)
-    ];
-
-    // Remove duplicates while preserving order
-    const uniqueLogs = Array.from(new Map(
-      smartSample.map((log: any) => [`${log.timestamp}-${log.message}`, log])
-    ).values());
-
-    // Build context for the AI
-    const context = `You are analyzing a workflow execution. Here's the execution data:
-
-EXECUTION SUMMARY:
-- Execution ID: ${execution.id}
-- Workflow ID: ${execution.workflow_id}
+EXECUTION OVERVIEW:
 - Status: ${execution.status}
-- Duration: ${execution.execution_duration_seconds} seconds
-- Total Logs: ${executionSummary.total_log_entries}
-- Errors: ${executionSummary.error_count}
-- Warnings: ${executionSummary.warning_count}
-${executionSummary.first_error ? `- First Error: ${truncate(executionSummary.first_error, 500)}` : ''}
-${execution.error_message ? `- Final Error: ${truncate(execution.error_message, 2000)}` : ''}
+- Duration: ${execution.execution_duration_seconds || 0} seconds
+- Workflow: ${execution.workflow_id}
+- Total Steps: ${stepCount}
+${execution.error_message ? `- Error: ${execution.error_message}` : ''}
 
-Context: ${JSON.stringify(execution.context, null, 2)}
+${summary}
 
-FORMATTED OUTPUT:
-${truncate(execution.formatted_output, 15000)}
+IMPORTANT: You have access to tools to query the complete execution data:
 
-RESULTS STRUCTURE:
-${execution.results ? Object.keys(execution.results).join(', ') : 'No structured results'}
+1. searchLogs - Search for patterns in all execution logs
+2. getStepDetails - Get complete details for a specific step
+3. listSteps - List all steps with their status
+4. getErrors - Get all error details
+5. searchInResults - Search in step outputs/results
+6. getTimeline - Get execution timeline
+7. getPerformanceMetrics - Analyze performance
 
-RESULTS DATA:
-${truncate(execution.results, 15000)}
+When answering questions:
+- Use listSteps() first to understand the workflow structure
+- Use searchLogs() to find specific information
+- Use getStepDetails() to drill into specific steps
+- Use getErrors() when asked about failures
+- Always query the actual data rather than guessing
 
-${uniqueLogs.length > 0 ? `
-LOG SAMPLES (${uniqueLogs.length} key entries from ${executionSummary.total_log_entries} total):
-${uniqueLogs.map((log: any) => `[${log.timestamp}] [${log.level || 'INFO'}] ${truncate(log.message, 500)}`).join('\n')}
-` : 'No execution logs available'}
+Be specific and detailed in your answers. If you need more information, use the tools to get it.`;
 
-Note: This is a smart sample of the execution logs. Focus on error patterns, the workflow flow, and final results. If user asks about specific details not shown, explain that you're seeing a summary and key events.
+    // Define tools for the AI
+    const tools = {
+      searchLogs: {
+        description: 'Search for patterns in all execution logs',
+        inputSchema: z.object({
+          pattern: z.string().describe('The pattern to search for'),
+          limit: z.number().optional().default(50).describe('Maximum number of results')
+        }),
+        execute: async ({ pattern, limit }: { pattern: string; limit: number }) => {
+          if (!executionData) return { error: 'No execution data available' };
+          const results = queryTools.searchLogs(executionData, pattern, limit);
+          return {
+            found: results.length,
+            matches: results
+          };
+        }
+      },
 
-Please answer questions about this workflow execution in a helpful and detailed manner. Focus on:
-- What the workflow accomplished or attempted to do
-- Any errors or issues that occurred
-- Performance metrics and timing
-- The state of the execution
-- Any relevant technical details
+      getStepDetails: {
+        description: 'Get complete details for a specific step by index or name',
+        inputSchema: z.object({
+          stepId: z.string().describe('Step index (0,1,2...) or step name')
+        }),
+        execute: async ({ stepId }: { stepId: string }) => {
+          if (!executionData) return { error: 'No execution data available' };
+          const step = queryTools.getStepDetails(executionData, stepId);
+          if (!step) return { error: `Step '${stepId}' not found` };
+          return step;
+        }
+      },
 
-Use markdown formatting for better readability.`;
+      listSteps: {
+        description: 'List all workflow steps with their status and basic info',
+        inputSchema: z.object({}),
+        execute: async () => {
+          if (!executionData) return { error: 'No execution data available' };
+          const steps = queryTools.listSteps(executionData);
+          return {
+            totalSteps: steps.length,
+            steps: steps
+          };
+        }
+      },
 
-    // Stream the response using Vercel AI SDK
+      getErrors: {
+        description: 'Get all errors from the execution',
+        inputSchema: z.object({
+          limit: z.number().optional().default(20).describe('Maximum number of errors to return')
+        }),
+        execute: async ({ limit }: { limit: number }) => {
+          if (!executionData) return { error: 'No execution data available' };
+          const errors = queryTools.getErrors(executionData, limit);
+          return {
+            errorCount: errors.length,
+            errors: errors
+          };
+        }
+      },
+
+      searchInResults: {
+        description: 'Search for patterns in step outputs/results',
+        inputSchema: z.object({
+          pattern: z.string().describe('The pattern to search for in results'),
+          limit: z.number().optional().default(20).describe('Maximum number of results')
+        }),
+        execute: async ({ pattern, limit }: { pattern: string; limit: number }) => {
+          if (!executionData) return { error: 'No execution data available' };
+          const results = queryTools.searchInResults(executionData, pattern, limit);
+          return {
+            found: results.length,
+            matches: results
+          };
+        }
+      },
+
+      getTimeline: {
+        description: 'Get the execution timeline showing when each step ran',
+        inputSchema: z.object({}),
+        execute: async () => {
+          if (!executionData) return { error: 'No execution data available' };
+          const timeline = queryTools.getTimeline(executionData);
+          return {
+            steps: timeline.length,
+            timeline: timeline
+          };
+        }
+      },
+
+      getPerformanceMetrics: {
+        description: 'Get performance metrics and timing analysis',
+        inputSchema: z.object({}),
+        execute: async () => {
+          if (!executionData) return { error: 'No execution data available' };
+          const metrics = queryTools.getPerformanceMetrics(executionData);
+          if (!metrics) return { error: 'No performance data available' };
+          return metrics;
+        }
+      },
+
+      getLogsByTimeRange: {
+        description: 'Get logs within a specific time range',
+        inputSchema: z.object({
+          startTime: z.string().describe('Start time (ISO format or relative like "2 minutes ago")'),
+          endTime: z.string().describe('End time (ISO format or relative like "now")')
+        }),
+        execute: async ({ startTime, endTime }: { startTime: string; endTime: string }) => {
+          if (!executionData) return { error: 'No execution data available' };
+          const logs = queryTools.getLogsByTimeRange(executionData, startTime, endTime);
+          return {
+            logCount: logs.length,
+            logs: logs
+          };
+        }
+      },
+
+      extractSection: {
+        description: 'Extract a specific section from the execution data using dot notation path',
+        inputSchema: z.object({
+          path: z.string().describe('Dot notation path (e.g., "results.0.logs" or "status")')
+        }),
+        execute: async ({ path }: { path: string }) => {
+          if (!executionData) return { error: 'No execution data available' };
+          const section = queryTools.extractSection(executionData, path);
+          if (section === null) return { error: `Path '${path}' not found` };
+          return { path, data: section };
+        }
+      }
+    };
+
+    // Stream the response using Vercel AI SDK with tools
     const result = await streamText({
-      model: vertex('gemini-2.5-pro'),
+      model: vertex('gemini-2.0-flash-exp-002'),  // Using 2.0 for better tool support
       messages: [
         { role: 'system', content: context },
         ...messages
       ],
+      tools: tools,
+      toolChoice: 'auto', // Let the model decide when to use tools
       temperature: 0.7,
       maxRetries: 3,
+      onChunk: async ({ chunk }) => {
+        // Log when tools are being called
+        if (chunk.type === 'tool-call') {
+          console.log(`[AI Tool Call] ${chunk.toolName}`);
+        }
+      }
     });
 
     // Return the stream
