@@ -68,6 +68,14 @@ interface ExecutionsDataTableProps {
   filterWorkflowNames?: string[];
   filterStatuses?: string[];
   filterMachines?: string[];
+  // Server-side filter callbacks
+  onWorkflowFilterChange?: (workflowName: string | undefined) => void;
+  onStatusFilterChange?: (status: string | undefined) => void;
+  onMachineFilterChange?: (machine: string | undefined) => void;
+  // Active filter values (controlled from parent)
+  activeWorkflowFilter?: string;
+  activeStatusFilter?: string;
+  activeMachineFilter?: string;
 }
 
 // Helper function to extract the most informative message from parser output
@@ -168,6 +176,12 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   filterWorkflowNames,
   filterStatuses,
   filterMachines,
+  onWorkflowFilterChange,
+  onStatusFilterChange,
+  onMachineFilterChange,
+  activeWorkflowFilter,
+  activeStatusFilter,
+  activeMachineFilter,
 }: ExecutionsDataTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([
     {
@@ -770,8 +784,16 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
           {/* Workflow Name Filter */}
           <select
-            value={(table.getColumn('workflow_name')?.getFilterValue() as string) ?? ''}
-            onChange={(e) => table.getColumn('workflow_name')?.setFilterValue(e.target.value || undefined)}
+            value={activeWorkflowFilter ?? ''}
+            onChange={(e) => {
+              const value = e.target.value || undefined;
+              // Use server-side filter if callback provided, otherwise fall back to client-side
+              if (onWorkflowFilterChange) {
+                onWorkflowFilterChange(value);
+              } else {
+                table.getColumn('workflow_name')?.setFilterValue(value);
+              }
+            }}
             className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
             <option value="">All Workflows</option>
@@ -784,8 +806,16 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
           {/* Status Filter */}
           <select
-            value={(table.getColumn('status')?.getFilterValue() as string) ?? ''}
-            onChange={(e) => table.getColumn('status')?.setFilterValue(e.target.value || undefined)}
+            value={activeStatusFilter ?? ''}
+            onChange={(e) => {
+              const value = e.target.value || undefined;
+              // Use server-side filter if callback provided, otherwise fall back to client-side
+              if (onStatusFilterChange) {
+                onStatusFilterChange(value);
+              } else {
+                table.getColumn('status')?.setFilterValue(value);
+              }
+            }}
             className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
             <option value="">All Statuses</option>
@@ -798,8 +828,15 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
           {/* Machine Filter */}
           <select
-            value={(table.getColumn('machine')?.getFilterValue() as string) ?? ''}
-            onChange={(e) => table.getColumn('machine')?.setFilterValue(e.target.value || undefined)}
+            value={activeMachineFilter ?? ''}
+            onChange={(e) => {
+              const value = e.target.value || undefined;
+              // Machine filter is client-side only for now
+              if (onMachineFilterChange) {
+                onMachineFilterChange(value);
+              }
+              table.getColumn('machine')?.setFilterValue(value);
+            }}
             className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
             <option value="">All Machines</option>
@@ -811,15 +848,21 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           </select>
 
           {/* Clear Filters Button */}
-          {activeFiltersCount > 0 && (
+          {(activeFiltersCount > 0 || activeWorkflowFilter || activeStatusFilter || activeMachineFilter) && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.resetColumnFilters()}
+              onClick={() => {
+                table.resetColumnFilters();
+                // Clear server-side filters
+                if (onWorkflowFilterChange) onWorkflowFilterChange(undefined);
+                if (onStatusFilterChange) onStatusFilterChange(undefined);
+                if (onMachineFilterChange) onMachineFilterChange(undefined);
+              }}
               className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
             >
               <X className="mr-1 h-3 w-3" />
-              Clear Filters ({activeFiltersCount})
+              Clear Filters
             </Button>
           )}
         </div>

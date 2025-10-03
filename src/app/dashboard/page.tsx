@@ -48,10 +48,15 @@ function DashboardContent() {
   const [executionsLoading, setExecutionsLoading] = useState(false);
   const [pollCount, setPollCount] = useState(0);
 
-  // Filter values state
+  // Filter values state (available options from DB)
   const [filterWorkflowNames, setFilterWorkflowNames] = useState<string[]>([]);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const [filterMachines, setFilterMachines] = useState<string[]>([]);
+
+  // Active filter state (currently selected filters)
+  const [activeWorkflowFilter, setActiveWorkflowFilter] = useState<string | undefined>(undefined);
+  const [activeStatusFilter, setActiveStatusFilter] = useState<string | undefined>(undefined);
+  const [activeMachineFilter, setActiveMachineFilter] = useState<string | undefined>(undefined);
 
   // UI state
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -162,12 +167,29 @@ function DashboardContent() {
     }
   }, [viewOrgId]);
 
-  const fetchExecutions = useCallback(async (showLoading = true) => {
+  const fetchExecutions = useCallback(async (showLoading = true, filterWorkflow?: string, filterStatus?: string, filterMachine?: string) => {
     try {
       if (showLoading) setExecutionsLoading(true);
-      const apiUrl = viewOrgId
-        ? `/api/remote-workflows/executions?limit=50&viewOrgId=${viewOrgId}`
-        : '/api/remote-workflows/executions?limit=50';
+
+      // Build query params
+      const params = new URLSearchParams();
+      params.set('limit', '200'); // Increased from 50 to 200
+      if (viewOrgId) params.set('viewOrgId', viewOrgId);
+
+      // Apply filters to API query
+      if (filterWorkflow) {
+        // Find workflow ID from name
+        const workflow = workflows.find(w => w.name === filterWorkflow);
+        if (workflow) {
+          params.set('workflow_id', workflow.id.toString());
+        }
+      }
+      if (filterStatus) {
+        params.set('status', filterStatus);
+      }
+      // Note: Machine filter is client-side only (not supported by API yet)
+
+      const apiUrl = `/api/remote-workflows/executions?${params.toString()}`;
       const response = await fetch(apiUrl);
       const executionsData = await response.json();
       if (executionsData.success) {
@@ -210,7 +232,7 @@ function DashboardContent() {
     } finally {
       if (showLoading) setExecutionsLoading(false);
     }
-  }, [viewOrgId]);
+  }, [viewOrgId, workflows]);
 
   const fetchLiveExecutions = useCallback(async () => {
     try {
@@ -330,8 +352,24 @@ function DashboardContent() {
   }, [fetchExecutions, fetchLiveExecutions]);
 
   const handleRefreshExecutions = useCallback(() => {
-    fetchExecutions(true);
-  }, [fetchExecutions]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter]);
+
+  // Handle filter changes - refetch from API
+  const handleWorkflowFilterChange = useCallback((workflowName: string | undefined) => {
+    setActiveWorkflowFilter(workflowName);
+    fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter);
+  }, [fetchExecutions, activeStatusFilter, activeMachineFilter]);
+
+  const handleStatusFilterChange = useCallback((status: string | undefined) => {
+    setActiveStatusFilter(status);
+    fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter);
+  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter]);
+
+  const handleMachineFilterChange = useCallback((machine: string | undefined) => {
+    setActiveMachineFilter(machine);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter]);
 
   // Handlers
   const handleWorkflowCreated = useCallback((_newWorkflow: any) => {
@@ -448,12 +486,12 @@ function DashboardContent() {
       // This ensures new executions appear within 5 seconds
       if (pollCount % 2 === 0) {
         console.log('[Dashboard] Polling executions...');
-        fetchExecutions(false);
+        fetchExecutions(false, activeWorkflowFilter, activeStatusFilter, activeMachineFilter);
       }
     }, 2500); // Poll every 2.5 seconds
 
     return () => clearInterval(pollTimer);
-  }, [fetchLiveExecutions, fetchExecutions, pollCount]);
+  }, [fetchLiveExecutions, fetchExecutions, pollCount, activeWorkflowFilter, activeStatusFilter, activeMachineFilter]);
 
   // Handle URL parameters for deep linking
   useEffect(() => {
@@ -611,6 +649,12 @@ function DashboardContent() {
                   filterWorkflowNames={filterWorkflowNames}
                   filterStatuses={filterStatuses}
                   filterMachines={filterMachines}
+                  onWorkflowFilterChange={handleWorkflowFilterChange}
+                  onStatusFilterChange={handleStatusFilterChange}
+                  onMachineFilterChange={handleMachineFilterChange}
+                  activeWorkflowFilter={activeWorkflowFilter}
+                  activeStatusFilter={activeStatusFilter}
+                  activeMachineFilter={activeMachineFilter}
                 />
               </div>
             )}
