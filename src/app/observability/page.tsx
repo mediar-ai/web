@@ -163,6 +163,26 @@ export default function ObservabilityPage() {
     return `${(seconds / 60).toFixed(1)}m`;
   };
 
+  const formatLocalTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
+  };
+
+  const formatLocalTimeOnly = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
+  };
+
   const getStatusColor = (statusCode: string) => {
     return statusCode === 'STATUS_CODE_ERROR' ? 'bg-black text-white' : 'bg-white text-black border-2 border-black';
   };
@@ -209,7 +229,7 @@ export default function ObservabilityPage() {
 
             {/* Last Updated */}
             <span className="text-xs font-mono text-gray-600">
-              Updated: {lastRefresh.toLocaleTimeString()}
+              Updated: {formatLocalTimeOnly(lastRefresh.toISOString())}
             </span>
           </div>
         </div>
@@ -287,7 +307,7 @@ export default function ObservabilityPage() {
                           </div>
                           <div className="flex justify-between">
                             <span className="text-gray-600">Last Seen:</span>
-                            <span>{new Date(service.last_seen).toLocaleTimeString()}</span>
+                            <span>{formatLocalTimeOnly(service.last_seen)}</span>
                           </div>
                         </div>
                       </div>
@@ -349,7 +369,7 @@ export default function ObservabilityPage() {
                       {recentExecutions.map((execution, index) => (
                         <tr key={`${execution.TraceId}-${index}`} className="border-t border-gray-200 hover:bg-gray-50">
                           <td className="p-3 font-mono text-sm">
-                            {new Date(execution.Timestamp).toLocaleString()}
+                            {formatLocalTime(execution.Timestamp)}
                           </td>
                           <td className="p-3 font-mono text-sm">{execution.ServiceName}</td>
                           <td className="p-3 font-mono text-sm">{formatDuration(execution.duration_seconds)}</td>
@@ -433,7 +453,7 @@ export default function ObservabilityPage() {
                         recentErrors.map((error, index) => (
                           <tr key={`${error.TraceId}-${index}`} className="border-t border-gray-200 hover:bg-gray-50">
                             <td className="p-3 font-mono text-sm">
-                              {new Date(error.Timestamp).toLocaleString()}
+                              {formatLocalTime(error.Timestamp)}
                             </td>
                             <td className="p-3 font-mono text-sm">{error.ServiceName}</td>
                             <td className="p-3 font-mono text-sm">{error.SpanName}</td>
