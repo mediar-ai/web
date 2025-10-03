@@ -15,7 +15,7 @@ import { ExecutionsDataTable } from '@/components/dashboard/ExecutionsDataTable'
 import { Button } from '@/components/ui/button';
 import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
 import { Activity, Workflow, TrendingUp, Zap, Plus, Search } from 'lucide-react';
-import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Execution,
@@ -42,6 +42,7 @@ function DashboardContent() {
 
   // Workflows and executions state
   const [workflows, setWorkflows] = useState<WorkflowWithSettings[]>([]);
+  const workflowsRef = useRef<WorkflowWithSettings[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,6 +129,7 @@ function DashboardContent() {
           }
         );
         setWorkflows(sortedWorkflows);
+        workflowsRef.current = sortedWorkflows;
 
         // Update stats
         const activeWorkflows = sortedWorkflows.filter((w: any) => w.status === 'active').length;
@@ -178,8 +180,8 @@ function DashboardContent() {
 
       // Apply filters to API query
       if (filterWorkflow) {
-        // Find workflow ID from name
-        const workflow = workflows.find(w => w.name === filterWorkflow);
+        // Find workflow ID from name - use ref to avoid dependency
+        const workflow = workflowsRef.current.find(w => w.name === filterWorkflow);
         if (workflow) {
           params.set('workflow_id', workflow.id.toString());
         }
@@ -232,7 +234,7 @@ function DashboardContent() {
     } finally {
       if (showLoading) setExecutionsLoading(false);
     }
-  }, [viewOrgId, workflows]);
+  }, [viewOrgId]);
 
   const fetchLiveExecutions = useCallback(async () => {
     try {
