@@ -58,10 +58,12 @@ export function ExecutionDetailsDialog({
   const [executionLogs, setExecutionLogs] = useState<any[] | null>(null);
   const [executionResults, setExecutionResults] = useState<any | null>(null);
   const [formattedOutput, setFormattedOutput] = useState<string | null>(null);
+  const [rawMcpResponse, setRawMcpResponse] = useState<any | null>(null);
   const [loadingStates, setLoadingStates] = useState({
     logs: false,
     results: false,
     formattedOutput: false,
+    rawMcpResponse: false,
   });
 
   // Fetch logs on demand using dedicated endpoint
@@ -100,6 +102,7 @@ export function ExecutionDetailsDialog({
         setExecutionResults(data.execution.results);
         if (data.execution.formatted_output) setFormattedOutput(data.execution.formatted_output);
         if (data.execution.execution_logs) setExecutionLogs(data.execution.execution_logs);
+        if (data.execution.raw_mcp_response) setRawMcpResponse(data.execution.raw_mcp_response);
       }
     } catch (error) {
       console.error('Failed to fetch execution results:', error);
@@ -108,64 +111,105 @@ export function ExecutionDetailsDialog({
     }
   };
 
-  // Helper function to download logs as text file
+  // Fetch raw MCP response for complete logs download
+  const fetchRawMcpResponse = async () => {
+    if (!execution || rawMcpResponse !== null || loadingStates.rawMcpResponse) return;
+
+    setLoadingStates(prev => ({ ...prev, rawMcpResponse: true }));
+    try {
+      const response = await fetch(
+        `/api/remote-workflows/executions/${execution.execution_id}/results`
+      );
+      const data = await response.json();
+      if (data.success && data.execution && data.execution.results) {
+        // Store results in the same state variable for compatibility
+        setRawMcpResponse(data.execution.results);
+      }
+    } catch (error) {
+      console.error('Failed to fetch execution results:', error);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, rawMcpResponse: false }));
+    }
+  };
+
+  // Helper function to download complete execution logs as JSON (using results field)
   const downloadLogsAsText = async () => {
     if (!execution) return;
 
-    // Fetch logs if not already loaded
-    if (!executionLogs) {
-      await fetchExecutionLogs();
+    // Fetch results if not already loaded
+    if (!rawMcpResponse && !executionResults) {
+      await fetchRawMcpResponse();
     }
 
-    const logsToDownload = executionLogs || execution.execution_logs;
-    if (!logsToDownload || logsToDownload.length === 0) {
+    // Use results field for download (already contains all execution data)
+    const resultsToDownload = rawMcpResponse || executionResults || execution.results;
+
+    if (!resultsToDownload) {
+      // If no results available, fallback to execution logs
+      const logsToDownload = executionLogs || execution.execution_logs;
+      if (!logsToDownload || logsToDownload.length === 0) {
+        console.warn('No execution data available for download');
+        return;
+      }
+
+      // Old text format fallback
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `execution-${execution.execution_id}-logs-${timestamp}.txt`;
+
+      let content = '='.repeat(60) + '\n';
+      content += 'EXECUTION LOG FILE (Limited)\n';
+      content += '='.repeat(60) + '\n\n';
+      content += 'Note: This is limited orchestrator logs only. Full execution data not available.\n\n';
+
+      logsToDownload.forEach((log) => {
+        const logTime = log.timestamp
+          ? new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false })
+          : 'N/A';
+        const level = (log.level || 'info').toUpperCase().padEnd(7);
+        content += `${logTime} [${level}] ${log.message}\n`;
+      });
+
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
       return;
     }
 
     // Format timestamp for filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `execution-${execution.execution_id}-logs-${timestamp}.txt`;
+    const filename = `execution-${execution.execution_id}-complete-execution-${timestamp}.json`;
 
-    // Build the log content with metadata header
-    let content = '='.repeat(60) + '\n';
-    content += 'EXECUTION LOG FILE\n';
-    content += '='.repeat(60) + '\n\n';
+    // Create a comprehensive execution data object with metadata
+    const completeExecutionData = {
+      execution_metadata: {
+        execution_id: execution.execution_id,
+        workflow_name: execution.workflow_name || 'N/A',
+        workflow_id: execution.workflow_id,
+        status: execution.status,
+        created_at: execution.created_at,
+        started_at: execution.started_at,
+        completed_at: execution.completed_at,
+        duration_seconds: execution.execution_duration_seconds,
+        machine: execution.assigned_machine_name || null,
+        version: execution.version_number ? `v${execution.version_number}` : 'v1.0.0',
+        client_id: execution.client_id || null,
+        modal_call_id: execution.modal_call_id || null,
+        error_message: execution.error_message || null,
+      },
+      execution_results: resultsToDownload,
+      download_timestamp: new Date().toISOString(),
+      download_note: 'This file contains the complete execution data including all step results, environment variables, and logs'
+    };
 
-    // Add execution metadata
-    content += 'Execution Details:\n';
-    content += '-'.repeat(40) + '\n';
-    content += `Execution ID: ${execution.execution_id}\n`;
-    content += `Workflow: ${execution.workflow_name || 'N/A'}\n`;
-    content += `Status: ${execution.status.toUpperCase()}\n`;
-    content += `Started: ${execution.started_at ? new Date(execution.started_at).toLocaleString() : 'N/A'}\n`;
-    content += `Completed: ${execution.completed_at ? new Date(execution.completed_at).toLocaleString() : 'N/A'}\n`;
-    content += `Duration: ${formatDuration(execution.execution_duration_seconds)}\n`;
-    if (execution.assigned_machine_name) {
-      content += `Machine: ${execution.assigned_machine_name}\n`;
-    }
-    if (execution.error_message) {
-      content += `Error: ${execution.error_message}\n`;
-    }
-    content += '\n';
-    content += '='.repeat(60) + '\n';
-    content += 'EXECUTION LOGS\n';
-    content += '='.repeat(60) + '\n\n';
-
-    // Add the actual logs
-    logsToDownload.forEach((log) => {
-      const timestamp = log.timestamp
-        ? new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false })
-        : 'N/A';
-      const level = (log.level || 'info').toUpperCase().padEnd(7);
-      content += `${timestamp} [${level}] ${log.message}\n`;
-    });
-
-    content += '\n' + '='.repeat(60) + '\n';
-    content += `Generated at: ${new Date().toLocaleString()}\n`;
-    content += '='.repeat(60) + '\n';
-
-    // Create blob and trigger download
-    const blob = new Blob([content], { type: 'text/plain' });
+    // Create blob and trigger download as JSON
+    const jsonString = JSON.stringify(completeExecutionData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -237,10 +281,12 @@ export function ExecutionDetailsDialog({
       setExecutionLogs(null);
       setExecutionResults(null);
       setFormattedOutput(null);
+      setRawMcpResponse(null);
       setLoadingStates({
         logs: false,
         results: false,
         formattedOutput: false,
+        rawMcpResponse: false,
       });
     }
   }, [execution, open]);
@@ -488,7 +534,7 @@ export function ExecutionDetailsDialog({
                           onClick={downloadLogsAsText}
                         >
                           <Download className="w-4 h-4 mr-2" />
-                          Download Logs (TXT)
+                          Download Complete Logs (JSON)
                         </Button>
                       </div>
                     </div>
@@ -538,7 +584,7 @@ export function ExecutionDetailsDialog({
                             onClick={downloadLogsAsText}
                           >
                             <Download className="w-3 h-3 mr-1" />
-                            Download
+                            Download Complete (JSON)
                           </Button>
                         </div>
                       </div>

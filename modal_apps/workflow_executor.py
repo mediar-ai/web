@@ -1903,9 +1903,6 @@ async def execute_mcp_workflow(
 
                     # Execution type
                     "execution_type": "real_browser_automation",
-
-                    # Store raw_mcp_response separately for debugging (will be extracted and stored in DB column)
-                    "_raw_mcp_response": result_data,
                 }
 
                 # Workflow-agnostic logging
@@ -2284,9 +2281,7 @@ def execute_workflow(
 === END OF EXECUTION {execution_id} ===
 """
 
-        # Extract raw MCP response from results (if present)
-        # Check both old field name and new field name for compatibility
-        raw_mcp_response = results.pop("_raw_mcp_response", None) or results.pop("raw_mcp_response", None)
+        # No longer extracting raw_mcp_response - we use results field directly
 
         # Create structured logs array
         execution_logs = []
@@ -2385,13 +2380,11 @@ def execute_workflow(
                 # Case 1: The workflow ran perfectly but found no quotes (only for quote workflows).
                 if quotes_found == 0 and success_rate == 100 and is_quote_workflow:
                     error_message_for_db = "Workflow incomplete - No quotes found"
-                # Case 2: An actual error occurred during MCP execution.
-                elif raw_mcp_response and "result" in raw_mcp_response:
+                # Case 2: An actual error occurred during execution.
+                elif results:
                     try:
-                        mcp_result_text = raw_mcp_response["result"]["content"][0][
-                            "text"
-                        ]
-                        mcp_result = json.loads(mcp_result_text)
+                        # Results already contains the parsed workflow execution data
+                        mcp_result = results
 
                         if mcp_result.get("status") != "success":
                             failed_step = None
@@ -2492,10 +2485,10 @@ def execute_workflow(
         # Update execution with final results and raw data
         cur.execute(
             """
-            UPDATE workflow_executions 
-            SET status = %s, completed_at = %s, execution_duration_seconds = %s, 
+            UPDATE workflow_executions
+            SET status = %s, completed_at = %s, execution_duration_seconds = %s,
                 results = %s, progress_percentage = %s, current_step_index = %s,
-                raw_logs = %s, raw_mcp_response = %s, execution_logs = %s,
+                raw_logs = %s, execution_logs = %s,
                 formatted_output = %s, error_message = %s
             WHERE id = %s
         """,
@@ -2507,7 +2500,6 @@ def execute_workflow(
                 100,
                 total_steps,
                 combined_logs,  # Use combined logs instead of just raw_logs
-                json.dumps(raw_mcp_response) if raw_mcp_response else None,
                 json.dumps(execution_logs),
                 formatted_output,
                 error_message_for_db,

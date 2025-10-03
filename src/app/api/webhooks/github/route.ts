@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
             newVersionNumber = `${parts[0]}.${parts[1]}.${patch}`;
           }
 
-          // Create new version entry
+          // Create new version entry (inactive initially)
           const { data: newVersion, error: versionError } = await supabase
             .from('deployed_workflow_versions')
             .insert({
@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
               automation_sequence_yaml: content.yaml,
               automation_sequence: yaml.load(content.yaml),
               preferred_format: 'yaml',
-              is_active: true,
+              is_active: false,  // Start inactive
               change_notes: `Synced from GitHub commit ${content.metadata.sha.substring(0, 7)}`
             })
             .select()
@@ -189,6 +189,17 @@ export async function POST(request: NextRequest) {
           if (versionError) {
             results.errors.push(`${folderName}: Version creation failed - ${versionError.message}`);
             continue;
+          }
+
+          // Activate the new version using the RPC function
+          const { error: activateError } = await supabase
+            .rpc('activate_workflow_version', {
+              p_workflow_id: existing.id,
+              p_version_number: newVersionNumber
+            });
+
+          if (activateError) {
+            console.error(`Failed to activate version ${newVersionNumber}: ${activateError.message}`);
           }
 
           // Get current total_versions to increment
@@ -203,7 +214,7 @@ export async function POST(request: NextRequest) {
             .from('deployed_workflows')
             .update({
               name: workflowName,
-              version: newVersionNumber,  // Update the version field to match current version
+              // Removed 'version' field - it causes constraint violation
               automation_sequence: yaml.load(content.yaml),
               automation_sequence_yaml: content.yaml,  // Store YAML format as well
               current_version_id: newVersion.id,
@@ -282,7 +293,7 @@ export async function POST(request: NextRequest) {
           if (createError) {
             results.errors.push(`${folderName}: Create failed - ${createError.message}`);
           } else {
-            // Create initial version entry
+            // Create initial version entry (inactive initially)
             const { data: initialVersion, error: versionError } = await supabase
               .from('deployed_workflow_versions')
               .insert({
@@ -291,7 +302,7 @@ export async function POST(request: NextRequest) {
                 automation_sequence_yaml: content.yaml,
                 automation_sequence: yaml.load(content.yaml),
                 preferred_format: 'yaml',
-                is_active: true,
+                is_active: false,  // Start inactive
                 change_notes: `Created from GitHub: ${content.metadata.sha.substring(0, 7)}`
               })
               .select()
@@ -300,6 +311,17 @@ export async function POST(request: NextRequest) {
             if (versionError) {
               results.errors.push(`${folderName}: Version creation failed - ${versionError.message}`);
             } else {
+              // Activate the initial version using the RPC function
+              const { error: activateError } = await supabase
+                .rpc('activate_workflow_version', {
+                  p_workflow_id: newWorkflow.id,
+                  p_version_number: '1.0.0'
+                });
+
+              if (activateError) {
+                console.error(`Failed to activate initial version: ${activateError.message}`);
+              }
+
               // Update workflow to point to this version
               await supabase
                 .from('deployed_workflows')

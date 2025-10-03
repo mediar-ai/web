@@ -92,17 +92,36 @@ export async function GET(
       }
     }
 
-    // For GitHub-backed workflows, fetch from GitHub
-    try {
-      // Determine which branch/ref to use
-      const ref = workflow.github_ref || 'main';
+    // For GitHub-backed workflows
+    // If a specific version is requested, fetch from database (versions not stored as Git tags yet)
+    if (versionNumber) {
+      console.log(`📌 Fetching version ${versionNumber} from database`);
 
-      // If a specific version is requested, check if there's a tag for it
-      if (versionNumber) {
-        // For now, we use the same ref as the workflow
-        // In the future, we could tag releases in GitHub
-        console.log(`📌 Using ref ${ref} for version ${versionNumber}`);
+      const { data: versionData, error: versionError } = await supabase
+        .from('deployed_workflow_versions')
+        .select('automation_sequence_yaml')
+        .eq('workflow_id', workflowIdNum)
+        .eq('version_number', versionNumber)
+        .single();
+
+      if (versionError || !versionData?.automation_sequence_yaml) {
+        return NextResponse.json(
+          { success: false, error: `Version ${versionNumber} not found` },
+          { status: 404 }
+        );
       }
+
+      return NextResponse.json({
+        success: true,
+        yaml: versionData.automation_sequence_yaml,
+        source: 'database',
+        version: versionNumber
+      });
+    }
+
+    // For active version, fetch from GitHub
+    try {
+      const ref = workflow.github_ref || 'main';
 
       // Fetch the workflow YAML from GitHub
       const content = await githubWorkflowManager.getWorkflow(workflow.github_path, ref);
