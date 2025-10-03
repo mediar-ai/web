@@ -233,7 +233,7 @@ Be specific and detailed in your answers. If you need more information, use the 
 
     // Stream the response using Vercel AI SDK with tools
     const result = await streamText({
-      model: vertex('gemini-2.0-flash-exp-002'),  // Using 2.0 for better tool support
+      model: vertex('gemini-2.5-pro'),
       messages: [
         { role: 'system', content: context },
         ...messages
