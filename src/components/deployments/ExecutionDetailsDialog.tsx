@@ -18,7 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
 import { Loader2, Terminal, XCircle, Sparkles, Download } from 'lucide-react';
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useCallback } from 'react';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
 import { ExecutionAIChat } from './ExecutionAIChat';
 import { Button } from '@/components/ui/button';
@@ -69,7 +69,7 @@ export function ExecutionDetailsDialog({
   const [isDownloadingResults, setIsDownloadingResults] = useState(false);
 
   // Fetch logs on demand using dedicated endpoint
-  const fetchExecutionLogs = async () => {
+  const fetchExecutionLogs = useCallback(async () => {
     if (!execution || executionLogs !== null || loadingStates.logs) return;
 
     setLoadingStates(prev => ({ ...prev, logs: true }));
@@ -88,7 +88,7 @@ export function ExecutionDetailsDialog({
     } finally {
       setLoadingStates(prev => ({ ...prev, logs: false }));
     }
-  };
+  }, [execution, executionLogs, loadingStates.logs]);
 
   // Fetch results for download
   const fetchExecutionResults = async () => {
@@ -279,7 +279,7 @@ export function ExecutionDetailsDialog({
     if (activeTab === 'logs' && executionLogs === null) {
       fetchExecutionLogs();
     }
-  }, [activeTab, executionLogs]);
+  }, [activeTab, executionLogs, fetchExecutionLogs]);
 
   useEffect(() => {
     if (isTabLoading) {
