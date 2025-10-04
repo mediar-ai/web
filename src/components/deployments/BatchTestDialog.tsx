@@ -298,7 +298,8 @@ export function BatchTestDialog({
       fetchMachines();
       fetchVersions();
     }
-  }, [open, workflow]); // Removed selectedMachineId to prevent re-running when user manually selects
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, workflow]); // Intentionally excluding selectedMachineId to prevent re-running when user manually selects
 
   // Load saved batch spec when dialog opens
   useEffect(() => {
