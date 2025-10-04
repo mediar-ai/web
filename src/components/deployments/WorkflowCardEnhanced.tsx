@@ -78,12 +78,8 @@ export function WorkflowCardEnhanced({
 
   // Calculate metrics from workflow stats (not from limited executions array)
   const metrics = useMemo(() => {
-    // Use workflow's database stats instead of calculating from limited executions
-    const successRate = workflow.success_rate ??
-      (workflow.current_version_stats?.success_rate) ??
-      (workflow.total_executions > 0
-        ? (workflow.successful_runs / workflow.total_executions) * 100
-        : 0);
+    // Use current version success rate, default to 100% if not available
+    const successRate = workflow.current_version_stats?.success_rate ?? 100;
 
     const avgDuration = workflow.current_version_stats?.average_duration_seconds ?? 0;
     const totalRuns = workflow.total_executions ?? 0;
@@ -151,12 +147,22 @@ export function WorkflowCardEnhanced({
             <div className="flex items-center gap-2 w-80 flex-shrink-0">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <h3 className="text-sm font-semibold text-gray-900 truncate min-w-0 cursor-default">
-                    {workflow.name}
-                  </h3>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate cursor-default">
+                      {workflow.name}
+                    </h3>
+                    {workflow.current_version && (
+                      <span className="text-[11px] font-mono text-gray-500 flex-shrink-0">
+                        v{workflow.current_version}
+                      </span>
+                    )}
+                  </div>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="font-mono text-xs">{workflow.name}</p>
+                  {workflow.current_version && (
+                    <p className="font-mono text-xs text-gray-400 mt-1">Version {workflow.current_version}</p>
+                  )}
                 </TooltipContent>
               </Tooltip>
               {/* Only show status badge if it's meaningful (not deployed/running) */}
