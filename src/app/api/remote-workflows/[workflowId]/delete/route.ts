@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { Octokit } from '@octokit/rest';
 
 // Also export POST for testing
 export async function POST(
@@ -83,10 +84,10 @@ export async function DELETE(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // First, check if workflow exists and get its details including ownership
+    // First, check if workflow exists and get its details including github_folder
     const { data: workflow, error: fetchError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, status, created_by, created_at')
+      .select('id, name, status, created_by, created_at, github_folder')
       .eq('id', workflowIdNum)
       .single();
 
@@ -133,9 +134,90 @@ export async function DELETE(
 
     console.log(`🗑️ Admin ${userId} deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`);
 
-    // Start transaction by deleting in proper order
-    
-    // 1. Delete all workflow executions (historical data)
+    // Step 1: Delete from GitHub if workflow has github_folder
+    if (workflow.github_folder) {
+      const githubToken = process.env.GITHUB_TOKEN;
+
+      if (!githubToken) {
+        console.warn('⚠️ GITHUB_TOKEN not set - skipping GitHub deletion');
+      } else {
+        try {
+          const octokit = new Octokit({ auth: githubToken });
+          const owner = 'mediar-ai';
+          const repo = 'workflows';
+
+          console.log(`🗑️ Deleting GitHub folder: ${workflow.github_folder}`);
+
+          // Get all files in the workflow folder
+          const { data: contents } = await octokit.repos.getContent({
+            owner,
+            repo,
+            path: workflow.github_folder,
+          });
+
+          if (Array.isArray(contents)) {
+            console.log(`   Found ${contents.length} files to delete`);
+
+            // Delete each file individually
+            for (const file of contents) {
+              try {
+                await octokit.repos.deleteFile({
+                  owner,
+                  repo,
+                  path: file.path,
+                  message: `Delete ${file.name} (workflow deletion via UI by ${userEmail})`,
+                  sha: file.sha,
+                });
+                console.log(`   ✅ Deleted: ${file.path}`);
+              } catch (fileError) {
+                console.error(`   ❌ Failed to delete ${file.path}:`, fileError);
+              }
+            }
+
+            console.log(`✅ Deleted ${contents.length} files from GitHub folder: ${workflow.github_folder}`);
+          }
+        } catch (githubError) {
+          console.error('❌ GitHub deletion failed:', githubError);
+          // Continue with deletion even if GitHub fails - orphaned GitHub files are less critical
+          // than orphaned database records
+        }
+      }
+    } else {
+      console.log('ℹ️ No github_folder - skipping GitHub deletion');
+    }
+
+    // Step 2: Delete storage files BEFORE deleting workflow record
+    try {
+      const { data: files } = await supabase
+        .from('workflow_files')
+        .select('storage_path')
+        .eq('workflow_id', workflowIdNum);
+
+      if (files && files.length > 0) {
+        const storagePaths = files.map(f => f.storage_path);
+        console.log(`🗑️ Deleting ${storagePaths.length} files from Supabase Storage`);
+
+        const { error: storageError } = await supabase.storage
+          .from('workflow-files')
+          .remove(storagePaths);
+
+        if (storageError) {
+          console.error('⚠️ Warning: Failed to delete some storage files:', storageError);
+          // Continue anyway - CASCADE will clean up DB records
+        } else {
+          console.log(`✅ Deleted ${storagePaths.length} files from storage`);
+        }
+      } else {
+        console.log('ℹ️ No storage files to delete');
+      }
+    } catch (storageError) {
+      console.error('❌ Storage deletion error:', storageError);
+      // Continue anyway
+    }
+
+    // Step 3: Delete database records in proper order
+
+    // 3a. Delete all workflow executions (historical data)
     const { error: deleteExecutionsError } = await supabase
       .from('workflow_executions')
       .delete()
@@ -149,7 +231,7 @@ export async function DELETE(
       );
     }
 
-    // 2. Delete workflow versions
+    // 3b. Delete workflow versions
     const { error: deleteVersionsError } = await supabase
       .from('deployed_workflow_versions')
       .delete()
@@ -163,7 +245,7 @@ export async function DELETE(
       );
     }
 
-    // 3. Delete the main workflow record
+    // 3c. Delete the main workflow record (CASCADE will delete workflow_files and other related records)
     const { error: deleteWorkflowError } = await supabase
       .from('deployed_workflows')
       .delete()
