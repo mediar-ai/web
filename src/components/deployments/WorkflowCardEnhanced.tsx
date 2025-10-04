@@ -151,17 +151,17 @@ export function WorkflowCardEnhanced({
                     <h3 className="text-sm font-semibold text-gray-900 truncate cursor-default">
                       {workflow.name}
                     </h3>
-                    {workflow.current_version && (
+                    {workflow.version_info?.current_version && (
                       <span className="text-[11px] font-mono text-gray-500 flex-shrink-0">
-                        v{workflow.current_version}
+                        v{workflow.version_info.current_version}
                       </span>
                     )}
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="font-mono text-xs">{workflow.name}</p>
-                  {workflow.current_version && (
-                    <p className="font-mono text-xs text-gray-400 mt-1">Version {workflow.current_version}</p>
+                  {workflow.version_info?.current_version && (
+                    <p className="font-mono text-xs text-gray-400 mt-1">Version {workflow.version_info.current_version}</p>
                   )}
                 </TooltipContent>
               </Tooltip>
