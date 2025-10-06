@@ -196,38 +196,8 @@ function DashboardContent() {
       const response = await fetch(apiUrl);
       const executionsData = await response.json();
       if (executionsData.success) {
-        const newExecutions = executionsData.executions || [];
-
-        // Smart merge: only update if data actually changed
-        setExecutions(prevExecutions => {
-          // If it's the initial load or completely different set
-          if (prevExecutions.length === 0 || showLoading) {
-            return newExecutions;
-          }
-
-          // Create a map of existing executions for quick lookup
-          const existingMap = new Map(
-            prevExecutions.map(exec => [exec.execution_id, exec])
-          );
-
-          // Merge new data, preserving unchanged items
-          const merged = newExecutions.map((newExec: Execution) => {
-            const existing = existingMap.get(newExec.execution_id);
-            // Only replace if the execution has actually changed
-            if (existing && JSON.stringify(existing) === JSON.stringify(newExec)) {
-              return existing; // Keep the same reference
-            }
-            return newExec;
-          });
-
-          // Check if the arrays are effectively the same
-          if (merged.length === prevExecutions.length &&
-              merged.every((exec: Execution, idx: number) => exec === prevExecutions[idx])) {
-            return prevExecutions; // No changes, keep same reference
-          }
-
-          return merged;
-        });
+        // Always update with fresh data from API to ensure UI stays in sync
+        setExecutions(executionsData.executions || []);
       }
     } catch (error) {
       console.error('Failed to fetch executions:', error);
@@ -470,22 +440,24 @@ function DashboardContent() {
 
   // Polling for executions - always poll to catch new executions
   useEffect(() => {
+    let localPollCount = 0;
     // Always poll for executions
     const pollTimer = setInterval(() => {
-      setPollCount(prev => prev + 1);
+      localPollCount++;
+      setPollCount(localPollCount);
 
       // Always fetch live executions
       fetchLiveExecutions();
 
-      // Fetch all executions every 5 seconds to catch new ones quickly
+      // Fetch all executions every 5 seconds (every 2nd poll)
       // This ensures new executions appear within 5 seconds
-      if (pollCount % 2 === 0) {
+      if (localPollCount % 2 === 0) {
         fetchExecutions(false, activeWorkflowFilter, activeStatusFilter, activeMachineFilter);
       }
     }, 2500); // Poll every 2.5 seconds
 
     return () => clearInterval(pollTimer);
-  }, [fetchLiveExecutions, fetchExecutions, pollCount, activeWorkflowFilter, activeStatusFilter, activeMachineFilter]);
+  }, [fetchLiveExecutions, fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter]);
 
   // Handle URL parameters for deep linking
   useEffect(() => {
