@@ -54,20 +54,33 @@ export async function GET(request: NextRequest) {
         break;
 
       case 'executions':
-        // Recent workflow executions
+        // Recent workflow executions - get all spans grouped by TraceId
         query = `
+          WITH trace_summary AS (
+            SELECT
+              TraceId,
+              min(Timestamp) as start_time,
+              max(Timestamp) as end_time,
+              sum(Duration)/1e9 as total_duration_seconds,
+              countIf(StatusCode = 'STATUS_CODE_ERROR') > 0 as has_error,
+              if(has_error, 'STATUS_CODE_ERROR', 'STATUS_CODE_OK') as StatusCode,
+              any(ScopeName) as ServiceName,
+              any(SpanName) as SpanName,
+              any(SpanAttributes) as SpanAttributes
+            FROM otel_traces
+            WHERE Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
+            GROUP BY TraceId
+          )
           SELECT
-            toString(Timestamp) as Timestamp,
+            toString(start_time) as Timestamp,
             TraceId,
-            ScopeName as ServiceName,
+            ServiceName,
             SpanName,
-            Duration/1e9 as duration_seconds,
+            total_duration_seconds as duration_seconds,
             StatusCode,
             SpanAttributes
-          FROM otel_traces
-          WHERE SpanName = 'execute_sequence'
-            AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
-          ORDER BY Timestamp DESC
+          FROM trace_summary
+          ORDER BY start_time DESC
           LIMIT 100
         `;
         break;
@@ -120,21 +133,26 @@ export async function GET(request: NextRequest) {
         break;
 
       case 'errors':
-        // Recent errors
+        // Recent errors with detailed context
         query = `
           SELECT
             toString(Timestamp) as Timestamp,
             TraceId,
             SpanId,
             ScopeName as ServiceName,
-            SpanName,
+            SpanName as operation,
             Duration/1e9 as duration_seconds,
-            SpanAttributes
+            SpanAttributes,
+            if(mapContains(SpanAttributes, 'error.message'), SpanAttributes['error.message'], '') as error_message,
+            if(mapContains(SpanAttributes, 'workflow.name'), SpanAttributes['workflow.name'], '') as workflow_name,
+            if(mapContains(SpanAttributes, 'workflow.step'), SpanAttributes['workflow.step'], '') as workflow_step,
+            if(mapContains(SpanAttributes, 'machine.id'), SpanAttributes['machine.id'], '') as machine_id,
+            StatusMessage
           FROM otel_traces
           WHERE StatusCode = 'STATUS_CODE_ERROR'
             AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
           ORDER BY Timestamp DESC
-          LIMIT 100
+          LIMIT 200
         `;
         break;
 
