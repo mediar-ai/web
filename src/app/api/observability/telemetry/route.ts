@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         // Service health overview
         query = `
           SELECT
-            ScopeName as ServiceName,
+            ServiceName,
             count() as total_spans,
             countIf(StatusCode = 'STATUS_CODE_ERROR') as errors,
             round((errors / total_spans) * 100, 2) as error_rate,
@@ -48,51 +48,41 @@ export async function GET(request: NextRequest) {
             round(avg(Duration)/1e9, 3) as avg_duration_seconds
           FROM otel_traces
           WHERE Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
-          GROUP BY ScopeName
+          GROUP BY ServiceName
           ORDER BY total_spans DESC
         `;
         break;
 
       case 'executions':
-        // Recent workflow executions - get all spans grouped by TraceId
+        // Recent workflow executions - show execute_sequence spans with step details
         query = `
-          WITH trace_summary AS (
-            SELECT
-              TraceId,
-              min(Timestamp) as start_time,
-              max(Timestamp) as end_time,
-              sum(Duration)/1e9 as total_duration_seconds,
-              countIf(StatusCode = 'STATUS_CODE_ERROR') > 0 as has_error,
-              if(has_error, 'STATUS_CODE_ERROR', 'STATUS_CODE_OK') as StatusCode,
-              any(ScopeName) as ServiceName,
-              any(SpanName) as SpanName,
-              any(SpanAttributes) as SpanAttributes
-            FROM otel_traces
-            WHERE Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
-            GROUP BY TraceId
-          )
           SELECT
-            toString(start_time) as Timestamp,
+            toString(Timestamp) as Timestamp,
             TraceId,
             ServiceName,
             SpanName,
-            total_duration_seconds as duration_seconds,
+            Duration/1e9 as duration_seconds,
             StatusCode,
-            SpanAttributes
-          FROM trace_summary
-          ORDER BY start_time DESC
+            StatusMessage,
+            SpanAttributes,
+            if(mapContains(SpanAttributes, 'workflow.name'), SpanAttributes['workflow.name'], '') as workflow_name,
+            if(mapContains(SpanAttributes, 'workflow.total_steps'), SpanAttributes['workflow.total_steps'], '') as total_steps,
+            if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '') as host_name
+          FROM otel_traces
+          WHERE SpanName = 'execute_sequence'
+            AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
+          ORDER BY Timestamp DESC
           LIMIT 100
         `;
         break;
 
       case 'tools':
-        // Tool usage statistics - using SpanName as fallback if tool attribute doesn't exist
+        // Tool usage statistics - step actions from workflow executions
         query = `
           SELECT
-            coalesce(
-              if(mapContains(SpanAttributes, 'tool.name'), SpanAttributes['tool.name'], ''),
-              if(mapContains(SpanAttributes, 'tool'), SpanAttributes['tool'], ''),
-              SpanName
+            if(mapContains(SpanAttributes, 'tool.name'),
+              SpanAttributes['tool.name'],
+              replaceRegexpOne(SpanName, '^step\\\\.', '')
             ) as tool,
             count() as executions,
             round(avg(Duration)/1e9, 3) as avg_seconds,
@@ -101,12 +91,7 @@ export async function GET(request: NextRequest) {
             round((failures / executions) * 100, 2) as failure_rate
           FROM otel_traces
           WHERE Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
-            AND (
-              SpanName = 'tool_execution'
-              OR SpanName LIKE '%tool%'
-              OR mapContains(SpanAttributes, 'tool.name')
-              OR mapContains(SpanAttributes, 'tool')
-            )
+            AND (SpanName LIKE 'step.%' OR mapContains(SpanAttributes, 'tool.name'))
           GROUP BY tool
           HAVING tool != ''
           ORDER BY executions DESC
@@ -139,14 +124,17 @@ export async function GET(request: NextRequest) {
             toString(Timestamp) as Timestamp,
             TraceId,
             SpanId,
-            ScopeName as ServiceName,
+            ServiceName,
             SpanName as operation,
             Duration/1e9 as duration_seconds,
             SpanAttributes,
-            if(mapContains(SpanAttributes, 'error.message'), SpanAttributes['error.message'], '') as error_message,
+            if(mapContains(SpanAttributes, 'error.message'), SpanAttributes['error.message'], StatusMessage) as error_message,
+            if(mapContains(SpanAttributes, 'error.type'), SpanAttributes['error.type'], '') as error_type,
             if(mapContains(SpanAttributes, 'workflow.name'), SpanAttributes['workflow.name'], '') as workflow_name,
-            if(mapContains(SpanAttributes, 'workflow.step'), SpanAttributes['workflow.step'], '') as workflow_step,
-            if(mapContains(SpanAttributes, 'machine.id'), SpanAttributes['machine.id'], '') as machine_id,
+            if(mapContains(SpanAttributes, 'step.number'), SpanAttributes['step.number'], '') as workflow_step,
+            if(mapContains(SpanAttributes, 'step.total'), SpanAttributes['step.total'], '') as total_steps,
+            if(mapContains(SpanAttributes, 'tool.name'), SpanAttributes['tool.name'], replaceRegexpOne(SpanName, '^step\\\\.', '')) as tool_name,
+            if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '') as host_name,
             StatusMessage
           FROM otel_traces
           WHERE StatusCode = 'STATUS_CODE_ERROR'

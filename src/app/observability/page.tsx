@@ -49,7 +49,11 @@ interface RecentExecution {
   SpanName: string;
   duration_seconds: number;
   StatusCode: string;
+  StatusMessage?: string;
   SpanAttributes: Record<string, any>;
+  workflow_name?: string;
+  total_steps?: string;
+  host_name?: string;
 }
 
 interface RecentError {
@@ -61,9 +65,12 @@ interface RecentError {
   duration_seconds: number;
   SpanAttributes: Record<string, any>;
   error_message?: string;
+  error_type?: string;
   workflow_name?: string;
   workflow_step?: string;
-  machine_id?: string;
+  total_steps?: string;
+  tool_name?: string;
+  host_name?: string;
   StatusMessage?: string;
 }
 
@@ -176,11 +183,13 @@ export default function ObservabilityPage() {
       const matchesSearch = searchQuery === '' ||
         exec.TraceId.toLowerCase().includes(searchQuery.toLowerCase()) ||
         exec.ServiceName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        exec.SpanName.toLowerCase().includes(searchQuery.toLowerCase());
+        exec.SpanName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        exec.workflow_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        exec.host_name?.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesStatus = statusFilter === 'all' ||
         (statusFilter === 'error' && exec.StatusCode === 'STATUS_CODE_ERROR') ||
-        (statusFilter === 'success' && exec.StatusCode === 'STATUS_CODE_OK');
+        (statusFilter === 'success' && (exec.StatusCode === 'STATUS_CODE_OK' || exec.StatusCode === 'STATUS_CODE_UNSET'));
 
       return matchesSearch && matchesStatus;
     });
@@ -193,9 +202,11 @@ export default function ObservabilityPage() {
         error.TraceId.toLowerCase().includes(searchQuery.toLowerCase()) ||
         error.ServiceName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         error.operation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        error.tool_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         error.error_message?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        error.error_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         error.workflow_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        error.machine_id?.toLowerCase().includes(searchQuery.toLowerCase());
+        error.host_name?.toLowerCase().includes(searchQuery.toLowerCase());
 
       return matchesSearch;
     });
@@ -480,8 +491,8 @@ export default function ObservabilityPage() {
                       <TableRow>
                         <TableHead className="text-white font-mono w-8"></TableHead>
                         <TableHead className="text-white font-mono">Timestamp</TableHead>
-                        <TableHead className="text-white font-mono">Service</TableHead>
-                        <TableHead className="text-white font-mono">Operation</TableHead>
+                        <TableHead className="text-white font-mono">Workflow</TableHead>
+                        <TableHead className="text-white font-mono">Host</TableHead>
                         <TableHead className="text-white font-mono">Duration</TableHead>
                         <TableHead className="text-white font-mono">Status</TableHead>
                         <TableHead className="text-white font-mono">Trace ID</TableHead>
@@ -513,12 +524,15 @@ export default function ObservabilityPage() {
                               <TableCell className="font-mono text-sm">
                                 {formatLocalTime(execution.Timestamp)}
                               </TableCell>
-                              <TableCell className="font-mono text-sm">{execution.ServiceName}</TableCell>
-                              <TableCell className="font-mono text-sm">{execution.SpanName}</TableCell>
+                              <TableCell className="font-mono text-sm">
+                                {execution.workflow_name || '-'}
+                                {execution.total_steps && <span className="text-gray-500 ml-1">({execution.total_steps} steps)</span>}
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">{execution.host_name || '-'}</TableCell>
                               <TableCell className="font-mono text-sm">{formatDuration(execution.duration_seconds)}</TableCell>
                               <TableCell>
                                 <span className={`font-mono text-xs px-2 py-1 ${getStatusColor(execution.StatusCode)}`}>
-                                  {execution.StatusCode === 'STATUS_CODE_OK' ? 'SUCCESS' : 'ERROR'}
+                                  {execution.StatusCode === 'STATUS_CODE_OK' || execution.StatusCode === 'STATUS_CODE_UNSET' ? 'SUCCESS' : 'ERROR'}
                                 </span>
                               </TableCell>
                               <TableCell className="font-mono text-xs text-gray-600">
@@ -528,14 +542,35 @@ export default function ObservabilityPage() {
                             {expandedRows.has(execution.TraceId) && (
                               <TableRow>
                                 <TableCell colSpan={7} className="bg-gray-50 p-4">
-                                  <div className="space-y-2">
-                                    <div className="font-mono text-xs">
-                                      <span className="font-bold">Full Trace ID:</span> {execution.TraceId}
+                                  <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="font-mono text-xs">
+                                        <span className="font-bold">Full Trace ID:</span> {execution.TraceId}
+                                      </div>
+                                      <div className="font-mono text-xs">
+                                        <span className="font-bold">Service:</span> {execution.ServiceName}
+                                      </div>
+                                      <div className="font-mono text-xs">
+                                        <span className="font-bold">Duration:</span> {formatDuration(execution.duration_seconds)}
+                                      </div>
+                                      {execution.host_name && (
+                                        <div className="font-mono text-xs">
+                                          <span className="font-bold">Host:</span> {execution.host_name}
+                                        </div>
+                                      )}
                                     </div>
+                                    {execution.StatusMessage && (
+                                      <div className="font-mono text-xs">
+                                        <span className="font-bold">Status Message:</span>
+                                        <div className="mt-1 p-2 bg-white border border-gray-300">
+                                          {execution.StatusMessage}
+                                        </div>
+                                      </div>
+                                    )}
                                     {execution.SpanAttributes && Object.keys(execution.SpanAttributes).length > 0 && (
                                       <div className="font-mono text-xs">
-                                        <span className="font-bold">Attributes:</span>
-                                        <pre className="mt-1 p-2 bg-white border border-gray-300 overflow-auto max-h-40">
+                                        <span className="font-bold">Full Attributes:</span>
+                                        <pre className="mt-1 p-2 bg-white border border-gray-300 overflow-auto max-h-60">
                                           {JSON.stringify(execution.SpanAttributes, null, 2)}
                                         </pre>
                                       </div>
@@ -606,11 +641,11 @@ export default function ObservabilityPage() {
                       <TableRow>
                         <TableHead className="text-white font-mono w-8"></TableHead>
                         <TableHead className="text-white font-mono">Timestamp</TableHead>
-                        <TableHead className="text-white font-mono">Service</TableHead>
-                        <TableHead className="text-white font-mono">Operation</TableHead>
-                        <TableHead className="text-white font-mono">Workflow</TableHead>
-                        <TableHead className="text-white font-mono">Machine</TableHead>
-                        <TableHead className="text-white font-mono">Error</TableHead>
+                        <TableHead className="text-white font-mono">Tool/Step</TableHead>
+                        <TableHead className="text-white font-mono">Error Type</TableHead>
+                        <TableHead className="text-white font-mono">Step</TableHead>
+                        <TableHead className="text-white font-mono">Host</TableHead>
+                        <TableHead className="text-white font-mono">Error Message</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -639,13 +674,19 @@ export default function ObservabilityPage() {
                               <TableCell className="font-mono text-sm">
                                 {formatLocalTime(error.Timestamp)}
                               </TableCell>
-                              <TableCell className="font-mono text-sm">{error.ServiceName}</TableCell>
-                              <TableCell className="font-mono text-sm">{error.operation}</TableCell>
+                              <TableCell className="font-mono text-sm font-bold">{error.tool_name || error.operation}</TableCell>
                               <TableCell className="font-mono text-sm">
-                                {error.workflow_name || '-'}
-                                {error.workflow_step && <span className="text-gray-500"> / {error.workflow_step}</span>}
+                                <span className={`px-2 py-0.5 text-xs ${
+                                  error.error_type === 'element_not_found' ? 'bg-gray-200' : 'bg-gray-100'
+                                }`}>
+                                  {error.error_type || 'unknown'}
+                                </span>
                               </TableCell>
-                              <TableCell className="font-mono text-sm">{error.machine_id || '-'}</TableCell>
+                              <TableCell className="font-mono text-sm">
+                                {error.workflow_step && error.total_steps ?
+                                  `${error.workflow_step}/${error.total_steps}` : '-'}
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">{error.host_name || '-'}</TableCell>
                               <TableCell className="font-mono text-sm max-w-xs truncate" title={error.error_message}>
                                 {error.error_message || error.StatusMessage || '-'}
                               </TableCell>
@@ -654,7 +695,7 @@ export default function ObservabilityPage() {
                               <TableRow>
                                 <TableCell colSpan={7} className="bg-gray-50 p-4">
                                   <div className="space-y-3">
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-3 gap-4">
                                       <div className="font-mono text-xs">
                                         <span className="font-bold">Trace ID:</span> {error.TraceId}
                                       </div>
@@ -664,24 +705,34 @@ export default function ObservabilityPage() {
                                       <div className="font-mono text-xs">
                                         <span className="font-bold">Duration:</span> {formatDuration(error.duration_seconds)}
                                       </div>
-                                      {error.machine_id && (
+                                      {error.host_name && (
                                         <div className="font-mono text-xs">
-                                          <span className="font-bold">Machine:</span> {error.machine_id}
+                                          <span className="font-bold">Host:</span> {error.host_name}
+                                        </div>
+                                      )}
+                                      {error.workflow_name && (
+                                        <div className="font-mono text-xs">
+                                          <span className="font-bold">Workflow:</span> {error.workflow_name}
+                                        </div>
+                                      )}
+                                      {error.error_type && (
+                                        <div className="font-mono text-xs">
+                                          <span className="font-bold">Error Type:</span> {error.error_type}
                                         </div>
                                       )}
                                     </div>
                                     {error.error_message && (
                                       <div className="font-mono text-xs">
                                         <span className="font-bold">Error Message:</span>
-                                        <div className="mt-1 p-2 bg-white border border-gray-300">
+                                        <div className="mt-1 p-2 bg-white border border-gray-300 max-h-40 overflow-auto">
                                           {error.error_message}
                                         </div>
                                       </div>
                                     )}
-                                    {error.StatusMessage && (
+                                    {error.StatusMessage && error.StatusMessage !== error.error_message && (
                                       <div className="font-mono text-xs">
                                         <span className="font-bold">Status Message:</span>
-                                        <div className="mt-1 p-2 bg-white border border-gray-300">
+                                        <div className="mt-1 p-2 bg-white border border-gray-300 max-h-40 overflow-auto">
                                           {error.StatusMessage}
                                         </div>
                                       </div>
