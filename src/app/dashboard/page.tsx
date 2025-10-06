@@ -48,7 +48,7 @@ function DashboardContent() {
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [executionsLoading, setExecutionsLoading] = useState(false);
-  const [pollCount, setPollCount] = useState(0);
+  const [_pollCount, setPollCount] = useState(0);
 
   // Filter values state (available options from DB)
   const [filterWorkflowNames, setFilterWorkflowNames] = useState<string[]>([]);

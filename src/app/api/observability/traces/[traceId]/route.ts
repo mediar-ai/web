@@ -36,19 +36,19 @@ export async function GET(
     // Fetch all spans for this trace
     const query = `
       SELECT
-        trace_id as TraceId,
-        span_id as SpanId,
-        parent_span_id as ParentSpanId,
-        operation_name as SpanName,
-        service_name as ServiceName,
-        timestamp as start_time,
-        timestamp + INTERVAL duration_ns/1e9 SECOND as end_time,
-        duration_ns/1e9 as duration_seconds,
-        status_code as StatusCode,
-        attributes as SpanAttributes
+        TraceId,
+        SpanId,
+        ParentSpanId,
+        SpanName,
+        ScopeName as ServiceName,
+        formatDateTime(Timestamp, '%Y-%m-%dT%H:%M:%SZ') as start_time,
+        formatDateTime(Timestamp + INTERVAL Duration/1e9 SECOND, '%Y-%m-%dT%H:%M:%SZ') as end_time,
+        Duration/1e9 as duration_seconds,
+        StatusCode,
+        SpanAttributes
       FROM otel_traces
-      WHERE trace_id = {traceId:String}
-      ORDER BY timestamp
+      WHERE TraceId = {traceId:String}
+      ORDER BY Timestamp
     `;
 
     const resultSet = await client.query({

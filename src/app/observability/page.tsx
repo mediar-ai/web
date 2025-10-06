@@ -164,7 +164,10 @@ export default function ObservabilityPage() {
   };
 
   const formatLocalTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString('en-US', {
+    if (!timestamp || timestamp === '') return 'N/A';
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -175,7 +178,10 @@ export default function ObservabilityPage() {
   };
 
   const formatLocalTimeOnly = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
+    if (!timestamp || timestamp === '') return 'N/A';
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return 'Invalid';
+    return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',

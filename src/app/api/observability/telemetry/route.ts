@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
             count() as total_spans,
             countIf(StatusCode = 'STATUS_CODE_ERROR') as errors,
             round((errors / total_spans) * 100, 2) as error_rate,
-            formatDateTime(max(Timestamp), '%Y-%m-%dT%H:%M:%SZ') as last_seen,
+            toString(max(Timestamp)) as last_seen,
             round(avg(Duration)/1e9, 3) as avg_duration_seconds
           FROM otel_traces
           WHERE Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         // Recent workflow executions
         query = `
           SELECT
-            formatDateTime(Timestamp, '%Y-%m-%dT%H:%M:%SZ') as Timestamp,
+            toString(Timestamp) as Timestamp,
             TraceId,
             ScopeName as ServiceName,
             SpanName,
@@ -73,21 +73,31 @@ export async function GET(request: NextRequest) {
         break;
 
       case 'tools':
-        // Tool usage statistics
+        // Tool usage statistics - using SpanName as fallback if tool attribute doesn't exist
         query = `
           SELECT
-            SpanAttributes['tool.name'] as tool,
+            coalesce(
+              if(mapContains(SpanAttributes, 'tool.name'), SpanAttributes['tool.name'], ''),
+              if(mapContains(SpanAttributes, 'tool'), SpanAttributes['tool'], ''),
+              SpanName
+            ) as tool,
             count() as executions,
             round(avg(Duration)/1e9, 3) as avg_seconds,
             round(max(Duration)/1e9, 3) as max_seconds,
             countIf(StatusCode = 'STATUS_CODE_ERROR') as failures,
             round((failures / executions) * 100, 2) as failure_rate
           FROM otel_traces
-          WHERE SpanName = 'tool_execution'
-            AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
+          WHERE Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
+            AND (
+              SpanName = 'tool_execution'
+              OR SpanName LIKE '%tool%'
+              OR mapContains(SpanAttributes, 'tool.name')
+              OR mapContains(SpanAttributes, 'tool')
+            )
           GROUP BY tool
           HAVING tool != ''
           ORDER BY executions DESC
+          LIMIT 100
         `;
         break;
 
@@ -95,7 +105,7 @@ export async function GET(request: NextRequest) {
         // Performance over time
         query = `
           SELECT
-            formatDateTime(toStartOfMinute(Timestamp), '%Y-%m-%dT%H:%M:%SZ') as time,
+            toString(toStartOfMinute(Timestamp)) as time,
             ScopeName as ServiceName,
             count() as span_count,
             round(avg(Duration)/1e9, 3) as avg_duration_seconds,
@@ -113,7 +123,7 @@ export async function GET(request: NextRequest) {
         // Recent errors
         query = `
           SELECT
-            formatDateTime(Timestamp, '%Y-%m-%dT%H:%M:%SZ') as Timestamp,
+            toString(Timestamp) as Timestamp,
             TraceId,
             SpanId,
             ScopeName as ServiceName,
