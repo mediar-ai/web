@@ -16,6 +16,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { messages, executionId } = body;
 
+    console.log('[Q&A] Request received:', { executionId, messageCount: messages?.length });
+
     // Use existing environment variables
     const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_VERTEX_PROJECT || process.env.GOOGLE_PROJECT_ID || 'mediar-394022';
     const location = process.env.VERTEX_AI_LOCATION || process.env.GOOGLE_VERTEX_LOCATION || 'us-central1';
@@ -28,20 +30,29 @@ export async function POST(request: Request) {
           process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
           'base64'
         ).toString('utf-8');
+        console.log('[Q&A] Using BASE64 credentials');
       } catch (error) {
-        console.error('Failed to decode base64 credentials:', error);
+        console.error('[Q&A] Failed to decode base64 credentials:', error);
       }
     } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
       // Fallback to JSON if available
       credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+      console.log('[Q&A] Using JSON credentials');
+    }
+
+    if (!credentialsJson) {
+      console.error('[Q&A] No Google credentials found');
     }
 
     if (!project) {
+      console.error('[Q&A] No Google Cloud project configured');
       return NextResponse.json(
         { error: 'Google Cloud project not configured' },
         { status: 500 }
       );
     }
+
+    console.log('[Q&A] Vertex AI config:', { project, location, hasCredentials: !!credentialsJson });
 
     // Initialize Vertex AI client with proper credentials
     const vertex = createVertex({
@@ -54,6 +65,7 @@ export async function POST(request: Request) {
     });
 
     // Fetch execution data from database
+    console.log('[Q&A] Fetching execution from database:', executionId);
     const { data: execution, error } = await supabase
       .from('workflow_executions')
       .select('*')
@@ -61,8 +73,11 @@ export async function POST(request: Request) {
       .single();
 
     if (error || !execution) {
+      console.error('[Q&A] Execution not found:', error);
       return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
     }
+
+    console.log('[Q&A] Execution found:', { id: execution.id, status: execution.status, hasResults: !!execution.results });
 
     // Extract execution data from the results field
     const executionData = execution.results ? queryTools.extractExecutionData(execution.results) : null;
@@ -231,6 +246,9 @@ Be specific and detailed in your answers. If you need more information, use the 
       }
     };
 
+    console.log('[Q&A] Starting AI stream with context length:', context.length);
+    console.log('[Q&A] Tools available:', Object.keys(tools).join(', '));
+
     // Stream the response using Vercel AI SDK with tools
     const result = await streamText({
       model: vertex('gemini-2.5-pro'),
@@ -243,12 +261,21 @@ Be specific and detailed in your answers. If you need more information, use the 
       temperature: 0.7,
       maxRetries: 3,
       onChunk: async ({ chunk }) => {
-        // Log when tools are being called
+        // Log chunks for debugging
+        console.log(`[Q&A] Chunk type: ${chunk.type}`);
         if (chunk.type === 'tool-call') {
-          console.log(`[AI Tool Call] ${chunk.toolName}`);
+          console.log(`[Q&A] Tool Call: ${chunk.toolName}`);
         }
+        if (chunk.type === 'text-delta') {
+          console.log(`[Q&A] Text delta: ${(chunk as any).textDelta?.substring(0, 50)}`);
+        }
+      },
+      onFinish: ({ text, usage }) => {
+        console.log('[Q&A] Stream finished:', { textLength: text?.length, usage });
       }
     });
+
+    console.log('[Q&A] Returning text stream response');
 
     // Return the stream with data stream protocol (supports tool calls)
     return result.toTextStreamResponse();
