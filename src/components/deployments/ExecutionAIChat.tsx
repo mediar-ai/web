@@ -73,6 +73,8 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
     setError(null);
 
     try {
+      console.log('[Q&A Client] Sending request:', { executionId: execution.execution_id, messageCount: messages.length + 1 });
+
       const response = await fetch('/api/ai/execution-qa', {
         method: 'POST',
         headers: {
@@ -84,8 +86,13 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
         }),
       });
 
+      console.log('[Q&A Client] Response status:', response.status);
+      console.log('[Q&A Client] Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('[Q&A Client] Error response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
       const reader = response.body?.getReader();
@@ -103,28 +110,45 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
         // Add empty assistant message
         setMessages(prev => [...prev, assistantMessage]);
 
+        let chunkCount = 0;
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.log('[Q&A Client] Stream done, received', chunkCount, 'chunks');
+            break;
+          }
 
-          buffer += decoder.decode(value, { stream: true });
+          chunkCount++;
+          const chunk = decoder.decode(value, { stream: true });
+          console.log(`[Q&A Client] Raw chunk ${chunkCount}:`, chunk.substring(0, 100));
+
+          buffer += chunk;
           const lines = buffer.split('\n');
 
           // Keep the last incomplete line in the buffer
           buffer = lines.pop() || '';
 
           for (const line of lines) {
-            if (!line.trim() || !line.startsWith('data: ')) continue;
+            if (!line.trim()) continue;
+
+            console.log('[Q&A Client] Processing line:', line.substring(0, 50));
+
+            if (!line.startsWith('data: ')) {
+              console.warn('[Q&A Client] Line does not start with "data: ":', line.substring(0, 50));
+              continue;
+            }
 
             const data = line.slice(6).trim();
             if (!data || data === '[DONE]') continue;
 
             try {
               const parsed = JSON.parse(data);
+              console.log('[Q&A Client] Parsed:', { type: parsed.type, keys: Object.keys(parsed) });
 
               // Handle text delta chunks
               if (parsed.type === 'text-delta' && parsed.textDelta) {
                 assistantContent += parsed.textDelta;
+                console.log('[Q&A Client] Text delta received:', parsed.textDelta.substring(0, 50));
 
                 // Update the message in real-time
                 setMessages(prev => {
@@ -145,9 +169,14 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
               }
             } catch (e) {
               // Ignore parse errors for malformed chunks
-              console.debug('Failed to parse chunk:', data);
+              console.error('[Q&A Client] Failed to parse chunk:', data.substring(0, 100), e);
             }
           }
+        }
+
+        if (chunkCount === 0) {
+          console.error('[Q&A Client] WARNING: No chunks received!');
+          setError(new Error('No response received from AI'));
         }
       }
     } catch (err) {
