@@ -289,49 +289,10 @@ Be specific and detailed in your answers. If you need more information, use the 
       throw streamError; // Re-throw to be caught by outer catch
     }
 
-    console.log('[Q&A] Creating SSE stream response from fullStream');
+    console.log('[Q&A] Creating UI message stream response');
 
-    // Use fullStream to get ALL chunks (text-delta, tool-call, tool-result)
-    // Format as Server-Sent Events for client compatibility
-    const encoder = new TextEncoder();
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of result.fullStream) {
-            console.log('[Q&A] Streaming chunk type:', chunk.type);
-
-            // Format as SSE
-            const sseData = `data: ${JSON.stringify(chunk)}\n\n`;
-            controller.enqueue(encoder.encode(sseData));
-
-            // Log text content for debugging
-            if (chunk.type === 'text-delta') {
-              console.log('[Q&A] Text delta:', (chunk as any).textDelta?.substring(0, 50));
-            }
-          }
-
-          // Send final done marker
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-          console.log('[Q&A] Stream completed');
-          controller.close();
-        } catch (streamError) {
-          console.error('[Q&A] Error in stream:', streamError);
-          controller.error(streamError);
-        }
-      }
-    });
-
-    const response = new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      }
-    });
-
-    console.log('[Q&A] Response created');
-    return response;
+    // Use toUIMessageStreamResponse which properly streams tools and text
+    return result.toUIMessageStreamResponse();
   } catch (error) {
     console.error('[Q&A] ERROR in execution Q&A:', error);
     console.error('[Q&A] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
