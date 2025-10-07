@@ -248,38 +248,56 @@ Be specific and detailed in your answers. If you need more information, use the 
 
     console.log('[Q&A] Starting AI stream with context length:', context.length);
     console.log('[Q&A] Tools available:', Object.keys(tools).join(', '));
+    console.log('[Q&A] Messages:', JSON.stringify(messages, null, 2));
 
-    // Stream the response using Vercel AI SDK with tools
-    const result = await streamText({
-      model: vertex('gemini-2.5-pro'),
-      messages: [
-        { role: 'system', content: context },
-        ...messages
-      ],
-      tools: tools,
-      toolChoice: 'auto', // Let the model decide when to use tools
-      temperature: 0.7,
-      maxRetries: 3,
-      onChunk: async ({ chunk }) => {
-        // Log chunks for debugging
-        console.log(`[Q&A] Chunk type: ${chunk.type}`);
-        if (chunk.type === 'tool-call') {
-          console.log(`[Q&A] Tool Call: ${chunk.toolName}`);
+    let result;
+    try {
+      console.log('[Q&A] Calling streamText...');
+
+      // Stream the response using Vercel AI SDK with tools
+      result = await streamText({
+        model: vertex('gemini-2.5-pro'),
+        messages: [
+          { role: 'system', content: context },
+          ...messages
+        ],
+        tools: tools,
+        toolChoice: 'auto', // Let the model decide when to use tools
+        temperature: 0.7,
+        maxRetries: 3,
+        onChunk: async ({ chunk }) => {
+          // Log chunks for debugging
+          console.log(`[Q&A] Chunk type: ${chunk.type}`);
+          if (chunk.type === 'tool-call') {
+            console.log(`[Q&A] Tool Call: ${chunk.toolName}`);
+          }
+          if (chunk.type === 'text-delta') {
+            console.log(`[Q&A] Text delta: ${(chunk as any).textDelta?.substring(0, 50)}`);
+          }
+        },
+        onFinish: ({ text, usage }) => {
+          console.log('[Q&A] Stream finished:', { textLength: text?.length, usage });
         }
-        if (chunk.type === 'text-delta') {
-          console.log(`[Q&A] Text delta: ${(chunk as any).textDelta?.substring(0, 50)}`);
-        }
-      },
-      onFinish: ({ text, usage }) => {
-        console.log('[Q&A] Stream finished:', { textLength: text?.length, usage });
-      }
-    });
+      });
+
+      console.log('[Q&A] streamText completed, result type:', typeof result);
+      console.log('[Q&A] result keys:', Object.keys(result));
+
+    } catch (streamError) {
+      console.error('[Q&A] ERROR in streamText:', streamError);
+      console.error('[Q&A] streamError type:', streamError instanceof Error ? streamError.constructor.name : typeof streamError);
+      console.error('[Q&A] streamError message:', streamError instanceof Error ? streamError.message : String(streamError));
+      console.error('[Q&A] streamError stack:', streamError instanceof Error ? streamError.stack : 'no stack');
+      throw streamError; // Re-throw to be caught by outer catch
+    }
 
     console.log('[Q&A] Returning text stream response');
 
     // Return the stream with data stream protocol (supports tool calls)
     const response = result.toTextStreamResponse();
-    console.log('[Q&A] Response created, headers:', response.headers);
+    console.log('[Q&A] Response created');
+    console.log('[Q&A] Response headers:', Array.from(response.headers.entries()));
+    console.log('[Q&A] Response status:', response.status);
     return response;
   } catch (error) {
     console.error('[Q&A] ERROR in execution Q&A:', error);
