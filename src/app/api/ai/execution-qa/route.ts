@@ -8,15 +8,13 @@ import * as queryTools from '@/lib/execution-query-tools';
 // Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { messages, executionId } = body;
-
-    console.log('[Q&A] Request received:', { executionId, messageCount: messages?.length });
 
     // Use existing environment variables
     const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_VERTEX_PROJECT || process.env.GOOGLE_PROJECT_ID || 'mediar-394022';
@@ -30,29 +28,20 @@ export async function POST(request: Request) {
           process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
           'base64'
         ).toString('utf-8');
-        console.log('[Q&A] Using BASE64 credentials');
       } catch (error) {
-        console.error('[Q&A] Failed to decode base64 credentials:', error);
+        console.error('Failed to decode base64 credentials:', error);
       }
     } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
       // Fallback to JSON if available
       credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-      console.log('[Q&A] Using JSON credentials');
-    }
-
-    if (!credentialsJson) {
-      console.error('[Q&A] No Google credentials found');
     }
 
     if (!project) {
-      console.error('[Q&A] No Google Cloud project configured');
       return NextResponse.json(
         { error: 'Google Cloud project not configured' },
         { status: 500 }
       );
     }
-
-    console.log('[Q&A] Vertex AI config:', { project, location, hasCredentials: !!credentialsJson });
 
     // Initialize Vertex AI client with proper credentials
     const vertex = createVertex({
@@ -65,7 +54,6 @@ export async function POST(request: Request) {
     });
 
     // Fetch execution data from database
-    console.log('[Q&A] Fetching execution from database:', executionId);
     const { data: execution, error } = await supabase
       .from('workflow_executions')
       .select('*')
@@ -73,11 +61,8 @@ export async function POST(request: Request) {
       .single();
 
     if (error || !execution) {
-      console.error('[Q&A] Execution not found:', error);
       return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
     }
-
-    console.log('[Q&A] Execution found:', { id: execution.id, status: execution.status, hasResults: !!execution.results });
 
     // Extract execution data from the results field
     const executionData = execution.results ? queryTools.extractExecutionData(execution.results) : null;
@@ -246,65 +231,31 @@ Be specific and detailed in your answers. If you need more information, use the 
       }
     };
 
-    console.log('[Q&A] Starting AI stream with context length:', context.length);
-    console.log('[Q&A] Tools available:', Object.keys(tools).join(', '));
-    console.log('[Q&A] Messages:', JSON.stringify(messages, null, 2));
-
-    let result;
-    try {
-      console.log('[Q&A] Calling streamText...');
-
-      // Stream the response using Vercel AI SDK with tools
-      result = await streamText({
-        model: vertex('gemini-2.5-pro'),
-        system: context + '\n\nIMPORTANT: After using tools, ALWAYS provide a natural language response summarizing what you found. Never end with just a tool call.',
-        messages: messages,
-        tools: tools,
-        toolChoice: 'auto', // Let the model decide when to use tools
-        temperature: 0.7,
-        maxRetries: 3,
-        onChunk: async ({ chunk }) => {
-          // Log chunks for debugging
-          console.log(`[Q&A] Chunk type: ${chunk.type}`);
-          if (chunk.type === 'tool-call') {
-            console.log(`[Q&A] Tool Call: ${chunk.toolName}`);
-          }
-          if (chunk.type === 'text-delta') {
-            console.log(`[Q&A] Text delta: ${(chunk as any).textDelta?.substring(0, 50)}`);
-          }
-        },
-        onFinish: ({ text, usage }) => {
-          console.log('[Q&A] Stream finished:', { textLength: text?.length, usage });
+    // Stream the response using Vercel AI SDK with tools
+    const result = await streamText({
+      model: vertex('gemini-2.5-pro'),
+      messages: [
+        { role: 'system', content: context },
+        ...messages
+      ],
+      tools: tools,
+      toolChoice: 'auto', // Let the model decide when to use tools
+      temperature: 0.7,
+      maxRetries: 3,
+      onChunk: async ({ chunk }) => {
+        // Log when tools are being called
+        if (chunk.type === 'tool-call') {
+          console.log(`[AI Tool Call] ${chunk.toolName}`);
         }
-      });
+      }
+    });
 
-      console.log('[Q&A] streamText completed, result type:', typeof result);
-      console.log('[Q&A] result keys:', Object.keys(result));
-
-    } catch (streamError) {
-      console.error('[Q&A] ERROR in streamText:', streamError);
-      console.error('[Q&A] streamError type:', streamError instanceof Error ? streamError.constructor.name : typeof streamError);
-      console.error('[Q&A] streamError message:', streamError instanceof Error ? streamError.message : String(streamError));
-      console.error('[Q&A] streamError stack:', streamError instanceof Error ? streamError.stack : 'no stack');
-      throw streamError; // Re-throw to be caught by outer catch
-    }
-
-    console.log('[Q&A] Creating UI message stream response');
-
-    // Use toUIMessageStreamResponse which properly streams tools and text
-    return result.toUIMessageStreamResponse();
+    // Return the stream with data stream protocol (supports tool calls)
+    return result.toTextStreamResponse();
   } catch (error) {
-    console.error('[Q&A] ERROR in execution Q&A:', error);
-    console.error('[Q&A] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    console.error('[Q&A] Error details:', JSON.stringify(error, null, 2));
-
-    // Return error as JSON so frontend can see it
+    console.error('Error in execution Q&A:', error);
     return NextResponse.json(
-      {
-        error: 'Failed to process request',
-        details: error instanceof Error ? error.message : String(error),
-        type: error instanceof Error ? error.constructor.name : typeof error
-      },
+      { error: 'Failed to process request' },
       { status: 500 }
     );
   }

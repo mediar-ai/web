@@ -74,19 +74,30 @@ interface RecentError {
   StatusMessage?: string;
 }
 
+interface LogEntry {
+  Timestamp: string;
+  ScopeName: string;
+  Body: string;
+  SeverityText: string;
+  ServiceName: string;
+  TraceId?: string;
+  SpanId?: string;
+}
+
 export default function ObservabilityPage() {
   const { isLoaded, userId } = useAuth();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('24');
-  const [activeTab, setActiveTab] = useState<'overview' | 'executions' | 'tools' | 'errors'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'executions' | 'tools' | 'errors' | 'logs'>('overview');
 
   // Data states
   const [serviceHealth, setServiceHealth] = useState<ServiceHealth[]>([]);
   const [toolUsage, setToolUsage] = useState<ToolUsage[]>([]);
   const [recentExecutions, setRecentExecutions] = useState<RecentExecution[]>([]);
   const [recentErrors, setRecentErrors] = useState<RecentError[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -132,6 +143,13 @@ export default function ObservabilityPage() {
           const toolsData = await toolsResponse.json();
           setServiceHealth(overviewData.data || []);
           setToolUsage(toolsData.data || []);
+        }
+      } else if (activeTab === 'logs') {
+        // Fetch logs from dedicated endpoint
+        const response = await fetch(`/api/observability/logs?hours=${timeRange}`);
+        if (response.ok) {
+          const data = await response.json();
+          setLogs(data.logs || []);
         }
       } else {
         const response = await fetch(`/api/observability/telemetry?metric=${metric}&hours=${timeRange}`);
@@ -350,16 +368,28 @@ export default function ObservabilityPage() {
           >
             ERRORS
           </button>
+          <button
+            onClick={() => setActiveTab('logs')}
+            className={`px-6 py-2 font-mono font-bold border-l-2 border-black ${
+              activeTab === 'logs' ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-100'
+            }`}
+          >
+            LOGS
+          </button>
         </div>
 
         {/* Search and Filters */}
-        {(activeTab === 'executions' || activeTab === 'errors') && (
+        {(activeTab === 'executions' || activeTab === 'errors' || activeTab === 'logs') && (
           <div className="flex gap-3 items-center">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
                 type="text"
-                placeholder="Search by trace ID, service, workflow..."
+                placeholder={
+                  activeTab === 'logs'
+                    ? 'Search logs by scope, service, message...'
+                    : 'Search by trace ID, service, workflow...'
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 border-2 border-black font-mono"
@@ -754,6 +784,67 @@ export default function ObservabilityPage() {
                       )}
                     </TableBody>
                   </Table>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'logs' && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-mono font-bold">LIVE LOGS</h2>
+                  <span className="text-sm font-mono text-gray-600">
+                    {logs.length} logs (filtered, no HTTP client noise)
+                  </span>
+                </div>
+                <div className="border-2 border-black bg-black p-4 overflow-auto" style={{ maxHeight: '70vh' }}>
+                  <div className="space-y-1 font-mono text-sm">
+                    {logs.length === 0 ? (
+                      <div className="text-gray-500 text-center py-8">
+                        No logs found in selected time range
+                      </div>
+                    ) : (
+                      logs.map((log, i) => {
+                        const severityColor =
+                          log.SeverityText === 'ERROR' || log.SeverityText === 'FATAL' ? 'text-red-400' :
+                          log.SeverityText === 'WARN' ? 'text-yellow-400' :
+                          log.SeverityText === 'INFO' ? 'text-blue-400' :
+                          log.SeverityText === 'DEBUG' ? 'text-gray-400' :
+                          'text-green-400';
+
+                        const matchesSearch = searchQuery === '' ||
+                          log.Body.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          log.ScopeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          log.ServiceName.toLowerCase().includes(searchQuery.toLowerCase());
+
+                        if (!matchesSearch) return null;
+
+                        return (
+                          <div key={i} className="border-b border-gray-800 py-1 hover:bg-gray-900">
+                            <div className="flex gap-3 items-start">
+                              <span className="text-gray-600 shrink-0">
+                                {new Date(log.Timestamp).toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                  fractionalSecondDigits: 3,
+                                  hour12: false
+                                })}
+                              </span>
+                              <span className={`${severityColor} font-bold shrink-0 w-12`}>
+                                {log.SeverityText || 'INFO'}
+                              </span>
+                              <span className="text-cyan-400 shrink-0 max-w-xs truncate" title={log.ScopeName}>
+                                {log.ScopeName}
+                              </span>
+                              <span className="text-gray-300 flex-1">
+                                {log.Body}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
             )}

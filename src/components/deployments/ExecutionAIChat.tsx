@@ -145,10 +145,10 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
               const parsed = JSON.parse(data);
               console.log('[Q&A Client] Parsed:', { type: parsed.type, keys: Object.keys(parsed) });
 
-              // Handle text delta chunks (UI message stream uses 'delta' property)
-              if (parsed.type === 'text-delta' && parsed.delta) {
-                assistantContent += parsed.delta;
-                console.log('[Q&A Client] Text delta received:', parsed.delta.substring(0, 50));
+              // Handle text delta chunks
+              if (parsed.type === 'text-delta' && parsed.textDelta) {
+                assistantContent += parsed.textDelta;
+                console.log('[Q&A Client] Text delta received:', parsed.textDelta.substring(0, 50));
 
                 // Update the message in real-time
                 setMessages(prev => {
