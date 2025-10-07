@@ -278,11 +278,21 @@ Be specific and detailed in your answers. If you need more information, use the 
     console.log('[Q&A] Returning text stream response');
 
     // Return the stream with data stream protocol (supports tool calls)
-    return result.toTextStreamResponse();
+    const response = result.toTextStreamResponse();
+    console.log('[Q&A] Response created, headers:', response.headers);
+    return response;
   } catch (error) {
-    console.error('Error in execution Q&A:', error);
+    console.error('[Q&A] ERROR in execution Q&A:', error);
+    console.error('[Q&A] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('[Q&A] Error details:', JSON.stringify(error, null, 2));
+
+    // Return error as JSON so frontend can see it
     return NextResponse.json(
-      { error: 'Failed to process request' },
+      {
+        error: 'Failed to process request',
+        details: error instanceof Error ? error.message : String(error),
+        type: error instanceof Error ? error.constructor.name : typeof error
+      },
       { status: 500 }
     );
   }
