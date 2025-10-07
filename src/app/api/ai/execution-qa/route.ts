@@ -257,10 +257,8 @@ Be specific and detailed in your answers. If you need more information, use the 
       // Stream the response using Vercel AI SDK with tools
       result = await streamText({
         model: vertex('gemini-2.5-pro'),
-        messages: [
-          { role: 'system', content: context },
-          ...messages
-        ],
+        system: context + '\n\nIMPORTANT: After using tools, ALWAYS provide a natural language response summarizing what you found. Never end with just a tool call.',
+        messages: messages,
         tools: tools,
         toolChoice: 'auto', // Let the model decide when to use tools
         temperature: 0.7,
@@ -291,13 +289,12 @@ Be specific and detailed in your answers. If you need more information, use the 
       throw streamError; // Re-throw to be caught by outer catch
     }
 
-    console.log('[Q&A] Returning text stream response');
+    console.log('[Q&A] Creating text stream response');
 
-    // Return the stream with data stream protocol (supports tool calls)
+    // Use toTextStreamResponse() - with maxSteps, AI will generate text after tool calls
     const response = result.toTextStreamResponse();
+
     console.log('[Q&A] Response created');
-    console.log('[Q&A] Response headers:', Array.from(response.headers.entries()));
-    console.log('[Q&A] Response status:', response.status);
     return response;
   } catch (error) {
     console.error('[Q&A] ERROR in execution Q&A:', error);
