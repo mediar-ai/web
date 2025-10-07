@@ -8,7 +8,7 @@ import * as queryTools from '@/lib/execution-query-tools';
 // Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_KEY!
 );
 
 export async function POST(request: Request) {
