@@ -30,11 +30,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Fetch all remote machines with MCP endpoints (ignore status since many have NULL)
+    // Fetch only active/null status machines with MCP endpoints (skip inactive machines)
     const { data: machines, error: fetchError } = await supabase
       .from('remote_machines')
       .select('*')
-      .not('mcp_endpoint', 'is', null);
+      .not('mcp_endpoint', 'is', null)
+      .or('status.eq.active,status.is.null');
 
     if (fetchError) {
       throw new Error(`Failed to fetch machines: ${fetchError.message}`);
