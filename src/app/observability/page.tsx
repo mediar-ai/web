@@ -854,7 +854,7 @@ export default function ObservabilityPage() {
             {activeTab === 'logs' && (
               <div className="space-y-4">
                 {/* Filters Row */}
-                <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap bg-gray-50 p-4 border-2 border-black">
                   <div className="flex items-center gap-2">
                     <Filter className="w-4 h-4" />
                     <span className="font-mono font-bold text-xs uppercase">FILTERS</span>
@@ -864,7 +864,7 @@ export default function ObservabilityPage() {
                   <select
                     value={logServiceFilter}
                     onChange={(e) => setLogServiceFilter(e.target.value)}
-                    className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+                    className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black bg-white"
                   >
                     <option value="">All Services</option>
                     {availableFilters.services.map(service => (
@@ -876,7 +876,7 @@ export default function ObservabilityPage() {
                   <select
                     value={logSeverityFilter}
                     onChange={(e) => setLogSeverityFilter(e.target.value)}
-                    className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+                    className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black bg-white"
                   >
                     <option value="">All Severities</option>
                     {availableFilters.severities.map(severity => (
@@ -888,7 +888,7 @@ export default function ObservabilityPage() {
                   <select
                     value={logScopeFilter}
                     onChange={(e) => setLogScopeFilter(e.target.value)}
-                    className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black max-w-xs"
+                    className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black max-w-xs bg-white"
                   >
                     <option value="">All Scopes</option>
                     {availableFilters.scopes.map(scope => (
@@ -897,30 +897,31 @@ export default function ObservabilityPage() {
                   </select>
 
                   {/* Clear Filters */}
-                  {(logServiceFilter || logSeverityFilter || logScopeFilter) && (
+                  {(logServiceFilter || logSeverityFilter || logScopeFilter || searchQuery) && (
                     <button
                       onClick={() => {
                         setLogServiceFilter('');
                         setLogSeverityFilter('');
                         setLogScopeFilter('');
+                        setSearchQuery('');
                       }}
                       className="px-3 py-1.5 border-2 border-black bg-white text-black hover:bg-black hover:text-white font-mono text-xs flex items-center gap-1"
                     >
                       <X className="w-3 h-3" />
-                      CLEAR
+                      CLEAR ALL
                     </button>
                   )}
 
                   {/* Log Count */}
-                  <div className="ml-auto text-sm font-mono text-gray-600">
+                  <div className="ml-auto text-sm font-mono font-bold">
                     {logs.length} logs
                   </div>
                 </div>
 
                 {/* Active Filters Display */}
-                {(logServiceFilter || logSeverityFilter || logScopeFilter) && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-mono text-gray-600 uppercase">Active:</span>
+                {(logServiceFilter || logSeverityFilter || logScopeFilter || searchQuery) && (
+                  <div className="flex items-center gap-2 flex-wrap px-2">
+                    <span className="text-xs font-mono text-gray-600 uppercase font-bold">Active Filters:</span>
                     {logServiceFilter && (
                       <span className="px-2 py-1 bg-black text-white font-mono text-xs flex items-center gap-1">
                         Service: {logServiceFilter}
@@ -939,29 +940,51 @@ export default function ObservabilityPage() {
                         <X className="w-3 h-3 cursor-pointer hover:text-gray-300" onClick={() => setLogScopeFilter('')} />
                       </span>
                     )}
+                    {searchQuery && (
+                      <span className="px-2 py-1 bg-black text-white font-mono text-xs flex items-center gap-1">
+                        Search: {searchQuery}
+                        <X className="w-3 h-3 cursor-pointer hover:text-gray-300" onClick={() => setSearchQuery('')} />
+                      </span>
+                    )}
                   </div>
                 )}
 
-                {/* Logs Display */}
-                <div className="border-2 border-black bg-black p-4 overflow-auto" style={{ maxHeight: '70vh' }}>
-                  <div className="space-y-1 font-mono text-sm">
-                    {logs.length === 0 ? (
-                      <div className="text-gray-500 text-center py-8">
-                        No logs found {logServiceFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
-                      </div>
-                    ) : (
-                      logs.map((log, i) => {
-                        const severityColor =
-                          log.SeverityText === 'ERROR' || log.SeverityText === 'FATAL' ? 'text-red-400' :
-                          log.SeverityText === 'WARN' ? 'text-yellow-400' :
-                          log.SeverityText === 'INFO' ? 'text-blue-400' :
-                          log.SeverityText === 'DEBUG' ? 'text-gray-400' :
-                          'text-green-400';
+                {/* Logs Table */}
+                <div className="border-2 border-black overflow-auto" style={{ maxHeight: '70vh' }}>
+                  <table className="w-full font-mono text-xs">
+                    <thead className="bg-black text-white sticky top-0">
+                      <tr>
+                        <th className="text-left p-2 font-bold">TIME</th>
+                        <th className="text-left p-2 font-bold">LEVEL</th>
+                        <th className="text-left p-2 font-bold">SERVICE</th>
+                        <th className="text-left p-2 font-bold">SCOPE</th>
+                        <th className="text-left p-2 font-bold">MESSAGE</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {logs.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="text-center py-8 text-gray-600">
+                            No logs found {logServiceFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
+                          </td>
+                        </tr>
+                      ) : (
+                        logs.map((log, i) => {
+                          const severityClass =
+                            log.SeverityText === 'ERROR' || log.SeverityText === 'FATAL' ? 'bg-red-50 border-l-4 border-l-red-500' :
+                            log.SeverityText === 'WARN' ? 'bg-yellow-50 border-l-4 border-l-yellow-500' :
+                            log.SeverityText === 'DEBUG' ? 'bg-gray-50' :
+                            '';
 
-                        return (
-                          <div key={i} className="border-b border-gray-800 py-1.5 hover:bg-gray-900 cursor-pointer group">
-                            <div className="flex gap-3 items-start">
-                              <span className="text-gray-600 shrink-0 text-xs">
+                          const severityText =
+                            log.SeverityText === 'ERROR' || log.SeverityText === 'FATAL' ? 'font-bold text-red-700' :
+                            log.SeverityText === 'WARN' ? 'font-bold text-yellow-700' :
+                            log.SeverityText === 'DEBUG' ? 'text-gray-500' :
+                            'text-black';
+
+                          return (
+                            <tr key={i} className={`hover:bg-gray-100 ${severityClass}`}>
+                              <td className="p-2 text-gray-600 whitespace-nowrap">
                                 {new Date(log.Timestamp).toLocaleTimeString('en-US', {
                                   hour: '2-digit',
                                   minute: '2-digit',
@@ -969,30 +992,25 @@ export default function ObservabilityPage() {
                                   fractionalSecondDigits: 3,
                                   hour12: false
                                 })}
-                              </span>
-                              <span className={`${severityColor} font-bold shrink-0 w-14 text-xs`}>
+                              </td>
+                              <td className={`p-2 whitespace-nowrap ${severityText}`}>
                                 {log.SeverityText || 'INFO'}
-                              </span>
-                              <span className="text-gray-500 shrink-0 text-xs font-mono">
+                              </td>
+                              <td className="p-2 text-gray-700 whitespace-nowrap">
                                 {log.ServiceName}
-                              </span>
-                              <span className="text-cyan-400 shrink-0 max-w-xs truncate text-xs" title={log.ScopeName}>
+                              </td>
+                              <td className="p-2 text-gray-600 max-w-xs truncate" title={log.ScopeName}>
                                 {log.ScopeName}
-                              </span>
-                              <span className="text-gray-300 flex-1 text-xs">
+                              </td>
+                              <td className="p-2 text-black">
                                 {log.Body}
-                              </span>
-                              {log.TraceId && (
-                                <span className="text-gray-600 shrink-0 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                                  {log.TraceId.substring(0, 8)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
