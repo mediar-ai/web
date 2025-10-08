@@ -60,6 +60,24 @@ function DashboardContent() {
   const [activeStatusFilter, setActiveStatusFilter] = useState<string | undefined>(undefined);
   const [activeMachineFilter, setActiveMachineFilter] = useState<string | undefined>(undefined);
 
+  // Refs to capture latest filter values without causing re-renders
+  const activeWorkflowFilterRef = useRef<string | undefined>(undefined);
+  const activeStatusFilterRef = useRef<string | undefined>(undefined);
+  const activeMachineFilterRef = useRef<string | undefined>(undefined);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    activeWorkflowFilterRef.current = activeWorkflowFilter;
+  }, [activeWorkflowFilter]);
+
+  useEffect(() => {
+    activeStatusFilterRef.current = activeStatusFilter;
+  }, [activeStatusFilter]);
+
+  useEffect(() => {
+    activeMachineFilterRef.current = activeMachineFilter;
+  }, [activeMachineFilter]);
+
   // UI state
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
@@ -451,13 +469,14 @@ function DashboardContent() {
 
       // Fetch all executions every 5 seconds (every 2nd poll)
       // This ensures new executions appear within 5 seconds
+      // Use refs to get current filter values without causing re-renders
       if (localPollCount % 2 === 0) {
-        fetchExecutions(false, activeWorkflowFilter, activeStatusFilter, activeMachineFilter);
+        fetchExecutions(false, activeWorkflowFilterRef.current, activeStatusFilterRef.current, activeMachineFilterRef.current);
       }
     }, 2500); // Poll every 2.5 seconds
 
     return () => clearInterval(pollTimer);
-  }, [fetchLiveExecutions, fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter]);
+  }, [fetchLiveExecutions, fetchExecutions]); // Only depends on fetch functions, not filter values
 
   // Handle URL parameters for deep linking
   useEffect(() => {
