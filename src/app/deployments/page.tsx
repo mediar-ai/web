@@ -56,7 +56,6 @@ function DeploymentsPageContent() {
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [executionsLoading, setExecutionsLoading] = useState(false);
-  const [pollCount, setPollCount] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowOverview | null>(null);
@@ -304,15 +303,16 @@ function DeploymentsPageContent() {
   useEffect(() => {
     if (liveExecutions.length === 0) return; // Don't poll if nothing active
 
+    let localPollCount = 0;
     const pollTimer = setInterval(() => {
-      setPollCount(prev => prev + 1);
+      localPollCount++;
       fetchLiveExecutions();
       // Only fetch all executions every 5th poll
-      if (pollCount % 5 === 0) fetchExecutions(false);
+      if (localPollCount % 5 === 0) fetchExecutions(false);
     }, 30000);
 
     return () => clearInterval(pollTimer);
-  }, [liveExecutions.length, fetchLiveExecutions, fetchExecutions, pollCount]);
+  }, [liveExecutions.length, fetchLiveExecutions, fetchExecutions]);
 
   // Handle URL parameters for deep linking
   useEffect(() => {
