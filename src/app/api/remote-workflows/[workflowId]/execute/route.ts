@@ -215,14 +215,12 @@ export async function POST(
     const client_id = body.client_id || `web-${Date.now()}`;
     const execution_mode = body.execution_mode || 'async';
     const include_cache = body.include_cache === true; // New cache parameter
-    const version_number = body.version_number; // Optional version to execute
 
     console.log('[SUCCESS] Extracted execution_params:', execution_params);
     console.log(`[FIX] Cache enabled: ${include_cache}`);
     console.log(
       `🔍 Full detailed response requested: ${full_detailed_response}`
     );
-    console.log(`📋 Version requested: ${version_number || 'active version'}`);
 
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -237,9 +235,13 @@ export async function POST(
     // Check if workflow exists and is executable, and fetch automation sequence for validation
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows_with_sequence')
-      .select('name, status, automation_sequence')
+      .select('name, status, automation_sequence, version')
       .eq('id', workflowIdNum)
       .single();
+
+    // Set version_number: use provided version or fallback to workflow's current version
+    const version_number = body.version_number || workflow?.version;
+    console.log(`📋 Version to execute: ${version_number || 'none'}`);
 
     if (workflowError || !workflow) {
       return NextResponse.json(
