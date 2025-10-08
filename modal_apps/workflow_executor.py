@@ -1055,7 +1055,12 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
         - validation: Dict - What checks passed/failed
     """
     try:
-        # Extract basic execution info
+        # Safely handle None or invalid mcp_response
+        if not isinstance(mcp_response, dict):
+            logger.warning(" parse_workflow_result: mcp_response is not a dict, type=%s", type(mcp_response).__name__)
+            mcp_response = {}
+
+        # Extract basic execution info with safe defaults
         execution_status = mcp_response.get("status", "unknown")
         total_duration_ms = mcp_response.get("total_duration_ms", 0)
         executed_tools = mcp_response.get("executed_tools", 0)
@@ -1764,10 +1769,19 @@ async def execute_mcp_workflow(
                     "--- DETAILED LOGGING: Full content from mcp_content for parser debugging ---"
                 )
                 log_string = json.dumps(mcp_content)
+                # Log first 2000 chars to capture more detail for debugging
                 logger.info(
-                    f"{log_string[:100]}{'...' if len(log_string) > 100 else ''}"
+                    f"{log_string[:2000]}{'...' if len(log_string) > 2000 else ''}"
                 )
                 logger.info("--- END DETAILED LOGGING ---")
+
+                # Additional logging for debugging missing parsed_output
+                if mcp_content:
+                    logger.info(" MCP Response Keys: %s", list(mcp_content.keys()))
+                    logger.info(" MCP Status: %s", mcp_content.get("status", "MISSING"))
+                    logger.info(" MCP Has parsed_output: %s", "parsed_output" in mcp_content)
+                    if "debug_info_on_failure" in mcp_content:
+                        logger.info(" MCP debug_info_on_failure: %s", mcp_content.get("debug_info_on_failure")[:500] if mcp_content.get("debug_info_on_failure") else "None")
 
                 # Extract quotes and metrics from the MCP response
                 quotes = []
@@ -2405,34 +2419,56 @@ def execute_workflow(
 
                             if failed_step:
                                 tool_name = failed_step.get("tool_name", "Unknown Tool")
-                                error_details = failed_step.get(
-                                    "error", "Unknown error"
-                                )
+                                error_details = failed_step.get("error", "Unknown error")
 
-                                # Extract the high-level error type for a concise message
-                                match = re.search(
-                                    r"\{\\\"error_type\\\":\\\"(.*?)\\\"", error_details
-                                )
-                                error_type = match.group(1) if match else "Unknown"
+                                # Safely extract error type - handle string or dict
+                                error_type = "Unknown"
+                                try:
+                                    if isinstance(error_details, str):
+                                        # Try to extract error_type from JSON string
+                                        match = re.search(
+                                            r'["\']?error_type["\']?\s*:\s*["\']([^"\']+)["\']',
+                                            error_details
+                                        )
+                                        if match:
+                                            error_type = match.group(1)
+                                        else:
+                                            # Use first 100 chars of error as fallback
+                                            error_type = error_details[:100]
+                                    elif isinstance(error_details, dict):
+                                        error_type = error_details.get("error_type", error_details.get("message", "Unknown"))
+                                except Exception as parse_err:
+                                    logger.warning(f"Could not parse error type: {parse_err}")
+                                    error_type = str(error_details)[:100] if error_details else "Unknown"
 
-                                # Create a more informative high-level message, e.g., "type_into_element failed: ElementNotFound"
-                                error_message_for_db = (
-                                    f"{tool_name} failed: {error_type}"
-                                )
+                                # Create a more informative high-level message
+                                error_message_for_db = f"{tool_name} failed: {error_type}"
                             else:
                                 # Fallback if no specific failed step is found
-                                error_message_for_db = (
-                                    "MCP Execution Failed: See logs for details"
-                                )
+                                # Check for debug_info_on_failure in the MCP response
+                                debug_info = mcp_result.get("debug_info_on_failure")
+                                if debug_info:
+                                    error_message_for_db = f"Workflow failed: {str(debug_info)[:200]}"
+                                else:
+                                    error_message_for_db = "Workflow failed: See logs for details"
 
-                    except (json.JSONDecodeError, KeyError, IndexError) as e:
+                    except Exception as e:
                         logger.error(f"Failed to parse MCP error from response: {e}")
-                        error_message_for_db = (
-                            "MCP Execution Failed: Unable to parse error"
-                        )
+                        # Try to get any error info from the response
+                        try:
+                            if isinstance(results, dict):
+                                debug_info = results.get("debug_info_on_failure") or results.get("error")
+                                if debug_info:
+                                    error_message_for_db = f"Workflow failed: {str(debug_info)[:200]}"
+                                else:
+                                    error_message_for_db = f"Workflow failed: {results.get('status', 'Unknown error')}"
+                            else:
+                                error_message_for_db = "Workflow failed: Unable to parse error"
+                        except:
+                            error_message_for_db = "Workflow failed: Unable to parse error"
                 else:
                     # Fallback for other unknown errors
-                    error_message_for_db = "Workflow failed: Unknown error"
+                    error_message_for_db = "Workflow failed: No results returned"
 
         # Enhanced execution summary with standardized information
         execution_summary = {
