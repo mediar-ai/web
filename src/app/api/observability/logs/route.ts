@@ -14,6 +14,11 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const hours = searchParams.get('hours') || '24';
     const scopeFilter = searchParams.get('scope') || '';
+    const serviceFilter = searchParams.get('service') || '';
+    const severityFilter = searchParams.get('severity') || '';
+    const traceIdFilter = searchParams.get('traceId') || '';
+    const searchQuery = searchParams.get('search') || '';
+    const getFilters = searchParams.get('getFilters') === 'true';
 
     // Create ClickHouse client with environment variables
     const clickhouseHost = process.env.CLICKHOUSE_HOST;
@@ -36,9 +41,56 @@ export async function GET(request: NextRequest) {
       database: clickhouseDatabase
     });
 
-    // Build scope filter if provided
-    const scopeCondition = scopeFilter
-      ? `AND ScopeName LIKE '%${scopeFilter}%'`
+    // If getFilters is true, return available filter values
+    if (getFilters) {
+      const filtersQuery = `
+        SELECT
+          groupArray(DISTINCT ServiceName) as services,
+          groupArray(DISTINCT ScopeName) as scopes,
+          groupArray(DISTINCT SeverityText) as severities
+        FROM otel_logs_filtered
+        WHERE Timestamp > now() - INTERVAL ${hours} HOUR
+      `;
+
+      const filtersResult = await client.query({
+        query: filtersQuery,
+        format: 'JSONEachRow'
+      });
+
+      const filtersText = await filtersResult.text();
+      const filtersData = JSON.parse(filtersText.trim().split('\n')[0]);
+
+      return NextResponse.json({
+        success: true,
+        filters: {
+          services: filtersData.services.filter((s: string) => s).sort(),
+          scopes: filtersData.scopes.filter((s: string) => s).sort(),
+          severities: filtersData.severities.filter((s: string) => s).sort()
+        }
+      });
+    }
+
+    // Build dynamic filters
+    const conditions: string[] = [];
+
+    if (scopeFilter) {
+      conditions.push(`ScopeName LIKE '%${scopeFilter}%'`);
+    }
+    if (serviceFilter) {
+      conditions.push(`ServiceName = '${serviceFilter}'`);
+    }
+    if (severityFilter) {
+      conditions.push(`SeverityText = '${severityFilter}'`);
+    }
+    if (traceIdFilter) {
+      conditions.push(`TraceId = '${traceIdFilter}'`);
+    }
+    if (searchQuery) {
+      conditions.push(`(Body LIKE '%${searchQuery}%' OR ScopeName LIKE '%${searchQuery}%')`);
+    }
+
+    const whereClause = conditions.length > 0
+      ? `AND ${conditions.join(' AND ')}`
       : '';
 
     // Query filtered logs (excludes hyper* HTTP client noise)
@@ -53,12 +105,18 @@ export async function GET(request: NextRequest) {
         SpanId
       FROM otel_logs_filtered
       WHERE Timestamp > now() - INTERVAL ${hours} HOUR
-      ${scopeCondition}
+      ${whereClause}
       ORDER BY Timestamp DESC
       LIMIT 1000
     `;
 
-    console.log(`[Logs API] Querying logs for last ${hours} hours${scopeFilter ? ` with scope filter: ${scopeFilter}` : ''}`);
+    console.log(`[Logs API] Querying logs for last ${hours} hours with filters:`, {
+      scope: scopeFilter || 'all',
+      service: serviceFilter || 'all',
+      severity: severityFilter || 'all',
+      traceId: traceIdFilter || 'none',
+      search: searchQuery || 'none'
+    });
 
     const result = await client.query({
       query,
@@ -87,7 +145,13 @@ export async function GET(request: NextRequest) {
       logs,
       count: logs.length,
       hours: parseInt(hours),
-      scope_filter: scopeFilter || null
+      filters: {
+        scope: scopeFilter || null,
+        service: serviceFilter || null,
+        severity: severityFilter || null,
+        traceId: traceIdFilter || null,
+        search: searchQuery || null
+      }
     });
 
   } catch (error) {

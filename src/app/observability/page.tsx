@@ -21,7 +21,9 @@ import {
   Database,
   Search,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Filter,
+  X
 } from 'lucide-react';
 
 interface ServiceHealth {
@@ -106,6 +108,16 @@ export default function ObservabilityPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'error' | 'success'>('all');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
+  // Logs filter states
+  const [logServiceFilter, setLogServiceFilter] = useState('');
+  const [logScopeFilter, setLogScopeFilter] = useState('');
+  const [logSeverityFilter, setLogSeverityFilter] = useState('');
+  const [availableFilters, setAvailableFilters] = useState<{
+    services: string[];
+    scopes: string[];
+    severities: string[];
+  }>({ services: [], scopes: [], severities: [] });
+
   // Check if user has @mediar.ai email
   const checkAccess = useCallback(async () => {
     try {
@@ -157,8 +169,24 @@ export default function ObservabilityPage() {
           setToolUsage([]);
         }
       } else if (activeTab === 'logs') {
+        // Fetch available filters first if not loaded
+        if (availableFilters.services.length === 0) {
+          const filtersResponse = await fetch(`/api/observability/logs?hours=${timeRange}&getFilters=true`);
+          if (filtersResponse.ok) {
+            const filtersData = await filtersResponse.json();
+            setAvailableFilters(filtersData.filters);
+          }
+        }
+
+        // Build query params for logs
+        const params = new URLSearchParams({ hours: timeRange });
+        if (logServiceFilter) params.set('service', logServiceFilter);
+        if (logScopeFilter) params.set('scope', logScopeFilter);
+        if (logSeverityFilter) params.set('severity', logSeverityFilter);
+        if (searchQuery) params.set('search', searchQuery);
+
         // Fetch logs from dedicated endpoint
-        const response = await fetch(`/api/observability/logs?hours=${timeRange}`);
+        const response = await fetch(`/api/observability/logs?${params.toString()}`);
         if (response.ok) {
           const data = await response.json();
           console.log(`[Observability] Received ${data.count || 0} logs from API`);
@@ -212,7 +240,7 @@ export default function ObservabilityPage() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [activeTab, timeRange, checkAccess]);
+  }, [activeTab, timeRange, logServiceFilter, logScopeFilter, logSeverityFilter, searchQuery, checkAccess, availableFilters.services.length]);
 
   // Initial load and refresh on tab/timeRange change
   useEffect(() => {
@@ -824,18 +852,102 @@ export default function ObservabilityPage() {
             )}
 
             {activeTab === 'logs' && (
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-mono font-bold">LIVE LOGS</h2>
-                  <span className="text-sm font-mono text-gray-600">
-                    {logs.length} logs (filtered, no HTTP client noise)
-                  </span>
+              <div className="space-y-4">
+                {/* Filters Row */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4" />
+                    <span className="font-mono font-bold text-xs uppercase">FILTERS</span>
+                  </div>
+
+                  {/* Service Filter */}
+                  <select
+                    value={logServiceFilter}
+                    onChange={(e) => setLogServiceFilter(e.target.value)}
+                    className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="">All Services</option>
+                    {availableFilters.services.map(service => (
+                      <option key={service} value={service}>{service}</option>
+                    ))}
+                  </select>
+
+                  {/* Severity Filter */}
+                  <select
+                    value={logSeverityFilter}
+                    onChange={(e) => setLogSeverityFilter(e.target.value)}
+                    className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="">All Severities</option>
+                    {availableFilters.severities.map(severity => (
+                      <option key={severity} value={severity}>{severity}</option>
+                    ))}
+                  </select>
+
+                  {/* Scope Filter */}
+                  <select
+                    value={logScopeFilter}
+                    onChange={(e) => setLogScopeFilter(e.target.value)}
+                    className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black max-w-xs"
+                  >
+                    <option value="">All Scopes</option>
+                    {availableFilters.scopes.map(scope => (
+                      <option key={scope} value={scope} className="truncate">{scope}</option>
+                    ))}
+                  </select>
+
+                  {/* Clear Filters */}
+                  {(logServiceFilter || logSeverityFilter || logScopeFilter) && (
+                    <button
+                      onClick={() => {
+                        setLogServiceFilter('');
+                        setLogSeverityFilter('');
+                        setLogScopeFilter('');
+                      }}
+                      className="px-3 py-1.5 border-2 border-black bg-white text-black hover:bg-black hover:text-white font-mono text-xs flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                      CLEAR
+                    </button>
+                  )}
+
+                  {/* Log Count */}
+                  <div className="ml-auto text-sm font-mono text-gray-600">
+                    {logs.length} logs
+                  </div>
                 </div>
+
+                {/* Active Filters Display */}
+                {(logServiceFilter || logSeverityFilter || logScopeFilter) && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-mono text-gray-600 uppercase">Active:</span>
+                    {logServiceFilter && (
+                      <span className="px-2 py-1 bg-black text-white font-mono text-xs flex items-center gap-1">
+                        Service: {logServiceFilter}
+                        <X className="w-3 h-3 cursor-pointer hover:text-gray-300" onClick={() => setLogServiceFilter('')} />
+                      </span>
+                    )}
+                    {logSeverityFilter && (
+                      <span className="px-2 py-1 bg-black text-white font-mono text-xs flex items-center gap-1">
+                        Severity: {logSeverityFilter}
+                        <X className="w-3 h-3 cursor-pointer hover:text-gray-300" onClick={() => setLogSeverityFilter('')} />
+                      </span>
+                    )}
+                    {logScopeFilter && (
+                      <span className="px-2 py-1 bg-black text-white font-mono text-xs flex items-center gap-1">
+                        Scope: {logScopeFilter}
+                        <X className="w-3 h-3 cursor-pointer hover:text-gray-300" onClick={() => setLogScopeFilter('')} />
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Logs Display */}
                 <div className="border-2 border-black bg-black p-4 overflow-auto" style={{ maxHeight: '70vh' }}>
                   <div className="space-y-1 font-mono text-sm">
                     {logs.length === 0 ? (
                       <div className="text-gray-500 text-center py-8">
-                        No logs found in selected time range
+                        No logs found {logServiceFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
                       </div>
                     ) : (
                       logs.map((log, i) => {
@@ -846,17 +958,10 @@ export default function ObservabilityPage() {
                           log.SeverityText === 'DEBUG' ? 'text-gray-400' :
                           'text-green-400';
 
-                        const matchesSearch = searchQuery === '' ||
-                          log.Body.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          log.ScopeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          log.ServiceName.toLowerCase().includes(searchQuery.toLowerCase());
-
-                        if (!matchesSearch) return null;
-
                         return (
-                          <div key={i} className="border-b border-gray-800 py-1 hover:bg-gray-900">
+                          <div key={i} className="border-b border-gray-800 py-1.5 hover:bg-gray-900 cursor-pointer group">
                             <div className="flex gap-3 items-start">
-                              <span className="text-gray-600 shrink-0">
+                              <span className="text-gray-600 shrink-0 text-xs">
                                 {new Date(log.Timestamp).toLocaleTimeString('en-US', {
                                   hour: '2-digit',
                                   minute: '2-digit',
@@ -865,15 +970,23 @@ export default function ObservabilityPage() {
                                   hour12: false
                                 })}
                               </span>
-                              <span className={`${severityColor} font-bold shrink-0 w-12`}>
+                              <span className={`${severityColor} font-bold shrink-0 w-14 text-xs`}>
                                 {log.SeverityText || 'INFO'}
                               </span>
-                              <span className="text-cyan-400 shrink-0 max-w-xs truncate" title={log.ScopeName}>
+                              <span className="text-gray-500 shrink-0 text-xs font-mono">
+                                {log.ServiceName}
+                              </span>
+                              <span className="text-cyan-400 shrink-0 max-w-xs truncate text-xs" title={log.ScopeName}>
                                 {log.ScopeName}
                               </span>
-                              <span className="text-gray-300 flex-1">
+                              <span className="text-gray-300 flex-1 text-xs">
                                 {log.Body}
                               </span>
+                              {log.TraceId && (
+                                <span className="text-gray-600 shrink-0 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {log.TraceId.substring(0, 8)}
+                                </span>
+                              )}
                             </div>
                           </div>
                         );
