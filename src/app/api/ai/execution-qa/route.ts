@@ -100,6 +100,8 @@ When answering questions:
 - Use getErrors() when asked about failures
 - Always query the actual data rather than guessing
 
+CRITICAL: After using ANY tool, you MUST provide a natural language response explaining what you found. Never end with just a tool call - always summarize the results in a clear, helpful answer to the user's question.
+
 Be specific and detailed in your answers. If you need more information, use the tools to get it.`;
 
     // Define tools for the AI
@@ -240,6 +242,8 @@ Be specific and detailed in your answers. If you need more information, use the 
       ],
       tools: tools,
       toolChoice: 'auto', // Let the model decide when to use tools
+      // @ts-expect-error - maxSteps exists in runtime but not in types for this SDK version
+      maxSteps: 5, // Allow multiple tool calls followed by text response
       temperature: 0.7,
       maxRetries: 3,
       onChunk: async ({ chunk }) => {
