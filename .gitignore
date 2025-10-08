@@ -43,6 +43,7 @@ next-env.d.ts
 
 # Log files
 logs/
+!src/app/api/observability/logs/
 
 # Python
 __pycache__/
