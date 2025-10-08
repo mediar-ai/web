@@ -141,20 +141,39 @@ export default function ObservabilityPage() {
         if (overviewResponse.ok && toolsResponse.ok) {
           const overviewData = await overviewResponse.json();
           const toolsData = await toolsResponse.json();
+          console.log(`[Observability] Overview: ${overviewData.data?.length || 0} services`);
+          console.log(`[Observability] Tools: ${toolsData.data?.length || 0} tools`);
           setServiceHealth(overviewData.data || []);
           setToolUsage(toolsData.data || []);
+        } else {
+          console.error(`[Observability] Failed to fetch overview/tools data`);
+          if (!overviewResponse.ok) {
+            console.error(`Overview error: ${overviewResponse.status}`);
+          }
+          if (!toolsResponse.ok) {
+            console.error(`Tools error: ${toolsResponse.status}`);
+          }
+          setServiceHealth([]);
+          setToolUsage([]);
         }
       } else if (activeTab === 'logs') {
         // Fetch logs from dedicated endpoint
         const response = await fetch(`/api/observability/logs?hours=${timeRange}`);
         if (response.ok) {
           const data = await response.json();
+          console.log(`[Observability] Received ${data.count || 0} logs from API`);
           setLogs(data.logs || []);
+        } else {
+          console.error(`[Observability] Failed to fetch logs: ${response.status} ${response.statusText}`);
+          const errorData = await response.json().catch(() => ({}));
+          console.error('[Observability] Error details:', errorData);
+          setLogs([]);
         }
       } else {
         const response = await fetch(`/api/observability/telemetry?metric=${metric}&hours=${timeRange}`);
         if (response.ok) {
           const data = await response.json();
+          console.log(`[Observability] ${metric}: ${data.data?.length || 0} records`);
 
           switch (activeTab) {
             case 'executions':
@@ -165,6 +184,22 @@ export default function ObservabilityPage() {
               break;
             case 'errors':
               setRecentErrors(data.data || []);
+              break;
+          }
+        } else {
+          console.error(`[Observability] Failed to fetch ${metric}: ${response.status}`);
+          const errorData = await response.json().catch(() => ({}));
+          console.error('[Observability] Error details:', errorData);
+
+          switch (activeTab) {
+            case 'executions':
+              setRecentExecutions([]);
+              break;
+            case 'tools':
+              setToolUsage([]);
+              break;
+            case 'errors':
+              setRecentErrors([]);
               break;
           }
         }
