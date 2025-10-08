@@ -172,7 +172,7 @@ export function ExecutionDetailsDialog({
           completed_at: execution.completed_at,
           duration_seconds: execution.execution_duration_seconds,
           machine: execution.assigned_machine_name || null,
-          version: execution.version_number ? `v${execution.version_number}` : 'v1.0.0',
+          version: execution.version_number ? `v${execution.version_number}` : null,
           client_id: execution.client_id || null,
           modal_call_id: execution.modal_call_id || null,
           error_message: execution.error_message || null,
@@ -228,7 +228,7 @@ export function ExecutionDetailsDialog({
           completed_at: execution.completed_at,
           duration_seconds: execution.execution_duration_seconds,
           machine: execution.assigned_machine_name || null,
-          version: execution.version_number ? `v${execution.version_number}` : 'v1.0.0',
+          version: execution.version_number ? `v${execution.version_number}` : null,
           error: execution.error_message || null,
         },
         results: resultsToDownload,
@@ -384,7 +384,7 @@ export function ExecutionDetailsDialog({
                           <dd className="font-mono text-sm font-semibold">
                             {execution.version_number
                               ? `v${execution.version_number}`
-                              : 'v1.0.0 (default)'}
+                              : '—'}
                           </dd>
                         </div>
                         {execution.assigned_machine_name && (
