@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     if (getFilters) {
       const filtersQuery = `
         SELECT
-          groupArray(DISTINCT ServiceName) as services,
+          groupArray(DISTINCT if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '')) as hosts,
           groupArray(DISTINCT ScopeName) as scopes,
           groupArray(DISTINCT SeverityText) as severities
         FROM otel_logs_filtered
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         filters: {
-          services: filtersData.services.filter((s: string) => s).sort(),
+          hosts: filtersData.hosts.filter((s: string) => s && s !== '').sort(),
           scopes: filtersData.scopes.filter((s: string) => s).sort(),
           severities: filtersData.severities.filter((s: string) => s).sort()
         }
@@ -77,7 +77,8 @@ export async function GET(request: NextRequest) {
       conditions.push(`ScopeName LIKE '%${scopeFilter}%'`);
     }
     if (serviceFilter) {
-      conditions.push(`ServiceName = '${serviceFilter}'`);
+      // Service filter now filters by hostname
+      conditions.push(`mapContains(ResourceAttributes, 'host.name') AND ResourceAttributes['host.name'] = '${serviceFilter}'`);
     }
     if (severityFilter) {
       conditions.push(`SeverityText = '${severityFilter}'`);
@@ -102,7 +103,8 @@ export async function GET(request: NextRequest) {
         SeverityText,
         ServiceName,
         TraceId,
-        SpanId
+        SpanId,
+        if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '') as HostName
       FROM otel_logs_filtered
       WHERE Timestamp > now() - INTERVAL ${hours} HOUR
       ${whereClause}

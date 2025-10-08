@@ -82,6 +82,7 @@ interface LogEntry {
   Body: string;
   SeverityText: string;
   ServiceName: string;
+  HostName?: string;
   TraceId?: string;
   SpanId?: string;
 }
@@ -109,14 +110,14 @@ export default function ObservabilityPage() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   // Logs filter states
-  const [logServiceFilter, setLogServiceFilter] = useState('');
+  const [logHostFilter, setLogHostFilter] = useState('');
   const [logScopeFilter, setLogScopeFilter] = useState('');
   const [logSeverityFilter, setLogSeverityFilter] = useState('');
   const [availableFilters, setAvailableFilters] = useState<{
-    services: string[];
+    hosts: string[];
     scopes: string[];
     severities: string[];
-  }>({ services: [], scopes: [], severities: [] });
+  }>({ hosts: [], scopes: [], severities: [] });
 
   // Check if user has @mediar.ai email
   const checkAccess = useCallback(async () => {
@@ -170,7 +171,7 @@ export default function ObservabilityPage() {
         }
       } else if (activeTab === 'logs') {
         // Fetch available filters first if not loaded
-        if (availableFilters.services.length === 0) {
+        if (availableFilters.hosts.length === 0) {
           const filtersResponse = await fetch(`/api/observability/logs?hours=${timeRange}&getFilters=true`);
           if (filtersResponse.ok) {
             const filtersData = await filtersResponse.json();
@@ -180,7 +181,7 @@ export default function ObservabilityPage() {
 
         // Build query params for logs
         const params = new URLSearchParams({ hours: timeRange });
-        if (logServiceFilter) params.set('service', logServiceFilter);
+        if (logHostFilter) params.set('service', logHostFilter);
         if (logScopeFilter) params.set('scope', logScopeFilter);
         if (logSeverityFilter) params.set('severity', logSeverityFilter);
         if (searchQuery) params.set('search', searchQuery);
@@ -240,7 +241,7 @@ export default function ObservabilityPage() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [activeTab, timeRange, logServiceFilter, logScopeFilter, logSeverityFilter, searchQuery, checkAccess, availableFilters.services.length]);
+  }, [activeTab, timeRange, logHostFilter, logScopeFilter, logSeverityFilter, searchQuery, checkAccess, availableFilters.hosts.length]);
 
   // Initial load and refresh on tab/timeRange change
   useEffect(() => {
@@ -860,15 +861,15 @@ export default function ObservabilityPage() {
                     <span className="font-mono font-bold text-xs uppercase">FILTERS</span>
                   </div>
 
-                  {/* Service Filter */}
+                  {/* Hostname Filter */}
                   <select
-                    value={logServiceFilter}
-                    onChange={(e) => setLogServiceFilter(e.target.value)}
+                    value={logHostFilter}
+                    onChange={(e) => setLogHostFilter(e.target.value)}
                     className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black bg-white"
                   >
-                    <option value="">All Services</option>
-                    {availableFilters.services.map(service => (
-                      <option key={service} value={service}>{service}</option>
+                    <option value="">All Hosts</option>
+                    {availableFilters.hosts.map(host => (
+                      <option key={host} value={host}>{host}</option>
                     ))}
                   </select>
 
@@ -897,10 +898,10 @@ export default function ObservabilityPage() {
                   </select>
 
                   {/* Clear Filters */}
-                  {(logServiceFilter || logSeverityFilter || logScopeFilter || searchQuery) && (
+                  {(logHostFilter || logSeverityFilter || logScopeFilter || searchQuery) && (
                     <button
                       onClick={() => {
-                        setLogServiceFilter('');
+                        setLogHostFilter('');
                         setLogSeverityFilter('');
                         setLogScopeFilter('');
                         setSearchQuery('');
@@ -919,13 +920,13 @@ export default function ObservabilityPage() {
                 </div>
 
                 {/* Active Filters Display */}
-                {(logServiceFilter || logSeverityFilter || logScopeFilter || searchQuery) && (
+                {(logHostFilter || logSeverityFilter || logScopeFilter || searchQuery) && (
                   <div className="flex items-center gap-2 flex-wrap px-2">
                     <span className="text-xs font-mono text-gray-600 uppercase font-bold">Active Filters:</span>
-                    {logServiceFilter && (
+                    {logHostFilter && (
                       <span className="px-2 py-1 bg-black text-white font-mono text-xs flex items-center gap-1">
-                        Service: {logServiceFilter}
-                        <X className="w-3 h-3 cursor-pointer hover:text-gray-300" onClick={() => setLogServiceFilter('')} />
+                        Host: {logHostFilter}
+                        <X className="w-3 h-3 cursor-pointer hover:text-gray-300" onClick={() => setLogHostFilter('')} />
                       </span>
                     )}
                     {logSeverityFilter && (
@@ -956,7 +957,7 @@ export default function ObservabilityPage() {
                       <tr>
                         <th className="text-left p-2 font-bold">TIME</th>
                         <th className="text-left p-2 font-bold">LEVEL</th>
-                        <th className="text-left p-2 font-bold">SERVICE</th>
+                        <th className="text-left p-2 font-bold">HOST</th>
                         <th className="text-left p-2 font-bold">SCOPE</th>
                         <th className="text-left p-2 font-bold">MESSAGE</th>
                       </tr>
@@ -965,7 +966,7 @@ export default function ObservabilityPage() {
                       {logs.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="text-center py-8 text-gray-600">
-                            No logs found {logServiceFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
+                            No logs found {logHostFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
                           </td>
                         </tr>
                       ) : (
@@ -997,7 +998,7 @@ export default function ObservabilityPage() {
                                 {log.SeverityText || 'INFO'}
                               </td>
                               <td className="p-2 text-gray-700 whitespace-nowrap">
-                                {log.ServiceName}
+                                {log.HostName || '-'}
                               </td>
                               <td className="p-2 text-gray-600 max-w-xs truncate" title={log.ScopeName}>
                                 {log.ScopeName}
