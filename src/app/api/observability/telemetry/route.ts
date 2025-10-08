@@ -65,9 +65,9 @@ export async function GET(request: NextRequest) {
             StatusCode,
             StatusMessage,
             SpanAttributes,
-            if(mapContains(SpanAttributes, 'workflow.name'), SpanAttributes['workflow.name'], '') as workflow_name,
-            if(mapContains(SpanAttributes, 'workflow.total_steps'), SpanAttributes['workflow.total_steps'], '') as total_steps,
-            if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '') as host_name
+            toString(if(mapContains(SpanAttributes, 'workflow.name'), SpanAttributes['workflow.name'], '')) as workflow_name,
+            toString(if(mapContains(SpanAttributes, 'workflow.total_steps'), SpanAttributes['workflow.total_steps'], '')) as total_steps,
+            toString(if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '')) as host_name
           FROM otel_traces
           WHERE SpanName = 'execute_sequence'
             AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
@@ -128,13 +128,13 @@ export async function GET(request: NextRequest) {
             SpanName as operation,
             Duration/1e9 as duration_seconds,
             SpanAttributes,
-            if(mapContains(SpanAttributes, 'error.message'), SpanAttributes['error.message'], StatusMessage) as error_message,
-            if(mapContains(SpanAttributes, 'error.type'), SpanAttributes['error.type'], '') as error_type,
-            if(mapContains(SpanAttributes, 'workflow.name'), SpanAttributes['workflow.name'], '') as workflow_name,
-            if(mapContains(SpanAttributes, 'step.number'), SpanAttributes['step.number'], '') as workflow_step,
-            if(mapContains(SpanAttributes, 'step.total'), SpanAttributes['step.total'], '') as total_steps,
-            if(mapContains(SpanAttributes, 'tool.name'), SpanAttributes['tool.name'], replaceRegexpOne(SpanName, '^step\\\\.', '')) as tool_name,
-            if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '') as host_name,
+            toString(if(mapContains(SpanAttributes, 'error.message'), SpanAttributes['error.message'], StatusMessage)) as error_message,
+            toString(if(mapContains(SpanAttributes, 'error.type'), SpanAttributes['error.type'], '')) as error_type,
+            toString(if(mapContains(SpanAttributes, 'workflow.name'), SpanAttributes['workflow.name'], '')) as workflow_name,
+            toString(if(mapContains(SpanAttributes, 'step.number'), SpanAttributes['step.number'], '')) as workflow_step,
+            toString(if(mapContains(SpanAttributes, 'step.total'), SpanAttributes['step.total'], '')) as total_steps,
+            toString(if(mapContains(SpanAttributes, 'tool.name'), SpanAttributes['tool.name'], replaceRegexpOne(SpanName, '^step\\\\.', ''))) as tool_name,
+            toString(if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '')) as host_name,
             StatusMessage
           FROM otel_traces
           WHERE StatusCode = 'STATUS_CODE_ERROR'
