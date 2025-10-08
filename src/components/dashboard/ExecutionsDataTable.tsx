@@ -82,17 +82,26 @@ interface ExecutionsDataTableProps {
 function getParserMessage(formattedResult: any, execution: Execution): string {
   // Priority 1: Error summary from parser (e.g., SAP workflows)
   if (formattedResult?.error_summary?.error_reason) {
-    return formattedResult.error_summary.error_reason;
+    const reason = formattedResult.error_summary.error_reason;
+    return typeof reason === 'string' ? reason : JSON.stringify(reason);
   }
 
   // Priority 2: Standard message field (if not the default)
   if (formattedResult?.message && formattedResult.message !== "No message from parser") {
-    return formattedResult.message;
+    const message = formattedResult.message;
+    return typeof message === 'string' ? message : JSON.stringify(message);
   }
 
   // Priority 3: Data summary field
   if (formattedResult?.data?.summary) {
-    return formattedResult.data.summary;
+    // Ensure summary is a string
+    if (typeof formattedResult.data.summary === 'string') {
+      return formattedResult.data.summary;
+    }
+    // If summary is an object, stringify it
+    if (typeof formattedResult.data.summary === 'object') {
+      return JSON.stringify(formattedResult.data.summary);
+    }
   }
 
   // Priority 4: Failure details with financial state (SAP specific)
@@ -105,10 +114,29 @@ function getParserMessage(formattedResult: any, execution: Execution): string {
 
   // Priority 5: Generic error field in data
   if (formattedResult?.data?.error) {
-    return formattedResult.data.error;
+    const error = formattedResult.data.error;
+    return typeof error === 'string' ? error : JSON.stringify(error);
   }
 
-  // Priority 6: Execution error message
+  // Priority 6: If data is an object, stringify it for display
+  if (formattedResult?.data && typeof formattedResult.data === 'object') {
+    try {
+      // Format common data patterns
+      if ('total_unprocessed' in formattedResult.data) {
+        return `Unprocessed: ${formattedResult.data.total_unprocessed || 0}`;
+      }
+      // For other objects, show a summary
+      const keys = Object.keys(formattedResult.data);
+      if (keys.length > 0) {
+        return `Data: ${keys.slice(0, 3).join(', ')}${keys.length > 3 ? '...' : ''}`;
+      }
+    } catch (e) {
+      // Fallback if stringify fails
+      return 'Data available';
+    }
+  }
+
+  // Priority 7: Execution error message
   if (execution.error_message) {
     return execution.error_message;
   }
