@@ -1781,7 +1781,12 @@ async def execute_mcp_workflow(
                     logger.info(" MCP Status: %s", mcp_content.get("status", "MISSING"))
                     logger.info(" MCP Has parsed_output: %s", "parsed_output" in mcp_content)
                     if "debug_info_on_failure" in mcp_content:
-                        logger.info(" MCP debug_info_on_failure: %s", mcp_content.get("debug_info_on_failure")[:500] if mcp_content.get("debug_info_on_failure") else "None")
+                        debug_info = mcp_content.get("debug_info_on_failure")
+                        if debug_info:
+                            debug_str = str(debug_info)[:500] if debug_info else "None"
+                            logger.info(" MCP debug_info_on_failure: %s", debug_str)
+                        else:
+                            logger.info(" MCP debug_info_on_failure: None")
 
                 # Extract quotes and metrics from the MCP response
                 quotes = []
