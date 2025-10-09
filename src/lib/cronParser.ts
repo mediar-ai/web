@@ -3,6 +3,9 @@
  * Supports 6-field cron format: SECOND MINUTE HOUR DAY MONTH DAY_OF_WEEK
  */
 
+import CronParser from 'cron-parser';
+import * as yaml from 'js-yaml';
+
 export interface CronConfig {
   expression: string;
   timezone?: string;
@@ -229,10 +232,8 @@ function matchesCronField(field: string, value: number): boolean {
  */
 export function extractCronConfigFromYAML(yamlContent: string): CronConfig | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const yaml = require('js-yaml');
-    const parsed = yaml.load(yamlContent);
-    
+    const parsed = yaml.load(yamlContent) as any;
+
     if (!parsed || typeof parsed !== 'object') {
       return null;
     }
@@ -290,19 +291,16 @@ export function calculateNextExecutions(
       console.log(`Converted 6-field (${expression}) to 5-field (${cronExpression}) for cron-parser`);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const cronParser = require('cron-parser');
-    const interval = cronParser.parseExpression(cronExpression, {
+    const interval = CronParser.parse(cronExpression, {
       currentDate: new Date(),
-      tz: timezone,
-      iterator: true
+      tz: timezone
     });
 
     const executions: string[] = [];
     for (let i = 0; i < count; i++) {
-      const next = interval.next();
-      if (!next.done && next.value) {
-        const date = next.value.toDate();
+      try {
+        const next = interval.next();
+        const date = next.toDate();
         executions.push(
           date.toLocaleString('en-US', {
             timeZone: timezone,
@@ -314,6 +312,9 @@ export function calculateNextExecutions(
             timeZoneName: 'short',
           })
         );
+      } catch (e) {
+        // No more iterations available
+        break;
       }
     }
 
