@@ -128,14 +128,14 @@ export async function GET(request: NextRequest) {
             SpanName as operation,
             Duration/1e9 as duration_seconds,
             SpanAttributes,
-            toString(if(mapContains(SpanAttributes, 'error.message'), SpanAttributes['error.message'], StatusMessage)) as error_message,
+            toString(if(mapContains(SpanAttributes, 'error.message'), SpanAttributes['error.message'], if(StatusMessage != '', StatusMessage, ''))) as error_message,
             toString(if(mapContains(SpanAttributes, 'error.type'), SpanAttributes['error.type'], '')) as error_type,
             toString(if(mapContains(SpanAttributes, 'workflow.name'), SpanAttributes['workflow.name'], '')) as workflow_name,
             toString(if(mapContains(SpanAttributes, 'step.number'), SpanAttributes['step.number'], '')) as workflow_step,
             toString(if(mapContains(SpanAttributes, 'step.total'), SpanAttributes['step.total'], '')) as total_steps,
             toString(if(mapContains(SpanAttributes, 'tool.name'), SpanAttributes['tool.name'], replaceRegexpOne(SpanName, '^step\\\\.', ''))) as tool_name,
             toString(if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '')) as host_name,
-            StatusMessage
+            toString(StatusMessage) as StatusMessage
           FROM otel_traces
           WHERE StatusCode = 'STATUS_CODE_ERROR'
             AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
