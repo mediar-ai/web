@@ -37,10 +37,10 @@ export async function GET(request: NextRequest) {
 
     switch (metric) {
       case 'overview':
-        // Service health overview
+        // Service health overview - grouped by hostname
         query = `
           SELECT
-            ServiceName,
+            if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], ServiceName) as ServiceName,
             count() as total_spans,
             countIf(StatusCode = 'STATUS_CODE_ERROR') as errors,
             round((errors / total_spans) * 100, 2) as error_rate,
