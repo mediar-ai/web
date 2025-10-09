@@ -241,7 +241,13 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       version: false,
     };
   });
-  const [globalFilter, setGlobalFilter] = React.useState('');
+  const [globalFilter, setGlobalFilter] = React.useState(() => {
+    // Load saved global filter from localStorage
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('executions-table-global-filter') || '';
+    }
+    return '';
+  });
   const [rowSelection, setRowSelection] = React.useState({});
 
   // Track which executions are being stopped/deleted
@@ -257,6 +263,17 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       localStorage.setItem('executions-table-columns', JSON.stringify(columnVisibility));
     }
   }, [columnVisibility]);
+
+  // Save global filter to localStorage whenever it changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (globalFilter) {
+        localStorage.setItem('executions-table-global-filter', globalFilter);
+      } else {
+        localStorage.removeItem('executions-table-global-filter');
+      }
+    }
+  }, [globalFilter]);
 
   // Reset to first page when filters change
   React.useEffect(() => {
