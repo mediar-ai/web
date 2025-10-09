@@ -55,10 +55,25 @@ function DashboardContent() {
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const [filterMachines, setFilterMachines] = useState<string[]>([]);
 
-  // Active filter state (currently selected filters)
-  const [activeWorkflowFilter, setActiveWorkflowFilter] = useState<string | undefined>(undefined);
-  const [activeStatusFilter, setActiveStatusFilter] = useState<string | undefined>(undefined);
-  const [activeMachineFilter, setActiveMachineFilter] = useState<string | undefined>(undefined);
+  // Active filter state (currently selected filters) - Load from localStorage
+  const [activeWorkflowFilter, setActiveWorkflowFilter] = useState<string | undefined>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('executions-filter-workflow') || undefined;
+    }
+    return undefined;
+  });
+  const [activeStatusFilter, setActiveStatusFilter] = useState<string | undefined>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('executions-filter-status') || undefined;
+    }
+    return undefined;
+  });
+  const [activeMachineFilter, setActiveMachineFilter] = useState<string | undefined>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('executions-filter-machine') || undefined;
+    }
+    return undefined;
+  });
 
   // Refs to capture latest filter values without causing re-renders
   const activeWorkflowFilterRef = useRef<string | undefined>(undefined);
@@ -339,19 +354,40 @@ function DashboardContent() {
     fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter);
   }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter]);
 
-  // Handle filter changes - refetch from API
+  // Handle filter changes - refetch from API and save to localStorage
   const handleWorkflowFilterChange = useCallback((workflowName: string | undefined) => {
     setActiveWorkflowFilter(workflowName);
+    if (typeof window !== 'undefined') {
+      if (workflowName) {
+        localStorage.setItem('executions-filter-workflow', workflowName);
+      } else {
+        localStorage.removeItem('executions-filter-workflow');
+      }
+    }
     fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter);
   }, [fetchExecutions, activeStatusFilter, activeMachineFilter]);
 
   const handleStatusFilterChange = useCallback((status: string | undefined) => {
     setActiveStatusFilter(status);
+    if (typeof window !== 'undefined') {
+      if (status) {
+        localStorage.setItem('executions-filter-status', status);
+      } else {
+        localStorage.removeItem('executions-filter-status');
+      }
+    }
     fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter);
   }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter]);
 
   const handleMachineFilterChange = useCallback((machine: string | undefined) => {
     setActiveMachineFilter(machine);
+    if (typeof window !== 'undefined') {
+      if (machine) {
+        localStorage.setItem('executions-filter-machine', machine);
+      } else {
+        localStorage.removeItem('executions-filter-machine');
+      }
+    }
     fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine);
   }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter]);
 
