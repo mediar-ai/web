@@ -113,6 +113,7 @@ export default function ObservabilityPage() {
   const [logHostFilter, setLogHostFilter] = useState('');
   const [logScopeFilter, setLogScopeFilter] = useState('');
   const [logSeverityFilter, setLogSeverityFilter] = useState('');
+  const [deduplicateLogs, setDeduplicateLogs] = useState(false);
   const [availableFilters, setAvailableFilters] = useState<{
     hosts: string[];
     scopes: string[];
@@ -293,6 +294,30 @@ export default function ObservabilityPage() {
       return matchesSearch;
     });
   }, [recentErrors, searchQuery]);
+
+  // Deduplicate consecutive logs
+  const displayedLogs = useMemo(() => {
+    if (!deduplicateLogs) return logs;
+
+    const deduplicated: LogEntry[] = [];
+    for (let i = 0; i < logs.length; i++) {
+      const current = logs[i];
+      const prev = logs[i - 1];
+
+      // Check if current log is identical to previous (ignoring timestamp)
+      if (prev &&
+          current.Body === prev.Body &&
+          current.SeverityText === prev.SeverityText &&
+          current.ScopeName === prev.ScopeName &&
+          current.HostName === prev.HostName) {
+        continue; // Skip duplicate
+      }
+
+      deduplicated.push(current);
+    }
+
+    return deduplicated;
+  }, [logs, deduplicateLogs]);
 
   if (!isLoaded) {
     return (
@@ -918,9 +943,20 @@ export default function ObservabilityPage() {
                     </button>
                   )}
 
+                  {/* Deduplicate Checkbox */}
+                  <label className="flex items-center gap-2 px-3 py-1.5 border-2 border-black bg-white cursor-pointer hover:bg-gray-100">
+                    <input
+                      type="checkbox"
+                      checked={deduplicateLogs}
+                      onChange={(e) => setDeduplicateLogs(e.target.checked)}
+                      className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black cursor-pointer"
+                    />
+                    <span className="font-mono text-xs uppercase font-bold">DEDUPE</span>
+                  </label>
+
                   {/* Log Count */}
                   <div className="ml-auto text-sm font-mono font-bold">
-                    {logs.length} logs
+                    {displayedLogs.length} / {logs.length} logs
                   </div>
                 </div>
 
@@ -968,14 +1004,14 @@ export default function ObservabilityPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {logs.length === 0 ? (
+                      {displayedLogs.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="text-center py-8 text-gray-600">
                             No logs found {logHostFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
                           </td>
                         </tr>
                       ) : (
-                        logs.map((log, i) => {
+                        displayedLogs.map((log, i) => {
                           const severityClass =
                             log.SeverityText === 'ERROR' || log.SeverityText === 'FATAL' ? 'bg-red-50 border-l-4 border-l-red-500' :
                             log.SeverityText === 'WARN' ? 'bg-yellow-50 border-l-4 border-l-yellow-500' :
