@@ -318,10 +318,12 @@ export default function ObservabilityPage() {
     return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
+      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: true
+      hour12: true,
+      timeZoneName: 'short'
     });
   };
 
@@ -330,10 +332,13 @@ export default function ObservabilityPage() {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return 'Invalid';
     return date.toLocaleTimeString('en-US', {
+      month: 'short',
+      day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: true
+      hour12: true,
+      timeZoneName: 'short'
     });
   };
 
@@ -985,12 +990,13 @@ export default function ObservabilityPage() {
 
                           return (
                             <tr key={i} className={`hover:bg-gray-100 ${severityClass}`}>
-                              <td className="p-2 text-gray-600 whitespace-nowrap">
-                                {new Date(log.Timestamp).toLocaleTimeString('en-US', {
+                              <td className="p-2 text-gray-600 whitespace-nowrap text-xs">
+                                {new Date(log.Timestamp).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
                                   hour: '2-digit',
                                   minute: '2-digit',
                                   second: '2-digit',
-                                  fractionalSecondDigits: 3,
                                   hour12: false
                                 })}
                               </td>
