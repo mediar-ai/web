@@ -10,6 +10,7 @@ export interface NotificationConfig {
   condition_value: any;
   cooldown_minutes: number;
   max_alerts_per_hour: number;
+  organization_id?: string;
 }
 
 export interface NotificationAlert {
@@ -41,6 +42,17 @@ export class NotificationService {
     const { data, error } = await supabase
       .from('notification_configs')
       .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  async getConfigsByOrg(orgId: string): Promise<NotificationConfig[]> {
+    const { data, error } = await supabase
+      .from('notification_configs')
+      .select('*')
+      .eq('organization_id', orgId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -234,8 +246,11 @@ export class NotificationService {
   }
 
   // Check conditions and trigger alerts if needed
-  async checkExecutionForAlerts(execution: any): Promise<void> {
-    const configs = await this.getConfigs();
+  async checkExecutionForAlerts(execution: any, organizationId?: string): Promise<void> {
+    // If organizationId is provided, filter configs by org
+    const configs = organizationId
+      ? await this.getConfigsByOrg(organizationId)
+      : await this.getConfigs();
     const enabledConfigs = configs.filter(c => c.enabled);
 
     for (const config of enabledConfigs) {

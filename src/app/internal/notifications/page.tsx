@@ -301,7 +301,6 @@ export default function NotificationsPage() {
       <SidebarProvider>
         <div className="flex min-h-screen">
           <DeploymentSidebar
-            canViewAlerts={true}
             currentPage="alerts"
           />
           <main className="flex-1 bg-white">
@@ -338,7 +337,6 @@ export default function NotificationsPage() {
     <SidebarProvider>
       <div className="flex min-h-screen">
         <DeploymentSidebar
-          canViewAlerts={true}
           currentPage="alerts"
         />
         <div className="flex-1 bg-white p-8">

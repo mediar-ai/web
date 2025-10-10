@@ -55,7 +55,7 @@ const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 
 };
 
 export default function NotificationsPage() {
-  const { userId, has } = useAuth();
+  const { userId, orgId } = useAuth();
   const { user } = useUser();
   const [configs, setConfigs] = useState<NotificationConfig[]>([]);
   const [selectedConfig, setSelectedConfig] = useState<NotificationConfig | null>(null);
@@ -67,20 +67,15 @@ export default function NotificationsPage() {
   const [emailError, setEmailError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Check if user is authorized
-  const userEmail = user?.emailAddresses?.[0]?.emailAddress ||
+  // All authenticated users can access alerts for their organization
+  const _userEmail = user?.emailAddresses?.[0]?.emailAddress ||
                    user?.primaryEmailAddress?.emailAddress || '';
-  const allowedUserIds = ['user_2yydAO45WOB4RaCE4F4BNUPtw9c'];
-  const isAuthorized =
-    ['louis@mediar.ai', 'matt@mediar.ai'].includes(userEmail.toLowerCase()) ||
-    allowedUserIds.includes(userId || '') ||
-    has?.({ role: 'org:admin' });
 
   useEffect(() => {
-    if (isAuthorized) {
+    if (userId && orgId) {
       fetchConfigs();
     }
-  }, [isAuthorized]);
+  }, [userId, orgId]);
 
   const fetchConfigs = async () => {
     try {
@@ -284,12 +279,12 @@ export default function NotificationsPage() {
     }
   };
 
-  if (!isAuthorized) {
+  if (!userId || !orgId) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
         <Card className="max-w-md border-black">
           <CardHeader>
-            <CardTitle>Access Restricted</CardTitle>
+            <CardTitle>Please sign in to access alerts</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -301,7 +296,6 @@ export default function NotificationsPage() {
       <SidebarProvider>
         <div className="flex min-h-screen">
           <DeploymentSidebar
-            canViewAlerts={true}
             currentPage="alerts"
           />
           <main className="flex-1 bg-white">
@@ -338,7 +332,6 @@ export default function NotificationsPage() {
     <SidebarProvider>
       <div className="flex min-h-screen">
         <DeploymentSidebar
-          canViewAlerts={true}
           currentPage="alerts"
         />
         <div className="flex-1 bg-white p-8">
