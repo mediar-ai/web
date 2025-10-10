@@ -6,7 +6,7 @@ export interface NotificationConfig {
   enabled: boolean;
   email_enabled: boolean;
   email_recipients: string[];
-  condition_type: 'error' | 'failure_rate' | 'execution_time' | 'custom';
+  condition_type: 'error' | 'exception' | 'failure_rate' | 'execution_time' | 'custom';
   condition_value: any;
   cooldown_minutes: number;
   max_alerts_per_hour: number;
@@ -346,6 +346,70 @@ export class NotificationService {
                 duration: execution.execution_time_seconds ? `${execution.execution_time_seconds}s` : undefined,
 
                 // Error details
+                error_message: execution.error_message,
+                error: execution.error,
+                failed_step: execution.failed_step || execution.last_step,
+                stack_trace: execution.stack_trace,
+
+                // Request context (for debugging)
+                request_info: {
+                  ip: execution.request_ip || execution.ip_address,
+                  user_agent: execution.user_agent,
+                  trigger_source: execution.trigger_source || execution.triggered_by || 'manual',
+                  session_id: execution.session_id,
+                },
+
+                // Workflow parameters
+                parameters: execution.parameters || execution.inputs,
+
+                // Additional debug info
+                logs_available: execution.has_logs || false,
+                retry_count: execution.retry_count || 0,
+                parent_execution_id: execution.parent_execution_id,
+              },
+            };
+          }
+          break;
+
+        case 'exception':
+          // Parse formatted_output to check for exception flag (same logic as ExecutionsDataTable)
+          let formattedResult = null;
+          if (execution.formatted_output) {
+            try {
+              formattedResult = typeof execution.formatted_output === 'string'
+                ? JSON.parse(execution.formatted_output)
+                : execution.formatted_output;
+            } catch (e) {
+              formattedResult = null;
+            }
+          }
+
+          // Check if exception flag is true
+          if (formattedResult?.exception === true) {
+            shouldAlert = true;
+            alertDetails = {
+              ...alertDetails,
+              alert_type: 'execution_exception',
+              severity: 'critical',
+              title: `Workflow Exception: ${execution.workflow_name || execution.workflow_id || 'Unknown'}`,
+              message: `Execution ${execution.id} completed with exception: ${formattedResult.message || 'Unknown'}`,
+              error_message: formattedResult.message || execution.error_message,
+              details: {
+                // Execution details
+                workflow_id: execution.workflow_id,
+                workflow_name: execution.workflow_name,
+                execution_id: execution.id,
+                execution_status: execution.status,
+                started_at: execution.started_at,
+                ended_at: execution.ended_at,
+                duration: execution.execution_time_seconds ? `${execution.execution_time_seconds}s` : undefined,
+
+                // Exception-specific details from formatted_output
+                exception_message: formattedResult.message,
+                exception_data: formattedResult.data,
+                validation_results: formattedResult.validation_results,
+
+                // Standard error context
                 error_message: execution.error_message,
                 error: execution.error,
                 failed_step: execution.failed_step || execution.last_step,
