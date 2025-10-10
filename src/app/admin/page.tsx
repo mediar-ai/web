@@ -444,8 +444,10 @@ function AdminPageContent() {
   if (!isLoaded) {
     return (
       <DashboardLayout>
-        <div className="p-8">
+        <div className="p-4">
+        <div className="max-w-7xl mx-auto">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
         </div>
       </DashboardLayout>
     );
@@ -455,7 +457,8 @@ function AdminPageContent() {
   if (!isGlobalAdmin && !isOrgAdmin) {
     return (
       <DashboardLayout>
-        <div className="p-8">
+        <div className="p-4">
+        <div className="max-w-7xl mx-auto">
           <div className="max-w-2xl mx-auto">
             <div className="border-2 border-black bg-white p-8 text-center">
               <Shield className="w-12 h-12 mx-auto mb-4" />
@@ -466,13 +469,15 @@ function AdminPageContent() {
             </div>
           </div>
         </div>
+        </div>
       </DashboardLayout>
     );
   }
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <div className="p-4">
+        <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-start justify-between">
@@ -1372,6 +1377,7 @@ function AdminPageContent() {
           </div>
         )}
 
+        </div>
       </div>
     </DashboardLayout>
   );
@@ -1381,8 +1387,10 @@ export default function AdminPage() {
   return (
     <Suspense fallback={
       <DashboardLayout>
-        <div className="p-8">
+        <div className="p-4">
+        <div className="max-w-7xl mx-auto">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
         </div>
       </DashboardLayout>
     }>

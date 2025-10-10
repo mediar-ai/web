@@ -293,8 +293,8 @@ export default function NotificationsPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="p-8">
-          <div className="max-w-6xl mx-auto">
+        <div className="p-4">
+          <div className="max-w-7xl mx-auto">
             {/* Header Skeleton */}
             <div className="mb-10">
               <Skeleton className="h-12 w-72 mb-3" />
@@ -314,8 +314,8 @@ export default function NotificationsPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
-        <div className="max-w-6xl mx-auto">
+      <div className="p-4">
+        <div className="max-w-7xl mx-auto">
           {/* Toast Notification */}
           {toast && (
             <Toast

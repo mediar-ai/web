@@ -21,7 +21,8 @@ export default function SettingsPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <div className="p-4">
+        <div className="max-w-7xl mx-auto">
         {/* Header with org switcher */}
         <PageHeader
           title="Settings"
@@ -73,6 +74,7 @@ export default function SettingsPage() {
               <span className="font-mono text-xs bg-gray-100 px-2 py-1">{user?.id}</span>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </DashboardLayout>
