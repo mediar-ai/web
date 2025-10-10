@@ -280,6 +280,14 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     }
   }, [globalFilter]);
 
+  // Save page size to localStorage whenever it changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && table) {
+      const pageSize = table.getState().pagination.pageSize;
+      localStorage.setItem('executions-table-page-size', pageSize.toString());
+    }
+  }, [table?.getState().pagination.pageSize]);
+
   // Reset to first page when filters change
   React.useEffect(() => {
     table.setPageIndex(0);
@@ -703,7 +711,19 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     },
     initialState: {
       pagination: {
-        pageSize: 10,
+        pageSize: (() => {
+          // Load saved page size from localStorage or use default
+          if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('executions-table-page-size');
+            if (saved) {
+              const parsed = parseInt(saved, 10);
+              if (!isNaN(parsed) && [10, 20, 30, 40, 50].includes(parsed)) {
+                return parsed;
+              }
+            }
+          }
+          return 10;
+        })(),
       },
     },
   });
