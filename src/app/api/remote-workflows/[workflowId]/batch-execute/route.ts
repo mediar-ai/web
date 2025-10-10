@@ -151,7 +151,11 @@ const getCombinations = async (
     // where {base} is derived from this parameter's name and {branch_value} matches one of this parameter's values
     const iterationKeys = Object.keys(iterationParams);
     const hasBranchSpecific = paramValues.some(value => {
-      const normalizedValue = (value as string)
+      // Skip non-string values (objects, arrays, etc.) - they can't be branch identifiers
+      if (typeof value !== 'string') {
+        return false;
+      }
+      const normalizedValue = value
         .toLowerCase()
         .replace(/\s+/g, '_');
       // Look for parameters that end with this normalized value
@@ -167,7 +171,11 @@ const getCombinations = async (
 
       // Find all branch-specific parameters for this controlling parameter
       paramValues.forEach(value => {
-        const normalizedValue = (value as string)
+        // Skip non-string values (objects, arrays, etc.) - they can't be branch identifiers
+        if (typeof value !== 'string') {
+          return;
+        }
+        const normalizedValue = value
           .toLowerCase()
           .replace(/\s+/g, '_');
 
@@ -179,10 +187,10 @@ const getCombinations = async (
         );
 
         if (matchingBranchParams.length > 0) {
-          if (!branchSpecificParams[value as string]) {
-            branchSpecificParams[value as string] = [];
+          if (!branchSpecificParams[value]) {
+            branchSpecificParams[value] = [];
           }
-          branchSpecificParams[value as string].push(...matchingBranchParams);
+          branchSpecificParams[value].push(...matchingBranchParams);
         }
       });
     } else {
