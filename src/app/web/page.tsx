@@ -33,7 +33,6 @@ import ActivityTabContent from '../../components/tabs/ActivityTabContent';
 import DebugTabContent from '../../components/tabs/DebugTabContent';
 import EventsTabContent from '../../components/tabs/EventsTabContent';
 import SettingsTabContent from '../../components/tabs/SettingsTabContent';
-import WorkflowTabContent from '../../components/tabs/WorkflowTabContent';
 import { useAutoDetection } from '../../hooks/useAutoDetection';
 import { useEventGenerator } from '../../hooks/useEventGenerator';
 import { useFrameAnalysisDispatcher } from '../../hooks/useFrameAnalysisDispatcher';
@@ -55,7 +54,6 @@ import type {
   DataProvider,
   Event,
   RunningAnalysis,
-  Workflow,
 } from '../../types';
 
 function HomeComponent() {
@@ -89,7 +87,6 @@ function HomeComponent() {
   const [completedAnalyses, setCompletedAnalyses] = useState<RunningAnalysis[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>(TEXT_EXTRACTION_PROMPT);
   const [eventsPrompt] = useState<string>(EVENTS_PROMPT);
   const [mainStatus, setMainStatus] = useState<string>('Idle');
@@ -268,7 +265,7 @@ function HomeComponent() {
       }
 
       // In local mode AND when capturing, stream new items to Supabase
-      if (viewingMode.type === 'local' && stream) {
+      if (viewingMode.type === 'local' && streamRef.current) {
         uniqueActivityItems.filter(item => !streamedItemIds.current.has(item.id))
           .forEach(item => streamData('activity_item', item));
         uniqueEvents.filter(item => !streamedItemIds.current.has(item.id))
@@ -283,7 +280,7 @@ function HomeComponent() {
     } catch (err) {
       logError('[loadData] Failed to load data:', err);
     }
-  }, [logError, logToUI, viewingMode.type, stream, streamData]);
+  }, [logError, logToUI, viewingMode.type, streamData]);
 
   useEffect(() => {
     if (viewingMode.type === 'remote') {
@@ -550,11 +547,6 @@ function HomeComponent() {
     }
   };
 
-  const handleWorkflowUpdate = (updatedWorkflow: Workflow) => {
-    setWorkflow(updatedWorkflow);
-    console.log('[handleWorkflowUpdate] Workflow updated:', updatedWorkflow);
-  };
-
   const handlePromptChange = useCallback((newPrompt: string) => {
     setCustomPrompt(newPrompt);
     setPromptSaveStatus('saving');
@@ -730,26 +722,6 @@ function HomeComponent() {
     }
   }, [selectedMainTab, activityItems, events, logToUI]);
 
-  useEffect(() => {
-    if (stream && !workflow) {
-      const sessionId = localStorage.getItem('app_session_id') || crypto.randomUUID();
-      if (!localStorage.getItem('app_session_id')) {
-        localStorage.setItem('app_session_id', sessionId);
-      }
-      
-      const newWorkflow: Workflow = {
-        id: crypto.randomUUID(),
-        name: `Workflow ${new Date().toISOString()}`,
-        description: '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        sessionId: sessionId,
-      };
-      
-      setWorkflow(newWorkflow);
-      logToUI('[Auto-Workflow] Created new workflow for session:', newWorkflow.name);
-    }
-  }, [stream, workflow, logToUI]);
 
   useEffect(() => {
     const hasSeenScrollHint = localStorage.getItem('hasSeenScrollHint');
@@ -1258,7 +1230,7 @@ function HomeComponent() {
             }
           }}>
             <div className='flex items-center justify-between mb-1'>
-              <TabsList className='grid grid-cols-3 flex-1 mr-2'>
+              <TabsList className='grid grid-cols-2 flex-1 mr-2'>
                 <TabsTrigger value='recent' onClick={() => {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('recent');
@@ -1267,10 +1239,6 @@ function HomeComponent() {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('events');
                 }}>Events ({events.length}){avgTimeBetweenEvents !== null && ` • ~${avgTimeBetweenEvents}s`}</TabsTrigger>
-                <TabsTrigger value='workflow' onClick={() => {
-                  setSelectedMoreOption(null);
-                  setSelectedMainTab('workflow');
-                }}>Workflow</TabsTrigger>
               </TabsList>
               
               <div className="flex items-center gap-2">
@@ -1323,13 +1291,6 @@ function HomeComponent() {
                 events={events}
                 selectedEvent={selectedEvent}
                 onEventSelect={handleEventSelect}
-              />
-            </TabsContent>
-
-            <TabsContent value='workflow' className='-mt-3'>
-              <WorkflowTabContent
-                workflow={workflow}
-                onWorkflowUpdate={handleWorkflowUpdate}
               />
             </TabsContent>
 
