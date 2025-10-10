@@ -574,8 +574,53 @@ export async function GET(request: NextRequest) {
     // Fetch automation sequences for the workflows (needed for input parameter detection)
     const workflowIds = (workflows || []).map(w => w.id);
     const automationSequences: Record<number, any> = {};
+    const cronData: Record<number, any> = {};
 
     if (workflowIds.length > 0) {
+      // First, fetch cron data directly from deployed_workflows table
+      // (deployed_workflows_with_sequence view doesn't have cron fields)
+      const { data: cronWorkflows, error: cronError } = await supabase
+        .from('deployed_workflows')
+        .select(
+          `
+          id,
+          organization_id,
+          cron_expression,
+          cron_timezone,
+          cron_enabled,
+          last_scheduled_execution,
+          next_scheduled_execution,
+          cron_max_concurrent,
+          cron_retry_on_failure,
+          cron_retry_count
+        `
+        )
+        .in('id', workflowIds);
+
+      if (!cronError && cronWorkflows) {
+        console.log('[API] Fetched cron data for', cronWorkflows.length, 'workflows');
+        cronWorkflows.forEach(cw => {
+          if (cw.cron_expression) {
+            console.log(`[API] Workflow ${cw.id} has cron:`, cw.cron_expression, 'enabled:', cw.cron_enabled);
+          }
+          cronData[cw.id] = {
+            organization_id: cw.organization_id,
+            cron_expression: cw.cron_expression,
+            cron_timezone: cw.cron_timezone,
+            cron_enabled: cw.cron_enabled,
+            last_scheduled_execution: cw.last_scheduled_execution,
+            next_scheduled_execution: cw.next_scheduled_execution,
+            cron_max_concurrent: cw.cron_max_concurrent,
+            cron_retry_on_failure: cw.cron_retry_on_failure,
+            cron_retry_count: cw.cron_retry_count
+          };
+        });
+        console.log('[API] Total workflows with cron data in cronData:', Object.keys(cronData).filter(id => cronData[parseInt(id)].cron_expression).length);
+      } else if (cronError) {
+        console.error('[API] Error fetching cron data:', cronError);
+      }
+
+      // Then fetch automation sequences
       const { data: sequences, error: sequencesError } = await supabase
         .from('deployed_workflows_with_sequence')
         .select(
@@ -584,23 +629,28 @@ export async function GET(request: NextRequest) {
           automation_sequence,
           workflow_type,
           parent_workflow_id,
-          display_order,
-          cron_expression,
-          cron_timezone,
-          cron_enabled,
-          last_scheduled_execution,
-          next_scheduled_execution,
-          cron_max_concurrent,
-          cron_retry_on_failure,
-          cron_retry_count,
-          organization_id
+          display_order
         `
         )
         .in('id', workflowIds);
 
+      console.log('[API] Fetched automation sequences:', sequences?.length, 'error:', sequencesError?.message);
+
       if (!sequencesError && sequences) {
         sequences.forEach(seq => {
-          automationSequences[seq.id] = seq;
+          // Merge cron data with automation sequence data
+          automationSequences[seq.id] = {
+            ...seq,
+            ...(cronData[seq.id] || {})
+          };
+        });
+        console.log('[API] After merge, workflows with cron in automationSequences:',
+          Object.keys(automationSequences).filter(id => automationSequences[parseInt(id)]?.cron_expression).length);
+        // Log specific workflows
+        [71, 73, 74, 65].forEach(id => {
+          if (automationSequences[id]) {
+            console.log(`[API] Workflow ${id} cron after merge:`, automationSequences[id].cron_expression);
+          }
         });
       }
     }
