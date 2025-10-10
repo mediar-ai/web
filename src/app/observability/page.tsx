@@ -1029,14 +1029,7 @@ export default function ObservabilityPage() {
                           return (
                             <tr key={i} className={`hover:bg-gray-100 ${severityClass}`}>
                               <td className="p-2 text-gray-600 whitespace-nowrap text-xs">
-                                {new Date(log.Timestamp).toLocaleString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  second: '2-digit',
-                                  hour12: false
-                                })}
+                                {formatLocalTimeOnly(log.Timestamp)}
                               </td>
                               <td className={`p-2 whitespace-nowrap ${severityText}`}>
                                 {log.SeverityText || 'INFO'}
