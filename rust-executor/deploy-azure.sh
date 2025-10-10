@@ -158,6 +158,7 @@ az container create \
     --resource-group "$RESOURCE_GROUP" \
     --name "$CONTAINER_NAME" \
     --image "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}" \
+    --os-type Linux \
     --cpu "$CONTAINER_CPU" \
     --memory "$CONTAINER_MEMORY" \
     --registry-login-server "$ACR_LOGIN_SERVER" \

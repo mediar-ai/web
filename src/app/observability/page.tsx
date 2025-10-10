@@ -354,9 +354,17 @@ export default function ObservabilityPage() {
 
   const formatLocalTimeOnly = (timestamp: string) => {
     if (!timestamp || timestamp === '') return 'N/A';
-    const date = new Date(timestamp);
+
+    // ClickHouse returns timestamps in UTC without timezone indicator
+    // Format: "2025-10-10 23:54:35.400410500"
+    // We need to append 'Z' to indicate UTC before parsing
+    const utcTimestamp = timestamp.includes('Z') ? timestamp : timestamp.replace(' ', 'T') + 'Z';
+    const date = new Date(utcTimestamp);
+
     if (isNaN(date.getTime())) return 'Invalid';
-    return date.toLocaleTimeString('en-US', {
+
+    // Use toLocaleString for proper date+time formatting
+    return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -1028,7 +1036,7 @@ export default function ObservabilityPage() {
 
                           return (
                             <tr key={i} className={`hover:bg-gray-100 ${severityClass}`}>
-                              <td className="p-2 text-gray-600 whitespace-nowrap text-xs">
+                              <td className="p-2 text-gray-600 whitespace-nowrap text-xs" title={`Raw: ${log.Timestamp}`}>
                                 {formatLocalTimeOnly(log.Timestamp)}
                               </td>
                               <td className={`p-2 whitespace-nowrap ${severityText}`}>
