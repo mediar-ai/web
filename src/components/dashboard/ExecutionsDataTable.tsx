@@ -280,20 +280,6 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     }
   }, [globalFilter]);
 
-  // Save page size to localStorage whenever it changes
-  React.useEffect(() => {
-    if (typeof window !== 'undefined' && table) {
-      const pageSize = table.getState().pagination.pageSize;
-      localStorage.setItem('executions-table-page-size', pageSize.toString());
-    }
-  }, [table?.getState().pagination.pageSize]);
-
-  // Reset to first page when filters change
-  React.useEffect(() => {
-    table.setPageIndex(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columnFilters, globalFilter]);
-
   const columns: ColumnDef<Execution>[] = React.useMemo(
     () => [
       {
@@ -727,6 +713,20 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       },
     },
   });
+
+  // Save page size to localStorage whenever it changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && table) {
+      const pageSize = table.getState().pagination.pageSize;
+      localStorage.setItem('executions-table-page-size', pageSize.toString());
+    }
+  }, [table?.getState().pagination.pageSize]);
+
+  // Reset to first page when filters change
+  React.useEffect(() => {
+    table.setPageIndex(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnFilters, globalFilter]);
 
   // Get unique workflow names for filter (use prop if provided, else compute from executions)
   const uniqueWorkflowNames = React.useMemo(() => {
