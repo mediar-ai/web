@@ -125,6 +125,66 @@ export function WorkflowCardEnhanced({
     return `${minutes}m ${remainingSeconds}s`;
   };
 
+  // Calculate cron schedule info for inline display
+  const getNextRunInfo = useMemo(() => {
+    if (!workflow.cron_expression) return null;
+
+    // Get a short version of the cron description
+    const fullDescription = describeCronExpression(workflow.cron_expression);
+
+    // Simplify common patterns for inline display
+    let shortDescription = fullDescription;
+    if (fullDescription.includes('Every day at')) {
+      const timeMatch = fullDescription.match(/at (\d{1,2}:\d{2}(?:\s?[AP]M)?)/i);
+      shortDescription = timeMatch ? `Daily ${timeMatch[1]}` : 'Daily';
+    } else if (fullDescription.includes('Every hour')) {
+      const minuteMatch = fullDescription.match(/at (\d{1,2}) minutes?/);
+      shortDescription = minuteMatch ? `Hourly :${minuteMatch[1].padStart(2, '0')}` : 'Hourly';
+    } else if (fullDescription.includes('Every 5 minutes')) {
+      shortDescription = 'Every 5m';
+    } else if (fullDescription.includes('Every 15 minutes')) {
+      shortDescription = 'Every 15m';
+    } else if (fullDescription.includes('Every 30 minutes')) {
+      shortDescription = 'Every 30m';
+    } else if (fullDescription.includes('Every week')) {
+      shortDescription = 'Weekly';
+    } else if (fullDescription.includes('Every month')) {
+      shortDescription = 'Monthly';
+    }
+
+    // Calculate next run time
+    let nextRunText = '';
+    if (workflow.cron_enabled) {
+      if (workflow.next_scheduled_execution) {
+        const nextRun = new Date(workflow.next_scheduled_execution);
+        const now = new Date();
+        const diffMs = nextRun.getTime() - now.getTime();
+        const diffMinutes = Math.floor(diffMs / 60000);
+
+        if (diffMinutes < 1) {
+          nextRunText = 'now';
+        } else if (diffMinutes < 60) {
+          nextRunText = `${diffMinutes}m`;
+        } else if (diffMinutes < 1440) { // Less than 24 hours
+          const hours = nextRun.getHours();
+          const minutes = nextRun.getMinutes();
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          const displayHours = hours % 12 || 12;
+          nextRunText = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+        } else {
+          const days = Math.floor(diffMinutes / 1440);
+          nextRunText = `${days}d`;
+        }
+      }
+    }
+
+    return {
+      shortDescription,
+      nextRunText,
+      isEnabled: workflow.cron_enabled
+    };
+  }, [workflow.cron_expression, workflow.cron_enabled, workflow.next_scheduled_execution]);
+
   return (
     <TooltipProvider>
       <div
@@ -240,14 +300,40 @@ export function WorkflowCardEnhanced({
                 <span className="font-mono font-medium text-[11px]">{metrics.totalRuns}</span>
               </div>
 
-              {/* Execution Sparkline */}
-              <div className="ml-auto mr-1">
-                <ExecutionSparkline
-                  executions={executions}
-                  width={50}
-                  height={16}
-                />
-              </div>
+              {/* Show inline cron schedule or sparkline */}
+              {getNextRunInfo ? (
+                <>
+                  <div className="flex items-center gap-1 ml-auto">
+                    <span className="text-[11px]">⏰</span>
+                    <span className={cn(
+                      "font-mono text-[11px]",
+                      !getNextRunInfo.isEnabled && "text-gray-400"
+                    )}>
+                      {getNextRunInfo.shortDescription}
+                      {!getNextRunInfo.isEnabled && ' (paused)'}
+                    </span>
+                  </div>
+                  {getNextRunInfo.isEnabled && getNextRunInfo.nextRunText && (
+                    <>
+                      <div className="text-gray-300">|</div>
+                      <div className="flex items-center gap-1 mr-1">
+                        <span className="text-gray-500 text-[11px]">Next:</span>
+                        <span className="font-mono font-medium text-[11px]">
+                          {getNextRunInfo.nextRunText}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="ml-auto mr-1">
+                  <ExecutionSparkline
+                    executions={executions}
+                    width={50}
+                    height={16}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}
