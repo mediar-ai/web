@@ -68,8 +68,24 @@ export class GitHubWorkflowManager {
         throw new Error('workflowId is required');
       }
 
-      // Generate human-readable folder name
-      const folderName = this.generateFolderName(workflowName);
+      // Check if workflow already has a github_folder - if so, preserve it!
+      const { data: existingWorkflow } = await supabase
+        .from('deployed_workflows')
+        .select('github_folder')
+        .eq('id', workflowId)
+        .single();
+
+      let folderName: string;
+      if (existingWorkflow?.github_folder) {
+        // PRESERVE existing folder name - don't regenerate
+        folderName = existingWorkflow.github_folder;
+        console.log(`📁 Using existing GitHub folder: ${folderName} (preserving for workflow ${workflowId})`);
+      } else {
+        // Generate new folder name for workflows without one
+        folderName = this.generateFolderName(workflowName);
+        console.log(`📁 Creating new GitHub folder: ${folderName} (for workflow ${workflowId})`);
+      }
+
       const filePath = `${folderName}/workflow.yaml`;
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const branchName = `workflow/${folderName}-${timestamp}`;
