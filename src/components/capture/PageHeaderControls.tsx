@@ -42,18 +42,6 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
       <div className={`transition-all duration-300 ease-in-out text-center min-w-[180px] py-1.5 px-2 ${error ? 'bg-red-600 text-white rounded' : (streamRef.current && mainStatus.startsWith('Recording') ? 'bg-blue-500 text-white rounded' : 'text-gray-600 dark:text-gray-300')}`}>
         {error ? <><AlertTriangle className='inline mr-1 h-3 w-3' /> {mainStatus}</> : mainStatus}
       </div>
-      {streamRef.current && autoDetectionEnabled && isMonitoring && (
-        <div className="tabular-nums px-2 py-1 min-w-[100px] text-center border rounded">
-          <RotateCcw className="animate-spin mr-1.5 h-3 w-3" style={{ animationDuration: '2s' }} />
-          {displayChangePercent.toFixed(1)}%
-        </div>
-      )}
-      {streamRef.current && (
-         <div className="px-2 py-1 min-w-[100px] text-center border rounded">
-          <Zap className='mr-1.5 h-3 w-3' /> 
-          Analyses: {activeAnalysesCount}/{MAX_PARALLEL_ANALYSES}
-        </div>
-      )}
     </div>
   );
 };
