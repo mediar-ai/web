@@ -170,15 +170,9 @@ export const AnalysisProgressBubble = ({
           <p className="font-medium text-sm text-foreground">{status}</p>
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <span>Elapsed time: {elapsedTime.toFixed(1)}s</span>
-            {batchInfo && (
-              <span>
-                Progress: {batchInfo.current}/{batchInfo.total} batches ({Math.round((batchInfo.current / batchInfo.total) * 100)}%)
-              </span>
-            )}
           </div>
         </div>
       </div>
-      <Progress value={progress} className="mt-3 h-2" />
     </div>
   </div>
 );
