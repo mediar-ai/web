@@ -10,7 +10,7 @@ export interface NotificationConfig {
   condition_value: any;
   cooldown_minutes: number;
   max_alerts_per_hour: number;
-  organization_id?: string;
+  organization_id?: string | null; // Clerk organization ID. NULL = global alert for all orgs
 }
 
 export interface NotificationAlert {
@@ -169,8 +169,61 @@ export class NotificationService {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
         (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.mediar.ai');
 
+      // Determine final recipient list
+      let recipients = config.email_recipients || [];
+
+      // Determine which organization's members to fetch
+      let targetOrgId = config.organization_id; // For org-specific configs
+
+      // For global configs (organization_id is null), use the workflow's organization
+      if (!targetOrgId && alert.workflow_id) {
+        try {
+          const { data: workflow } = await supabase
+            .from('deployed_workflows')
+            .select('organization_id')
+            .eq('id', alert.workflow_id)
+            .single();
+
+          targetOrgId = workflow?.organization_id;
+          console.log(`Global rule - using workflow's organization: ${targetOrgId || 'none'}`);
+        } catch (err) {
+          console.error('Error fetching workflow organization:', err);
+        }
+      }
+
+      // Fetch organization members if we have a target organization
+      if (targetOrgId) {
+        try {
+          console.log(`Fetching organization members for ${targetOrgId}`);
+          const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${targetOrgId}`, {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (orgMembersResponse.ok) {
+            const orgMembersData = await orgMembersResponse.json();
+            const orgEmails = orgMembersData.members?.map((m: any) => m.email).filter(Boolean) || [];
+            console.log(`Found ${orgEmails.length} organization members: ${orgEmails.join(', ')}`);
+
+            // Combine configured recipients with org members (remove duplicates)
+            recipients = [...new Set([...recipients, ...orgEmails])];
+          } else {
+            console.error(`Failed to fetch organization members: ${orgMembersResponse.status}`);
+          }
+        } catch (err) {
+          console.error('Error fetching organization members:', err);
+          // Fall back to configured recipients only
+        }
+      }
+
+      if (recipients.length === 0) {
+        console.warn('No email recipients found for alert, skipping email');
+        return;
+      }
+
       console.log(`Sending email notification to ${baseUrl}/api/internal/send-notification-email`);
-      console.log(`Recipients: ${config.email_recipients?.join(', ')}`);
+      console.log(`Recipients: ${recipients.join(', ')}`);
 
       const response = await fetch(`${baseUrl}/api/internal/send-notification-email`, {
         method: 'POST',
@@ -178,7 +231,7 @@ export class NotificationService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          to: config.email_recipients,
+          to: recipients,
           subject: `[${alert.severity.toUpperCase()}] ${alert.title}`,
           alert,
           config,
@@ -247,11 +300,21 @@ export class NotificationService {
 
   // Check conditions and trigger alerts if needed
   async checkExecutionForAlerts(execution: any, organizationId?: string): Promise<void> {
-    // If organizationId is provided, filter configs by org
-    const configs = organizationId
-      ? await this.getConfigsByOrg(organizationId)
-      : await this.getConfigs();
-    const enabledConfigs = configs.filter(c => c.enabled);
+    // Get the workflow's organization_id
+    const { data: workflow } = await supabase
+      .from('deployed_workflows')
+      .select('organization_id')
+      .eq('id', execution.workflow_id)
+      .single();
+
+    const workflowOrgId = organizationId || workflow?.organization_id;
+
+    const configs = await this.getConfigs();
+    // Filter for enabled configs that match the workflow's organization OR are global (null organization_id)
+    const enabledConfigs = configs.filter(c =>
+      c.enabled &&
+      (c.organization_id === workflowOrgId || c.organization_id === null)
+    );
 
     for (const config of enabledConfigs) {
       let shouldAlert = false;

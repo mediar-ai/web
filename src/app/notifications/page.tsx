@@ -21,6 +21,7 @@ interface NotificationConfig {
   condition_value: any;
   cooldown_minutes: number;
   max_alerts_per_hour: number;
+  organization_id?: string | null;
 }
 
 // Simple toast component
