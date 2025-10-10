@@ -4,20 +4,16 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserButton } from '@clerk/nextjs';
-import { CheckCircle, Copy, Mail, MessageSquare, Play, RefreshCw } from 'lucide-react';
+import { CheckCircle, Copy, Mail, MessageSquare, Play } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
 interface ContactAdminSectionProps {
   userId: string;
-  onStatusCheck: () => void;
-  isChecking: boolean;
 }
 
-export default function ContactAdminSection({ 
-  userId, 
-  onStatusCheck, 
-  isChecking 
+export default function ContactAdminSection({
+  userId
 }: ContactAdminSectionProps) {
   const [copied, setCopied] = useState(false);
 
@@ -181,29 +177,6 @@ export default function ContactAdminSection({
               </div>
             </div>
 
-            {/* Status Check Button */}
-            <div className="flex items-center justify-between pt-4 border-t">
-              <div className="text-sm text-gray-600">
-                Access granted? Check your status
-              </div>
-              <Button
-                onClick={onStatusCheck}
-                disabled={isChecking}
-                className="bg-black text-white hover:bg-gray-800"
-              >
-                {isChecking ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Checking...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Check Access Status
-                  </>
-                )}
-              </Button>
-            </div>
           </CardContent>
         </Card>
 
