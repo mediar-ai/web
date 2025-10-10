@@ -90,6 +90,7 @@ export default function NotificationsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [filterOrg, setFilterOrg] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPreviewOrg, setSelectedPreviewOrg] = useState<string>('');
 
   // Check if user is authorized - only @mediar.ai emails can access
   const hasMediarEmail = user?.emailAddresses?.some(
@@ -180,6 +181,26 @@ export default function NotificationsPage() {
     }
 
     return recipients;
+  };
+
+  // Helper function to get effective recipients for a specific org (for preview)
+  const getEffectiveRecipientsForOrg = (config: NotificationConfig, orgId: string): { email: string; source: 'additional' | 'org' }[] => {
+    const result: { email: string; source: 'additional' | 'org' }[] = [];
+
+    // Add additional recipients
+    config.email_recipients.forEach(email => {
+      result.push({ email, source: 'additional' });
+    });
+
+    // Add org members
+    const members = orgMembers[orgId] || [];
+    members.forEach(member => {
+      if (member.email && !result.find(r => r.email === member.email)) {
+        result.push({ email: member.email, source: 'org' });
+      }
+    });
+
+    return result;
   };
 
   // Filter and search configs
@@ -713,6 +734,57 @@ export default function NotificationsPage() {
                           ))
                         )}
                       </div>
+                    </div>
+
+                    {/* Preview Recipients by Organization */}
+                    <div className="border-2 border-gray-300 p-4 bg-gray-50">
+                      <Label className="text-black font-mono font-bold flex items-center gap-1 mb-3">
+                        <Building2 className="w-4 h-4" />
+                        PREVIEW RECIPIENTS BY ORGANIZATION
+                      </Label>
+                      <p className="text-xs text-gray-600 font-mono mb-3">
+                        Select an organization to see which members would receive alerts
+                      </p>
+
+                      <select
+                        value={selectedPreviewOrg}
+                        onChange={(e) => setSelectedPreviewOrg(e.target.value)}
+                        className="w-full px-3 py-2 border-2 border-black font-mono focus:outline-none focus:ring-2 focus:ring-black bg-white mb-3"
+                      >
+                        <option value="">SELECT ORGANIZATION...</option>
+                        {organizations.map(org => (
+                          <option key={org.id} value={org.clerk_organization_id}>
+                            {org.name.toUpperCase()}
+                          </option>
+                        ))}
+                      </select>
+
+                      {selectedPreviewOrg && (
+                        <div className="mt-3 p-3 bg-white border-2 border-black">
+                          <p className="font-mono text-xs font-bold mb-2">
+                            EFFECTIVE RECIPIENTS FOR {getOrgName(selectedPreviewOrg).toUpperCase()}:
+                          </p>
+                          <div className="space-y-2">
+                            {getEffectiveRecipientsForOrg(selectedConfig, selectedPreviewOrg).map((recipient, idx) => (
+                              <div key={idx} className="flex items-center justify-between p-2 border border-gray-300">
+                                <span className="font-mono text-sm">{recipient.email}</span>
+                                <span className={`text-xs font-mono px-2 py-1 ${
+                                  recipient.source === 'additional'
+                                    ? 'bg-black text-white'
+                                    : 'bg-gray-200 text-gray-800'
+                                }`}>
+                                  {recipient.source === 'additional' ? 'ADDITIONAL' : 'ORG MEMBER'}
+                                </span>
+                              </div>
+                            ))}
+                            {getEffectiveRecipientsForOrg(selectedConfig, selectedPreviewOrg).length === 0 && (
+                              <p className="text-sm text-gray-500 font-mono text-center py-2">
+                                NO RECIPIENTS (NO ORG MEMBERS FOUND)
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Action Buttons */}
