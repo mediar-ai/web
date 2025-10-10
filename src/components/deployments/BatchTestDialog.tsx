@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Server } from 'lucide-react';
+import { Loader2, Server, Bug } from 'lucide-react';
 import { useCallback, useEffect, useState, useRef } from 'react';
 
 import { BatchForm } from '@/components/deployments/BatchForm';
@@ -59,6 +60,12 @@ interface WorkflowVersion {
   created_at: string;
   change_notes?: string;
   execution_count?: number;
+}
+
+interface WorkflowStep {
+  id: string;
+  name: string;
+  tool_name: string;
 }
 
 interface BatchTestDialogProps {
@@ -111,6 +118,15 @@ export function BatchTestDialog({
   const [loadingVersionValidation, setLoadingVersionValidation] =
     useState(false); // Default to active version
   const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Partial execution state
+  const [showPartialExecution, setShowPartialExecution] = useState(false);
+  const [startFromStep, setStartFromStep] = useState<string>('');
+  const [endAtStep, setEndAtStep] = useState<string>('');
+  const [followFallback, setFollowFallback] = useState(false);
+  const [executeJumpsAtEnd, setExecuteJumpsAtEnd] = useState(false);
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
+  const [loadingSteps, setLoadingSteps] = useState(false);
 
   // Create a storage key specific to this workflow
   const storageKey = workflow ? `test-run-${workflow.id}` : '';
@@ -389,6 +405,37 @@ export function BatchTestDialog({
     loadVersionSchema();
   }, [workflow, selectedVersionNumber, resetBatchSpec]);
 
+  // Load workflow steps when version changes
+  useEffect(() => {
+    if (!workflow || !selectedVersionNumber) return;
+
+    const loadWorkflowSteps = async () => {
+      setLoadingSteps(true);
+      try {
+        const versionParam = !selectedVersionNumber ? 'active' : selectedVersionNumber;
+        const response = await fetch(
+          `/api/remote-workflows/${workflow.id}/steps?version=${versionParam}`
+        );
+        const data = await response.json();
+
+        if (data.success && data.steps) {
+          setWorkflowSteps(data.steps);
+          console.log(`[SUCCESS] Loaded ${data.steps.length} steps for workflow ${workflow.id}`);
+        } else {
+          console.warn('[WARN] Failed to load workflow steps:', data.error);
+          setWorkflowSteps([]);
+        }
+      } catch (error) {
+        console.error('[ERROR] Error loading workflow steps:', error);
+        setWorkflowSteps([]);
+      } finally {
+        setLoadingSteps(false);
+      }
+    };
+
+    loadWorkflowSteps();
+  }, [workflow, selectedVersionNumber]);
+
   // Save batch spec to localStorage whenever it changes
   useEffect(() => {
     if (storageKey && Object.keys(batchSpec).length > 0) {
@@ -425,11 +472,16 @@ export function BatchTestDialog({
       const effectiveBatchSpec = totalCombinations === 0 ?
         { static_parameters: {}, dynamic_parameters: {} } : batchSpec;
 
-      // Include machine_id and version_number in the request body
+      // Include machine_id, version_number, and partial execution parameters in the request body
       const requestBody = {
         ...effectiveBatchSpec,
         machine_id: parseInt(selectedMachineId),
         version_number: selectedVersionNumber || undefined, // Send version or undefined for active
+        // NEW: Partial execution parameters
+        start_from_step: showPartialExecution && startFromStep ? startFromStep : undefined,
+        end_at_step: showPartialExecution && endAtStep ? endAtStep : undefined,
+        follow_fallback: showPartialExecution ? followFallback : undefined,
+        execute_jumps_at_end: showPartialExecution ? executeJumpsAtEnd : undefined,
       };
 
       const response = await fetch(
@@ -647,6 +699,108 @@ export function BatchTestDialog({
                     className="text-xs text-muted-foreground"
                   >
                     Using active/production version
+                  </div>
+                )}
+              </div>
+
+              {/* Partial Execution (Debug Mode) */}
+              <div className="col-span-2 space-y-3 mt-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="partial-execution-toggle"
+                    checked={showPartialExecution}
+                    onCheckedChange={(checked) => setShowPartialExecution(checked as boolean)}
+                  />
+                  <Label htmlFor="partial-execution-toggle" className="flex items-center gap-2 cursor-pointer">
+                    <Bug className="w-4 h-4" />
+                    <span className="font-medium">Partial Execution (Debug Mode)</span>
+                  </Label>
+                </div>
+
+                {showPartialExecution && (
+                  <div className="p-4 border-2 border-black rounded bg-gray-50 space-y-4">
+                    {loadingSteps ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading workflow steps...
+                      </div>
+                    ) : workflowSteps.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No steps available for this workflow</p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="start-step-select" className="text-xs font-mono uppercase">Start from step</Label>
+                            <Select value={startFromStep} onValueChange={setStartFromStep}>
+                              <SelectTrigger id="start-step-select" className="font-mono text-sm">
+                                <SelectValue placeholder="From beginning" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {workflowSteps.map(step => (
+                                  <SelectItem key={step.id} value={step.id} className="font-mono text-sm">
+                                    {step.id}
+                                    <span className="text-xs text-muted-foreground ml-2">({step.name})</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="end-step-select" className="text-xs font-mono uppercase">End at step</Label>
+                            <Select value={endAtStep} onValueChange={setEndAtStep}>
+                              <SelectTrigger id="end-step-select" className="font-mono text-sm">
+                                <SelectValue placeholder="Until end" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {workflowSteps.map(step => (
+                                  <SelectItem key={step.id} value={step.id} className="font-mono text-sm">
+                                    {step.id}
+                                    <span className="text-xs text-muted-foreground ml-2">({step.name})</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 pt-2">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="follow-fallback"
+                              checked={followFallback}
+                              onCheckedChange={(checked) => setFollowFallback(checked as boolean)}
+                            />
+                            <Label htmlFor="follow-fallback" className="text-xs cursor-pointer">
+                              Follow fallback beyond end step
+                            </Label>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="execute-jumps"
+                              checked={executeJumpsAtEnd}
+                              onCheckedChange={(checked) => setExecuteJumpsAtEnd(checked as boolean)}
+                            />
+                            <Label htmlFor="execute-jumps" className="text-xs cursor-pointer">
+                              Execute jumps at end step
+                            </Label>
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-muted-foreground pt-2 border-t border-gray-300">
+                          <p className="font-mono">
+                            {startFromStep || endAtStep ? (
+                              <>
+                                Will execute: {startFromStep || 'beginning'} → {endAtStep || 'end'}
+                              </>
+                            ) : (
+                              'Select start and/or end steps to run a partial execution'
+                            )}
+                          </p>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

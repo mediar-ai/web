@@ -4,28 +4,43 @@ Script to extract RLS policies from Supabase production database
 """
 
 import psycopg2
-import os
-from urllib.parse import urlparse
+import json
 
 def extract_rls_policies():
-    # Get database URL from environment
-    supabase_url = "https://eshwntsgsputksqamckh.supabase.co"
-    service_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzaHdudHNnc3B1dGtzcWFtY2toIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMzAwODk4NCwiZXhwIjoyMDQ4NTg0OTg0fQ.60wcQZuuqLuGcNTYwf8ZRFl_qtpJcN-unvY3avGQZi0"
-    
-    # Construct the connection string for Supabase
-    # Supabase database URL format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
-    project_ref = "eshwntsgsputksqamckh"
-    
-    # We need the database password. For Supabase, we'll try to use the service key as password
-    # or we need to get the actual database password
-    
-    print("Note: To extract RLS policies, we need the database password.")
-    print("The service role key won't work for direct PostgreSQL connection.")
-    print("Please provide your Supabase database password or use Supabase CLI with Docker.")
-    
-    # Query to get all RLS policies
+    # Connect to production database (pooler connection string)
+    conn = psycopg2.connect(
+        "postgresql://postgres.eshwntsgsputksqamckh:dS64xX6mU3E4Sbyc@aws-0-us-west-1.pooler.supabase.com:5432/postgres"
+    )
+    cursor = conn.cursor()
+
+    print("=" * 80)
+    print("TABLES WITH RLS ENABLED")
+    print("=" * 80)
+
+    # Query to get table-level RLS status
+    rls_status_query = """
+    SELECT
+        schemaname,
+        tablename,
+        rowsecurity
+    FROM pg_tables
+    WHERE schemaname = 'public' AND rowsecurity = true
+    ORDER BY tablename;
+    """
+
+    cursor.execute(rls_status_query)
+    tables_with_rls = cursor.fetchall()
+
+    for row in tables_with_rls:
+        print(f"\n{row[1]} (RLS enabled)")
+
+    print("\n" + "=" * 80)
+    print("RLS POLICIES")
+    print("=" * 80)
+
+    # Query to get all RLS policies with their definitions
     rls_query = """
-    SELECT 
+    SELECT
         schemaname,
         tablename,
         policyname,
@@ -34,27 +49,40 @@ def extract_rls_policies():
         cmd,
         qual,
         with_check
-    FROM pg_policies 
+    FROM pg_policies
     WHERE schemaname = 'public'
     ORDER BY tablename, policyname;
     """
-    
-    # Query to get table-level RLS status
-    rls_status_query = """
-    SELECT 
-        schemaname,
-        tablename,
-        rowsecurity
-    FROM pg_tables 
-    WHERE schemaname = 'public' AND rowsecurity = true
-    ORDER BY tablename;
-    """
-    
-    print("SQL queries to run manually in Supabase SQL editor:")
-    print("\n-- Get RLS policies:")
-    print(rls_query)
-    print("\n-- Get tables with RLS enabled:")
-    print(rls_status_query)
+
+    cursor.execute(rls_query)
+    policies = cursor.fetchall()
+
+    current_table = None
+    for policy in policies:
+        schema, table, name, permissive, roles, cmd, qual, with_check = policy
+
+        if table != current_table:
+            print(f"\n\n{'-' * 80}")
+            print(f"TABLE: {table}")
+            print(f"{'-' * 80}")
+            current_table = table
+
+        print(f"\nPolicy: {name}")
+        print(f"  Type: {'PERMISSIVE' if permissive == 'PERMISSIVE' else 'RESTRICTIVE'}")
+        print(f"  Roles: {', '.join(roles) if roles else 'N/A'}")
+        print(f"  Command: {cmd}")
+        if qual:
+            print(f"  USING: {qual}")
+        if with_check:
+            print(f"  WITH CHECK: {with_check}")
+
+    print("\n" + "=" * 80)
+    print(f"Total tables with RLS: {len(tables_with_rls)}")
+    print(f"Total policies: {len(policies)}")
+    print("=" * 80)
+
+    cursor.close()
+    conn.close()
 
 if __name__ == "__main__":
     extract_rls_policies()
