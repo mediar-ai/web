@@ -1447,6 +1447,24 @@ async def execute_mcp_workflow(
             arguments["scripts_base_path"] = root_path
             logger.info(f" Added scripts_base_path to arguments at root level: {root_path}")
 
+        # NEW: Add partial execution control parameters at arguments root level
+        # These parameters control execute_sequence behavior, not workflow inputs
+        if start_from_step:
+            arguments["start_from_step"] = start_from_step
+            logger.info(f" Partial execution: start_from_step={start_from_step}")
+
+        if end_at_step:
+            arguments["end_at_step"] = end_at_step
+            logger.info(f" Partial execution: end_at_step={end_at_step}")
+
+        if follow_fallback is not None:
+            arguments["follow_fallback"] = follow_fallback
+            logger.info(f" Partial execution: follow_fallback={follow_fallback}")
+
+        if execute_jumps_at_end is not None:
+            arguments["execute_jumps_at_end"] = execute_jumps_at_end
+            logger.info(f" Partial execution: execute_jumps_at_end={execute_jumps_at_end}")
+
         # The entire `arguments` object, containing the `variables` schema, the final `inputs`,
         # and the `items`, is sent to MCP. The template engine inside MCP will know
         # to use the `inputs` block for template substitution.
@@ -2012,7 +2030,11 @@ def execute_workflow(
     execution_params: Dict[str, Any] = None,
     client_id: str = None,
     execution_id: int = None,
-    version_number: str = None,  # NEW: Optional version to execute
+    version_number: str = None,  # Optional version to execute
+    start_from_step: str = None,  # NEW: Optional step ID to start from
+    end_at_step: str = None,      # NEW: Optional step ID to stop at
+    follow_fallback: bool = None, # NEW: Whether to follow fallback beyond end_at_step
+    execute_jumps_at_end: bool = None,  # NEW: Whether to execute jumps at boundary
 ) -> Dict[str, Any]:
     """
      REAL BROWSER AUTOMATION: Execute workflow using MCP browser control
@@ -2032,6 +2054,10 @@ def execute_workflow(
 
     Args:
         version_number: Optional specific version to execute. If None, uses active version.
+        start_from_step: Optional step ID to start execution from (loads saved state).
+        end_at_step: Optional step ID to stop execution at (inclusive).
+        follow_fallback: Whether to follow fallback_id beyond end_at_step boundary.
+        execute_jumps_at_end: Whether to execute jumps at end_at_step boundary.
     """
     start_time = time.time()
     conn = None
@@ -3244,7 +3270,7 @@ def check_and_process_queued_jobs():
         # Jobs already have assigned_machine_id and mcp_endpoint - check against max_concurrent_executions
         cur.execute(
             """
-            SELECT 
+            SELECT
                 we.id,
                 we.workflow_id,
                 we.execution_params,
@@ -3252,6 +3278,10 @@ def check_and_process_queued_jobs():
                 we.assigned_machine_id,
                 we.mcp_endpoint,
                 we.version_number,
+                we.start_from_step,
+                we.end_at_step,
+                we.follow_fallback,
+                we.execute_jumps_at_end,
                 we.created_at,
                 rm.max_concurrent_executions,
                 rm.name as machine_name
@@ -3399,7 +3429,8 @@ def check_and_process_queued_jobs():
                   AND status = 'queued'
                 RETURNING
                     id, workflow_id, execution_params, client_id,
-                    assigned_machine_id, mcp_endpoint, version_number;
+                    assigned_machine_id, mcp_endpoint, version_number,
+                    start_from_step, end_at_step, follow_fallback, execute_jumps_at_end;
                 """,
                 (modal_call_id, execution_id),
             )
@@ -3447,6 +3478,11 @@ def check_and_process_queued_jobs():
                 "assigned_machine_id": job_to_process["assigned_machine_id"],
                 "mcp_endpoint": job_to_process["mcp_endpoint"],
                 "version_number": job_to_process["version_number"],
+                # NEW: Include partial execution parameters
+                "start_from_step": job_to_process.get("start_from_step"),
+                "end_at_step": job_to_process.get("end_at_step"),
+                "follow_fallback": job_to_process.get("follow_fallback"),
+                "execute_jumps_at_end": job_to_process.get("execute_jumps_at_end"),
             })
 
         # Dispatch all jobs at once in parallel
@@ -3466,6 +3502,11 @@ def check_and_process_queued_jobs():
                     client_id=call["client_id"],
                     execution_id=call["execution_id"],
                     version_number=call["version_number"],
+                    # NEW: Pass partial execution parameters
+                    start_from_step=call.get("start_from_step"),
+                    end_at_step=call.get("end_at_step"),
+                    follow_fallback=call.get("follow_fallback"),
+                    execute_jumps_at_end=call.get("execute_jumps_at_end"),
                 )
                 futures.append((call, modal_future))
             except Exception as e:

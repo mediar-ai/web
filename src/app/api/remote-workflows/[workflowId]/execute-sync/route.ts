@@ -34,6 +34,10 @@ interface ExecutionData {
   modal_call_id: string;
   client_id: string;
   execution_params?: Record<string, unknown>;
+  start_from_step?: string;
+  end_at_step?: string;
+  follow_fallback?: boolean;
+  execute_jumps_at_end?: boolean;
   results?: ExecutionResults;
   formatted_output?: string;
   raw_logs?: string;
@@ -273,7 +277,15 @@ export async function POST(
 
     // Parse request body
     const body = await request.json();
-    const { parameters = {}, version_number, machine_id } = body;
+    const {
+      parameters = {},
+      version_number,
+      machine_id,
+      start_from_step,
+      end_at_step,
+      follow_fallback,
+      execute_jumps_at_end
+    } = body;
     const client_id = `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     console.log(`📋 Version requested: ${version_number || 'active version'}`);
@@ -485,6 +497,11 @@ export async function POST(
               mcp_endpoint,
               // 🎯 Include version selection for background execution
               version_number,
+              // 🎯 Include partial execution parameters for background execution
+              start_from_step,
+              end_at_step,
+              follow_fallback,
+              execute_jumps_at_end,
             })
             .select()
             .single();
@@ -553,6 +570,11 @@ export async function POST(
       mcp_endpoint,
       // 🎯 Include version selection
       version_number,
+      // 🎯 Include partial execution parameters
+      start_from_step,
+      end_at_step,
+      follow_fallback,
+      execute_jumps_at_end,
     };
 
     const { data: execution, error: executionError } = await supabase

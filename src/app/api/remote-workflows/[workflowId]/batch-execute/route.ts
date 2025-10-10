@@ -343,6 +343,11 @@ export async function POST(
       dynamic_parameters = {},
       machine_id,
       version_number,
+      // NEW: Partial execution parameters
+      start_from_step,
+      end_at_step,
+      follow_fallback,
+      execute_jumps_at_end,
     } = body;
 
     console.log('🚀 BATCH EXECUTE: Starting batch execution');
@@ -569,7 +574,7 @@ export async function POST(
         set(finalParams, key, combo[key]);
       }
 
-      // 🎯 Include machine assignment and endpoint fields for each job
+      // 🎯 Include machine assignment, endpoint, and partial execution fields for each job
       jobsToInsert.push({
         workflow_id: workflowIdNum,
         status: 'queued',
@@ -584,6 +589,11 @@ export async function POST(
         mcp_endpoint,
         // Version selection field
         version_number,
+        // NEW: Partial execution fields
+        start_from_step,
+        end_at_step,
+        follow_fallback,
+        execute_jumps_at_end,
       });
     }
 
