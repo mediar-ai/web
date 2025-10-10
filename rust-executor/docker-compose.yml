@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  workflow-executor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: workflow-executor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/mediar_workflows
+      - MCP_ENDPOINT=http://mcp-server:3000
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_REPO=mediar-ai/workflows
+      - PORT=8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mediar-network
+    volumes:
+      - ./logs:/app/logs
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: workflow-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=mediar_workflows
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mediar-network
+
+  # Optional: MCP server for local testing
+  mcp-server:
+    image: node:20-alpine
+    container_name: mcp-server
+    restart: unless-stopped
+    working_dir: /app
+    command: npx -y terminator-mcp-agent@latest
+    ports:
+      - "3000:3000"
+    environment:
+      - LOG_LEVEL=info
+      - PORT=3000
+    networks:
+      - mediar-network
+
+  # Optional: Queue processor (separate instance for background processing)
+  queue-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: workflow-queue-processor
+    restart: unless-stopped
+    command: ["./workflow-executor", "--queue-mode"]
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/mediar_workflows
+      - MCP_ENDPOINT=http://mcp-server:3000
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_REPO=mediar-ai/workflows
+    depends_on:
+      postgres:
+        condition: service_healthy
+      workflow-executor:
+        condition: service_started
+    networks:
+      - mediar-network
+    volumes:
+      - ./logs:/app/logs
+
+volumes:
+  postgres-data:
+
+networks:
+  mediar-network:
+    driver: bridge
