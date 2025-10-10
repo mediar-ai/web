@@ -45,7 +45,7 @@ export class GitHubWorkflowManager {
   private generateFolderName(workflowName: string): string {
     return workflowName
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '')  // Remove non-alphanumeric
+      .replace(/[^a-z0-9_-]+/g, '')  // Remove non-alphanumeric (keep underscores and hyphens)
       .substring(0, 50);
   }
 
