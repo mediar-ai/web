@@ -472,7 +472,10 @@ export async function GET(request: NextRequest) {
         filteringByOrgId: orgId,
         resultCount: ownedWorkflows?.length,
         firstFewResults: ownedWorkflows?.slice(0, 3),
-        error: ownedError?.message
+        error: ownedError?.message,
+        // Add specific check for Imperial Treasure
+        isImperialTreasure: orgId === 'org_33DH72nPyAInVAh5t8TyIKVdYNw',
+        rawResults: ownedWorkflows
       });
 
       // Get workflows shared with this org
@@ -482,8 +485,13 @@ export async function GET(request: NextRequest) {
         .eq('organization_id', orgId);
 
       console.log('[API] Regular org - shared workflows:', {
+        filteringByOrgId: orgId,
         count: sharedAccess?.length,
-        error: sharedError?.message
+        workflowIds: sharedAccess?.map(a => a.workflow_id),
+        error: sharedError?.message,
+        // Add specific check for Imperial Treasure
+        isImperialTreasure: orgId === 'org_33DH72nPyAInVAh5t8TyIKVdYNw',
+        rawSharedAccess: sharedAccess
       });
 
       const ownedIds = (ownedWorkflows || []).map(w => w.id);

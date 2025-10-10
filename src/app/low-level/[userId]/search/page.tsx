@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ChevronDown, ChevronRight, Settings } from 'lucide-react';
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useState, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 interface SearchResult {
   eventId: number;
@@ -67,29 +68,31 @@ interface AnalysisResponse {
   };
 }
 
-export default function SearchPage({ params }: { params: Promise<{ userId: string }> }) {
-  const { userId } = use(params);
-  
-  const [keyword, setKeyword] = useState('');
-  const [question, setQuestion] = useState('');
+function SearchPageContent({ userId }: { userId: string }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Initialize state from URL parameters
+  const [keyword, setKeyword] = useState(searchParams.get('keyword') || '');
+  const [question, setQuestion] = useState(searchParams.get('question') || '');
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AnalysisResponse | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisTimer, setAnalysisTimer] = useState(0);
   const [searchHistory, setSearchHistory] = useState<Array<{keyword: string, timestamp: string, resultCount: number}>>([]);
-  
-  // Search parameters
-  const [limit, setLimit] = useState(10);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [appName, setAppName] = useState('');
-  const [sortBy, setSortBy] = useState('created_at');
-  const [sortOrder, setSortOrder] = useState('desc');
+
+  // Search parameters - initialize from URL
+  const [limit, setLimit] = useState(parseInt(searchParams.get('limit') || '10'));
+  const [startDate, setStartDate] = useState(searchParams.get('startDate') || '');
+  const [endDate, setEndDate] = useState(searchParams.get('endDate') || '');
+  const [appName, setAppName] = useState(searchParams.get('appName') || '');
+  const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'created_at');
+  const [sortOrder, setSortOrder] = useState(searchParams.get('sortOrder') || 'desc');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  
+
   // Results display
-  const [resultsExpanded, setResultsExpanded] = useState(false);
+  const [resultsExpanded, setResultsExpanded] = useState(searchParams.get('expanded') === 'true');
 
   // Load search history from localStorage
   useEffect(() => {
@@ -102,6 +105,16 @@ export default function SearchPage({ params }: { params: Promise<{ userId: strin
       }
     }
   }, [userId]);
+
+  // Auto-trigger search if URL has keyword parameter
+  useEffect(() => {
+    const urlKeyword = searchParams.get('keyword');
+    if (urlKeyword && !searchResults && !isSearching) {
+      // Only auto-trigger if we have a keyword in URL but no results yet
+      handleSearch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   // Timer for AI analysis
   useEffect(() => {
@@ -119,6 +132,23 @@ export default function SearchPage({ params }: { params: Promise<{ userId: strin
     };
   }, [isAnalyzing]);
 
+  // Update URL with current search state
+  const updateURL = (params: Record<string, string>) => {
+    const current = new URLSearchParams(Array.from(searchParams.entries()));
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) {
+        current.set(key, value);
+      } else {
+        current.delete(key);
+      }
+    });
+
+    const search = current.toString();
+    const query = search ? `?${search}` : '';
+    router.push(`/low-level/${userId}/search${query}`, { scroll: false });
+  };
+
   // Save search history to localStorage
   const saveSearchHistory = (newSearch: {keyword: string, timestamp: string, resultCount: number}) => {
     const updated = [newSearch, ...searchHistory.slice(0, 9)]; // Keep last 10 searches
@@ -128,12 +158,25 @@ export default function SearchPage({ params }: { params: Promise<{ userId: strin
 
   const handleSearch = async () => {
     if (!keyword.trim()) return;
-    
+
+    // Update URL with search parameters
+    updateURL({
+      keyword: keyword.trim(),
+      question: question.trim(),
+      limit: limit.toString(),
+      startDate,
+      endDate,
+      appName: appName.trim(),
+      sortBy,
+      sortOrder,
+      expanded: 'false' // Collapse results by default
+    });
+
     setIsSearching(true);
     setSearchResults(null);
     setAiAnalysis(null);
     setResultsExpanded(false); // Collapse results by default
-    
+
     try {
       // Build URL with all parameters
       const params = new URLSearchParams({
@@ -144,7 +187,7 @@ export default function SearchPage({ params }: { params: Promise<{ userId: strin
         sortBy: sortBy,
         sortOrder: sortOrder
       });
-      
+
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
       if (appName.trim()) params.append('appName', appName.trim());
@@ -497,7 +540,10 @@ export default function SearchPage({ params }: { params: Promise<{ userId: strin
             {searchResults.found ? (
               <div className="space-y-4">
                 {/* Collapsible Results */}
-                <Collapsible open={resultsExpanded} onOpenChange={setResultsExpanded}>
+                <Collapsible open={resultsExpanded} onOpenChange={(expanded) => {
+                  setResultsExpanded(expanded);
+                  updateURL({ expanded: expanded ? 'true' : 'false' });
+                }}>
                   <CollapsibleTrigger asChild>
                     <Button variant="ghost" className="w-full justify-between p-3 h-auto border border-black rounded-lg">
                       <div className="flex items-center gap-4 text-left">
@@ -758,4 +804,14 @@ export default function SearchPage({ params }: { params: Promise<{ userId: strin
       )}
     </div>
   );
-} 
+}
+
+export default function SearchPage({ params }: { params: Promise<{ userId: string }> }) {
+  const { userId } = use(params);
+
+  return (
+    <Suspense fallback={<div className="p-6">Loading search...</div>}>
+      <SearchPageContent userId={userId} />
+    </Suspense>
+  );
+}
