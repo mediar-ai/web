@@ -190,14 +190,17 @@ export function WorkflowCardEnhanced({
       <div
         ref={cardRef}
         className={cn(
-          'group relative bg-white transition-all duration-200',
+          'group relative bg-white transition-all duration-200 cursor-pointer',
           isHovered && 'bg-gray-50',
           isSelected && 'bg-gray-100',
           className
         )}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        onClick={onSelect}
+        onClick={() => {
+          onSelect?.();
+          onView?.();
+        }}
       >
         {/* Compact Card Content */}
         <div className="p-2">
