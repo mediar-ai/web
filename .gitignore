@@ -138,3 +138,6 @@ mcp.json
 # Temporary test directories
 /test-workflow-files/
 /mediar-app-tmp/
+
+# Rust build artifacts
+rust-executor/target/
