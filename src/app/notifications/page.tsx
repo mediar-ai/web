@@ -17,7 +17,7 @@ interface NotificationConfig {
   enabled: boolean;
   email_enabled: boolean;
   email_recipients: string[];
-  condition_type: 'error' | 'failure_rate' | 'execution_time' | 'custom';
+  condition_type: 'error' | 'exception' | 'failure_rate' | 'execution_time' | 'custom';
   condition_value: any;
   cooldown_minutes: number;
   max_alerts_per_hour: number;

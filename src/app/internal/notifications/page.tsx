@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle, Globe, Building2, Eye, Trash2 } from 'lucide-react';
+import { AlertCircle, Mail, X, Bell, CheckCircle, AlertTriangle, Globe, Building2, Eye, Trash2 } from 'lucide-react';
 import { useAuth, useUser } from '@clerk/nextjs';
 import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -18,7 +18,7 @@ interface NotificationConfig {
   enabled: boolean;
   email_enabled: boolean;
   email_recipients: string[];
-  condition_type: 'error' | 'failure_rate' | 'execution_time' | 'custom';
+  condition_type: 'error' | 'exception' | 'failure_rate' | 'execution_time' | 'custom';
   condition_value: any;
   cooldown_minutes: number;
   max_alerts_per_hour: number;
@@ -224,11 +224,11 @@ export default function NotificationsPage() {
 
   const handleCreateConfig = () => {
     setSelectedConfig({
-      name: 'Workflow Error Alerts',
+      name: 'Workflow Exception Alerts',
       enabled: true,
       email_enabled: true,
       email_recipients: [],
-      condition_type: 'error',
+      condition_type: 'exception',
       condition_value: {},
       cooldown_minutes: 5,
       max_alerts_per_hour: 20,
@@ -252,10 +252,7 @@ export default function NotificationsPage() {
 
       const configToSave = {
         ...selectedConfig,
-        condition_type: 'error',
-        email_enabled: true,
-        cooldown_minutes: 5,
-        max_alerts_per_hour: 20,
+        // Keep user-selected values
       };
 
       const response = await fetch(url, {
@@ -681,13 +678,38 @@ export default function NotificationsPage() {
                       />
                     </div>
 
-                    {/* Trigger Info */}
-                    <div className="p-3 bg-black text-white">
-                      <div className="flex items-center gap-2 text-sm font-mono">
-                        <Zap className="w-4 h-4" />
-                        <span>TRIGGERS ON: WORKFLOW ERRORS</span>
-                      </div>
+                    {/* Condition Type Selector */}
+                    <div>
+                      <Label className="text-black font-mono font-bold">TRIGGER CONDITION</Label>
+                      <select
+                        value={selectedConfig.condition_type}
+                        onChange={(e) => setSelectedConfig({
+                          ...selectedConfig,
+                          condition_type: e.target.value as 'error' | 'exception' | 'execution_time',
+                        })}
+                        className="w-full px-3 py-2 border-2 border-black font-mono focus:outline-none focus:ring-2 focus:ring-black bg-white"
+                      >
+                        <option value="error">WORKFLOW ERRORS (FAILED/ERROR STATUS)</option>
+                        <option value="exception">WORKFLOW EXCEPTIONS ONLY</option>
+                        <option value="execution_time">SLOW EXECUTIONS</option>
+                      </select>
                     </div>
+
+                    {/* Show execution time threshold if that's selected */}
+                    {selectedConfig.condition_type === 'execution_time' && (
+                      <div>
+                        <Label className="text-black font-mono font-bold">MAX EXECUTION TIME (SECONDS)</Label>
+                        <Input
+                          type="number"
+                          value={selectedConfig.condition_value?.max_seconds || 300}
+                          onChange={(e) => setSelectedConfig({
+                            ...selectedConfig,
+                            condition_value: { max_seconds: parseInt(e.target.value) }
+                          })}
+                          className="border-2 border-gray-300 focus:border-black font-mono"
+                        />
+                      </div>
+                    )}
 
                     {/* Email Recipients */}
                     <div>
