@@ -129,10 +129,10 @@ const TimelineSlider: React.FC<TimelineSliderProps> = ({
         {/* Track */}
         <div className='relative w-full h-1 top-1/2 -translate-y-1/2 bg-border rounded-full'>
             {/* Tick marks for edge labels */}
-            {timeLabels.map((label) => (
+            {timeLabels.map((label, i) => (
               (label.isFirst || label.isLast) && (
                 <div
-                  key={`tick-${label.id}-${label.index}`}
+                  key={`tick-${i}`}
                   className='absolute w-0.5 h-3 bg-muted-foreground -top-1'
                   style={{ left: `${(label.index / (reversedActivityItems.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}
                 />
@@ -164,12 +164,12 @@ const TimelineSlider: React.FC<TimelineSliderProps> = ({
       
       {/* Time labels */}
       <div className='relative w-full h-5 mt-1'>
-        {timeLabels.map((label) => {
+        {timeLabels.map((label, i) => {
           const leftPercent = (label.index / (reversedActivityItems.length - 1)) * 100;
-          
+
           return (
             <div
-              key={`${label.id}-${label.index}`}
+              key={`label-${i}`}
               className={cn(
                 'absolute text-xs text-muted-foreground whitespace-nowrap',
                 label.isFirst ? 'left-0' : label.isLast ? 'right-0' : '-translate-x-1/2'
