@@ -144,6 +144,27 @@ export async function GET(request: NextRequest) {
         `;
         break;
 
+      case 'metrics':
+        // Workflow metrics from materialized view (pre-aggregated for performance)
+        query = `
+          SELECT
+            minute,
+            workflow_name,
+            sum(executions) as total_executions,
+            round(sum(total_duration_ns) / sum(executions) / 1e9, 3) as avg_duration_seconds,
+            round(max(p95_duration_ns) / 1e9, 3) as p95_duration_seconds,
+            round(max(max_duration_ns) / 1e9, 3) as max_duration_seconds,
+            round(min(min_duration_ns) / 1e9, 3) as min_duration_seconds,
+            sum(errors) as total_errors,
+            round((sum(errors) / sum(executions)) * 100, 2) as error_rate
+          FROM workflow_metrics
+          WHERE minute > now() - INTERVAL ${parseInt(hours)} HOUR
+          GROUP BY minute, workflow_name
+          ORDER BY minute DESC
+          LIMIT 500
+        `;
+        break;
+
       default:
         return NextResponse.json({ error: 'Invalid metric type' }, { status: 400 });
     }

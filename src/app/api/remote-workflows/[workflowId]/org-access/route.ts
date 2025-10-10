@@ -17,14 +17,14 @@ export async function GET(
 
     const { isMediarOrg } = await getEffectiveOrgId();
 
-    // Check if user has @mediar.ai email
+    // Check if user has @mediar.ai email or is matt@mediar.ai (super admin)
     const user = await currentUser();
-    const hasMediarEmail = user?.emailAddresses?.some(
-      email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
-    ) || false;
+    const userEmail = user?.emailAddresses?.[0]?.emailAddress?.toLowerCase() || '';
+    const hasMediarEmail = userEmail.endsWith('@mediar.ai');
+    const isSuperAdmin = userEmail === 'matt@mediar.ai';
 
-    // Only Mediar org or @mediar.ai users can view organization access
-    if (!isMediarOrg && !hasMediarEmail) {
+    // Only Mediar org, @mediar.ai users, or super admin can view organization access
+    if (!isMediarOrg && !hasMediarEmail && !isSuperAdmin) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Mediar access required' },
         { status: 403 }
@@ -92,14 +92,14 @@ export async function PUT(
 
     const { isMediarOrg } = await getEffectiveOrgId();
 
-    // Check if user has @mediar.ai email
+    // Check if user has @mediar.ai email or is matt@mediar.ai (super admin)
     const user = await currentUser();
-    const hasMediarEmail = user?.emailAddresses?.some(
-      email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
-    ) || false;
+    const userEmail = user?.emailAddresses?.[0]?.emailAddress?.toLowerCase() || '';
+    const hasMediarEmail = userEmail.endsWith('@mediar.ai');
+    const isSuperAdmin = userEmail === 'matt@mediar.ai';
 
-    // Only Mediar org or @mediar.ai users can update organization access
-    if (!isMediarOrg && !hasMediarEmail) {
+    // Only Mediar org, @mediar.ai users, or super admin can update organization access
+    if (!isMediarOrg && !hasMediarEmail && !isSuperAdmin) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Mediar access required' },
         { status: 403 }
