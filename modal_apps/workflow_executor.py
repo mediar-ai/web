@@ -1334,7 +1334,15 @@ def extract_legacy_quotes_from_mcp_response(
 
 
 async def execute_mcp_workflow(
-    workflow_data: Dict[str, Any], execution_params: Dict[str, Any], mcp_endpoint: str, machine_id: int = 1, workflow_id: int = None
+    workflow_data: Dict[str, Any],
+    execution_params: Dict[str, Any],
+    mcp_endpoint: str,
+    machine_id: int = 1,
+    workflow_id: int = None,
+    start_from_step: str = None,
+    end_at_step: str = None,
+    follow_fallback: bool = None,
+    execute_jumps_at_end: bool = None
 ) -> Dict[str, Any]:
     """Execute workflow using the working MCP HTTP approach with file support"""
     import httpx
@@ -2272,7 +2280,16 @@ def execute_workflow(
                 try:
                     results = loop.run_until_complete(
                         asyncio.wait_for(
-                            execute_mcp_workflow(workflow, params_for_mcp, endpoint_full, workflow_id=workflow_id),
+                            execute_mcp_workflow(
+                                workflow,
+                                params_for_mcp,
+                                endpoint_full,
+                                workflow_id=workflow_id,
+                                start_from_step=start_from_step,
+                                end_at_step=end_at_step,
+                                follow_fallback=follow_fallback,
+                                execute_jumps_at_end=execute_jumps_at_end
+                            ),
                             timeout=workflow_timeout
                         )
                     )
