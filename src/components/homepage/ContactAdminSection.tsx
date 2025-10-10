@@ -47,23 +47,70 @@ export default function ContactAdminSection({
           </p>
         </div>
 
-        {/* Web Workflows Access */}
-        <Card className="border-black-outline">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <h3 className="text-lg font-semibold text-black">Try Web Workflows</h3>
-              <p className="text-gray-600">
-                You can still access our web workflow recorder while waiting for organization access.
-              </p>
-              <Link href="/web">
-                <Button className="bg-black text-white hover:bg-gray-800">
-                  <Play className="w-4 h-4 mr-2" />
-                  Web Workflows
+        {/* App Access Options */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Web App */}
+          <Card className="border-2 border-black">
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto">
+                  <Play className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-lg font-bold text-black font-mono">WEB APP</h3>
+                <p className="text-gray-600 text-sm">
+                  Record and run workflows in your browser
+                </p>
+                <Link href="/web">
+                  <Button className="w-full bg-black text-white hover:bg-gray-800">
+                    OPEN WEB APP
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Desktop App */}
+          <Card className="border-2 border-black">
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-black font-mono">DESKTOP APP</h3>
+                <p className="text-gray-600 text-sm">
+                  Native desktop automation app
+                </p>
+                <Button className="w-full bg-gray-200 text-gray-500 border-2 border-gray-400 cursor-not-allowed" disabled>
+                  COMING SOON
                 </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Dashboard */}
+          <Card className="border-2 border-black">
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 13a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-black font-mono">DASHBOARD</h3>
+                <p className="text-gray-600 text-sm">
+                  Manage workflows and deployments
+                </p>
+                <Link href="/dashboard">
+                  <Button className="w-full bg-black text-white hover:bg-gray-800">
+                    OPEN DASHBOARD
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Main Card */}
         <Card className="border-black-outline">
