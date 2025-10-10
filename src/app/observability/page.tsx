@@ -392,11 +392,12 @@ export default function ObservabilityPage() {
       <div className="p-4">
         <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="mb-8">
+          <h1 className="font-mono font-bold text-3xl mb-2 flex items-center gap-2">
             <Database className="w-8 h-8" />
-            <h1 className="text-3xl font-mono font-bold">OBSERVABILITY</h1>
-          </div>
+            Observability
+          </h1>
+          <p className="font-mono text-gray-600 mb-4">Monitor system telemetry and logs</p>
 
           <div className="flex items-center gap-3">
             {/* Time Range Selector */}
