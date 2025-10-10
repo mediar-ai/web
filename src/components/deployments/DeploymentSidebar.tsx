@@ -45,7 +45,6 @@ interface DeploymentSidebarProps {
   selectedFilter?: string;
   onFilterChange?: (filter: string) => void;
   onCreateWorkflow?: () => void;
-  canViewAlerts?: boolean;
   currentPage?: 'deployments' | 'alerts' | 'settings';
 }
 
@@ -60,7 +59,6 @@ export function DeploymentSidebar({
   selectedFilter = 'all',
   onFilterChange,
   onCreateWorkflow,
-  canViewAlerts = false,
   currentPage,
 }: DeploymentSidebarProps) {
   const pathname = usePathname();
@@ -105,13 +103,13 @@ export function DeploymentSidebar({
           href: '/deployments',
           isActive: activePage === 'deployments',
         },
-        ...(canViewAlerts ? [{
+        {
           icon: Bell,
           label: 'Alerts',
           value: 'page-alerts',
-          href: '/internal/notifications',
+          href: '/notifications',
           isActive: activePage === 'alerts',
-        }] : []),
+        },
       ],
     },
     // Only show workflow filters on the deployments page
