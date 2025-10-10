@@ -993,10 +993,20 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
-                  className="hover:bg-gray-50 h-8"
+                  className="hover:bg-gray-50 h-8 cursor-pointer"
+                  onClick={() => onViewDetails(row.original.execution_id)}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="font-mono py-1 px-2">
+                    <TableCell
+                      key={cell.id}
+                      className="font-mono py-1 px-2"
+                      onClick={(e) => {
+                        // Prevent row click when clicking on interactive elements (checkboxes, action buttons)
+                        if (cell.column.id === 'select' || cell.column.id === 'actions') {
+                          e.stopPropagation();
+                        }
+                      }}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
