@@ -28,6 +28,13 @@ interface WorkflowVariable {
 }
 
 interface AutomationSequence {
+  // YAML format fields (top-level)
+  variables?: Record<string, WorkflowVariable>;
+  steps?: WorkflowStep[];
+  selectors?: Record<string, string>;
+  output?: { run?: string };
+  troubleshooting?: WorkflowStep[];
+  // Legacy MCP format (nested under arguments)
   arguments?: {
     variables?: Record<string, WorkflowVariable>;
     steps?: WorkflowStep[];
@@ -365,9 +372,9 @@ function analyzeAutomationSequence(sequences: AutomationSequence[]): {
   const conditionalVariables: Record<string, WorkflowVariable> = {};
 
   for (const sequence of sequences) {
-    if (sequence.arguments?.variables) {
-      // Core variables from the main arguments
-      Object.entries(sequence.arguments.variables).forEach(
+    if (sequence.variables) {
+      // Core variables from the YAML format (top-level variables)
+      Object.entries(sequence.variables).forEach(
         ([key, variable]) => {
           if (!isInternalParameter(key)) {
             coreVariables[key] = variable;
@@ -376,9 +383,9 @@ function analyzeAutomationSequence(sequences: AutomationSequence[]): {
       );
     }
 
-    // Analyze conditional steps for additional variables
-    if (sequence.arguments?.steps) {
-      analyzeStepsForVariables(sequence.arguments.steps, conditionalVariables);
+    // Analyze conditional steps for additional variables (YAML format: top-level steps)
+    if (sequence.steps) {
+      analyzeStepsForVariables(sequence.steps, conditionalVariables);
     }
   }
 
