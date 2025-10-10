@@ -9,8 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useAuth, useUser } from '@clerk/nextjs';
-import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
-import { SidebarProvider } from '@/components/ui/sidebar';
+import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 
 interface NotificationConfig {
   id?: number;
@@ -293,90 +292,71 @@ export default function NotificationsPage() {
 
   if (loading) {
     return (
-      <SidebarProvider>
-        <div className="flex min-h-screen">
-          <DeploymentSidebar
-            currentPage="alerts"
-          />
-          <main className="flex-1 bg-white">
-            <div className="max-w-7xl mx-auto px-8 py-12">
-              {/* Header Skeleton */}
-              <div className="mb-8">
-                <Skeleton className="h-10 w-64 mb-2" />
-                <Skeleton className="h-6 w-96" />
-              </div>
-
-              {/* Config Cards Skeleton */}
-              <div className="space-y-4 mb-8">
-                <Skeleton className="h-32 w-full" />
-                <Skeleton className="h-32 w-full" />
-              </div>
-
-              {/* Recent Alerts Section Skeleton */}
-              <div className="mt-12">
-                <Skeleton className="h-8 w-48 mb-4" />
-                <div className="space-y-3">
-                  <Skeleton className="h-20 w-full" />
-                  <Skeleton className="h-20 w-full" />
-                  <Skeleton className="h-20 w-full" />
-                </div>
-              </div>
+      <DashboardLayout>
+        <div className="p-8">
+          <div className="max-w-6xl mx-auto">
+            {/* Header Skeleton */}
+            <div className="mb-10">
+              <Skeleton className="h-12 w-72 mb-3" />
+              <Skeleton className="h-6 w-96" />
             </div>
-          </main>
+
+            {/* Config Cards Skeleton */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <Skeleton className="h-96" />
+              <Skeleton className="h-96" />
+            </div>
+          </div>
         </div>
-      </SidebarProvider>
+      </DashboardLayout>
     );
   }
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen">
-        <DeploymentSidebar
-          currentPage="alerts"
-        />
-        <div className="flex-1 bg-white p-8">
-      <div className="max-w-4xl mx-auto">
-        {/* Toast Notification */}
-        {toast && (
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
-          />
-        )}
+    <DashboardLayout>
+      <div className="p-8">
+        <div className="max-w-6xl mx-auto">
+          {/* Toast Notification */}
+          {toast && (
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              onClose={() => setToast(null)}
+            />
+          )}
 
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-black flex items-center gap-2">
-            <Bell className="w-8 h-8" />
-            Error Alerts
-          </h1>
-          <p className="text-gray-600 mt-2">Get notified when workflows fail</p>
-        </div>
+          {/* Header */}
+          <div className="mb-10">
+            <h1 className="text-4xl font-mono font-bold text-black flex items-center gap-3">
+              <Bell className="w-10 h-10" />
+              Error Alerts
+            </h1>
+            <p className="text-gray-600 mt-3 text-lg">Get notified when workflows fail</p>
+          </div>
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Configurations List */}
-          <div>
-            <Card className="border-2 border-black">
-              <CardHeader className="border-b-2 border-black bg-gray-50">
+          {/* Main Content */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Configurations List */}
+            <div>
+            <Card className="border-2 border-black h-[500px] flex flex-col">
+              <CardHeader className="border-b-2 border-black bg-gray-50 py-5 px-6">
                 <div className="flex justify-between items-center">
-                  <CardTitle className="text-xl font-mono">RULES</CardTitle>
+                  <CardTitle className="text-2xl font-mono uppercase tracking-wider">Rules</CardTitle>
                   <Button
                     onClick={handleCreateConfig}
-                    className="bg-black text-white hover:bg-gray-800 font-mono"
-                    size="sm"
+                    className="bg-black text-white hover:bg-gray-800 font-mono px-4 py-2"
+                    size="default"
                   >
                     + NEW
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 flex-1 overflow-y-auto">
                 {configs.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-2" />
-                    <p className="font-mono">NO RULES</p>
-                    <p className="text-sm mt-1">Create one to get started</p>
+                  <div className="h-full flex flex-col items-center justify-center text-center px-8">
+                    <AlertCircle className="w-20 h-20 mb-6 text-gray-300" />
+                    <p className="font-mono font-bold text-xl text-black mb-3 uppercase tracking-wide">No Rules</p>
+                    <p className="text-base text-gray-500 max-w-xs">Create one to get started</p>
                   </div>
                 ) : (
                   <div>
@@ -426,13 +406,13 @@ export default function NotificationsPage() {
 
           {/* Configuration Editor */}
           {selectedConfig && (
-            <Card className="border-2 border-black">
-              <CardHeader className="border-b-2 border-black bg-gray-50">
-                <CardTitle className="text-xl font-mono">
-                  {isCreating ? 'CREATE RULE' : 'EDIT RULE'}
+            <Card className="border-2 border-black h-[500px] flex flex-col">
+              <CardHeader className="border-b-2 border-black bg-gray-50 py-5 px-6">
+                <CardTitle className="text-2xl font-mono uppercase tracking-wider">
+                  {isCreating ? 'Create Rule' : 'Edit Rule'}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-6 space-y-6">
+              <CardContent className="p-6 space-y-6 flex-1 overflow-y-auto">
                 {/* Name */}
                 <div>
                   <Label className="text-black font-mono font-bold">NAME</Label>
@@ -559,10 +539,9 @@ export default function NotificationsPage() {
               </CardContent>
             </Card>
           )}
+          </div>
         </div>
       </div>
-        </div>
-      </div>
-    </SidebarProvider>
+    </DashboardLayout>
   );
 }
