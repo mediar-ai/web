@@ -587,7 +587,11 @@ function DeploymentsPageContent() {
                     const truncatedMessage = message.length > 80 ? message.substring(0, 80) + '...' : message;
 
                     return (
-                      <tr key={`execution-${execution.execution_id}`} className="border-t border-gray-200 hover:bg-gray-50">
+                      <tr
+                        key={`execution-${execution.execution_id}`}
+                        className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => fetchExecutionDetails(execution.execution_id)}
+                      >
                         <td className="p-3 font-mono text-sm">
                           {workflow?.name || `Workflow ${execution.workflow_id}`}
                         </td>
@@ -613,7 +617,10 @@ function DeploymentsPageContent() {
                               size="icon"
                               variant="ghost"
                               className="h-8 w-8 border border-black hover:bg-black hover:text-white"
-                              onClick={() => fetchExecutionDetails(execution.execution_id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                fetchExecutionDetails(execution.execution_id);
+                              }}
                               title="View Details"
                             >
                               <Eye className="h-4 w-4" />
@@ -624,7 +631,8 @@ function DeploymentsPageContent() {
                                 variant="ghost"
                                 className="h-8 w-8 bg-black text-white hover:bg-gray-800"
                                 disabled={stoppingExecutions.has(execution.execution_id)}
-                                onClick={async () => {
+                                onClick={async (e) => {
+                                  e.stopPropagation();
                                   if (confirm(`Are you sure you want to ${execution.status === 'queued' ? 'cancel' : 'stop'} this execution?`)) {
                                     try {
                                       setStoppingExecutions(prev => new Set(prev).add(execution.execution_id));
@@ -662,7 +670,8 @@ function DeploymentsPageContent() {
                                 variant="ghost"
                                 className="h-8 w-8 border border-black hover:bg-red-600 hover:text-white hover:border-red-600"
                                 disabled={deletingExecutions.has(execution.execution_id)}
-                                onClick={async () => {
+                                onClick={async (e) => {
+                                  e.stopPropagation();
                                   if (confirm(`Are you sure you want to DELETE this execution? This cannot be undone.`)) {
                                     try {
                                       setDeletingExecutions(prev => new Set(prev).add(execution.execution_id));
