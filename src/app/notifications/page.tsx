@@ -326,12 +326,12 @@ export default function NotificationsPage() {
           )}
 
           {/* Header */}
-          <div className="mb-10">
-            <h1 className="text-4xl font-mono font-bold text-black flex items-center gap-3">
-              <Bell className="w-10 h-10" />
+          <div className="mb-8">
+            <h1 className="font-mono font-bold text-3xl mb-2 flex items-center gap-2">
+              <Bell className="w-8 h-8" />
               Error Alerts
             </h1>
-            <p className="text-gray-600 mt-3 text-lg">Get notified when workflows fail</p>
+            <p className="font-mono text-gray-600">Get notified when workflows fail</p>
           </div>
 
           {/* Main Content */}
