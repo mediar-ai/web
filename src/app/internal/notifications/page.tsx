@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle, Globe, Building2, Edit2 } from 'lucide-react';
+import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle, Globe, Building2, Eye, Trash2 } from 'lucide-react';
 import { useAuth, useUser } from '@clerk/nextjs';
 import { DeploymentSidebar } from '@/components/deployments/DeploymentSidebar';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -559,7 +559,15 @@ export default function NotificationsPage() {
                       const isGlobal = !config.organization_id;
 
                       return (
-                        <tr key={config.id} className="hover:bg-gray-50">
+                        <tr
+                          key={config.id}
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => {
+                            setSelectedConfig(config);
+                            setIsCreating(false);
+                            setEmailError('');
+                          }}
+                        >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               {isGlobal ? (
@@ -606,22 +614,26 @@ export default function NotificationsPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setSelectedConfig(config);
                                   setIsCreating(false);
                                   setEmailError('');
                                 }}
                                 className="border-2 border-black hover:bg-black hover:text-white font-mono"
                               >
-                                <Edit2 className="w-4 h-4" />
+                                <Eye className="w-4 h-4" />
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleDeleteConfig(config.id!)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteConfig(config.id!);
+                                }}
                                 className="border-2 border-black hover:bg-red-600 hover:text-white hover:border-red-600 font-mono"
                               >
-                                <X className="w-4 h-4" />
+                                <Trash2 className="w-4 h-4" />
                               </Button>
                             </div>
                           </td>
