@@ -152,7 +152,12 @@ function getExecutionStatus(execution: Execution, formattedResult: any, isLive: 
     return { badge: 'RUNNING', badgeColor: 'bg-black text-white animate-pulse' };
   }
 
-  // Check parser-determined status first
+  // Check for exception status (highest priority after running)
+  if (formattedResult?.exception === true) {
+    return { badge: 'EXCEPTION', badgeColor: 'bg-black text-white font-bold border-2 border-black' };
+  }
+
+  // Check parser-determined status
   if (formattedResult?.meta_type === 'failed' || formattedResult?.status === 'failed') {
     return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
   }

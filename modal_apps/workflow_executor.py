@@ -1081,21 +1081,27 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
         if parsed_output and isinstance(parsed_output, dict):
             logger.info(" Found parsed_output from workflow parser")
 
-            # Check if workflow was skipped (new feature from terminator)
+            # Check for special states (priority order: exception > skipped > normal)
             is_skipped = bool(parsed_output.get("skipped", False))
-            
-            # Add skipped state to result
+            is_exception = bool(parsed_output.get("exception", False))
+
+            # Add state flags to result
             result["skipped"] = is_skipped
-            
-            # Use business logic success from parser (skipped workflows are not successful)
-            if is_skipped:
+            result["exception"] = is_exception
+
+            # Determine state based on priority: exception > skipped > success/failure
+            if is_exception:
+                result["success"] = False
+                result["state"] = "exception"
+                logger.info("⚠️ Workflow encountered EXCEPTION")
+            elif is_skipped:
                 result["success"] = False
                 result["state"] = "skipped"
                 logger.info("⏭ Workflow was SKIPPED")
             else:
                 result["success"] = bool(parsed_output.get("success", False))
                 result["state"] = "success" if result["success"] else "failure"
-            
+
             result["message"] = parsed_output.get("message", "No message from parser")
             # Store the entire parser output to preserve all workflow-specific fields
             # This allows dashboards to access error_summary, failure_details, etc.
@@ -1104,9 +1110,10 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
             result["validation"] = parsed_output.get("validation", {})
 
             logger.info(
-                " Business logic result: state=%s, success=%s, skipped=%s - %s",
+                " Business logic result: state=%s, success=%s, exception=%s, skipped=%s - %s",
                 result.get("state", "unknown"),
                 result["success"],
+                result.get("exception", False),
                 result.get("skipped", False),
                 result["message"],
             )
@@ -2531,14 +2538,16 @@ def execute_workflow(
         # Generate formatted summary for display (workflow-agnostic)
         formatted_output = None
         if workflow_result:
-            # Use simplified format with only success boolean
+            # Include exception and skipped fields for UI status handling
             formatted_output = json.dumps({
                 "success": workflow_result.get("success", False),
+                "exception": workflow_result.get("exception", False),
+                "skipped": workflow_result.get("skipped", False),
                 "message": workflow_result.get("message", "No message"),
                 "data": workflow_result.get("data"),
                 "validation": workflow_result.get("validation", {}),
             }, indent=2)
-            logger.info(" Using simplified formatted output with success boolean only")
+            logger.info(" Using formatted output with success, exception, and skipped fields")
         else:
             # Fallback if no workflow_result
             formatted_output = json.dumps({
