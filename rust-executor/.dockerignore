@@ -1,20 +1,29 @@
-target/
-*.log
+# Build artifacts
+target
+**/*.log
 build_log.txt
 build_output.txt
 server_log.txt
+deploy_output.txt
+
+# Test files
 test_*.py
 test_*.sh
-examples/
-tests/
-.git/
+examples
+tests
+
+# Git and docs
+.git
 .gitignore
 README.md
 DEPLOY.md
 QUICKSTART.md
 TEST_REPORT.md
 DEPLOYMENT_COMPATIBILITY.md
+
+# Deployment files
 Makefile
 docker-compose.yml
 deploy.sh
 deploy-azure.sh
+.dockerignore

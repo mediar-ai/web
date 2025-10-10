@@ -1,2 +1,8 @@
 target/
 *.log
+
+# Environment files (contains secrets!)
+.env
+.env.*
+!.env.example
+deploy_output*.txt
