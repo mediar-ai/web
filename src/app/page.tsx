@@ -27,7 +27,7 @@ function HomePage() {
   }
 
   // Show contact admin section for all authenticated users
-  return <ContactAdminSection userId={userId} onStatusCheck={() => {}} isChecking={false} />;
+  return <ContactAdminSection userId={userId} />;
 }
 
 // Authentication-based homepage - deployed on $(date)
