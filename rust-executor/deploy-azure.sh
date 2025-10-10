@@ -1,0 +1,243 @@
+#!/bin/bash
+set -e
+
+# ==============================================================================
+# Azure Container Deployment Script for Rust Workflow Executor
+# ==============================================================================
+# Usage: ./deploy-azure.sh [environment]
+# Environment: dev|staging|prod (default: dev)
+# ==============================================================================
+
+ENVIRONMENT="${1:-dev}"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# Configuration
+RESOURCE_GROUP="mediar-workflow-executor-rg"
+LOCATION="eastus"
+ACR_NAME="mediarworkflowacr"
+CONTAINER_NAME="workflow-executor-${ENVIRONMENT}"
+IMAGE_NAME="workflow-executor"
+IMAGE_TAG="${ENVIRONMENT}-${TIMESTAMP}"
+
+# Container settings
+CONTAINER_CPU=1
+CONTAINER_MEMORY=2
+PORT=8080
+
+echo "=================================================================="
+echo "🚀 Deploying Rust Workflow Executor to Azure"
+echo "=================================================================="
+echo "Environment:      $ENVIRONMENT"
+echo "Resource Group:   $RESOURCE_GROUP"
+echo "ACR:              $ACR_NAME"
+echo "Image:            $IMAGE_NAME:$IMAGE_TAG"
+echo "Container:        $CONTAINER_NAME"
+echo "=================================================================="
+echo ""
+
+# ==============================================================================
+# Step 1: Check Azure CLI and login status
+# ==============================================================================
+echo "📋 Step 1: Checking Azure CLI..."
+if ! command -v az &> /dev/null; then
+    echo "❌ Azure CLI not found. Please install: https://aka.ms/azure-cli"
+    exit 1
+fi
+
+echo "✅ Azure CLI found: $(az version --query '"azure-cli"' -o tsv)"
+
+# Check if logged in
+if ! az account show &> /dev/null; then
+    echo "🔐 Not logged in. Running az login..."
+    az login
+fi
+
+ACCOUNT_NAME=$(az account show --query name -o tsv)
+echo "✅ Logged in as: $ACCOUNT_NAME"
+echo ""
+
+# ==============================================================================
+# Step 2: Create or verify resource group
+# ==============================================================================
+echo "📋 Step 2: Setting up resource group..."
+if az group show --name "$RESOURCE_GROUP" &> /dev/null; then
+    echo "✅ Resource group '$RESOURCE_GROUP' already exists"
+else
+    echo "🆕 Creating resource group '$RESOURCE_GROUP' in $LOCATION..."
+    az group create \
+        --name "$RESOURCE_GROUP" \
+        --location "$LOCATION" \
+        --output none
+    echo "✅ Resource group created"
+fi
+echo ""
+
+# ==============================================================================
+# Step 3: Create or verify Azure Container Registry
+# ==============================================================================
+echo "📋 Step 3: Setting up Azure Container Registry..."
+if az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null 2>&1; then
+    echo "✅ ACR '$ACR_NAME' already exists"
+else
+    echo "🆕 Creating Azure Container Registry '$ACR_NAME'..."
+    az acr create \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$ACR_NAME" \
+        --sku Basic \
+        --admin-enabled true \
+        --output none
+    echo "✅ ACR created"
+fi
+
+# Get ACR login server
+ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query loginServer -o tsv)
+echo "🔗 ACR Login Server: $ACR_LOGIN_SERVER"
+echo ""
+
+# ==============================================================================
+# Step 4: Build and push Docker image to ACR
+# ==============================================================================
+echo "📋 Step 4: Building and pushing Docker image..."
+echo "🏗️  Building $IMAGE_NAME:$IMAGE_TAG in Azure..."
+
+# Use ACR build task for cloud-based build (faster, doesn't require local Docker)
+az acr build \
+    --registry "$ACR_NAME" \
+    --image "${IMAGE_NAME}:${IMAGE_TAG}" \
+    --image "${IMAGE_NAME}:${ENVIRONMENT}-latest" \
+    --file Dockerfile \
+    . \
+    --no-logs
+
+echo "✅ Image built and pushed to ACR"
+echo ""
+
+# ==============================================================================
+# Step 5: Get or create environment variables
+# ==============================================================================
+echo "📋 Step 5: Configuring environment variables..."
+
+# Check if .env file exists
+if [ -f ".env" ]; then
+    echo "📄 Loading environment variables from .env file..."
+    source .env
+else
+    echo "⚠️  No .env file found, using defaults"
+fi
+
+# Set default values if not in .env
+DATABASE_URL="${DATABASE_URL:-postgresql://localhost/workflow_executor}"
+MCP_ENDPOINT="${MCP_ENDPOINT:-http://localhost:3000}"
+RUST_LOG="${RUST_LOG:-workflow_executor=info,tower_http=info}"
+
+echo "✅ Environment configured"
+echo ""
+
+# ==============================================================================
+# Step 6: Deploy to Azure Container Instances
+# ==============================================================================
+echo "📋 Step 6: Deploying to Azure Container Instances..."
+
+# Get ACR credentials
+ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+
+# Delete existing container if it exists
+if az container show --name "$CONTAINER_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null 2>&1; then
+    echo "🗑️  Deleting existing container..."
+    az container delete \
+        --name "$CONTAINER_NAME" \
+        --resource-group "$RESOURCE_GROUP" \
+        --yes \
+        --output none
+    echo "✅ Old container deleted"
+fi
+
+echo "🚢 Deploying new container..."
+az container create \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$CONTAINER_NAME" \
+    --image "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}" \
+    --cpu "$CONTAINER_CPU" \
+    --memory "$CONTAINER_MEMORY" \
+    --registry-login-server "$ACR_LOGIN_SERVER" \
+    --registry-username "$ACR_USERNAME" \
+    --registry-password "$ACR_PASSWORD" \
+    --dns-name-label "${CONTAINER_NAME}" \
+    --ports "$PORT" \
+    --environment-variables \
+        PORT="$PORT" \
+        RUST_LOG="$RUST_LOG" \
+        DATABASE_URL="$DATABASE_URL" \
+        MCP_ENDPOINT="$MCP_ENDPOINT" \
+    --output none
+
+echo "✅ Container deployed"
+echo ""
+
+# ==============================================================================
+# Step 7: Get container details and test endpoint
+# ==============================================================================
+echo "📋 Step 7: Verifying deployment..."
+
+# Get public IP/FQDN
+FQDN=$(az container show \
+    --name "$CONTAINER_NAME" \
+    --resource-group "$RESOURCE_GROUP" \
+    --query ipAddress.fqdn -o tsv)
+
+PUBLIC_IP=$(az container show \
+    --name "$CONTAINER_NAME" \
+    --resource-group "$RESOURCE_GROUP" \
+    --query ipAddress.ip -o tsv)
+
+echo "✅ Container is running"
+echo ""
+
+# Wait for container to be ready
+echo "⏳ Waiting for container to start (30 seconds)..."
+sleep 30
+
+# Test health endpoint
+HEALTH_URL="http://${FQDN}:${PORT}/api/v1/health"
+echo "🏥 Testing health endpoint: $HEALTH_URL"
+
+if curl -s -f "$HEALTH_URL" > /dev/null 2>&1; then
+    HEALTH_RESPONSE=$(curl -s "$HEALTH_URL")
+    echo "✅ Health check passed!"
+    echo "   Response: $HEALTH_RESPONSE"
+else
+    echo "⚠️  Health check not responding yet (container may still be starting)"
+fi
+
+echo ""
+echo "=================================================================="
+echo "✅ Deployment Complete!"
+echo "=================================================================="
+echo ""
+echo "🌐 Public API Endpoints:"
+echo "   Base URL:        http://${FQDN}:${PORT}"
+echo "   Health Check:    http://${FQDN}:${PORT}/api/v1/health"
+echo "   Workflows:       http://${FQDN}:${PORT}/api/v1/workflows"
+echo "   Executions:      http://${FQDN}:${PORT}/api/v1/executions"
+echo "   Queue Status:    http://${FQDN}:${PORT}/api/v1/queue/status"
+echo ""
+echo "📊 Container Details:"
+echo "   Name:            $CONTAINER_NAME"
+echo "   Image:           ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}"
+echo "   Public IP:       $PUBLIC_IP"
+echo "   FQDN:            $FQDN"
+echo "   Port:            $PORT"
+echo "   CPU:             $CONTAINER_CPU core(s)"
+echo "   Memory:          $CONTAINER_MEMORY GB"
+echo ""
+echo "🔧 Management Commands:"
+echo "   View logs:       az container logs -n $CONTAINER_NAME -g $RESOURCE_GROUP"
+echo "   Restart:         az container restart -n $CONTAINER_NAME -g $RESOURCE_GROUP"
+echo "   Delete:          az container delete -n $CONTAINER_NAME -g $RESOURCE_GROUP -y"
+echo "   SSH:             az container exec -n $CONTAINER_NAME -g $RESOURCE_GROUP --exec-command /bin/bash"
+echo ""
+echo "📝 Save this URL for the dashboard:"
+echo "   export RUST_EXECUTOR_URL=\"http://${FQDN}:${PORT}\""
+echo ""
+echo "=================================================================="

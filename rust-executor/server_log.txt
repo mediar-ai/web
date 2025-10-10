@@ -1,0 +1,148 @@
+warning: unused import: `CallToolResult`
+ --> src\mcp\client.rs:3:89
+  |
+3 |     model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation, Tool, CallToolResult},
+  |                                                                                         ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: field `workflow_service` is never read
+  --> src\services\queue_processor.rs:15:5
+   |
+12 | pub struct QueueProcessor {
+   |            -------------- field in this struct
+...
+15 |     workflow_service: WorkflowService,
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `workflow-executor` (lib) generated 2 warnings (run `cargo fix --lib -p workflow-executor` to apply 1 suggestion)
+warning: unused import: `queue_processor::*`
+ --> src\services\mod.rs:7:9
+  |
+7 | pub use queue_processor::*;
+  |         ^^^^^^^^^^^^^^^^^^
+
+warning: method `count_steps` is never used
+   --> src\models\workflow.rs:112:12
+    |
+66  | impl WorkflowSequence {
+    | --------------------- method in this implementation
+...
+112 |     pub fn count_steps(&self) -> usize {
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: associated functions `success`, `failure`, and `skipped` are never used
+   --> src\models\execution.rs:103:12
+    |
+102 | impl WorkflowResult {
+    | ------------------- associated functions in this implementation
+103 |     pub fn success(message: String, data: Option<Value>) -> Self {
+    |            ^^^^^^^
+...
+117 |     pub fn failure(message: String, error: String) -> Self {
+    |            ^^^^^^^
+...
+131 |     pub fn skipped(message: String, reason: String) -> Self {
+    |            ^^^^^^^
+
+warning: function `create_pool_from_env` is never used
+  --> src\db\mod.rs:31:14
+   |
+31 | pub async fn create_pool_from_env() -> Result<DatabasePool> {
+   |              ^^^^^^^^^^^^^^^^^^^^
+
+warning: associated functions `get_workflow_by_version`, `claim_execution`, `update_execution_progress`, and `check_failure_patterns` are never used
+   --> src\db\queries.rs:53:18
+    |
+10  | impl WorkflowQueries {
+    | -------------------- associated functions in this implementation
+...
+53  |     pub async fn get_workflow_by_version(
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^
+...
+121 |     pub async fn claim_execution(
+    |                  ^^^^^^^^^^^^^^^
+...
+217 |     pub async fn update_execution_progress(
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+245 |     pub async fn check_failure_patterns(
+    |                  ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variant `Stdio` is never constructed
+  --> src\mcp\client.rs:15:5
+   |
+13 | pub enum McpTransport {
+   |          ------------ variant in this enum
+14 |     Http(String),
+15 |     Stdio(Vec<String>),
+   |     ^^^^^
+   |
+   = note: `McpTransport` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: associated items `from_command` and `list_tools` are never used
+   --> src\mcp\client.rs:31:12
+    |
+22  | impl McpClient {
+    | -------------- associated items in this implementation
+...
+31  |     pub fn from_command(command: Vec<String>) -> Self {
+    |            ^^^^^^^^^^^^
+...
+178 |     pub async fn list_tools(&self) -> Result<Vec<Tool>> {
+    |                  ^^^^^^^^^^
+
+warning: struct `QueueProcessor` is never constructed
+  --> src\services\queue_processor.rs:12:12
+   |
+12 | pub struct QueueProcessor {
+   |            ^^^^^^^^^^^^^^
+
+warning: associated items `new`, `start`, `process_next_job`, `load_workflow_sequence`, and `generate_machine_id` are never used
+   --> src\services\queue_processor.rs:19:12
+    |
+18  | impl QueueProcessor {
+    | ------------------- associated items in this implementation
+19  |     pub fn new(db_pool: DatabasePool) -> Self {
+    |            ^^^
+...
+31  |     pub async fn start(&self) -> Result<()> {
+    |                  ^^^^^
+...
+53  |     async fn process_next_job(&self) -> Result<bool> {
+    |              ^^^^^^^^^^^^^^^^
+...
+152 |     async fn load_workflow_sequence(
+    |              ^^^^^^^^^^^^^^^^^^^^^^
+...
+191 |     fn generate_machine_id() -> String {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `normalize_endpoint` is never used
+ --> src\utils\mod.rs:5:8
+  |
+5 | pub fn normalize_endpoint(url: &str) -> String {
+  |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `merge_json_objects` is never used
+  --> src\utils\mod.rs:14:8
+   |
+14 | pub fn merge_json_objects(base: &Value, override_obj: &Value) -> Result<Value> {
+   |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `generate_request_id` is never used
+  --> src\utils\mod.rs:30:8
+   |
+30 | pub fn generate_request_id() -> String {
+   |        ^^^^^^^^^^^^^^^^^^^
+
+warning: `workflow-executor` (bin "workflow-executor") generated 13 warnings (1 duplicate) (run `cargo fix --bin "workflow-executor"` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.52s
+     Running `target\debug\workflow-executor.exe`
+[2m2025-10-10T00:06:57.683525Z[0m [32m INFO[0m ThreadId(01) [2mworkflow_executor[0m[2m:[0m Starting Workflow Executor API
+Error: pool timed out while waiting for an open connection
+error: process didn't exit successfully: `target\debug\workflow-executor.exe` (exit code: 1)

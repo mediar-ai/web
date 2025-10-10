@@ -1,0 +1,242 @@
+use anyhow::{Result, Context};
+use rmcp::{
+    model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation, Tool, CallToolResult},
+    transport::{StreamableHttpClientTransport, TokioChildProcess},
+    ServiceExt,
+};
+use serde_json::{Value, Map};
+use std::time::Duration;
+use tokio::time::sleep;
+use tracing::{debug, info, warn};
+
+#[derive(Clone)]
+pub enum McpTransport {
+    Http(String),
+    Stdio(Vec<String>),
+}
+
+pub struct McpClient {
+    transport: McpTransport,
+}
+
+impl McpClient {
+    pub fn new(transport: McpTransport) -> Self {
+        Self { transport }
+    }
+
+    pub fn from_url(url: String) -> Self {
+        Self::new(McpTransport::Http(url))
+    }
+
+    pub fn from_command(command: Vec<String>) -> Self {
+        Self::new(McpTransport::Stdio(command))
+    }
+
+    /// Execute a tool with retry logic
+    pub async fn execute_tool_with_retry(
+        &self,
+        tool_name: String,
+        arguments: Option<Map<String, Value>>,
+        max_retries: u32,
+    ) -> Result<Value> {
+        let mut retry_count = 0;
+        let mut _last_error = None;
+
+        loop {
+            match self.execute_tool(tool_name.clone(), arguments.clone()).await {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    let error_str = e.to_string();
+                    let is_retryable = error_str.contains("401")
+                        || error_str.contains("500")
+                        || error_str.contains("502")
+                        || error_str.contains("503")
+                        || error_str.contains("timeout");
+
+                    if is_retryable && retry_count < max_retries {
+                        retry_count += 1;
+                        let delay = Duration::from_secs(2u64.pow(retry_count));
+                        warn!("Tool execution failed: {}. Retrying in {} seconds... (attempt {}/{})",
+                              error_str, delay.as_secs(), retry_count, max_retries);
+                        sleep(delay).await;
+                        _last_error = Some(e);
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Execute a tool without retry
+    pub async fn execute_tool(
+        &self,
+        tool_name: String,
+        arguments: Option<Map<String, Value>>,
+    ) -> Result<Value> {
+        debug!("Executing tool: {} with args: {:?}", tool_name, arguments);
+
+        let result = match &self.transport {
+            McpTransport::Http(url) => {
+                info!("Connecting to MCP server via HTTP: {}", url);
+                let transport = StreamableHttpClientTransport::from_uri(url.as_str());
+                let client_info = ClientInfo {
+                    protocol_version: Default::default(),
+                    capabilities: ClientCapabilities::default(),
+                    client_info: Implementation {
+                        name: "workflow-executor".to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                    },
+                };
+
+                let service = client_info.serve(transport).await
+                    .context("Failed to connect to MCP server")?;
+
+                if let Some(info) = service.peer_info() {
+                    info!("Connected to MCP server: {} v{}",
+                         info.server_info.name, info.server_info.version);
+                }
+
+                service.call_tool(CallToolRequestParam {
+                    name: tool_name.clone().into(),
+                    arguments,
+                })
+                .await
+                .context(format!("Failed to execute tool: {}", tool_name))?
+            }
+            McpTransport::Stdio(command) => {
+                info!("Starting MCP server via stdio: {:?}", command);
+                let executable = command[0].clone();
+                let args = if command.len() > 1 {
+                    command[1..].to_vec()
+                } else {
+                    vec![]
+                };
+
+                let mut cmd = tokio::process::Command::new(&executable);
+                cmd.args(&args);
+
+                // Set environment for better logging
+                if std::env::var("RUST_LOG").is_err() {
+                    cmd.env("RUST_LOG", "info");
+                }
+
+                let transport = TokioChildProcess::new(cmd)
+                    .context("Failed to start MCP server process")?;
+
+                let client_info = ClientInfo {
+                    protocol_version: Default::default(),
+                    capabilities: ClientCapabilities::default(),
+                    client_info: Implementation {
+                        name: "workflow-executor".to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                    },
+                };
+
+                let service = client_info.serve(transport).await
+                    .context("Failed to connect to MCP server")?;
+
+                if let Some(info) = service.peer_info() {
+                    info!("Connected to MCP server: {} v{}",
+                         info.server_info.name, info.server_info.version);
+                }
+
+                service.call_tool(CallToolRequestParam {
+                    name: tool_name.clone().into(),
+                    arguments,
+                })
+                .await
+                .context(format!("Failed to execute tool: {}", tool_name))?
+            }
+        };
+
+        // Parse result content
+        if !result.content.is_empty() {
+            for content in &result.content {
+                if let rmcp::model::RawContent::Text(text) = &content.raw {
+                    // Try to parse as JSON
+                    if let Ok(json_result) = serde_json::from_str::<Value>(&text.text) {
+                        return Ok(json_result);
+                    } else {
+                        // Return as plain text wrapped in JSON
+                        return Ok(serde_json::json!({
+                            "type": "text",
+                            "content": text.text
+                        }));
+                    }
+                }
+            }
+        }
+
+        Ok(serde_json::json!({
+            "status": "success",
+            "message": format!("Tool {} executed successfully", tool_name)
+        }))
+    }
+
+    /// List all available tools
+    pub async fn list_tools(&self) -> Result<Vec<Tool>> {
+        match &self.transport {
+            McpTransport::Http(url) => {
+                let transport = StreamableHttpClientTransport::from_uri(url.as_str());
+                let client_info = ClientInfo {
+                    protocol_version: Default::default(),
+                    capabilities: ClientCapabilities::default(),
+                    client_info: Implementation {
+                        name: "workflow-executor".to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                    },
+                };
+
+                let service = client_info.serve(transport).await
+                    .context("Failed to connect to MCP server")?;
+
+                service.list_all_tools().await
+                    .context("Failed to list tools")
+            }
+            McpTransport::Stdio(command) => {
+                let executable = command[0].clone();
+                let args = if command.len() > 1 {
+                    command[1..].to_vec()
+                } else {
+                    vec![]
+                };
+
+                let mut cmd = tokio::process::Command::new(&executable);
+                cmd.args(&args);
+
+                let transport = TokioChildProcess::new(cmd)
+                    .context("Failed to start MCP server process")?;
+
+                let client_info = ClientInfo {
+                    protocol_version: Default::default(),
+                    capabilities: ClientCapabilities::default(),
+                    client_info: Implementation {
+                        name: "workflow-executor".to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                    },
+                };
+
+                let service = client_info.serve(transport).await
+                    .context("Failed to connect to MCP server")?;
+
+                service.list_all_tools().await
+                    .context("Failed to list tools")
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mcp_transport_creation() {
+        let http_client = McpClient::from_url("http://localhost:3000".to_string());
+        matches!(http_client.transport, McpTransport::Http(_));
+
+        let stdio_client = McpClient::from_command(vec!["npx".to_string(), "mcp-server".to_string()]);
+        matches!(stdio_client.transport, McpTransport::Stdio(_));
+    }
+}
