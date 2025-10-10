@@ -13,7 +13,8 @@ import {
   Shield,
   LogOut,
   Database,
-  Lock
+  Lock,
+  Bell
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 
@@ -66,6 +67,7 @@ export function Sidebar() {
 
   const navigation: NavItem[] = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
+    { label: 'Alerts', href: '/notifications', icon: Bell },
     { label: 'Settings', href: '/settings', icon: Settings },
     { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
     { label: 'Observability', href: '/observability', icon: Database, mediarOnly: true },
