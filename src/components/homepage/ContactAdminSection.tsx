@@ -78,9 +78,11 @@ export default function ContactAdminSection({
                 <p className="text-gray-600 text-sm">
                   Native desktop automation app
                 </p>
-                <Button className="w-full bg-gray-200 text-gray-500 border-2 border-gray-400 cursor-not-allowed" disabled>
-                  COMING SOON
-                </Button>
+                <a href="https://cdn.crabnebula.app/asset/01K78EPA16XG8Z1GMZVKYTM2E4" download>
+                  <Button className="w-full bg-black text-white hover:bg-gray-800">
+                    DOWNLOAD APP
+                  </Button>
+                </a>
               </div>
             </CardContent>
           </Card>
