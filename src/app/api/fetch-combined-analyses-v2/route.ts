@@ -22,9 +22,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch analyses first, then get labels separately (Supabase doesn't support complex LEFT JOINs in the client)
     console.log(`🔍 Fetching analyses for userId: ${userId}, limit: ${limit}`);
-    console.log(`[FIX] Supabase URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
-    console.log(`[FIX] Supabase Key exists: ${!!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`);
-    
+
     const { data: analysesData, error: analysesError } = await supabaseAdmin
       .from('low_level_workflow_analyses')
       .select('id, client_timestamp, window_title, llm_structured_output')
