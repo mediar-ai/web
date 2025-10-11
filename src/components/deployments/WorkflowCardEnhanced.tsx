@@ -228,8 +228,8 @@ export function WorkflowCardEnhanced({
                   )}
                 </TooltipContent>
               </Tooltip>
-              {/* Only show status badge if it's meaningful (not deployed/running) */}
-              {status !== 'deployed' && status !== 'running' && (
+              {/* Only show status badge if it's meaningful (not deployed/running/paused) */}
+              {status !== 'deployed' && status !== 'running' && status !== 'paused' && (
                 <AnimatedBadge status={status as any} className="text-xs py-0.5 px-2 flex-shrink-0">
                   {status.toUpperCase()}
                 </AnimatedBadge>
@@ -251,18 +251,9 @@ export function WorkflowCardEnhanced({
               )}
               {/* Show paused schedule indicator */}
               {workflow.cron_expression && !workflow.cron_enabled && (
-                <Tooltip>
-                  <TooltipTrigger>
-                    <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 opacity-50 flex-shrink-0">
-                      <Calendar className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                      <span className="text-[10px] font-mono text-gray-400 uppercase">Paused</span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p className="text-xs text-gray-500">Schedule is paused</p>
-                    <p className="font-mono text-xs mt-1">{describeCronExpression(workflow.cron_expression)}</p>
-                  </TooltipContent>
-                </Tooltip>
+                <AnimatedBadge status="paused" className="text-xs py-0.5 px-2 flex-shrink-0">
+                  PAUSED
+                </AnimatedBadge>
               )}
               {isMediarAdmin && workflow.shared_with_orgs && workflow.shared_with_orgs.length > 0 && (
                 <Tooltip>
