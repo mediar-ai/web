@@ -1110,8 +1110,8 @@ function AdminPageContent() {
                     You have global admin access. You can see and manage all organizations and workflows.
                   </p>
                   <div className="flex gap-4">
-                    <Link href="/admin-old" className="px-4 py-2 bg-red-600 text-white font-mono font-bold hover:bg-red-700">
-                      LEGACY ADMIN
+                    <Link href="/admin-workflow-mining" className="px-4 py-2 bg-red-600 text-white font-mono font-bold hover:bg-red-700">
+                      WORKFLOW MINING
                     </Link>
                   </div>
                 </div>
