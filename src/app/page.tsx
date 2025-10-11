@@ -1,16 +1,25 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 // Homepage components
 import ContactAdminSection from '@/components/homepage/ContactAdminSection';
-import LandingSection from '@/components/homepage/LandingSection';
 
 function HomePage() {
   const { isLoaded, userId } = useAuth();
+  const router = useRouter();
 
-  // Show loading while Clerk is initializing
-  if (!isLoaded) {
+  // Redirect unauthenticated users to sign-in
+  useEffect(() => {
+    if (isLoaded && !userId) {
+      router.push('/sign-in');
+    }
+  }, [isLoaded, userId, router]);
+
+  // Show loading while Clerk is initializing or while redirecting
+  if (!isLoaded || !userId) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -19,11 +28,6 @@ function HomePage() {
         </div>
       </div>
     );
-  }
-
-  // Show landing page for unauthenticated users
-  if (!userId) {
-    return <LandingSection />;
   }
 
   // Show contact admin section for all authenticated users

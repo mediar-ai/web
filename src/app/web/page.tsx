@@ -639,23 +639,23 @@ function HomeComponent() {
     setStream(null);
     streamRef.current = null;
     setIsCapturingForBuffer(false);
-    setFrameBuffer([]); 
+    setFrameBuffer([]);
     if (initialFrameCapturedRef) {
         initialFrameCapturedRef.current = false;
     }
-    
+
     // Generate a new, unique session ID for this recording session
     const newAppSessionId = crypto.randomUUID();
     localStorage.setItem('app_session_id', newAppSessionId);
     logToUI(`[handleStartScreenShare] New session started with ID: ${newAppSessionId}`);
-    
+
     const currentSessionId = captureSessionId;
     currentCaptureSessionIdRef.current = currentSessionId;
     const nextSessionId = captureSessionId + 1;
     setCaptureSessionId(nextSessionId);
     localStorage.setItem('capture_session_id', String(nextSessionId));
     setScreenshotCounter(0);
-    
+
     logToUI(
       '[handleStartScreenShare] Cleared buffers for new session. ID:', currentSessionId,
     );
@@ -675,12 +675,21 @@ function HomeComponent() {
       setStream(mediaStream);
       streamRef.current = mediaStream;
     } catch (err: unknown) {
+      // Don't log or show errors for NotAllowedError - this happens when browser is
+      // still processing the permission request or user hasn't interacted yet
+      if (err instanceof Error && err.name === 'NotAllowedError') {
+        logToUI('[handleStartScreenShare] Permission prompt dismissed or not yet granted.');
+        setStream(null);
+        streamRef.current = null;
+        setMainStatus('Idle');
+        return;
+      }
+
+      // For all other errors, log and display them
       logError('[handleStartScreenShare] Error obtaining media stream:', err);
       let message = 'Unknown start error.';
       if (err instanceof Error) {
-        message = err.name === 'NotAllowedError'
-          ? 'Permission denied by user.'
-          : `Start error: ${err.message}`;
+        message = `Start error: ${err.message}`;
         logError(`[handleStartScreenShare] Error details: Name: ${err.name}, Message: ${err.message}, Stack: ${err.stack}`);
       }
       logError('[handleStartScreenShare] Error:', message, err);
