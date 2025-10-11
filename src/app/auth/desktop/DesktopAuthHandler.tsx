@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 
 interface DesktopAuthHandlerProps {
   userId: string;
@@ -12,46 +13,66 @@ export default function DesktopAuthHandler({
   userId,
   email,
 }: DesktopAuthHandlerProps) {
+  const searchParams = useSearchParams();
+  const sessionId = searchParams.get('session');
+
   const [status, setStatus] = useState<
-    'generating' | 'redirecting' | 'error'
+    'generating' | 'success' | 'error'
   >('generating');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function generateTokenAndRedirect() {
+    async function generateTokenAndStoreSession() {
       try {
         setStatus('generating');
 
-        // Call API to generate desktop token
-        const response = await fetch('/api/auth/desktop-token', {
+        // If no session ID, use old deep link approach as fallback
+        if (!sessionId) {
+          // Call API to generate desktop token
+          const response = await fetch('/api/auth/desktop-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to generate token: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+
+          if (!data.success || !data.token) {
+            throw new Error(
+              data.error || 'Failed to generate authentication token'
+            );
+          }
+
+          // Fallback: Redirect to custom URL scheme with token
+          const redirectUrl = `mediar://auth/callback?token=${data.token}&userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(email)}`;
+          window.location.href = redirectUrl;
+          setStatus('success');
+          return;
+        }
+
+        // New polling approach: Store token in session
+        const response = await fetch('/api/auth/desktop-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to generate token: ${response.statusText}`);
+          throw new Error(`Failed to store session: ${response.statusText}`);
         }
 
         const data = await response.json();
 
-        if (!data.success || !data.token) {
+        if (!data.success) {
           throw new Error(
-            data.error || 'Failed to generate authentication token'
+            data.error || 'Failed to authenticate desktop session'
           );
         }
 
-        setStatus('redirecting');
-
-        // Redirect to custom URL scheme with token
-        const redirectUrl = `mediar://auth/callback?token=${data.token}&userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(email)}`;
-
-        // Use window.location for the redirect
-        window.location.href = redirectUrl;
-
-        // Show success message briefly before redirect completes
-        setTimeout(() => {
-          setStatus('redirecting');
-        }, 500);
+        setStatus('success');
       } catch (err) {
         console.error('Desktop auth error:', err);
         setError(err instanceof Error ? err.message : 'Unknown error occurred');
@@ -59,8 +80,8 @@ export default function DesktopAuthHandler({
       }
     }
 
-    generateTokenAndRedirect();
-  }, [userId, email]);
+    generateTokenAndStoreSession();
+  }, [userId, email, sessionId]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
@@ -77,7 +98,7 @@ export default function DesktopAuthHandler({
           </div>
         )}
 
-        {status === 'redirecting' && (
+        {status === 'success' && (
           <div className="text-center">
             <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
               <svg
@@ -98,12 +119,16 @@ export default function DesktopAuthHandler({
               Authentication Successful
             </h2>
             <p className="text-gray-600 mb-4">
-              Redirecting to Mediar desktop app...
+              {sessionId
+                ? 'You can now close this window and return to the desktop app.'
+                : 'Redirecting to Mediar desktop app...'}
             </p>
-            <p className="text-sm text-gray-500">
-              If the app doesn&apos;t open automatically, please check that
-              Mediar is installed.
-            </p>
+            {!sessionId && (
+              <p className="text-sm text-gray-500">
+                If the app doesn&apos;t open automatically, please check that
+                Mediar is installed.
+              </p>
+            )}
           </div>
         )}
 
