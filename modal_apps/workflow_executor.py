@@ -1723,14 +1723,26 @@ async def execute_mcp_workflow(
             raise
 
         if response.status_code != 200:
+            # For errors, read with timeout to avoid blocking
+            try:
+                error_text = await asyncio.wait_for(response.aread(), timeout=5.0)
+                error_msg = error_text.decode('utf-8')
+            except (asyncio.TimeoutError, Exception):
+                error_msg = "Unable to read error response"
             raise Exception(
-                f"Workflow execution failed: {response.status_code} - {response.text}"
+                f"Workflow execution failed: {response.status_code} - {error_msg}"
             )
         else:
             # Parse the response (handle SSE format)
-            logger.info("[DEBUG] About to read response.text (this may block if server keeps connection open)...")
-            response_text = response.text
-            logger.info("[DEBUG] Successfully read response.text, length=%d bytes", len(response_text))
+            logger.info("[DEBUG] About to read response body with 60s timeout...")
+            try:
+                # Use aread() with timeout to prevent indefinite blocking
+                response_bytes = await asyncio.wait_for(response.aread(), timeout=60.0)
+                response_text = response_bytes.decode('utf-8')
+                logger.info("[DEBUG] Successfully read response body, length=%d bytes", len(response_text))
+            except asyncio.TimeoutError:
+                logger.error("[DEBUG] Response body read timed out after 60s - MCP server may be keeping connection open")
+                raise Exception("MCP server response timeout - server did not close connection after 60 seconds")
             if not response_text:
                 raise Exception("Empty response from MCP server")
 

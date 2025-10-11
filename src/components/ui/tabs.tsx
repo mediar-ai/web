@@ -26,7 +26,7 @@ function TabsList({
     <TabsPrimitive.List
       data-slot="tabs-list"
       className={cn(
-        "bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px] border",
+        "inline-flex w-fit items-center justify-center border-b-2 border-black",
         className
       )}
       {...props}
@@ -42,7 +42,14 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "bg-gray-200 text-gray-600 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:font-semibold dark:bg-gray-700 dark:text-gray-300 dark:data-[state=active]:bg-white dark:data-[state=active]:text-black focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring data-[state=active]:border inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium whitespace-nowrap transition-all duration-200 focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 hover:bg-gray-300 active:bg-gray-400 hover:text-gray-800 cursor-pointer dark:hover:bg-gray-600 dark:active:bg-gray-500 dark:hover:text-gray-100 data-[state=active]:hover:bg-white data-[state=active]:active:bg-gray-50",
+        "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all duration-200",
+        "text-gray-500 border-b-2 border-transparent",
+        "hover:text-black hover:border-gray-300",
+        "data-[state=active]:text-black data-[state=active]:border-black data-[state=active]:font-semibold",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2",
+        "disabled:pointer-events-none disabled:opacity-50",
+        "cursor-pointer -mb-[2px]",
+        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

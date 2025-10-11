@@ -35,8 +35,20 @@ async fn main() -> Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://localhost/mediar_workflows".to_string());
 
-    let db_pool = create_pool(&database_url).await?;
-    info!("Connected to database");
+    info!("Attempting to connect to database: {}", database_url.split('@').last().unwrap_or("unknown"));
+
+    let db_pool = match create_pool(&database_url).await {
+        Ok(pool) => {
+            info!("✓ Successfully connected to database");
+            pool
+        }
+        Err(e) => {
+            error!("✗ Failed to connect to database: {}", e);
+            error!("  This may be due to network restrictions or invalid credentials");
+            error!("  The API will start anyway, but database operations will fail");
+            return Err(e);
+        }
+    };
 
     // Build API router
     let app = build_router(db_pool)?;
