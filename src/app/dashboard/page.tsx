@@ -80,6 +80,12 @@ function DashboardContent() {
     }
     return '';
   });
+  const [activeSearchField, setActiveSearchField] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('executions-filter-search-field') || 'all';
+    }
+    return 'all';
+  });
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -102,6 +108,7 @@ function DashboardContent() {
   const activeStatusFilterRef = useRef<string | undefined>(undefined);
   const activeMachineFilterRef = useRef<string | undefined>(undefined);
   const activeSearchFilterRef = useRef<string>('');
+  const activeSearchFieldRef = useRef<string>('all');
   const currentPageRef = useRef<number>(1);
   const pageSizeRef = useRef<number>(100);
 
@@ -121,6 +128,10 @@ function DashboardContent() {
   useEffect(() => {
     activeSearchFilterRef.current = activeSearchFilter;
   }, [activeSearchFilter]);
+
+  useEffect(() => {
+    activeSearchFieldRef.current = activeSearchField;
+  }, [activeSearchField]);
 
   useEffect(() => {
     currentPageRef.current = currentPage;
@@ -246,6 +257,7 @@ function DashboardContent() {
     filterStatus?: string,
     filterMachine?: string,
     searchQuery?: string,
+    searchField?: string,
     page?: number,
     pageSizeParam?: number
   ) => {
@@ -280,6 +292,9 @@ function DashboardContent() {
       }
       if (searchQuery) {
         params.set('search', searchQuery);
+        if (searchField) {
+          params.set('search_field', searchField);
+        }
       }
 
       const apiUrl = `/api/remote-workflows/executions?${params.toString()}`;
@@ -411,8 +426,8 @@ function DashboardContent() {
   }, [fetchExecutions, fetchLiveExecutions]);
 
   const handleRefreshExecutions = useCallback(() => {
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, currentPage, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, currentPage, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, currentPage, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, currentPage, pageSize]);
 
   // Handle filter changes - refetch from API and save to localStorage
   const handleWorkflowFilterChange = useCallback((workflowName: string | undefined) => {
@@ -425,8 +440,8 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-workflow');
       }
     }
-    fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter, activeSearchFilter, 1, pageSize);
-  }, [fetchExecutions, activeStatusFilter, activeMachineFilter, activeSearchFilter, pageSize]);
+    fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, 1, pageSize);
+  }, [fetchExecutions, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, pageSize]);
 
   const handleStatusFilterChange = useCallback((status: string | undefined) => {
     setActiveStatusFilter(status);
@@ -438,8 +453,8 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-status');
       }
     }
-    fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter, activeSearchFilter, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter, activeSearchFilter, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter, activeSearchFilter, activeSearchField, 1, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter, activeSearchFilter, activeSearchField, pageSize]);
 
   const handleMachineFilterChange = useCallback((machine: string | undefined) => {
     setActiveMachineFilter(machine);
@@ -451,8 +466,8 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-machine');
       }
     }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine, activeSearchFilter, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeSearchFilter, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine, activeSearchFilter, activeSearchField, 1, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeSearchFilter, activeSearchField, pageSize]);
 
   const handleSearchFilterChange = useCallback((search: string) => {
     setActiveSearchFilter(search);
@@ -464,13 +479,24 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-search');
       }
     }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, search, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, search, activeSearchField, 1, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchField, pageSize]);
+
+  const handleSearchFieldChange = useCallback((searchField: string) => {
+    setActiveSearchField(searchField);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('executions-filter-search-field', searchField);
+    }
+    // If there's an active search, refetch with new field
+    if (activeSearchFilter) {
+      fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, searchField, currentPage, pageSize);
+    }
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, currentPage, pageSize]);
 
   const handlePageChange = useCallback((newPage: number) => {
     setCurrentPage(newPage);
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, newPage, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, newPage, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, pageSize]);
 
   const handlePageSizeChange = useCallback((newPageSize: number) => {
     setPageSize(newPageSize);
@@ -478,8 +504,8 @@ function DashboardContent() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('executions-page-size', newPageSize.toString());
     }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, 1, newPageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, 1, newPageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField]);
 
   // Handlers
   const handleWorkflowCreated = useCallback((_newWorkflow: any) => {
@@ -578,7 +604,7 @@ function DashboardContent() {
   useEffect(() => {
     fetchWorkflows();
     // Pass saved filters to initial fetch
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, currentPage, pageSize);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, currentPage, pageSize);
     fetchLiveExecutions();
     fetchExecutionFilters();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -605,6 +631,7 @@ function DashboardContent() {
           activeStatusFilterRef.current,
           activeMachineFilterRef.current,
           activeSearchFilterRef.current,
+          activeSearchFieldRef.current,
           currentPageRef.current,
           pageSizeRef.current
         );
@@ -773,12 +800,14 @@ function DashboardContent() {
                   onStatusFilterChange={handleStatusFilterChange}
                   onMachineFilterChange={handleMachineFilterChange}
                   onSearchFilterChange={handleSearchFilterChange}
+                  onSearchFieldChange={handleSearchFieldChange}
                   onPageChange={handlePageChange}
                   onPageSizeChange={handlePageSizeChange}
                   activeWorkflowFilter={activeWorkflowFilter}
                   activeStatusFilter={activeStatusFilter}
                   activeMachineFilter={activeMachineFilter}
                   activeSearchFilter={activeSearchFilter}
+                  activeSearchField={activeSearchField}
                   currentPage={currentPage}
                   pageSize={pageSize}
                   totalRecords={totalExecutions}
