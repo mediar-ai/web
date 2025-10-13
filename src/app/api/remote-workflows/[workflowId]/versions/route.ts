@@ -213,7 +213,13 @@ export async function POST(
     const body = await request.json();
     const { automation_sequence, version_number, change_notes, set_as_active = false } = body;
 
+    console.log('[DEBUG] Received request body keys:', Object.keys(body));
+    console.log('[DEBUG] automation_sequence type:', typeof automation_sequence);
+    console.log('[DEBUG] automation_sequence length:', automation_sequence?.length);
+    console.log('[DEBUG] automation_sequence preview:', automation_sequence?.substring?.(0, 100));
+
     if (!automation_sequence) {
+      console.error('[ERROR] automation_sequence is missing or empty');
       return NextResponse.json(
         { success: false, error: 'automation_sequence is required' },
         { status: 400 }
