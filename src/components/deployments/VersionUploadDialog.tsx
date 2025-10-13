@@ -132,9 +132,53 @@ export function VersionUploadDialog({
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Validation 1: File size check (5MB max for JSON/YAML)
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      if (file.size > MAX_FILE_SIZE) {
+        setResult({
+          success: false,
+          message: 'File size exceeds 5MB limit',
+          error: `File is ${(file.size / 1024 / 1024).toFixed(2)}MB. Maximum allowed size is 5MB.`
+        });
+        return;
+      }
+
+      // Validation 2: MIME type and extension check
+      const ALLOWED_MIME_TYPES = [
+        'application/json',
+        'application/x-yaml',
+        'text/yaml',
+        'text/x-yaml',
+        'application/yaml',
+        'text/plain' // Some systems report YAML as text/plain
+      ];
+
+      const ALLOWED_EXTENSIONS = ['.json', '.yml', '.yaml'];
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+      // Validate MIME type (if browser provides it)
+      if (file.type && !ALLOWED_MIME_TYPES.includes(file.type)) {
+        setResult({
+          success: false,
+          message: 'Invalid file type',
+          error: `File type "${file.type}" not allowed. Please upload JSON or YAML files.`
+        });
+        return;
+      }
+
+      // Validate extension
+      if (!ALLOWED_EXTENSIONS.includes(fileExtension)) {
+        setResult({
+          success: false,
+          message: 'Invalid file extension',
+          error: `Extension "${fileExtension}" not allowed. Allowed: .json, .yml, .yaml`
+        });
+        return;
+      }
+
       setSelectedFile(file);
       setResult(null);
-      
+
       // Read file content
       const reader = new FileReader();
       reader.onload = (e) => {
