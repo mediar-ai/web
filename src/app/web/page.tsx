@@ -326,6 +326,98 @@ function HomeComponent() {
     setUserId(storedUserId);
   }, [logToUI]);
 
+  // Stream new activity items as they're created
+  useEffect(() => {
+    if (viewingMode.type !== 'local' || !streamRef.current || !userId) {
+      return;
+    }
+
+    const appSessionId = localStorage.getItem('app_session_id');
+    if (!appSessionId) {
+      return;
+    }
+
+    // Find items not yet streamed
+    const newItems = activityItems.filter(item => !streamedItemIds.current.has(item.id));
+
+    if (newItems.length > 0) {
+      logToUI(`[Stream] Found ${newItems.length} new activity items to stream`);
+
+      // Save to IndexedDB
+      saveActivityItems(activityItems).catch(err =>
+        logError('[Stream] Failed to save activity items to IndexedDB:', err)
+      );
+
+      // Stream each new item
+      newItems.forEach(item => {
+        streamData('activity_item', item);
+      });
+    }
+  }, [activityItems, viewingMode.type, userId, streamData, logToUI, logError]);
+
+  // Stream new events as they're created
+  useEffect(() => {
+    if (viewingMode.type !== 'local' || !streamRef.current || !userId) {
+      return;
+    }
+
+    const appSessionId = localStorage.getItem('app_session_id');
+    if (!appSessionId) {
+      return;
+    }
+
+    // Find items not yet streamed
+    const newItems = events.filter(item => !streamedItemIds.current.has(item.id));
+
+    if (newItems.length > 0) {
+      logToUI(`[Stream] Found ${newItems.length} new events to stream`);
+
+      // Save to IndexedDB
+      saveEvents(events).catch(err =>
+        logError('[Stream] Failed to save events to IndexedDB:', err)
+      );
+
+      // Stream each new item
+      newItems.forEach(item => {
+        streamData('event', item);
+      });
+    }
+  }, [events, viewingMode.type, userId, streamData, logToUI, logError]);
+
+  // Stream new completed analyses as they're created
+  useEffect(() => {
+    if (viewingMode.type !== 'local' || !streamRef.current || !userId) {
+      return;
+    }
+
+    const appSessionId = localStorage.getItem('app_session_id');
+    if (!appSessionId) {
+      return;
+    }
+
+    // Find items not yet streamed - only stream completed analyses with endTime
+    const newItems = completedAnalyses.filter(
+      item => !streamedItemIds.current.has(item.id) &&
+              item.status === 'completed' &&
+              item.endTime
+    );
+
+    if (newItems.length > 0) {
+      logToUI(`[Stream] Found ${newItems.length} new completed analyses to stream`);
+
+      // Save to IndexedDB
+      saveCompletedAnalyses(completedAnalyses).catch(err =>
+        logError('[Stream] Failed to save completed analyses to IndexedDB:', err)
+      );
+
+      // Stream each new item with timestamp from endTime
+      newItems.forEach(item => {
+        const itemToStream = { ...item, timestamp: new Date(item.endTime!).toISOString() };
+        streamData('completed_analysis', itemToStream);
+      });
+    }
+  }, [completedAnalyses, viewingMode.type, userId, streamData, logToUI, logError]);
+
   const captureFrameToBuffer = useCallback(async (changePercent: number) => {
     if (!streamRef.current) { 
       logError('[captureFrameToBuffer] Stream not active.'); 
