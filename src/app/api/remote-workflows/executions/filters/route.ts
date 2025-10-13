@@ -80,20 +80,20 @@ export async function GET(request: NextRequest) {
       : [];
     console.log('[Filters API] Workflow names:', uniqueWorkflowNames.length, uniqueWorkflowNames);
 
-    // Fetch unique statuses from executions of accessible workflows
-    const { data: statusesData, error: statusesError } = await supabase
-      .from('workflow_executions')
-      .select('status')
-      .in('workflow_id', accessibleWorkflowIds)
-      .order('status');
-
-    if (statusesError) {
-      console.error('[Filters API] Error fetching statuses:', statusesError);
-    }
-
-    const uniqueStatuses = statusesData
-      ? Array.from(new Set(statusesData.map((e: any) => e.status).filter(Boolean))).sort()
-      : [];
+    // Return all possible statuses (database + derived)
+    // Database statuses: cancelled, completed, failed, queued, running
+    // Derived statuses: EXCEPTION (from formatted_output.exception=true), SKIPPED (from formatted_output.skipped=true)
+    // Note: We hardcode this list because querying for all distinct statuses is inefficient
+    // (would require fetching thousands of rows or using a separate COUNT DISTINCT query)
+    const uniqueStatuses = [
+      'cancelled',
+      'completed',
+      'EXCEPTION',
+      'failed',
+      'queued',
+      'running',
+      'SKIPPED'
+    ].sort();
     console.log('[Filters API] Statuses:', uniqueStatuses.length, uniqueStatuses);
 
     // Fetch ALL machines from remote_machines table (no org filtering - table has no organization_id column)
