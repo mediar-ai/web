@@ -528,8 +528,35 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                 1000
             );
             return <span className="font-mono text-[10px]">{duration}s</span>;
-          } else if (isLive || execution.status === 'running') {
-            return <span className="font-mono text-[10px] animate-pulse">Running...</span>;
+          } else if ((isLive || execution.status === 'running') && execution.started_at) {
+            // Calculate elapsed time for running executions
+            const elapsed = Math.round(
+              (Date.now() - new Date(execution.started_at).getTime()) / 1000
+            );
+
+            // Format based on duration length
+            let formattedDuration: string;
+            if (elapsed >= 86400) {
+              // More than 1 day: show days and hours
+              const days = Math.floor(elapsed / 86400);
+              const hours = Math.floor((elapsed % 86400) / 3600);
+              formattedDuration = `${days}d ${hours}h`;
+            } else if (elapsed >= 3600) {
+              // More than 1 hour: show hours and minutes
+              const hours = Math.floor(elapsed / 3600);
+              const minutes = Math.floor((elapsed % 3600) / 60);
+              formattedDuration = `${hours}h ${minutes}m`;
+            } else if (elapsed >= 60) {
+              // More than 1 minute: show minutes and seconds
+              const minutes = Math.floor(elapsed / 60);
+              const seconds = elapsed % 60;
+              formattedDuration = `${minutes}m ${seconds}s`;
+            } else {
+              // Less than 1 minute: show seconds only
+              formattedDuration = `${elapsed}s`;
+            }
+
+            return <span className="font-mono text-[10px] animate-pulse">{formattedDuration}</span>;
           }
           return <span className="font-mono text-[10px]">-</span>;
         },
