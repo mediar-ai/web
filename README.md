@@ -1,4 +1,7 @@
-# Browser Workflow Capture App
+# Mediar dashboard
+
+
+Browser Workflow Capture App
 
 A Next.js application for capturing, analyzing, and executing browser workflows with AI.
  
