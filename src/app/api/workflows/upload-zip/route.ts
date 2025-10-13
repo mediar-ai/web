@@ -1,9 +1,85 @@
+import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
 import { createClient } from '@supabase/supabase-js';
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
+
+// Content sanitization check function
+function detectSuspiciousContent(content: string): { safe: boolean; issues: string[] } {
+  const issues: string[] = [];
+
+  // Check 1: Detect potential script injection patterns
+  const scriptPatterns = [
+    /<script[^>]*>/i,
+    /javascript:/i,
+    /on\w+\s*=/i, // onclick=, onerror=, etc.
+    /eval\s*\(/,
+    /Function\s*\(/,
+    /__proto__/,
+    /constructor\s*\[/
+  ];
+
+  scriptPatterns.forEach((pattern, idx) => {
+    if (pattern.test(content)) {
+      issues.push(`Suspicious pattern ${idx + 1}: ${pattern.source}`);
+    }
+  });
+
+  // Check 2: Detect encoded/obfuscated content
+  const obfuscationPatterns = [
+    /\\x[0-9a-fA-F]{2}/g, // Hex encoding
+    /\\u[0-9a-fA-F]{4}/g, // Unicode escapes
+    /fromCharCode/i,
+    /atob\s*\(/i, // Base64 decode
+    /String\.fromCodePoint/i
+  ];
+
+  let encodedCharsCount = 0;
+  obfuscationPatterns.forEach(pattern => {
+    const matches = content.match(pattern);
+    if (matches) encodedCharsCount += matches.length;
+  });
+
+  if (encodedCharsCount > 10) {
+    issues.push(`Excessive encoded characters detected: ${encodedCharsCount}`);
+  }
+
+  // Check 3: Detect file system access patterns
+  const fsPatterns = [
+    /fs\.readFile/,
+    /fs\.writeFile/,
+    /fs\.unlink/,
+    /child_process/,
+    /execSync/,
+    /\.\.\/\.\.\// // Path traversal
+  ];
+
+  fsPatterns.forEach((pattern, idx) => {
+    if (pattern.test(content)) {
+      issues.push(`File system access pattern ${idx + 1}: ${pattern.source}`);
+    }
+  });
+
+  // Check 4: Detect excessively long lines (could be minified malicious code)
+  const lines = content.split('\n');
+  const longLines = lines.filter(line => line.length > 1000);
+  if (longLines.length > 5) {
+    issues.push(`${longLines.length} lines exceed 1000 characters (possible minified code)`);
+  }
+
+  // Check 5: Detect excessive nesting depth in JSON/YAML
+  const depthMatches = content.match(/\{|\[/g);
+  if (depthMatches && depthMatches.length > 200) {
+    issues.push(`Excessive nesting detected: ${depthMatches.length} opening brackets`);
+  }
+
+  return {
+    safe: issues.length === 0,
+    issues
+  };
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +88,17 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to /api/workflows/upload-zip');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
@@ -44,6 +131,61 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ZIP extraction size limit and compression ratio check
+    let totalUncompressedSize = 0;
+    const MAX_UNCOMPRESSED_SIZE = 50 * 1024 * 1024; // 50MB uncompressed
+    const MAX_COMPRESSION_RATIO = 100; // Flag if >100x compression
+
+    const fileEntries = Object.keys(zipContent.files);
+
+    for (const fileName of fileEntries) {
+      const fileEntry = zipContent.files[fileName];
+      if (!fileEntry.dir) {
+        // Get uncompressed size by reading the file content
+        // This is the only reliable way to get size from JSZip's public API
+        const content = await fileEntry.async('nodebuffer');
+        const uncompressedSize = content.length;
+        totalUncompressedSize += uncompressedSize;
+
+        // Early exit if exceeded
+        if (totalUncompressedSize > MAX_UNCOMPRESSED_SIZE) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'ZIP extraction size exceeds 50MB limit (possible ZIP bomb)',
+              details: {
+                compressedSize: file.size,
+                projectedUncompressedSize: totalUncompressedSize,
+                maxAllowed: MAX_UNCOMPRESSED_SIZE
+              }
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    // Check compression ratio
+    const compressionRatio = totalUncompressedSize / file.size;
+
+    if (compressionRatio > MAX_COMPRESSION_RATIO) {
+      console.warn(`⚠️ Suspicious compression ratio: ${compressionRatio.toFixed(2)}x`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Suspicious compression ratio detected (possible ZIP bomb)',
+          details: {
+            compressionRatio: compressionRatio.toFixed(2),
+            compressedSize: file.size,
+            uncompressedSize: totalUncompressedSize
+          }
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`✅ ZIP size validation passed: ${(totalUncompressedSize / 1024 / 1024).toFixed(2)}MB uncompressed, ratio: ${compressionRatio.toFixed(2)}x`);
+
     // Look for terminator.yml or terminator.yaml
     let workflowFile = zipContent.file('terminator.yml') || zipContent.file('terminator.yaml');
 
@@ -68,6 +210,23 @@ export async function POST(request: NextRequest) {
 
     // Extract and parse workflow YAML
     let workflowContent = await workflowFile.async('string');
+
+    // Sanitization check on workflow YAML
+    const yamlSanitizationCheck = detectSuspiciousContent(workflowContent);
+    if (!yamlSanitizationCheck.safe) {
+      console.warn('⚠️ Suspicious content in workflow YAML:', yamlSanitizationCheck.issues);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Workflow file failed security validation',
+          details: {
+            issues: yamlSanitizationCheck.issues,
+            message: 'YAML contains potentially unsafe patterns'
+          }
+        },
+        { status: 400 }
+      );
+    }
 
     let workflowData;
     try {
@@ -200,6 +359,26 @@ export async function POST(request: NextRequest) {
 
       if (file) {
         const content = await file.async('nodebuffer');
+        const contentString = content.toString('utf8');
+
+        // Sanitization check on JavaScript files
+        const jsSanitizationCheck = detectSuspiciousContent(contentString);
+        if (!jsSanitizationCheck.safe) {
+          console.warn(`⚠️ Suspicious content in JS file ${originalZipPath}:`, jsSanitizationCheck.issues);
+          return NextResponse.json(
+            {
+              success: false,
+              error: `JavaScript file ${originalZipPath} failed security validation`,
+              details: {
+                file: originalZipPath,
+                issues: jsSanitizationCheck.issues,
+                message: 'JS file contains potentially unsafe patterns'
+              }
+            },
+            { status: 400 }
+          );
+        }
+
         console.log(`📄 Adding JS file - ZIP: ${originalZipPath}, Processed: ${processedPath}`);
         filesToUpload.push({
           path: processedPath,
@@ -238,7 +417,8 @@ export async function POST(request: NextRequest) {
         cron_expression: extractCronConfigFromYAML(workflowContent)?.expression || null,
         cron_timezone: extractCronConfigFromYAML(workflowContent)?.timezone || 'UTC',
         cron_enabled: extractCronConfigFromYAML(workflowContent)?.enabled || false,
-        created_by: null,
+        created_by: authenticatedUserId,  // Set the creator
+        organization_id: orgId || null,   // Set the organization
         total_versions: 1,
       };
 
@@ -288,10 +468,10 @@ export async function POST(request: NextRequest) {
       workflowId = parseInt(formData.get('workflowId') as string);
       console.log(`📦 Creating new version for workflow ${workflowId} from ZIP upload`);
 
-      // Get current workflow to determine next version
+      // Get current workflow to determine next version AND check ownership
       const { data: currentWorkflow, error: fetchError } = await supabase
         .from('deployed_workflows')
-        .select('id, name, total_versions')
+        .select('id, name, total_versions, created_by, organization_id')
         .eq('id', workflowId)
         .single();
 
@@ -299,6 +479,21 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { success: false, error: 'Workflow not found' },
           { status: 404 }
+        );
+      }
+
+      // STEP 2: AUTHORIZATION - Check workflow ownership for version upload
+      const isOwner = currentWorkflow.created_by === authenticatedUserId;
+      const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+      const isSameOrg = currentWorkflow.organization_id && currentWorkflow.organization_id === orgId;
+
+      if (!isOwner && !(isOrgAdmin && isSameOrg)) {
+        console.warn(
+          `[SECURITY] User ${authenticatedUserId} attempted unauthorized version upload for workflow ${workflowId}`
+        );
+        return NextResponse.json(
+          { error: 'Forbidden - You do not have permission to upload versions to this workflow' },
+          { status: 403 }
         );
       }
 
