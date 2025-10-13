@@ -74,11 +74,36 @@ function DashboardContent() {
     }
     return undefined;
   });
+  const [activeSearchFilter, setActiveSearchFilter] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('executions-filter-search') || '';
+    }
+    return '';
+  });
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('executions-page-size');
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          return parsed;
+        }
+      }
+    }
+    return 100; // Default page size
+  });
+  const [totalExecutions, setTotalExecutions] = useState(0);
 
   // Refs to capture latest filter values without causing re-renders
   const activeWorkflowFilterRef = useRef<string | undefined>(undefined);
   const activeStatusFilterRef = useRef<string | undefined>(undefined);
   const activeMachineFilterRef = useRef<string | undefined>(undefined);
+  const activeSearchFilterRef = useRef<string>('');
+  const currentPageRef = useRef<number>(1);
+  const pageSizeRef = useRef<number>(100);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -92,6 +117,18 @@ function DashboardContent() {
   useEffect(() => {
     activeMachineFilterRef.current = activeMachineFilter;
   }, [activeMachineFilter]);
+
+  useEffect(() => {
+    activeSearchFilterRef.current = activeSearchFilter;
+  }, [activeSearchFilter]);
+
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  useEffect(() => {
+    pageSizeRef.current = pageSize;
+  }, [pageSize]);
 
   // UI state
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -203,13 +240,28 @@ function DashboardContent() {
     }
   }, [viewOrgId]);
 
-  const fetchExecutions = useCallback(async (showLoading = true, filterWorkflow?: string, filterStatus?: string, _filterMachine?: string) => {
+  const fetchExecutions = useCallback(async (
+    showLoading = true,
+    filterWorkflow?: string,
+    filterStatus?: string,
+    filterMachine?: string,
+    searchQuery?: string,
+    page?: number,
+    pageSizeParam?: number
+  ) => {
     try {
       if (showLoading) setExecutionsLoading(true);
 
       // Build query params
       const params = new URLSearchParams();
-      params.set('limit', '200'); // Increased from 50 to 200
+
+      // Pagination
+      const effectivePageSize = pageSizeParam || pageSize;
+      const effectivePage = page || currentPage;
+      const offset = (effectivePage - 1) * effectivePageSize;
+      params.set('limit', effectivePageSize.toString());
+      params.set('offset', offset.toString());
+
       if (viewOrgId) params.set('viewOrgId', viewOrgId);
 
       // Apply filters to API query
@@ -223,7 +275,12 @@ function DashboardContent() {
       if (filterStatus) {
         params.set('status', filterStatus);
       }
-      // Note: Machine filter is client-side only (not supported by API yet)
+      if (filterMachine) {
+        params.set('machine', filterMachine);
+      }
+      if (searchQuery) {
+        params.set('search', searchQuery);
+      }
 
       const apiUrl = `/api/remote-workflows/executions?${params.toString()}`;
       const response = await fetch(apiUrl);
@@ -231,14 +288,17 @@ function DashboardContent() {
       if (executionsData.success) {
         // Always update with fresh data from API to ensure UI stays in sync
         setExecutions(executionsData.executions || []);
+        // Update total count for pagination
+        setTotalExecutions(executionsData.pagination?.total || 0);
       }
     } catch (error) {
       console.error('Failed to fetch executions:', error);
       setExecutions([]);
+      setTotalExecutions(0);
     } finally {
       if (showLoading) setExecutionsLoading(false);
     }
-  }, [viewOrgId]);
+  }, [viewOrgId, pageSize, currentPage]);
 
   const fetchLiveExecutions = useCallback(async () => {
     try {
@@ -351,12 +411,13 @@ function DashboardContent() {
   }, [fetchExecutions, fetchLiveExecutions]);
 
   const handleRefreshExecutions = useCallback(() => {
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, currentPage, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, currentPage, pageSize]);
 
   // Handle filter changes - refetch from API and save to localStorage
   const handleWorkflowFilterChange = useCallback((workflowName: string | undefined) => {
     setActiveWorkflowFilter(workflowName);
+    setCurrentPage(1); // Reset to first page on filter change
     if (typeof window !== 'undefined') {
       if (workflowName) {
         localStorage.setItem('executions-filter-workflow', workflowName);
@@ -364,11 +425,12 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-workflow');
       }
     }
-    fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter);
-  }, [fetchExecutions, activeStatusFilter, activeMachineFilter]);
+    fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter, activeSearchFilter, 1, pageSize);
+  }, [fetchExecutions, activeStatusFilter, activeMachineFilter, activeSearchFilter, pageSize]);
 
   const handleStatusFilterChange = useCallback((status: string | undefined) => {
     setActiveStatusFilter(status);
+    setCurrentPage(1); // Reset to first page on filter change
     if (typeof window !== 'undefined') {
       if (status) {
         localStorage.setItem('executions-filter-status', status);
@@ -376,11 +438,12 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-status');
       }
     }
-    fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter);
-  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter]);
+    fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter, activeSearchFilter, 1, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter, activeSearchFilter, pageSize]);
 
   const handleMachineFilterChange = useCallback((machine: string | undefined) => {
     setActiveMachineFilter(machine);
+    setCurrentPage(1); // Reset to first page on filter change
     if (typeof window !== 'undefined') {
       if (machine) {
         localStorage.setItem('executions-filter-machine', machine);
@@ -388,8 +451,35 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-machine');
       }
     }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine, activeSearchFilter, 1, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeSearchFilter, pageSize]);
+
+  const handleSearchFilterChange = useCallback((search: string) => {
+    setActiveSearchFilter(search);
+    setCurrentPage(1); // Reset to first page on search change
+    if (typeof window !== 'undefined') {
+      if (search) {
+        localStorage.setItem('executions-filter-search', search);
+      } else {
+        localStorage.removeItem('executions-filter-search');
+      }
+    }
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, search, 1, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, pageSize]);
+
+  const handlePageChange = useCallback((newPage: number) => {
+    setCurrentPage(newPage);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, newPage, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, pageSize]);
+
+  const handlePageSizeChange = useCallback((newPageSize: number) => {
+    setPageSize(newPageSize);
+    setCurrentPage(1); // Reset to first page when changing page size
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('executions-page-size', newPageSize.toString());
+    }
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, 1, newPageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter]);
 
   // Handlers
   const handleWorkflowCreated = useCallback((_newWorkflow: any) => {
@@ -487,10 +577,12 @@ function DashboardContent() {
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
     fetchWorkflows();
-    fetchExecutions();
+    // Pass saved filters to initial fetch
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, currentPage, pageSize);
     fetchLiveExecutions();
     fetchExecutionFilters();
-  }, [fetchWorkflows, fetchExecutions, fetchLiveExecutions, fetchExecutionFilters, viewOrgId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchWorkflows, fetchLiveExecutions, fetchExecutionFilters, viewOrgId]);
 
   // Polling for executions - always poll to catch new executions
   useEffect(() => {
@@ -507,7 +599,15 @@ function DashboardContent() {
       // This ensures new executions appear within 5 seconds
       // Use refs to get current filter values without causing re-renders
       if (localPollCount % 2 === 0) {
-        fetchExecutions(false, activeWorkflowFilterRef.current, activeStatusFilterRef.current, activeMachineFilterRef.current);
+        fetchExecutions(
+          false,
+          activeWorkflowFilterRef.current,
+          activeStatusFilterRef.current,
+          activeMachineFilterRef.current,
+          activeSearchFilterRef.current,
+          currentPageRef.current,
+          pageSizeRef.current
+        );
       }
     }, 2500); // Poll every 2.5 seconds
 
@@ -672,9 +772,16 @@ function DashboardContent() {
                   onWorkflowFilterChange={handleWorkflowFilterChange}
                   onStatusFilterChange={handleStatusFilterChange}
                   onMachineFilterChange={handleMachineFilterChange}
+                  onSearchFilterChange={handleSearchFilterChange}
+                  onPageChange={handlePageChange}
+                  onPageSizeChange={handlePageSizeChange}
                   activeWorkflowFilter={activeWorkflowFilter}
                   activeStatusFilter={activeStatusFilter}
                   activeMachineFilter={activeMachineFilter}
+                  activeSearchFilter={activeSearchFilter}
+                  currentPage={currentPage}
+                  pageSize={pageSize}
+                  totalRecords={totalExecutions}
                 />
               </div>
             )}

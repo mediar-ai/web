@@ -4,14 +4,10 @@ import * as React from 'react';
 import { memo } from 'react';
 import {
   ColumnDef,
-  ColumnFiltersState,
   SortingState,
   VisibilityState,
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
 import {
@@ -72,10 +68,19 @@ interface ExecutionsDataTableProps {
   onWorkflowFilterChange?: (workflowName: string | undefined) => void;
   onStatusFilterChange?: (status: string | undefined) => void;
   onMachineFilterChange?: (machine: string | undefined) => void;
+  onSearchFilterChange?: (search: string) => void;
+  // Server-side pagination callbacks
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
   // Active filter values (controlled from parent)
   activeWorkflowFilter?: string;
   activeStatusFilter?: string;
   activeMachineFilter?: string;
+  activeSearchFilter?: string;
+  // Server-side pagination state
+  currentPage?: number;
+  pageSize?: number;
+  totalRecords?: number;
 }
 
 // Helper function to extract the most informative message from parser output
@@ -212,9 +217,16 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   onWorkflowFilterChange,
   onStatusFilterChange,
   onMachineFilterChange,
+  onSearchFilterChange,
+  onPageChange,
+  onPageSizeChange,
   activeWorkflowFilter,
   activeStatusFilter,
   activeMachineFilter,
+  activeSearchFilter,
+  currentPage = 1,
+  pageSize: serverPageSize = 100,
+  totalRecords = 0,
 }: ExecutionsDataTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([
     {
@@ -222,7 +234,6 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       desc: true,
     },
   ]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(() => {
     // Load saved column visibility from localStorage or use defaults
     if (typeof window !== 'undefined') {
@@ -246,13 +257,6 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       version: false,
     };
   });
-  const [globalFilter, setGlobalFilter] = React.useState(() => {
-    // Load saved global filter from localStorage
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('executions-table-global-filter') || '';
-    }
-    return '';
-  });
   const [rowSelection, setRowSelection] = React.useState({});
 
   // Track which executions are being stopped/deleted
@@ -268,17 +272,6 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       localStorage.setItem('executions-table-columns', JSON.stringify(columnVisibility));
     }
   }, [columnVisibility]);
-
-  // Save global filter to localStorage whenever it changes
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (globalFilter) {
-        localStorage.setItem('executions-table-global-filter', globalFilter);
-      } else {
-        localStorage.removeItem('executions-table-global-filter');
-      }
-    }
-  }, [globalFilter]);
 
   const columns: ColumnDef<Execution>[] = React.useMemo(
     () => [
@@ -675,58 +668,32 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     ]
   );
 
+  // Calculate total pages based on server-side total
+  const totalPages = Math.ceil(totalRecords / serverPageSize);
+
   const table = useReactTable({
     data: executions,
     columns,
     onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
-    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
+    manualPagination: true, // Server-side pagination
+    manualFiltering: true, // Server-side filtering
+    manualSorting: true, // Server-side sorting (already sorted by API)
+    pageCount: totalPages,
     getRowId: (row) => `execution-${row.execution_id}`, // Use stable execution ID
     state: {
       sorting,
-      columnFilters,
       columnVisibility,
       rowSelection,
-      globalFilter,
-    },
-    initialState: {
       pagination: {
-        pageSize: (() => {
-          // Load saved page size from localStorage or use default
-          if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('executions-table-page-size');
-            if (saved) {
-              const parsed = parseInt(saved, 10);
-              if (!isNaN(parsed) && [10, 20, 30, 40, 50].includes(parsed)) {
-                return parsed;
-              }
-            }
-          }
-          return 10;
-        })(),
+        pageIndex: currentPage - 1, // TanStack uses 0-based index
+        pageSize: serverPageSize,
       },
     },
   });
 
-  // Save page size to localStorage whenever it changes
-  React.useEffect(() => {
-    if (typeof window !== 'undefined' && table) {
-      const pageSize = table.getState().pagination.pageSize;
-      localStorage.setItem('executions-table-page-size', pageSize.toString());
-    }
-  }, [table?.getState().pagination.pageSize]);
-
-  // Reset to first page when filters change
-  React.useEffect(() => {
-    table.setPageIndex(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columnFilters, globalFilter]);
 
   // Get unique workflow names for filter (use prop if provided, else compute from executions)
   const uniqueWorkflowNames = React.useMemo(() => {
@@ -763,9 +730,6 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     return Array.from(machines).sort();
   }, [executions, filterMachines]);
 
-  // Active filters count
-  const activeFiltersCount = columnFilters.length;
-
   return (
     <div className="w-full">
       <style dangerouslySetInnerHTML={{__html: `
@@ -794,8 +758,24 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
               <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-600" />
               <Input
                 placeholder="Search executions..."
-                value={globalFilter ?? ''}
-                onChange={(event) => setGlobalFilter(event.target.value)}
+                value={activeSearchFilter ?? ''}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  // Debounce search - only trigger after user stops typing for 500ms
+                  if (onSearchFilterChange) {
+                    // Use setTimeout to debounce
+                    const timeoutId = setTimeout(() => {
+                      onSearchFilterChange(value);
+                    }, 500);
+                    // Store timeout ID to clear on next keystroke
+                    (event.target as any).debounceTimeout = timeoutId;
+                    // Clear previous timeout if exists
+                    if ((event.target as any).prevDebounceTimeout) {
+                      clearTimeout((event.target as any).prevDebounceTimeout);
+                    }
+                    (event.target as any).prevDebounceTimeout = timeoutId;
+                  }
+                }}
                 className="h-8 pl-7 text-xs font-mono border-2 border-black focus:ring-2 focus:ring-black"
               />
             </div>
@@ -875,11 +855,8 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             value={activeWorkflowFilter ?? ''}
             onChange={(e) => {
               const value = e.target.value || undefined;
-              // Use server-side filter if callback provided, otherwise fall back to client-side
               if (onWorkflowFilterChange) {
                 onWorkflowFilterChange(value);
-              } else {
-                table.getColumn('workflow_name')?.setFilterValue(value);
               }
             }}
             className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
@@ -897,11 +874,8 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             value={activeStatusFilter ?? ''}
             onChange={(e) => {
               const value = e.target.value || undefined;
-              // Use server-side filter if callback provided, otherwise fall back to client-side
               if (onStatusFilterChange) {
                 onStatusFilterChange(value);
-              } else {
-                table.getColumn('status')?.setFilterValue(value);
               }
             }}
             className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
@@ -919,11 +893,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             value={activeMachineFilter ?? ''}
             onChange={(e) => {
               const value = e.target.value || undefined;
-              // Machine filter is client-side only for now
               if (onMachineFilterChange) {
                 onMachineFilterChange(value);
               }
-              table.getColumn('machine')?.setFilterValue(value);
             }}
             className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
@@ -936,16 +908,16 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           </select>
 
           {/* Clear Filters Button */}
-          {(activeFiltersCount > 0 || activeWorkflowFilter || activeStatusFilter || activeMachineFilter) && (
+          {(activeWorkflowFilter || activeStatusFilter || activeMachineFilter || activeSearchFilter) && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                table.resetColumnFilters();
-                // Clear server-side filters
+                // Clear all server-side filters
                 if (onWorkflowFilterChange) onWorkflowFilterChange(undefined);
                 if (onStatusFilterChange) onStatusFilterChange(undefined);
                 if (onMachineFilterChange) onMachineFilterChange(undefined);
+                if (onSearchFilterChange) onSearchFilterChange('');
               }}
               className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
             >
@@ -1026,16 +998,16 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       {/* Pagination */}
       <div className="flex items-center justify-between py-2">
         <div className="text-xs text-gray-600 font-mono">
-          {table.getFilteredSelectedRowModel().rows.length} of{' '}
-          {table.getFilteredRowModel().rows.length} row(s) selected.
+          Showing {executions.length > 0 ? (currentPage - 1) * serverPageSize + 1 : 0} to{' '}
+          {Math.min(currentPage * serverPageSize, totalRecords)} of {totalRecords} executions
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.setPageIndex(0)}
-              disabled={!table.getCanPreviousPage()}
+              onClick={() => onPageChange && onPageChange(1)}
+              disabled={currentPage === 1}
               className="h-7 w-7 p-0 border border-black hover:bg-black hover:text-white disabled:opacity-50"
             >
               <ChevronsLeft className="h-3 w-3" />
@@ -1043,8 +1015,8 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+              onClick={() => onPageChange && onPageChange(currentPage - 1)}
+              disabled={currentPage === 1}
               className="h-7 w-7 p-0 border border-black hover:bg-black hover:text-white disabled:opacity-50"
             >
               <ChevronLeft className="h-3 w-3" />
@@ -1053,7 +1025,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
           <div className="flex items-center gap-1">
             <span className="font-mono text-xs">
-              Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+              Page {currentPage} of {totalPages || 1}
             </span>
           </div>
 
@@ -1061,8 +1033,8 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
+              onClick={() => onPageChange && onPageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
               className="h-7 w-7 p-0 border border-black hover:bg-black hover:text-white disabled:opacity-50"
             >
               <ChevronRight className="h-3 w-3" />
@@ -1070,8 +1042,8 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-              disabled={!table.getCanNextPage()}
+              onClick={() => onPageChange && onPageChange(totalPages)}
+              disabled={currentPage >= totalPages}
               className="h-7 w-7 p-0 border border-black hover:bg-black hover:text-white disabled:opacity-50"
             >
               <ChevronsRight className="h-3 w-3" />
@@ -1079,15 +1051,17 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           </div>
 
           <select
-            value={table.getState().pagination.pageSize}
+            value={serverPageSize}
             onChange={(e) => {
-              table.setPageSize(Number(e.target.value));
+              if (onPageSizeChange) {
+                onPageSizeChange(Number(e.target.value));
+              }
             }}
             className="ml-2 h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
-            {[10, 20, 30, 40, 50].map((pageSize) => (
-              <option key={pageSize} value={pageSize}>
-                Show {pageSize}
+            {[25, 50, 100, 200].map((size) => (
+              <option key={size} value={size}>
+                Show {size}
               </option>
             ))}
           </select>

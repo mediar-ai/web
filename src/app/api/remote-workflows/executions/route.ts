@@ -11,7 +11,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const workflow_id = searchParams.get('workflow_id');
     const status = searchParams.get('status');
-    const limit = parseInt(searchParams.get('limit') || '200');
+    const machine = searchParams.get('machine'); // Machine name filter
+    const search = searchParams.get('search'); // Global search query
+    const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
     const include_results = searchParams.get('include_results') === 'true';
     const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
@@ -137,6 +139,40 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
+    // Machine filter - filter by machine name
+    if (machine) {
+      // First get machine ID from name
+      const { data: machineData } = await supabase
+        .from('remote_machines')
+        .select('id')
+        .eq('name', machine)
+        .single();
+
+      if (machineData) {
+        query = query.eq('assigned_machine_id', machineData.id);
+      } else {
+        // Machine not found, return empty results
+        return NextResponse.json({
+          success: true,
+          executions: [],
+          pagination: {
+            total: 0,
+            limit,
+            offset,
+            has_more: false,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
+    // Global search - search across multiple fields
+    if (search) {
+      // Search in error_message, formatted_output, and client_id
+      // Use OR logic: match any of these fields
+      query = query.or(`error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
+    }
+
     const { data: executions, error } = await query;
 
     if (error) {
@@ -155,6 +191,21 @@ export async function GET(request: NextRequest) {
     }
     if (status) {
       countQuery = countQuery.eq('status', status);
+    }
+    if (machine) {
+      // Apply same machine filter to count query
+      const { data: machineData } = await supabase
+        .from('remote_machines')
+        .select('id')
+        .eq('name', machine)
+        .single();
+      if (machineData) {
+        countQuery = countQuery.eq('assigned_machine_id', machineData.id);
+      }
+    }
+    if (search) {
+      // Apply same search filter to count query
+      countQuery = countQuery.or(`error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
     }
 
     const { count: totalCount } = await countQuery;
@@ -287,10 +338,14 @@ export async function GET(request: NextRequest) {
       filters: {
         workflow_id: workflow_id ? parseInt(workflow_id) : null,
         status: status || 'all',
+        machine: machine || null,
+        search: search || null,
         include_results,
         applied_filters: {
           ...(workflow_id && { workflow_id: parseInt(workflow_id) }),
-          ...(status && { status })
+          ...(status && { status }),
+          ...(machine && { machine }),
+          ...(search && { search })
         }
       },
       timestamp: new Date().toISOString()
@@ -305,6 +360,8 @@ export async function GET(request: NextRequest) {
       requestParams: {
         workflow_id: workflow_id ? parseInt(workflow_id) : null,
         status: status || null,
+        machine: machine || null,
+        search: search || null,
         limit,
         offset,
         include_results
