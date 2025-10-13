@@ -266,6 +266,29 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   // Track which dropdown is open to preserve state during re-renders
   const [openDropdownId, setOpenDropdownId] = React.useState<number | null>(null);
 
+  // Local search input state (controlled input, only triggers API on Enter/Button)
+  const [localSearchValue, setLocalSearchValue] = React.useState(activeSearchFilter || '');
+
+  // Sync local search value when active filter changes (e.g., cleared from parent)
+  React.useEffect(() => {
+    setLocalSearchValue(activeSearchFilter || '');
+  }, [activeSearchFilter]);
+
+  // Handler to trigger search (called by Enter key or Search button)
+  const handleSearch = React.useCallback(() => {
+    if (onSearchFilterChange) {
+      onSearchFilterChange(localSearchValue);
+    }
+  }, [localSearchValue, onSearchFilterChange]);
+
+  // Handler to clear search
+  const handleClearSearch = React.useCallback(() => {
+    setLocalSearchValue('');
+    if (onSearchFilterChange) {
+      onSearchFilterChange('');
+    }
+  }, [onSearchFilterChange]);
+
   // Save column visibility to localStorage whenever it changes
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -757,28 +780,37 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-600" />
               <Input
-                placeholder="Search executions..."
-                value={activeSearchFilter ?? ''}
+                placeholder="Search executions... (press Enter)"
+                value={localSearchValue}
                 onChange={(event) => {
-                  const value = event.target.value;
-                  // Debounce search - only trigger after user stops typing for 500ms
-                  if (onSearchFilterChange) {
-                    // Use setTimeout to debounce
-                    const timeoutId = setTimeout(() => {
-                      onSearchFilterChange(value);
-                    }, 500);
-                    // Store timeout ID to clear on next keystroke
-                    (event.target as any).debounceTimeout = timeoutId;
-                    // Clear previous timeout if exists
-                    if ((event.target as any).prevDebounceTimeout) {
-                      clearTimeout((event.target as any).prevDebounceTimeout);
-                    }
-                    (event.target as any).prevDebounceTimeout = timeoutId;
+                  setLocalSearchValue(event.target.value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    handleSearch();
                   }
                 }}
-                className="h-8 pl-7 text-xs font-mono border-2 border-black focus:ring-2 focus:ring-black"
+                className="h-8 pl-7 pr-7 text-xs font-mono border-2 border-black focus:ring-2 focus:ring-black"
               />
+              {localSearchValue && (
+                <button
+                  onClick={handleClearSearch}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-black"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSearch}
+              className="h-8 text-xs border-2 border-black hover:bg-black hover:text-white"
+            >
+              <Search className="mr-1 h-3 w-3" />
+              SEARCH
+            </Button>
             {table.getFilteredSelectedRowModel().rows.length > 0 && (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-600 font-mono">
