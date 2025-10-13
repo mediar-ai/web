@@ -48,6 +48,7 @@ function DashboardContent() {
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [executionsLoading, setExecutionsLoading] = useState(false);
+  const [initialExecutionsFetchDone, setInitialExecutionsFetchDone] = useState(false);
   const [_pollCount, setPollCount] = useState(0);
 
   // Filter values state (available options from DB)
@@ -115,14 +116,49 @@ function DashboardContent() {
   const [totalExecutions, setTotalExecutions] = useState(0);
 
   // Refs to capture latest filter values without causing re-renders
-  const activeWorkflowFilterRef = useRef<string | undefined>(undefined);
-  const activeStatusFilterRef = useRef<string | undefined>(undefined);
-  const activeMachineFilterRef = useRef<string | undefined>(undefined);
-  const activeSearchFilterRef = useRef<string>('');
-  const activeSearchFieldRef = useRef<string>('all');
-  const activeSearchModeRef = useRef<string>('contains');
+  // Initialize refs with localStorage values so polling uses correct filters from the start
+  const activeWorkflowFilterRef = useRef<string | undefined>(
+    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-workflow') || undefined : undefined
+  );
+  const activeStatusFilterRef = useRef<string | undefined>(
+    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-status') || undefined : undefined
+  );
+  const activeMachineFilterRef = useRef<string | undefined>(
+    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-machine') || undefined : undefined
+  );
+  const activeSearchFilterRef = useRef<string>(
+    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-search') || '' : ''
+  );
+  const activeSearchFieldRef = useRef<string>(
+    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-search-field') || 'all' : 'all'
+  );
+  const activeSearchModeRef = useRef<string>(
+    (() => {
+      if (typeof window !== 'undefined') {
+        const savedField = localStorage.getItem('executions-filter-search-field') || 'all';
+        if (savedField === 'execution_id') {
+          return localStorage.getItem('executions-filter-search-mode') || 'exact';
+        }
+        return localStorage.getItem('executions-filter-search-mode') || 'contains';
+      }
+      return 'contains';
+    })()
+  );
   const currentPageRef = useRef<number>(1);
-  const pageSizeRef = useRef<number>(100);
+  const pageSizeRef = useRef<number>(
+    (() => {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('executions-page-size');
+        if (saved) {
+          const parsed = parseInt(saved, 10);
+          if (!isNaN(parsed) && parsed > 0) {
+            return parsed;
+          }
+        }
+      }
+      return 100;
+    })()
+  );
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -325,11 +361,14 @@ function DashboardContent() {
         setExecutions(executionsData.executions || []);
         // Update total count for pagination
         setTotalExecutions(executionsData.pagination?.total || 0);
+        // Mark initial fetch as complete
+        setInitialExecutionsFetchDone(true);
       }
     } catch (error) {
       console.error('Failed to fetch executions:', error);
       setExecutions([]);
       setTotalExecutions(0);
+      setInitialExecutionsFetchDone(true);
     } finally {
       if (showLoading) setExecutionsLoading(false);
     }
@@ -643,11 +682,15 @@ function DashboardContent() {
 
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
-    fetchWorkflows();
-    // Pass saved filters to initial fetch
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize);
-    fetchLiveExecutions();
-    fetchExecutionFilters();
+    const initializeData = async () => {
+      // MUST fetch workflows first because executions filter depends on workflowsRef
+      await fetchWorkflows();
+      // Now fetch executions with saved filters (workflow lookup will work)
+      fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize);
+      fetchLiveExecutions();
+      fetchExecutionFilters();
+    };
+    initializeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchWorkflows, fetchLiveExecutions, fetchExecutionFilters, viewOrgId]);
 
@@ -821,7 +864,7 @@ function DashboardContent() {
             </div>
 
             {/* Recent Executions */}
-            {(executions.length > 0 || executionsLoading || activeWorkflowFilter || activeStatusFilter || activeMachineFilter || activeSearchFilter) && (
+            {initialExecutionsFetchDone && (executions.length > 0 || executionsLoading || activeWorkflowFilter || activeStatusFilter || activeMachineFilter || activeSearchFilter) && (
               <div className="space-y-3 mt-4">
                 <h2 className="text-sm font-bold font-mono uppercase">Recent Executions</h2>
 
