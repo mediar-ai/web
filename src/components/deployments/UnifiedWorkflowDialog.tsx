@@ -374,14 +374,23 @@ export function UnifiedWorkflowDialog({
       });
 
       // Step 3: Create new version with updated YAML
+      const requestBody = {
+        automation_sequence: updatedYaml,
+        set_as_active: false, // Don't auto-activate
+        change_notes: `Updated cron schedule: ${cronConfig.expression}`
+      };
+
+      console.log('📦 Request body:', {
+        automation_sequence_length: requestBody.automation_sequence?.length,
+        automation_sequence_preview: requestBody.automation_sequence?.substring(0, 100),
+        set_as_active: requestBody.set_as_active,
+        change_notes: requestBody.change_notes
+      });
+
       const versionResponse = await fetch(`/api/remote-workflows/${workflow.id}/versions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          automation_sequence: updatedYaml,
-          set_as_active: false, // Don't auto-activate
-          change_notes: `Updated cron schedule: ${cronConfig.expression}`
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       console.log('📦 Version creation response status:', versionResponse.status);
@@ -390,8 +399,11 @@ export function UnifiedWorkflowDialog({
 
       console.log('📦 Version creation result:', versionData);
 
-      if (!versionData.success) {
-        setErrorMessage(versionData.error || 'Failed to create new version');
+      if (!versionResponse.ok || !versionData.success) {
+        const errorDetails = versionData.error || versionData.details || 'Failed to create new version';
+        console.error('❌ Version creation failed:', errorDetails);
+        console.error('Full error response:', versionData);
+        setErrorMessage(`Failed to save: ${errorDetails}`);
         return;
       }
 
