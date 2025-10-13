@@ -168,9 +168,10 @@ export async function GET(request: NextRequest) {
 
     // Global search - search across multiple fields
     if (search) {
-      // Search in error_message, formatted_output, and client_id
+      // Search in execution ID, error_message, formatted_output, client_id, and modal_call_id
       // Use OR logic: match any of these fields
-      query = query.or(`error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
+      // Convert numeric ID to text for pattern matching
+      query = query.or(`id::text.ilike.%${search}%,error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
     }
 
     const { data: executions, error } = await query;
@@ -204,8 +205,8 @@ export async function GET(request: NextRequest) {
       }
     }
     if (search) {
-      // Apply same search filter to count query
-      countQuery = countQuery.or(`error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
+      // Apply same search filter to count query (including execution ID)
+      countQuery = countQuery.or(`id::text.ilike.%${search}%,error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
     }
 
     const { count: totalCount } = await countQuery;
