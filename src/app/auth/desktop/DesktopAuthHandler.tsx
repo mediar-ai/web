@@ -72,6 +72,12 @@ export default function DesktopAuthHandler({
           );
         }
 
+        // Also trigger deep-link redirect for immediate callback (hybrid approach)
+        if (data.token) {
+          const redirectUrl = `mediar://auth/callback?token=${data.token}&userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(email)}`;
+          window.location.href = redirectUrl;
+        }
+
         setStatus('success');
       } catch (err) {
         console.error('Desktop auth error:', err);
