@@ -3053,6 +3053,65 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
         return 0
 
 
+@app.function(
+    image=image,
+    secrets=secrets,
+    schedule=modal.Period(minutes=5),  # Run every 5 minutes
+    timeout=300,  # 5 minutes timeout
+    max_containers=1,  # Prevent concurrent cleanup attempts
+    retries=0,  # Don't retry on failure
+)
+def cleanup_stale_executions_job():
+    """
+    🧹 DEDICATED CLEANUP JOB: Automatically clean up stuck executions
+
+    Runs independently every 5 minutes to catch executions that:
+    1. Have been running for 25+ minutes (likely Modal timeout)
+    2. Have been stuck for 30+ minutes with no logs (never started)
+
+    This is more reliable than conditional cleanup in the coordinator.
+    """
+    conn = None
+    cur = None
+
+    try:
+        logger.info("🧹 Starting stale execution cleanup check...")
+
+        conn = get_database_connection()
+        cur = conn.cursor()
+
+        cleanup_count = cleanup_stale_executions(
+            cur, conn, stale_threshold_minutes=25
+        )
+
+        if cleanup_count > 0:
+            logger.warning(
+                "🧹 Cleanup completed: %d stale executions cleaned up",
+                cleanup_count
+            )
+        else:
+            logger.info("🧹 Cleanup check complete: No stale executions found")
+
+        return {
+            "status": "success",
+            "cleaned": cleanup_count,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except Exception as e:
+        logger.error("🧹 Cleanup job failed: %s", e)
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 @app.function(image=image, secrets=secrets, timeout=60)
 def health_check() -> Dict[str, Any]:
     """
@@ -3294,15 +3353,8 @@ def check_and_process_queued_jobs():
                 " Failed to cleanup stale coordinator locks: %s", cleanup_err
             )
 
-        # Periodically clean up stale executions
-        if int(time.time()) % 60 == 0:
-            cleanup_count = cleanup_stale_executions(
-                cur, conn, stale_threshold_minutes=25
-            )
-            if cleanup_count > 0:
-                logger.info(
-                    " Enhanced cleanup: %d stale executions cleaned up", cleanup_count
-                )
+        # NOTE: Stale execution cleanup moved to dedicated scheduled function cleanup_stale_executions_job()
+        # This runs independently every 5 minutes for better reliability
 
         #  ENHANCED MACHINE LOGIC: Find next queued job for a machine with available capacity
         # Jobs already have assigned_machine_id and mcp_endpoint - check against max_concurrent_executions
