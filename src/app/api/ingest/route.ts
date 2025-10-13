@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -31,11 +32,46 @@ function createUITreeHash(uiTree: string, clientTimestamp: string, userId: strin
 
 export async function POST(request: NextRequest) {
   try {
+    // Extract and validate Authorization header
+    const authHeader = request.headers.get('authorization');
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('[INGEST] Missing or invalid Authorization header');
+      return NextResponse.json(
+        { error: 'Unauthorized - Missing authentication token' },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Validate token
+    const validation = await validateDesktopToken(token);
+
+    if (!validation.valid) {
+      console.log('[INGEST] Token validation failed:', validation.error);
+      return NextResponse.json(
+        { error: `Unauthorized - ${validation.error}` },
+        { status: 401 }
+      );
+    }
+
+    console.log(`[INGEST] Authenticated request from user: ${validation.email}`);
+
     const body = await request.json();
     const { session_id, user_id, payload } = body;
 
     if (!session_id || !payload || !payload.type) {
       return NextResponse.json({ error: 'session_id and payload with a type are required' }, { status: 400 });
+    }
+
+    // Verify user_id matches token (if user_id is provided)
+    if (user_id && user_id !== validation.userId) {
+      console.log(`[INGEST] user_id mismatch - token: ${validation.userId}, payload: ${user_id}`);
+      return NextResponse.json(
+        { error: 'Unauthorized - user_id does not match authentication token' },
+        { status: 403 }
+      );
     }
 
     console.log(`[INGEST] Processing event for session ${session_id}, type: ${payload.type}`);

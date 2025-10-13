@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 
 // These types are copied from the old edge function for consistency.
 // In a larger refactor, they could be moved to a shared types file.
@@ -118,16 +119,51 @@ if (!supabaseUrl || !supabaseServiceKey) {
 // Initialize Supabase client for admin operations
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   console.log("API route 'ingest-user-activity' invoked.");
 
   try {
+    // Extract and validate Authorization header
+    const authHeader = request.headers.get('authorization');
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('[Ingest-User-Activity] Missing or invalid Authorization header');
+      return NextResponse.json(
+        { error: 'Unauthorized - Missing authentication token' },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Validate token
+    const validation = await validateDesktopToken(token);
+
+    if (!validation.valid) {
+      console.log('[Ingest-User-Activity] Token validation failed:', validation.error);
+      return NextResponse.json(
+        { error: `Unauthorized - ${validation.error}` },
+        { status: 401 }
+      );
+    }
+
+    console.log(`[Ingest-User-Activity] Authenticated request from user: ${validation.email}`);
+
     const body = await request.json();
     const payload = body as RequestPayload;
     const { sessionId, userId, organizationId, exportedData } = payload;
 
     if (!sessionId || !userId || !exportedData) {
       return NextResponse.json({ error: 'Missing sessionId, userId, or exportedData' }, { status: 400 });
+    }
+
+    // Verify userId matches token
+    if (userId !== validation.userId) {
+      console.log(`[Ingest-User-Activity] userId mismatch - token: ${validation.userId}, payload: ${userId}`);
+      return NextResponse.json(
+        { error: 'Unauthorized - userId does not match authentication token' },
+        { status: 403 }
+      );
     }
 
     // Ensure user exists before logging activity

@@ -382,6 +382,18 @@ export async function POST(
       console.log(
         `🔍 Getting optimal machine assignment for workflow ${workflowIdNum}...`
       );
+
+      // First check if this workflow has an exclusive assignment
+      const { data: exclusiveAssignment } = await supabase
+        .from('workflow_machine_assignments')
+        .select('machine_id, assignment_type, remote_machines!inner(name)')
+        .eq('workflow_id', workflowIdNum)
+        .eq('assignment_type', 'exclusive')
+        .eq('is_active', true)
+        .single();
+
+      const isExclusive = !!exclusiveAssignment;
+
       const { data: optimalMachine, error: optimalError } = await supabase.rpc(
         'get_optimal_machine_for_workflow',
         {
@@ -413,7 +425,38 @@ export async function POST(
         }
         mcp_endpoint = machineDetails.mcp_endpoint;
       } else {
-        // Fallback to machine 1 (existing behavior)
+        // If this workflow has an EXCLUSIVE assignment, reject execution
+        if (isExclusive && exclusiveAssignment) {
+          const machines = exclusiveAssignment.remote_machines as
+            | { name: string }
+            | { name: string }[];
+          const machineName = Array.isArray(machines)
+            ? machines[0]?.name
+            : machines?.name;
+
+          console.error(
+            `[ERROR] Exclusive machine ${machineName} (ID: ${exclusiveAssignment.machine_id}) unavailable for workflow ${workflowIdNum}`
+          );
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Workflow requires exclusive machine that is currently unavailable`,
+              details: {
+                workflow_id: workflowIdNum,
+                exclusive_machine_id: exclusiveAssignment.machine_id,
+                exclusive_machine_name: machineName,
+                reason:
+                  'Exclusive machine is either inactive or at maximum capacity',
+                suggestion:
+                  'Please wait for the exclusive machine to become available, or change the assignment type to "preferred" to allow fallback',
+              },
+              execution_id: null,
+            },
+            { status: 503 }
+          );
+        }
+
+        // For non-exclusive workflows, fallback to machine 1
         console.log(
           `[INFO] No optimal machine found, using fallback Machine 1`
         );

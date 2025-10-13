@@ -196,13 +196,17 @@ export async function POST(_request: NextRequest) {
       try {
         console.log(`🚀 Triggering execution for workflow: ${workflow.name}`);
 
-        // Get preferred machine for this workflow (only if healthy)
+        // Get machine assignment for this workflow (check exclusive first, then preferred)
         let preferredMachineId: number | undefined = undefined;
+        let shouldSkipExecution = false;
+        let skipReason = '';
+
         try {
           const { data: preferredAssignment } = await supabase
             .from('workflow_machine_assignments')
             .select(`
               machine_id,
+              assignment_type,
               remote_machines!inner(id, name, status, health_status)
             `)
             .eq('workflow_id', workflow.id)
@@ -216,19 +220,69 @@ export async function POST(_request: NextRequest) {
             const machine = Array.isArray(preferredAssignment.remote_machines)
               ? preferredAssignment.remote_machines[0]
               : preferredAssignment.remote_machines;
+            const assignmentType = preferredAssignment.assignment_type as string;
 
-            // Use preferred machine if active (even if unhealthy - user explicitly chose it)
-            // Only skip if machine is inactive
-            if (machine && machine.status === 'active') {
-              preferredMachineId = preferredAssignment.machine_id;
-              console.log(`   Using preferred machine ${machine.name} (ID: ${preferredMachineId}, health: ${machine.health_status}) for workflow ${workflow.id}`);
-            } else {
-              console.log(`   Preferred machine ${machine?.name} (ID: ${preferredAssignment.machine_id}) is inactive, using auto-assignment`);
+            // EXCLUSIVE: Workflow MUST run on this machine only
+            if (assignmentType === 'exclusive') {
+              if (machine && machine.status === 'active') {
+                // Check if machine has available capacity
+                const { data: runningExecutions } = await supabase
+                  .from('workflow_executions')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('assigned_machine_id', preferredAssignment.machine_id)
+                  .in('status', ['queued', 'running']);
+
+                const { data: machineDetails } = await supabase
+                  .from('remote_machines')
+                  .select('max_concurrent_executions')
+                  .eq('id', preferredAssignment.machine_id)
+                  .single();
+
+                const maxConcurrent = machineDetails?.max_concurrent_executions || 10;
+                const currentLoad = runningExecutions || 0;
+
+                if (currentLoad >= maxConcurrent) {
+                  // Exclusive machine at capacity - MUST skip execution
+                  shouldSkipExecution = true;
+                  skipReason = `Exclusive machine ${machine.name} (ID: ${preferredAssignment.machine_id}) at capacity (${currentLoad}/${maxConcurrent})`;
+                  console.log(`   ⏸️  ${skipReason} - execution will be queued until capacity available`);
+                } else {
+                  preferredMachineId = preferredAssignment.machine_id;
+                  console.log(`   ✅ Using EXCLUSIVE machine ${machine.name} (ID: ${preferredMachineId}, capacity: ${currentLoad}/${maxConcurrent})`);
+                }
+              } else {
+                // Exclusive machine inactive - MUST skip execution
+                shouldSkipExecution = true;
+                skipReason = `Exclusive machine ${machine?.name} (ID: ${preferredAssignment.machine_id}) is inactive`;
+                console.log(`   ⏸️  ${skipReason} - execution cannot proceed without exclusive machine`);
+              }
+            }
+            // PREFERRED: Try this machine, fallback to auto-assignment if unavailable
+            else if (assignmentType === 'preferred') {
+              if (machine && machine.status === 'active') {
+                preferredMachineId = preferredAssignment.machine_id;
+                console.log(`   ✅ Using PREFERRED machine ${machine.name} (ID: ${preferredMachineId}, health: ${machine.health_status})`);
+              } else {
+                console.log(`   ⚠️  Preferred machine ${machine?.name} (ID: ${preferredAssignment.machine_id}) is inactive, using auto-assignment`);
+              }
             }
           }
         } catch (_machineErr) {
-          // No preferred machine - continue with auto-assignment
-          console.log(`   No preferred machine found for workflow ${workflow.id}, using auto-assignment`);
+          // No machine assignment - continue with auto-assignment
+          console.log(`   ℹ️  No machine assignment found for workflow ${workflow.id}, using auto-assignment`);
+        }
+
+        // Skip execution if exclusive machine is unavailable
+        if (shouldSkipExecution) {
+          console.log(`   ⏭️  Skipping execution: ${skipReason}`);
+          executionResults.push({
+            workflowId: workflow.id,
+            workflowName: workflow.name,
+            success: false,
+            error: `Execution skipped: ${skipReason}`,
+            scheduledAt: currentTime.toISOString(),
+          });
+          continue;
         }
 
         // Use public URL with service role key for authentication
