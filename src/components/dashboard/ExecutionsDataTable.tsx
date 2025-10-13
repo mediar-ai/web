@@ -69,6 +69,7 @@ interface ExecutionsDataTableProps {
   onStatusFilterChange?: (status: string | undefined) => void;
   onMachineFilterChange?: (machine: string | undefined) => void;
   onSearchFilterChange?: (search: string) => void;
+  onSearchFieldChange?: (searchField: string) => void;
   // Server-side pagination callbacks
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
@@ -77,6 +78,7 @@ interface ExecutionsDataTableProps {
   activeStatusFilter?: string;
   activeMachineFilter?: string;
   activeSearchFilter?: string;
+  activeSearchField?: string;
   // Server-side pagination state
   currentPage?: number;
   pageSize?: number;
@@ -218,12 +220,14 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   onStatusFilterChange,
   onMachineFilterChange,
   onSearchFilterChange,
+  onSearchFieldChange,
   onPageChange,
   onPageSizeChange,
   activeWorkflowFilter,
   activeStatusFilter,
   activeMachineFilter,
   activeSearchFilter,
+  activeSearchField,
   currentPage = 1,
   pageSize: serverPageSize = 100,
   totalRecords = 0,
@@ -780,6 +784,23 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       <div className="flex flex-col gap-2 py-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-1">
+            {/* Search Field Dropdown */}
+            <select
+              value={activeSearchField || 'all'}
+              onChange={(e) => {
+                if (onSearchFieldChange) {
+                  onSearchFieldChange(e.target.value);
+                }
+              }}
+              className="h-8 px-2 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+            >
+              <option value="all">All Fields</option>
+              <option value="execution_id">Execution ID</option>
+              <option value="error_message">Error Message</option>
+              <option value="formatted_output">Formatted Output</option>
+              <option value="client_id">Client ID</option>
+              <option value="modal_call_id">Modal Call ID</option>
+            </select>
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-600" />
               <Input

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const machine = searchParams.get('machine'); // Machine name filter
     const search = searchParams.get('search'); // Global search query
+    const search_field = searchParams.get('search_field') || 'all'; // Field to search in
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
     const include_results = searchParams.get('include_results') === 'true';
@@ -166,12 +167,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Global search - search across multiple fields
+    // Search - field-specific or global
     if (search) {
-      // Search in execution ID, error_message, formatted_output, client_id, and modal_call_id
-      // Use OR logic: match any of these fields
-      // Convert numeric ID to text for pattern matching
-      query = query.or(`id::text.ilike.%${search}%,error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
+      switch (search_field) {
+        case 'execution_id':
+          // Exact match for execution ID (convert to text for pattern matching)
+          query = query.ilike('id::text', `%${search}%`);
+          break;
+        case 'error_message':
+          query = query.ilike('error_message', `%${search}%`);
+          break;
+        case 'formatted_output':
+          query = query.ilike('formatted_output', `%${search}%`);
+          break;
+        case 'client_id':
+          query = query.ilike('client_id', `%${search}%`);
+          break;
+        case 'modal_call_id':
+          query = query.ilike('modal_call_id', `%${search}%`);
+          break;
+        case 'all':
+        default:
+          // Search across all fields (default behavior)
+          query = query.or(`id::text.ilike.%${search}%,error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
+          break;
+      }
     }
 
     const { data: executions, error } = await query;
@@ -205,8 +225,28 @@ export async function GET(request: NextRequest) {
       }
     }
     if (search) {
-      // Apply same search filter to count query (including execution ID)
-      countQuery = countQuery.or(`id::text.ilike.%${search}%,error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
+      // Apply same field-specific search filter to count query
+      switch (search_field) {
+        case 'execution_id':
+          countQuery = countQuery.ilike('id::text', `%${search}%`);
+          break;
+        case 'error_message':
+          countQuery = countQuery.ilike('error_message', `%${search}%`);
+          break;
+        case 'formatted_output':
+          countQuery = countQuery.ilike('formatted_output', `%${search}%`);
+          break;
+        case 'client_id':
+          countQuery = countQuery.ilike('client_id', `%${search}%`);
+          break;
+        case 'modal_call_id':
+          countQuery = countQuery.ilike('modal_call_id', `%${search}%`);
+          break;
+        case 'all':
+        default:
+          countQuery = countQuery.or(`id::text.ilike.%${search}%,error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
+          break;
+      }
     }
 
     const { count: totalCount } = await countQuery;
@@ -341,12 +381,13 @@ export async function GET(request: NextRequest) {
         status: status || 'all',
         machine: machine || null,
         search: search || null,
+        search_field: search_field || 'all',
         include_results,
         applied_filters: {
           ...(workflow_id && { workflow_id: parseInt(workflow_id) }),
           ...(status && { status }),
           ...(machine && { machine }),
-          ...(search && { search })
+          ...(search && { search, search_field })
         }
       },
       timestamp: new Date().toISOString()
@@ -363,6 +404,7 @@ export async function GET(request: NextRequest) {
         status: status || null,
         machine: machine || null,
         search: search || null,
+        search_field: search_field || 'all',
         limit,
         offset,
         include_results
