@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       sessionId,
+      token,
     });
   } catch (error) {
     console.error('Desktop session storage error:', error);
