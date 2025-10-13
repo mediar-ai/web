@@ -171,8 +171,14 @@ export async function GET(request: NextRequest) {
     if (search) {
       switch (search_field) {
         case 'execution_id':
-          // Exact match for execution ID (convert to text for pattern matching)
-          query = query.ilike('id::text', `%${search}%`);
+          // Search execution ID - check if numeric for exact match, otherwise pattern match
+          const numericSearch = parseInt(search);
+          if (!isNaN(numericSearch)) {
+            query = query.eq('id', numericSearch);
+          } else {
+            // If not a valid number, won't match any IDs
+            query = query.eq('id', -1); // Force no results
+          }
           break;
         case 'error_message':
           query = query.ilike('error_message', `%${search}%`);
@@ -189,7 +195,21 @@ export async function GET(request: NextRequest) {
         case 'all':
         default:
           // Search across all fields (default behavior)
-          query = query.or(`id::text.ilike.%${search}%,error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
+          // Note: id is bigint and cannot be cast in filter, so we search text fields only
+          // If search is numeric, also check for exact ID match
+          const searchPattern = `*${search}*`;
+          const numericId = parseInt(search);
+          if (!isNaN(numericId)) {
+            // If search term is numeric, add ID equality check to OR conditions
+            query = query.or(
+              `id.eq.${numericId},error_message.ilike.${searchPattern},formatted_output.ilike.${searchPattern},client_id.ilike.${searchPattern},modal_call_id.ilike.${searchPattern}`
+            );
+          } else {
+            // Otherwise just search text fields
+            query = query.or(
+              `error_message.ilike.${searchPattern},formatted_output.ilike.${searchPattern},client_id.ilike.${searchPattern},modal_call_id.ilike.${searchPattern}`
+            );
+          }
           break;
       }
     }
@@ -228,7 +248,12 @@ export async function GET(request: NextRequest) {
       // Apply same field-specific search filter to count query
       switch (search_field) {
         case 'execution_id':
-          countQuery = countQuery.ilike('id::text', `%${search}%`);
+          const numericCountSearch = parseInt(search);
+          if (!isNaN(numericCountSearch)) {
+            countQuery = countQuery.eq('id', numericCountSearch);
+          } else {
+            countQuery = countQuery.eq('id', -1); // Force no results
+          }
           break;
         case 'error_message':
           countQuery = countQuery.ilike('error_message', `%${search}%`);
@@ -244,7 +269,22 @@ export async function GET(request: NextRequest) {
           break;
         case 'all':
         default:
-          countQuery = countQuery.or(`id::text.ilike.%${search}%,error_message.ilike.%${search}%,formatted_output.ilike.%${search}%,client_id.ilike.%${search}%,modal_call_id.ilike.%${search}%`);
+          // Search across all fields (default behavior)
+          // Note: id is bigint and cannot be cast in filter, so we search text fields only
+          // If search is numeric, also check for exact ID match
+          const countSearchPattern = `*${search}*`;
+          const numericCountId = parseInt(search);
+          if (!isNaN(numericCountId)) {
+            // If search term is numeric, add ID equality check to OR conditions
+            countQuery = countQuery.or(
+              `id.eq.${numericCountId},error_message.ilike.${countSearchPattern},formatted_output.ilike.${countSearchPattern},client_id.ilike.${countSearchPattern},modal_call_id.ilike.${countSearchPattern}`
+            );
+          } else {
+            // Otherwise just search text fields
+            countQuery = countQuery.or(
+              `error_message.ilike.${countSearchPattern},formatted_output.ilike.${countSearchPattern},client_id.ilike.${countSearchPattern},modal_call_id.ilike.${countSearchPattern}`
+            );
+          }
           break;
       }
     }
