@@ -565,10 +565,13 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
         id: 'version',
         header: 'Version',
         cell: ({ row }) => {
-          const workflow = workflows.find((w) => w.id === row.original.workflow_id);
+          const execution = row.original;
+          const workflow = workflows.find((w) => w.id === execution.workflow_id);
+          // Show the version that was actually used for this execution
+          const version = execution.version_number || workflow?.version || '1.0';
           return (
             <span className="font-mono text-[10px] text-gray-600">
-              v{workflow?.version || '1.0'}
+              v{version}
             </span>
           );
         },
