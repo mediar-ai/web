@@ -86,6 +86,17 @@ function DashboardContent() {
     }
     return 'all';
   });
+  const [activeSearchMode, setActiveSearchMode] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const savedField = localStorage.getItem('executions-filter-search-field') || 'all';
+      // Default to 'exact' for execution_id, 'contains' for others
+      if (savedField === 'execution_id') {
+        return localStorage.getItem('executions-filter-search-mode') || 'exact';
+      }
+      return localStorage.getItem('executions-filter-search-mode') || 'contains';
+    }
+    return 'contains';
+  });
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -109,6 +120,7 @@ function DashboardContent() {
   const activeMachineFilterRef = useRef<string | undefined>(undefined);
   const activeSearchFilterRef = useRef<string>('');
   const activeSearchFieldRef = useRef<string>('all');
+  const activeSearchModeRef = useRef<string>('contains');
   const currentPageRef = useRef<number>(1);
   const pageSizeRef = useRef<number>(100);
 
@@ -132,6 +144,10 @@ function DashboardContent() {
   useEffect(() => {
     activeSearchFieldRef.current = activeSearchField;
   }, [activeSearchField]);
+
+  useEffect(() => {
+    activeSearchModeRef.current = activeSearchMode;
+  }, [activeSearchMode]);
 
   useEffect(() => {
     currentPageRef.current = currentPage;
@@ -258,6 +274,7 @@ function DashboardContent() {
     filterMachine?: string,
     searchQuery?: string,
     searchField?: string,
+    searchMode?: string,
     page?: number,
     pageSizeParam?: number
   ) => {
@@ -294,6 +311,9 @@ function DashboardContent() {
         params.set('search', searchQuery);
         if (searchField) {
           params.set('search_field', searchField);
+        }
+        if (searchMode) {
+          params.set('search_mode', searchMode);
         }
       }
 
@@ -426,8 +446,8 @@ function DashboardContent() {
   }, [fetchExecutions, fetchLiveExecutions]);
 
   const handleRefreshExecutions = useCallback(() => {
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, currentPage, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, currentPage, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize]);
 
   // Handle filter changes - refetch from API and save to localStorage
   const handleWorkflowFilterChange = useCallback((workflowName: string | undefined) => {
@@ -440,8 +460,8 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-workflow');
       }
     }
-    fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, 1, pageSize);
-  }, [fetchExecutions, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, pageSize]);
+    fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, 1, pageSize);
+  }, [fetchExecutions, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize]);
 
   const handleStatusFilterChange = useCallback((status: string | undefined) => {
     setActiveStatusFilter(status);
@@ -453,8 +473,8 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-status');
       }
     }
-    fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter, activeSearchFilter, activeSearchField, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter, activeSearchFilter, activeSearchField, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, 1, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize]);
 
   const handleMachineFilterChange = useCallback((machine: string | undefined) => {
     setActiveMachineFilter(machine);
@@ -466,8 +486,8 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-machine');
       }
     }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine, activeSearchFilter, activeSearchField, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeSearchFilter, activeSearchField, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine, activeSearchFilter, activeSearchField, activeSearchMode, 1, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize]);
 
   const handleSearchFilterChange = useCallback((search: string) => {
     setActiveSearchFilter(search);
@@ -479,24 +499,45 @@ function DashboardContent() {
         localStorage.removeItem('executions-filter-search');
       }
     }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, search, activeSearchField, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchField, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, search, activeSearchField, activeSearchMode, 1, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchField, activeSearchMode, pageSize]);
 
   const handleSearchFieldChange = useCallback((searchField: string) => {
     setActiveSearchField(searchField);
     if (typeof window !== 'undefined') {
       localStorage.setItem('executions-filter-search-field', searchField);
     }
-    // If there's an active search, refetch with new field
-    if (activeSearchFilter) {
-      fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, searchField, currentPage, pageSize);
+
+    // Auto-switch search mode: exact for execution_id, contains for others
+    const newMode = searchField === 'execution_id' ? 'exact' : 'contains';
+    if (newMode !== activeSearchMode) {
+      setActiveSearchMode(newMode);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('executions-filter-search-mode', newMode);
+      }
     }
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, currentPage, pageSize]);
+
+    // If there's an active search, refetch with new field and mode
+    if (activeSearchFilter) {
+      fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, searchField, newMode, currentPage, pageSize);
+    }
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchMode, currentPage, pageSize]);
+
+  const handleSearchModeChange = useCallback((searchMode: string) => {
+    setActiveSearchMode(searchMode);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('executions-filter-search-mode', searchMode);
+    }
+    // If there's an active search, refetch with new mode
+    if (activeSearchFilter) {
+      fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, searchMode, currentPage, pageSize);
+    }
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, currentPage, pageSize]);
 
   const handlePageChange = useCallback((newPage: number) => {
     setCurrentPage(newPage);
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, newPage, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, pageSize]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, newPage, pageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize]);
 
   const handlePageSizeChange = useCallback((newPageSize: number) => {
     setPageSize(newPageSize);
@@ -504,8 +545,8 @@ function DashboardContent() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('executions-page-size', newPageSize.toString());
     }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, 1, newPageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField]);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, 1, newPageSize);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode]);
 
   // Handlers
   const handleWorkflowCreated = useCallback((_newWorkflow: any) => {
@@ -604,7 +645,7 @@ function DashboardContent() {
   useEffect(() => {
     fetchWorkflows();
     // Pass saved filters to initial fetch
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, currentPage, pageSize);
+    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize);
     fetchLiveExecutions();
     fetchExecutionFilters();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -632,6 +673,7 @@ function DashboardContent() {
           activeMachineFilterRef.current,
           activeSearchFilterRef.current,
           activeSearchFieldRef.current,
+          activeSearchModeRef.current,
           currentPageRef.current,
           pageSizeRef.current
         );
@@ -779,7 +821,7 @@ function DashboardContent() {
             </div>
 
             {/* Recent Executions */}
-            {(executions.length > 0 || executionsLoading) && (
+            {(executions.length > 0 || executionsLoading || activeWorkflowFilter || activeStatusFilter || activeMachineFilter || activeSearchFilter) && (
               <div className="space-y-3 mt-4">
                 <h2 className="text-sm font-bold font-mono uppercase">Recent Executions</h2>
 
@@ -801,6 +843,7 @@ function DashboardContent() {
                   onMachineFilterChange={handleMachineFilterChange}
                   onSearchFilterChange={handleSearchFilterChange}
                   onSearchFieldChange={handleSearchFieldChange}
+                  onSearchModeChange={handleSearchModeChange}
                   onPageChange={handlePageChange}
                   onPageSizeChange={handlePageSizeChange}
                   activeWorkflowFilter={activeWorkflowFilter}
@@ -808,6 +851,7 @@ function DashboardContent() {
                   activeMachineFilter={activeMachineFilter}
                   activeSearchFilter={activeSearchFilter}
                   activeSearchField={activeSearchField}
+                  activeSearchMode={activeSearchMode}
                   currentPage={currentPage}
                   pageSize={pageSize}
                   totalRecords={totalExecutions}

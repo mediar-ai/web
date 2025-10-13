@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const machine = searchParams.get('machine'); // Machine name filter
     const search = searchParams.get('search'); // Global search query
     const search_field = searchParams.get('search_field') || 'all'; // Field to search in
+    const search_mode = searchParams.get('search_mode') || 'contains'; // Search mode: 'contains' or 'exact'
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
     const include_results = searchParams.get('include_results') === 'true';
@@ -171,7 +172,7 @@ export async function GET(request: NextRequest) {
     if (search) {
       switch (search_field) {
         case 'execution_id':
-          // Search execution ID - check if numeric for exact match, otherwise pattern match
+          // Search execution ID - must be numeric
           const numericSearch = parseInt(search);
           if (!isNaN(numericSearch)) {
             query = query.eq('id', numericSearch);
@@ -181,23 +182,39 @@ export async function GET(request: NextRequest) {
           }
           break;
         case 'error_message':
-          query = query.ilike('error_message', `%${search}%`);
+          if (search_mode === 'exact') {
+            query = query.ilike('error_message', search);
+          } else {
+            query = query.ilike('error_message', `%${search}%`);
+          }
           break;
         case 'formatted_output':
-          query = query.ilike('formatted_output', `%${search}%`);
+          if (search_mode === 'exact') {
+            query = query.ilike('formatted_output', search);
+          } else {
+            query = query.ilike('formatted_output', `%${search}%`);
+          }
           break;
         case 'client_id':
-          query = query.ilike('client_id', `%${search}%`);
+          if (search_mode === 'exact') {
+            query = query.ilike('client_id', search);
+          } else {
+            query = query.ilike('client_id', `%${search}%`);
+          }
           break;
         case 'modal_call_id':
-          query = query.ilike('modal_call_id', `%${search}%`);
+          if (search_mode === 'exact') {
+            query = query.ilike('modal_call_id', search);
+          } else {
+            query = query.ilike('modal_call_id', `%${search}%`);
+          }
           break;
         case 'all':
         default:
           // Search across all fields (default behavior)
           // Note: id is bigint and cannot be cast in filter, so we search text fields only
           // If search is numeric, also check for exact ID match
-          const searchPattern = `*${search}*`;
+          const searchPattern = search_mode === 'exact' ? search : `*${search}*`;
           const numericId = parseInt(search);
           if (!isNaN(numericId)) {
             // If search term is numeric, add ID equality check to OR conditions
@@ -256,23 +273,39 @@ export async function GET(request: NextRequest) {
           }
           break;
         case 'error_message':
-          countQuery = countQuery.ilike('error_message', `%${search}%`);
+          if (search_mode === 'exact') {
+            countQuery = countQuery.ilike('error_message', search);
+          } else {
+            countQuery = countQuery.ilike('error_message', `%${search}%`);
+          }
           break;
         case 'formatted_output':
-          countQuery = countQuery.ilike('formatted_output', `%${search}%`);
+          if (search_mode === 'exact') {
+            countQuery = countQuery.ilike('formatted_output', search);
+          } else {
+            countQuery = countQuery.ilike('formatted_output', `%${search}%`);
+          }
           break;
         case 'client_id':
-          countQuery = countQuery.ilike('client_id', `%${search}%`);
+          if (search_mode === 'exact') {
+            countQuery = countQuery.ilike('client_id', search);
+          } else {
+            countQuery = countQuery.ilike('client_id', `%${search}%`);
+          }
           break;
         case 'modal_call_id':
-          countQuery = countQuery.ilike('modal_call_id', `%${search}%`);
+          if (search_mode === 'exact') {
+            countQuery = countQuery.ilike('modal_call_id', search);
+          } else {
+            countQuery = countQuery.ilike('modal_call_id', `%${search}%`);
+          }
           break;
         case 'all':
         default:
           // Search across all fields (default behavior)
           // Note: id is bigint and cannot be cast in filter, so we search text fields only
           // If search is numeric, also check for exact ID match
-          const countSearchPattern = `*${search}*`;
+          const countSearchPattern = search_mode === 'exact' ? search : `*${search}*`;
           const numericCountId = parseInt(search);
           if (!isNaN(numericCountId)) {
             // If search term is numeric, add ID equality check to OR conditions
@@ -422,12 +455,13 @@ export async function GET(request: NextRequest) {
         machine: machine || null,
         search: search || null,
         search_field: search_field || 'all',
+        search_mode: search_mode || 'contains',
         include_results,
         applied_filters: {
           ...(workflow_id && { workflow_id: parseInt(workflow_id) }),
           ...(status && { status }),
           ...(machine && { machine }),
-          ...(search && { search, search_field })
+          ...(search && { search, search_field, search_mode })
         }
       },
       timestamp: new Date().toISOString()
@@ -445,6 +479,7 @@ export async function GET(request: NextRequest) {
         machine: machine || null,
         search: search || null,
         search_field: search_field || 'all',
+        search_mode: search_mode || 'contains',
         limit,
         offset,
         include_results

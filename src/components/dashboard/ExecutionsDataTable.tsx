@@ -70,6 +70,7 @@ interface ExecutionsDataTableProps {
   onMachineFilterChange?: (machine: string | undefined) => void;
   onSearchFilterChange?: (search: string) => void;
   onSearchFieldChange?: (searchField: string) => void;
+  onSearchModeChange?: (searchMode: string) => void;
   // Server-side pagination callbacks
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
@@ -79,6 +80,7 @@ interface ExecutionsDataTableProps {
   activeMachineFilter?: string;
   activeSearchFilter?: string;
   activeSearchField?: string;
+  activeSearchMode?: string;
   // Server-side pagination state
   currentPage?: number;
   pageSize?: number;
@@ -221,6 +223,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   onMachineFilterChange,
   onSearchFilterChange,
   onSearchFieldChange,
+  onSearchModeChange,
   onPageChange,
   onPageSizeChange,
   activeWorkflowFilter,
@@ -228,6 +231,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   activeMachineFilter,
   activeSearchFilter,
   activeSearchField,
+  activeSearchMode,
   currentPage = 1,
   pageSize: serverPageSize = 100,
   totalRecords = 0,
@@ -827,6 +831,19 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
               <option value="formatted_output">Formatted Output</option>
               <option value="client_id">Client ID</option>
               <option value="modal_call_id">Modal Call ID</option>
+            </select>
+            {/* Search Mode Dropdown */}
+            <select
+              value={activeSearchMode || 'contains'}
+              onChange={(e) => {
+                if (onSearchModeChange) {
+                  onSearchModeChange(e.target.value);
+                }
+              }}
+              className="h-8 px-2 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+            >
+              <option value="contains">Contains</option>
+              <option value="exact">Exact</option>
             </select>
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-600" />
