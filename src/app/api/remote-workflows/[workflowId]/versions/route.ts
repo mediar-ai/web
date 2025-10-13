@@ -1,6 +1,82 @@
+import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
 import { NextRequest, NextResponse } from 'next/server';
+
+// Content sanitization check function
+function detectSuspiciousContent(content: string): { safe: boolean; issues: string[] } {
+  const issues: string[] = [];
+
+  // Check 1: Detect potential script injection patterns
+  const scriptPatterns = [
+    /<script[^>]*>/i,
+    /javascript:/i,
+    /on\w+\s*=/i, // onclick=, onerror=, etc.
+    /eval\s*\(/,
+    /Function\s*\(/,
+    /__proto__/,
+    /constructor\s*\[/
+  ];
+
+  scriptPatterns.forEach((pattern, idx) => {
+    if (pattern.test(content)) {
+      issues.push(`Suspicious pattern ${idx + 1}: ${pattern.source}`);
+    }
+  });
+
+  // Check 2: Detect encoded/obfuscated content
+  const obfuscationPatterns = [
+    /\\x[0-9a-fA-F]{2}/g, // Hex encoding
+    /\\u[0-9a-fA-F]{4}/g, // Unicode escapes
+    /fromCharCode/i,
+    /atob\s*\(/i, // Base64 decode
+    /String\.fromCodePoint/i
+  ];
+
+  let encodedCharsCount = 0;
+  obfuscationPatterns.forEach(pattern => {
+    const matches = content.match(pattern);
+    if (matches) encodedCharsCount += matches.length;
+  });
+
+  if (encodedCharsCount > 10) {
+    issues.push(`Excessive encoded characters detected: ${encodedCharsCount}`);
+  }
+
+  // Check 3: Detect file system access patterns
+  const fsPatterns = [
+    /fs\.readFile/,
+    /fs\.writeFile/,
+    /fs\.unlink/,
+    /child_process/,
+    /execSync/,
+    /\.\.\/\.\.\// // Path traversal
+  ];
+
+  fsPatterns.forEach((pattern, idx) => {
+    if (pattern.test(content)) {
+      issues.push(`File system access pattern ${idx + 1}: ${pattern.source}`);
+    }
+  });
+
+  // Check 4: Detect excessively long lines (could be minified malicious code)
+  const lines = content.split('\n');
+  const longLines = lines.filter(line => line.length > 1000);
+  if (longLines.length > 5) {
+    issues.push(`${longLines.length} lines exceed 1000 characters (possible minified code)`);
+  }
+
+  // Check 5: Detect excessive nesting depth in JSON/YAML
+  const depthMatches = content.match(/\{|\[/g);
+  if (depthMatches && depthMatches.length > 200) {
+    issues.push(`Excessive nesting detected: ${depthMatches.length} opening brackets`);
+  }
+
+  return {
+    safe: issues.length === 0,
+    issues
+  };
+}
 
 interface WorkflowVersion {
   version_id: number;
@@ -17,9 +93,20 @@ export async function GET(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to /api/remote-workflows/*/versions');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
-    
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -28,11 +115,11 @@ export async function GET(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Get workflow info
+
+    // STEP 2: Get workflow info and verify ownership
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, description, total_versions, current_version_id')
+      .select('id, name, description, total_versions, current_version_id, created_by, organization_id')
       .eq('id', workflowIdNum)
       .single();
 
@@ -40,6 +127,21 @@ export async function GET(
       return NextResponse.json(
         { success: false, error: `Workflow ${workflowIdNum} not found` },
         { status: 404 }
+      );
+    }
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    if (!isOwner && !(isOrgAdmin && isSameOrg)) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} attempted unauthorized access to workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this workflow' },
+        { status: 403 }
       );
     }
 
@@ -94,9 +196,20 @@ export async function POST(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to create workflow version');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
-    
+
     const body = await request.json();
     const { automation_sequence, version_number, change_notes, set_as_active = false } = body;
 
@@ -105,6 +218,53 @@ export async function POST(
         { success: false, error: 'automation_sequence is required' },
         { status: 400 }
       );
+    }
+
+    // Server-side file size validation
+    if (typeof automation_sequence === 'string') {
+      const sizeInBytes = Buffer.byteLength(automation_sequence, 'utf8');
+      const MAX_CONTENT_SIZE = 5 * 1024 * 1024; // 5MB
+
+      if (sizeInBytes > MAX_CONTENT_SIZE) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Content exceeds 5MB limit',
+            details: `Content size: ${(sizeInBytes / 1024 / 1024).toFixed(2)}MB`
+          },
+          { status: 413 } // Payload Too Large
+        );
+      }
+
+      // Binary content detection
+      const trimmed = automation_sequence.trim();
+      const hasBinaryMarkers = /[\x00-\x08\x0B-\x0C\x0E-\x1F]/.test(trimmed.substring(0, 1000));
+
+      if (hasBinaryMarkers) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid content format - binary data detected' },
+          { status: 400 }
+        );
+      }
+
+      // Content sanitization check
+      const sanitizationCheck = detectSuspiciousContent(automation_sequence);
+
+      if (!sanitizationCheck.safe) {
+        console.warn('⚠️ Suspicious content detected:', sanitizationCheck.issues);
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Content failed security validation',
+            details: {
+              issues: sanitizationCheck.issues,
+              message: 'Upload contains potentially unsafe patterns'
+            }
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Helper function to detect sequence format
@@ -198,11 +358,11 @@ export async function POST(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Verify workflow exists
+
+    // STEP 2: Verify workflow exists and check ownership
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, version, total_versions')
+      .select('id, name, version, total_versions, created_by, organization_id')
       .eq('id', workflowIdNum)
       .single();
 
@@ -210,6 +370,21 @@ export async function POST(
       return NextResponse.json(
         { success: false, error: `Workflow ${workflowIdNum} not found` },
         { status: 404 }
+      );
+    }
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    if (!isOwner && !(isOrgAdmin && isSameOrg)) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} attempted unauthorized version creation for workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have permission to modify this workflow' },
+        { status: 403 }
       );
     }
 
