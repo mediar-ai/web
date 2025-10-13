@@ -137,8 +137,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Status filter - supports both database statuses and derived statuses from formatted_output
     if (status) {
-      query = query.eq('status', status);
+      if (status === 'EXCEPTION') {
+        // Filter by formatted_output containing "exception": true (with or without spaces)
+        query = query.or('formatted_output.like.%"exception": true%,formatted_output.like.%"exception":true%');
+      } else if (status === 'SKIPPED') {
+        // Filter by formatted_output containing "skipped": true (with or without spaces)
+        query = query.or('formatted_output.like.%"skipped": true%,formatted_output.like.%"skipped":true%');
+      } else {
+        // Regular database status filter
+        query = query.eq('status', status);
+      }
     }
 
     // Machine filter - filter by machine name
@@ -247,8 +257,15 @@ export async function GET(request: NextRequest) {
     if (workflow_id && accessibleWorkflowIds.includes(parseInt(workflow_id))) {
       countQuery = countQuery.eq('workflow_id', parseInt(workflow_id));
     }
+    // Apply same status filter logic to count query
     if (status) {
-      countQuery = countQuery.eq('status', status);
+      if (status === 'EXCEPTION') {
+        countQuery = countQuery.or('formatted_output.like.%"exception": true%,formatted_output.like.%"exception":true%');
+      } else if (status === 'SKIPPED') {
+        countQuery = countQuery.or('formatted_output.like.%"skipped": true%,formatted_output.like.%"skipped":true%');
+      } else {
+        countQuery = countQuery.eq('status', status);
+      }
     }
     if (machine) {
       // Apply same machine filter to count query
