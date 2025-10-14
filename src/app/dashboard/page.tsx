@@ -13,10 +13,10 @@ import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { OrganizationAssignmentDialog } from '@/components/deployments/OrganizationAssignmentDialog';
 import { ExecutionsDataTable } from '@/components/dashboard/ExecutionsDataTable';
 import { Button } from '@/components/ui/button';
-import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
+import { useOrganization, useOrganizationList, useUser, useAuth } from '@clerk/nextjs';
 import { Activity, Workflow, TrendingUp, Zap, Plus, Search } from 'lucide-react';
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Execution,
   LiveExecutionStatus,
@@ -27,11 +27,20 @@ import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { toast } from 'sonner';
 
 function DashboardContent() {
+  const { isLoaded, userId } = useAuth();
+  const router = useRouter();
   const { organization, isLoaded: _orgLoaded } = useOrganization();
   const { user } = useUser();
   const { userMemberships } = useOrganizationList();
   const searchParams = useSearchParams();
   const viewOrgId = searchParams.get('viewOrgId');
+
+  // Redirect unauthenticated users to sign-in
+  useEffect(() => {
+    if (isLoaded && !userId) {
+      router.push('/');
+    }
+  }, [isLoaded, userId, router]);
 
   // Stats state
   const [stats, setStats] = useState([
@@ -761,6 +770,22 @@ function DashboardContent() {
   const _isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
   const isGlobalAdmin = hasMediarEmail || isMemberOfMediarOrg;
   const canDelete = isGlobalAdmin;
+
+  // Show loading while Clerk is initializing or while redirecting
+  if (!isLoaded || !userId) {
+    return (
+      <DashboardLayout>
+        <div className="p-4">
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-4"></div>
+              <p className="text-gray-600 font-mono">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
