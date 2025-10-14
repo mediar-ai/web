@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
 import { Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { PHProvider } from "@/components/providers/posthog-provider";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -28,16 +29,18 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
         <body className={inter.className}>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="light"
-            disableTransitionOnChange
-          >
-            <main className="min-h-screen stable-container pt-4">
-              {children}
-            </main>
-            <Toaster />
-          </ThemeProvider>
+          <PHProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="light"
+              disableTransitionOnChange
+            >
+              <main className="min-h-screen stable-container pt-4">
+                {children}
+              </main>
+              <Toaster />
+            </ThemeProvider>
+          </PHProvider>
         </body>
       </html>
     </ClerkProvider>
