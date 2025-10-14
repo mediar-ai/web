@@ -240,11 +240,12 @@ image = (
     .add_local_python_source("modal_apps")
 )
 
-# Secrets for database access, MCP endpoint, and GitHub
+# Secrets for database access, MCP endpoint, GitHub, and secrets encryption
 secrets = [
     modal.Secret.from_name("supabase-secret"),
     modal.Secret.from_name("custom-secret"),
     modal.Secret.from_name("github-token"),
+    modal.Secret.from_name("secrets-encryption-key"),
 ]
 
 

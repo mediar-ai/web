@@ -74,7 +74,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Encrypt the secret value
-    const encryptedValue = await encryptSecret(value);
+    let encryptedValue: string;
+    try {
+      encryptedValue = await encryptSecret(value);
+    } catch (encryptError: any) {
+      console.error('Encryption error:', encryptError);
+      return NextResponse.json(
+        { error: encryptError.message || 'Failed to encrypt secret. Check SECRETS_ENCRYPTION_KEY is set.' },
+        { status: 500 }
+      );
+    }
 
     // Insert into database
     const { data, error } = await supabase
