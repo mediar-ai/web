@@ -3,7 +3,7 @@
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { PageHeader } from '@/components/layouts/PageHeader';
 import { useOrganization, useUser } from '@clerk/nextjs';
-// Icons removed - will add when needed
+import { Key, Users } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SettingsPage() {
@@ -16,7 +16,18 @@ export default function SettingsPage() {
     href: string;
     icon: any;
   }> = [
-    // Empty for now - can add settings sections later
+    {
+      title: 'Secrets',
+      description: 'Manage encrypted secrets for workflows',
+      href: '/settings/secrets',
+      icon: Key,
+    },
+    {
+      title: 'Team',
+      description: 'Manage team members and invitations',
+      href: '/settings/team',
+      icon: Users,
+    },
   ];
 
   return (
