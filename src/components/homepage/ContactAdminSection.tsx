@@ -83,7 +83,7 @@ export default function ContactAdminSection({
                   Native desktop automation app
                 </p>
                 <a
-                  href="https://cdn.crabnebula.app/asset/01K78EPA16XG8Z1GMZVKYTM2E4"
+                  href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
                   download
                   onClick={handleDownloadClick}
                 >
