@@ -79,6 +79,7 @@ export async function GET(request: Request) {
             signal: controller.signal,
             headers: {
               'Accept': 'application/json',
+              'Authorization': 'Bearer ***REMOVED***'
             }
           });
 

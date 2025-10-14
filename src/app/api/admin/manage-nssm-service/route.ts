@@ -237,7 +237,10 @@ const ServiceOperations = {
       // Also check MCP server health
       try {
         const mcpResponse = await fetch(`${VM_CONFIG.mcpEndpoint}/health`, {
-          headers: { 'ngrok-skip-browser-warning': 'true' },
+          headers: {
+            'ngrok-skip-browser-warning': 'true',
+            'Authorization': 'Bearer ***REMOVED***'
+          },
           signal: AbortSignal.timeout(5000)
         });
         
