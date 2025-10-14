@@ -447,12 +447,28 @@ export async function POST(request: NextRequest) {
         } else {
           // Workflow doesn't exist - create it
           console.log(`🆕 Creating new workflow: "${workflowName}" in folder ${folderName}`);
+
+          // Parse YAML first to ensure it's valid
+          let parsedYaml;
+          try {
+            parsedYaml = yaml.load(content.yaml);
+            if (!parsedYaml) {
+              throw new Error('YAML parsed to null/undefined');
+            }
+            console.log(`✅ YAML parsed successfully, type: ${typeof parsedYaml}`);
+          } catch (yamlError) {
+            const errorMsg = yamlError instanceof Error ? yamlError.message : 'Unknown YAML error';
+            console.error(`❌ Failed to parse YAML for ${folderName}: ${errorMsg}`);
+            results.errors.push(`${folderName}: Invalid YAML - ${errorMsg}`);
+            continue; // Skip this workflow
+          }
+
           const { data: newWorkflow, error: createError } = await supabase
             .from('deployed_workflows')
             .insert({
               name: workflowName,
               status: isDevelopment ? 'draft' : 'deployed',
-              automation_sequence: yaml.load(content.yaml),
+              automation_sequence: parsedYaml,
               automation_sequence_yaml: content.yaml,
               github_folder: folderName,
               github_path: filePath,
@@ -479,7 +495,7 @@ export async function POST(request: NextRequest) {
                 workflow_id: newWorkflow.id,
                 version_number: '1.0.0',
                 automation_sequence_yaml: content.yaml,
-                automation_sequence: yaml.load(content.yaml),
+                automation_sequence: parsedYaml,
                 preferred_format: 'yaml',
                 is_active: false,  // Start inactive
                 change_notes: `Created from GitHub: ${content.metadata.sha.substring(0, 7)}`
@@ -489,6 +505,16 @@ export async function POST(request: NextRequest) {
 
             if (versionError) {
               console.error(`❌ Initial version creation failed for ${folderName}: ${versionError.message}`);
+              console.error(`   Full error details:`, JSON.stringify(versionError, null, 2));
+
+              // CRITICAL: Delete the workflow we just created since version creation failed
+              console.log(`🔄 Rolling back workflow ${newWorkflow.id} due to version creation failure...`);
+              await supabase
+                .from('deployed_workflows')
+                .delete()
+                .eq('id', newWorkflow.id);
+              console.log(`✅ Rolled back workflow ${newWorkflow.id}`);
+
               results.errors.push(`${folderName}: Version creation failed - ${versionError.message}`);
             } else {
               console.log(`✅ Created initial version 1.0.0 (ID: ${initialVersion.id})`);
