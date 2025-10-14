@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -16,13 +17,75 @@ export async function POST(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to optimal machine');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
-    
+
     if (isNaN(workflowIdNum)) {
       return NextResponse.json(
         { success: false, error: 'Invalid workflow ID' },
         { status: 400 }
+      );
+    }
+
+    // STEP 2: Get workflow ownership data and verify authorization
+    const { data: workflowOwnership, error: ownershipError } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, created_by, organization_id')
+      .eq('id', workflowIdNum)
+      .single();
+
+    if (ownershipError || !workflowOwnership) {
+      return NextResponse.json(
+        { success: false, error: 'Workflow not found' },
+        { status: 404 }
+      );
+    }
+
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflowOwnership.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflowOwnership.organization_id && workflowOwnership.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow access if:
+    // - User is in Mediar org or is a Mediar admin (can get optimal machine for any workflow)
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized optimal machine check for workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this workflow' },
+        { status: 403 }
       );
     }
 
