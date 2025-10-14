@@ -21,6 +21,7 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/sync-processed-counts(.*)',
   '/api/process-workflow-step(.*)',
   '/api/remote-workflows(.*)',
+  '/api/cron/scheduler(.*)',
 ]);
 
 const isProtectedApiRoute = createRouteMatcher([
