@@ -72,6 +72,10 @@ export async function PATCH(
       );
     }
 
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
@@ -91,10 +95,11 @@ export async function PATCH(
     }
 
     // Allow modification if:
+    // - User is in Mediar org or is a Mediar admin (can modify any workflow's cron)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table
-    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized cron toggle for workflow ${workflowIdNum}`
       );
@@ -235,6 +240,10 @@ export async function PUT(
       );
     }
 
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg: isMediarOrgPut, isMediarAdmin: isMediarAdminPut } = await getEffectiveOrgId(null);
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
@@ -254,10 +263,11 @@ export async function PUT(
     }
 
     // Allow modification if:
+    // - User is in Mediar org or is a Mediar admin (can modify any workflow's cron)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table
-    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (!isMediarOrgPut && !isMediarAdminPut && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized cron update for workflow ${workflowIdNum}`
       );
@@ -398,6 +408,10 @@ export async function GET(
       );
     }
 
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg: isMediarOrgGet, isMediarAdmin: isMediarAdminGet } = await getEffectiveOrgId(null);
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
@@ -417,10 +431,11 @@ export async function GET(
     }
 
     // Allow access if:
+    // - User is in Mediar org or is a Mediar admin (can view any workflow's cron)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table
-    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (!isMediarOrgGet && !isMediarAdminGet && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of cron config for workflow ${workflowIdNum}`
       );

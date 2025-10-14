@@ -51,6 +51,10 @@ export async function DELETE(
       );
     }
 
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const workflow = Array.isArray(execution.deployed_workflows)
       ? execution.deployed_workflows[0]
@@ -73,10 +77,11 @@ export async function DELETE(
     }
 
     // Allow deletion if:
+    // - User is in Mediar org or is a Mediar admin (can delete any execution)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table
-    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized delete for execution ${executionId} (workflow ${execution.workflow_id})`
       );
