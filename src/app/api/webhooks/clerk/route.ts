@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { Webhook } from 'svix';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 const MEDIAR_ADMINS = ['louis@mediar.ai', 'matt@mediar.ai'];
 
@@ -38,6 +39,52 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error('Error verifying webhook:', err);
     return new NextResponse('Error: Verification failed', { status: 400 });
+  }
+
+  const posthog = getPostHogClient();
+
+  // Handle user.created event
+  if (evt.type === 'user.created') {
+    const { id: userId, email_addresses, first_name, last_name, created_at } = evt.data;
+    const primaryEmail = email_addresses?.[0]?.email_address || 'unknown';
+
+    console.log(`[Clerk Webhook] User created: ${primaryEmail} (${userId})`);
+
+    // Track user signup in PostHog
+    posthog.capture({
+      distinctId: userId,
+      event: 'user_created',
+      properties: {
+        email: primaryEmail,
+        first_name: first_name || '',
+        last_name: last_name || '',
+        created_at: created_at,
+        $set: {
+          email: primaryEmail,
+          name: [first_name, last_name].filter(Boolean).join(' ') || primaryEmail,
+        },
+      },
+    });
+
+    console.log(`[Clerk Webhook] ✓ Tracked user_created in PostHog: ${primaryEmail}`);
+  }
+
+  // Handle session.created event
+  if (evt.type === 'session.created') {
+    const { user_id, created_at } = evt.data;
+
+    console.log(`[Clerk Webhook] Session created for user: ${user_id}`);
+
+    // Track user login/activity in PostHog
+    posthog.capture({
+      distinctId: user_id,
+      event: 'session_created',
+      properties: {
+        created_at: created_at,
+      },
+    });
+
+    console.log(`[Clerk Webhook] ✓ Tracked session_created in PostHog: ${user_id}`);
   }
 
   // Handle organization.created event
