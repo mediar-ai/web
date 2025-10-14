@@ -1389,7 +1389,7 @@ export function UnifiedWorkflowDialog({
                           <SelectValue placeholder="Select machine" />
                         </SelectTrigger>
                         <SelectContent>
-                          {getAvailableMachinesForAssignment().map((machine) => {
+                          {getAvailableMachinesForAssignment().filter(m => m.status === 'active').map((machine) => {
                             // Parse health details for tooltip with uptime
                             let healthTooltip = '';
 
