@@ -619,7 +619,7 @@ export function BatchTestDialog({
                       <SelectValue placeholder="Select a machine" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableMachines.map(machine => {
+                      {availableMachines.filter(m => m.status === 'active').map(machine => {
                         // Determine machine status for display
                         const isActive = machine.status === 'active';
                         const now = new Date();
