@@ -25,7 +25,7 @@ SELECT
     dw.github_ref,
     dw.github_path
 FROM public.deployed_workflows dw
-WHERE dw.status = 'active';
+WHERE dw.status IN ('active', 'deployed');
 
 -- Grant permissions on the view
 GRANT SELECT ON deployed_workflows_with_sequence TO authenticated;
