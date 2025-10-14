@@ -18,13 +18,14 @@ COPY src ./src
 # Build release binary
 RUN cargo build --release
 
-# Runtime stage
-FROM debian:bookworm-slim
+# Runtime stage - use same base as builder for GLIBC compatibility
+FROM debian:trixie-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -48,5 +49,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/api/v1/health || exit 1
 
-# Run the binary
-CMD ["./workflow-executor"]
+# Run the binary with output redirection to see logs
+# Add sleep to ensure logs are captured even if app crashes immediately
+CMD ["sh", "-c", "echo '=== STARTING WORKFLOW EXECUTOR ===' && ./workflow-executor 2>&1 | tee /tmp/app.log; echo '=== EXIT CODE: $? ===' && sleep 30"]

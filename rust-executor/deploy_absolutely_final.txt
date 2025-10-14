@@ -1,0 +1,29 @@
+==================================================================
+🚀 Deploying Rust Workflow Executor to Azure
+==================================================================
+Environment:      dev
+Resource Group:   mediar-workflow-executor-rg
+ACR:              mediarworkflowacr
+Image:            workflow-executor:dev-20251013-084345
+Container:        workflow-executor-dev
+==================================================================
+
+📋 Step 1: Checking Azure CLI...
+✅ Azure CLI found: 2.76.0
+✅ Logged in as: Microsoft Azure Sponsorship
+
+📋 Step 2: Setting up resource group...
+✅ Resource group 'mediar-workflow-executor-rg' already exists
+
+📋 Step 3: Setting up Azure Container Registry...
+✅ ACR 'mediarworkflowacr' already exists
+🔗 ACR Login Server: mediarworkflowacr.azurecr.io
+
+📋 Step 4: Building and pushing Docker image...
+🏗️  Building workflow-executor:dev-20251013-084345 in Azure...
+WARNING: Packing source code into tar to upload...
+WARNING: Excluding '.gitignore' based on default ignore rules
+WARNING: Uploading archived source code from 'C:\Users\louis\AppData\Local\Temp\build_archive_51df65f5c7cf493a8ab33140c8dddffa.tar.gz'...
+WARNING: Sending context (50.064 KiB) to registry: mediarworkflowacr...
+WARNING: Queued a build with ID: cah
+WARNING: Waiting for an agent...
