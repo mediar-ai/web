@@ -20,12 +20,14 @@ function PostHogPageViewInner() {
       const submissionId = searchParams?.get('submissionId');
       const fromSurvey = searchParams?.get('fromSurvey');
       const email = searchParams?.get('email');
+      const phDistinctId = searchParams?.get('phDistinctId'); // PostHog distinct ID from website
 
       if (submissionId && fromSurvey === 'true') {
         console.log('[PostHog] Storing survey data in localStorage:', {
           submissionId,
           email,
           fromSurvey,
+          phDistinctId,
           timestamp: new Date().toISOString()
         });
 
@@ -34,6 +36,7 @@ function PostHogPageViewInner() {
           submissionId,
           email,
           fromSurvey,
+          phDistinctId, // Store the website's PostHog ID
           timestamp: new Date().toISOString()
         }));
 
@@ -49,9 +52,10 @@ function PostHogPageViewInner() {
       let submissionId = searchParams?.get('submissionId');
       let fromSurvey = searchParams?.get('fromSurvey');
       let surveyEmail = searchParams?.get('email');
+      let websiteDistinctId = searchParams?.get('phDistinctId');
 
       // If no URL params, check localStorage
-      if (!submissionId || !fromSurvey) {
+      if (!submissionId || !fromSurvey || !websiteDistinctId) {
         const storedData = localStorage.getItem('mediar_survey_tracking');
         if (storedData) {
           try {
@@ -60,18 +64,47 @@ function PostHogPageViewInner() {
             submissionId = submissionId || parsed.submissionId;
             fromSurvey = fromSurvey || parsed.fromSurvey;
             surveyEmail = surveyEmail || parsed.email;
+            websiteDistinctId = websiteDistinctId || parsed.phDistinctId;
           } catch (e) {
             console.error('[PostHog] Error parsing stored survey data:', e);
           }
         }
       }
 
+      // Get the current anonymous ID for this domain
+      const currentAnonymousId = posthog.get_distinct_id();
+
       console.log('[PostHog] User signed in, identifying:', {
         userId: user.id,
         email: user.primaryEmailAddress?.emailAddress,
+        currentAnonymousId,
+        websiteDistinctId,
         submissionId,
         fromSurvey
       });
+
+      // IMPORTANT: We need to handle multiple alias scenarios
+      // 1. If we have the website's distinct ID (from survey), alias it to the user ID
+      // 2. Also alias the current session's anonymous ID to the user ID
+
+      // First, alias the website's distinct ID if it came from a survey
+      if (websiteDistinctId && fromSurvey === 'true' && websiteDistinctId !== user.id) {
+        console.log('[PostHog] Aliasing website distinct ID to user ID:', {
+          websiteDistinctId,
+          userId: user.id
+        });
+        // This links the survey events from the website to the user
+        posthog.alias(user.id, websiteDistinctId);
+      }
+
+      // Then alias the current anonymous ID if different
+      if (currentAnonymousId && currentAnonymousId !== user.id && currentAnonymousId !== websiteDistinctId) {
+        console.log('[PostHog] Aliasing current anonymous ID to user ID:', {
+          currentAnonymousId,
+          userId: user.id
+        });
+        posthog.alias(user.id);
+      }
 
       // Identify user with PostHog
       posthog.identify(user.id, {
