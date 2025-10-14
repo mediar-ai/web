@@ -89,6 +89,9 @@ export function BatchTestDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSpecValid, setIsSpecValid] = useState(true);
 
+  // Track previous workflow ID to detect changes
+  const prevWorkflowIdRef = useRef<number | null>(null);
+
   // Machine selection state
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
   const [selectedMachineId, setSelectedMachineId] = useState<string>(''); // Start with empty, will be set when machines load
@@ -142,9 +145,53 @@ export function BatchTestDialog({
     }
   }, [storageKey]);
 
+  // Reset state when dialog closes or workflow changes
+  useEffect(() => {
+    if (!open) {
+      // Reset all state when dialog closes
+      setSelectedVersionNumber('');
+      setAvailableVersions([]);
+      setVersionSchema(null);
+      setVersionValidation(null);
+      setSelectedMachineId('');
+      setAvailableMachines([]);
+      setShowPartialExecution(false);
+      setStartFromStep('');
+      setEndAtStep('');
+      setFollowFallback(false);
+      setExecuteJumpsAtEnd(false);
+      setWorkflowSteps([]);
+      userSelectedMachineRef.current = false;
+    }
+  }, [open]);
+
   // Load available machines and versions when dialog opens
   useEffect(() => {
     if (open && workflow) {
+      // Check if workflow has changed
+      const workflowChanged = prevWorkflowIdRef.current !== null && prevWorkflowIdRef.current !== workflow.id;
+
+      if (workflowChanged) {
+        console.log(`[BatchTestDialog] Workflow changed from ${prevWorkflowIdRef.current} to ${workflow.id}, resetting state`);
+        // Reset ALL state when workflow changes
+        setSelectedVersionNumber('');
+        setAvailableVersions([]);
+        setVersionSchema(null);
+        setVersionValidation(null);
+        setSelectedMachineId('');
+        setAvailableMachines([]);
+        setShowPartialExecution(false);
+        setStartFromStep('');
+        setEndAtStep('');
+        setFollowFallback(false);
+        setExecuteJumpsAtEnd(false);
+        setWorkflowSteps([]);
+        resetBatchSpec();
+      }
+
+      // Update the ref with current workflow ID
+      prevWorkflowIdRef.current = workflow.id;
+
       // Reset user selection flag when dialog opens
       userSelectedMachineRef.current = false;
 
@@ -315,7 +362,7 @@ export function BatchTestDialog({
       fetchVersions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, workflow]); // Intentionally excluding selectedMachineId to prevent re-running when user manually selects
+  }, [open, workflow, resetBatchSpec]); // Intentionally excluding selectedMachineId to prevent re-running when user manually selects
 
   // Load saved batch spec when dialog opens
   useEffect(() => {
@@ -629,6 +676,10 @@ export function BatchTestDialog({
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Loading versions...
+                  </div>
+                ) : availableVersions.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">
+                    No versions available
                   </div>
                 ) : (
                   <Select
