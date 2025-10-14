@@ -241,12 +241,15 @@ export async function POST(request: NextRequest) {
       try {
         // Get workflow content using the actual filename
         const filePath = `${folderName}/${fileName}`;
+        console.log(`📂 Processing folder: ${folderName}, file: ${fileName}`);
         const content = await githubWorkflowManager.getWorkflow(filePath, branch);
 
         if (!content) {
+          console.error(`❌ Could not read workflow file: ${filePath}`);
           results.errors.push(`${folderName}: Could not read workflow file`);
           continue;
         }
+        console.log(`✅ Loaded workflow content (${content.yaml.length} bytes), SHA: ${content.metadata.sha}`);
 
         // Parse to extract workflow name
         let workflowName = folderName;
@@ -262,6 +265,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Look up workflow by github_folder
+        console.log(`🔍 Looking up workflow by github_folder: ${folderName}`);
         const { data: existing } = await supabase
           .from('deployed_workflows')
           .select('id, name, github_sha')
@@ -269,6 +273,7 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (existing) {
+          console.log(`✅ Found existing workflow: ID ${existing.id}, name "${existing.name}"`);
           // Check if content actually changed by comparing SHA
           // Skip SHA check for JS-only changes (YAML hasn't changed but JS files have)
           const isJsOnly = jsOnlyWorkflows.has(folderName);
@@ -311,6 +316,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Create new version entry (inactive initially)
+          console.log(`📝 Creating new version ${newVersionNumber} for workflow ${existing.id}...`);
           const { data: newVersion, error: versionError } = await supabase
             .from('deployed_workflow_versions')
             .insert({
@@ -326,11 +332,14 @@ export async function POST(request: NextRequest) {
             .single();
 
           if (versionError) {
+            console.error(`❌ Version creation failed for ${folderName}: ${versionError.message}`);
             results.errors.push(`${folderName}: Version creation failed - ${versionError.message}`);
             continue;
           }
+          console.log(`✅ Created version ${newVersionNumber} (ID: ${newVersion.id})`);
 
           // Activate the new version using the RPC function
+          console.log(`🔄 Activating version ${newVersionNumber}...`);
           const { error: activateError } = await supabase
             .rpc('activate_workflow_version', {
               p_workflow_id: existing.id,
@@ -338,7 +347,9 @@ export async function POST(request: NextRequest) {
             });
 
           if (activateError) {
-            console.error(`Failed to activate version ${newVersionNumber}: ${activateError.message}`);
+            console.error(`❌ Failed to activate version ${newVersionNumber}: ${activateError.message}`);
+          } else {
+            console.log(`✅ Activated version ${newVersionNumber}`);
           }
 
           // Get current total_versions to increment
@@ -435,6 +446,7 @@ export async function POST(request: NextRequest) {
           }
         } else {
           // Workflow doesn't exist - create it
+          console.log(`🆕 Creating new workflow: "${workflowName}" in folder ${folderName}`);
           const { data: newWorkflow, error: createError } = await supabase
             .from('deployed_workflows')
             .insert({
@@ -455,9 +467,12 @@ export async function POST(request: NextRequest) {
             .single();
 
           if (createError) {
+            console.error(`❌ Failed to create workflow ${folderName}: ${createError.message}`);
             results.errors.push(`${folderName}: Create failed - ${createError.message}`);
           } else {
+            console.log(`✅ Created workflow ${workflowName} (ID: ${newWorkflow.id})`);
             // Create initial version entry (inactive initially)
+            console.log(`📝 Creating initial version 1.0.0 for new workflow ${newWorkflow.id}...`);
             const { data: initialVersion, error: versionError } = await supabase
               .from('deployed_workflow_versions')
               .insert({
@@ -473,9 +488,13 @@ export async function POST(request: NextRequest) {
               .single();
 
             if (versionError) {
+              console.error(`❌ Initial version creation failed for ${folderName}: ${versionError.message}`);
               results.errors.push(`${folderName}: Version creation failed - ${versionError.message}`);
             } else {
+              console.log(`✅ Created initial version 1.0.0 (ID: ${initialVersion.id})`);
+
               // Activate the initial version using the RPC function
+              console.log(`🔄 Activating initial version 1.0.0...`);
               const { error: activateError } = await supabase
                 .rpc('activate_workflow_version', {
                   p_workflow_id: newWorkflow.id,
@@ -483,7 +502,9 @@ export async function POST(request: NextRequest) {
                 });
 
               if (activateError) {
-                console.error(`Failed to activate initial version: ${activateError.message}`);
+                console.error(`❌ Failed to activate initial version: ${activateError.message}`);
+              } else {
+                console.log(`✅ Activated initial version 1.0.0`);
               }
 
               // Update workflow to point to this version
