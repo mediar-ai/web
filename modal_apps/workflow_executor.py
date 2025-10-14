@@ -25,6 +25,7 @@ from modal_apps.lib.locks import (
 )
 from modal_apps.lib.mcp_client import normalize_endpoint, post_with_503_backoff
 from modal_apps.lib.github_loader import get_github_loader
+from modal_apps.lib.secrets import load_org_secrets, inject_secrets_into_params
 # File manager removed - files are now accessed via rclone mount
 from modal_apps.output_enrichment import enrich_results_if_enabled
 
@@ -226,6 +227,7 @@ image = (
             "httpx",  # HTTP client
             "websockets",  # WebSocket support
             "PyYAML",  # YAML parsing for dual-format sequence support
+            "cryptography",  # For secrets encryption/decryption
             # AI enrichment deps (GenAI preferred; Vertex fallback)
             "google-genai",
             "google-cloud-aiplatform",
@@ -2282,6 +2284,34 @@ def execute_workflow(
                     # If the applicant object becomes empty after removing height, remove it too
                     if not params_for_mcp["applicant"]:
                         del params_for_mcp["applicant"]
+
+                # Load and inject org secrets
+                try:
+                    # Get the workflow's organization_id (Clerk org ID)
+                    org_id = workflow.get("organization_id")
+                    if org_id:
+                        logger.info(f"Loading secrets for org: {org_id}")
+
+                        # Load encrypted secrets from database
+                        org_secrets = load_org_secrets(conn, org_id)
+                        if org_secrets:
+                            logger.info(f"Loaded {len(org_secrets)} secrets: {list(org_secrets.keys())}")
+
+                            # Inject secrets into parameters
+                            params_for_mcp = inject_secrets_into_params(
+                                params_for_mcp,
+                                org_secrets,
+                                substitute_placeholders=True
+                            )
+                            logger.info("Secrets injected into workflow parameters")
+                        else:
+                            logger.info("No secrets found for this organization")
+                    else:
+                        logger.info("Workflow has no organization_id, skipping secrets loading")
+                except Exception as e:
+                    # Don't fail workflow execution if secrets loading fails
+                    logger.warning(f"Failed to load org secrets: {e}")
+                    logger.info("Continuing workflow execution without secrets")
 
                 # Get timeout from workflow configuration, default to 25 minutes
                 timeout_minutes = workflow.get("timeout_minutes", 25)
