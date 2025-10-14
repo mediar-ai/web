@@ -340,7 +340,10 @@ async function validateMachineEndpoints(
       const mcpHealthUrl = `${mcpEndpoint}/health`;
       const mcpResponse = await fetch(mcpHealthUrl, {
         method: 'GET',
-        headers: { 'ngrok-skip-browser-warning': 'true' },
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+          'Authorization': 'Bearer cargorunmediar123'
+        },
         signal: AbortSignal.timeout(10000)
       });
 
