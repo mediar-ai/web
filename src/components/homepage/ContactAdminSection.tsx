@@ -7,6 +7,7 @@ import { UserButton } from '@clerk/nextjs';
 import { CheckCircle, Copy, Mail, MessageSquare, Play } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { usePostHog } from 'posthog-js/react';
 
 interface ContactAdminSectionProps {
   userId: string;
@@ -16,6 +17,7 @@ export default function ContactAdminSection({
   userId
 }: ContactAdminSectionProps) {
   const [copied, setCopied] = useState(false);
+  const posthog = usePostHog();
 
   const copyUserId = async () => {
     try {
@@ -24,6 +26,19 @@ export default function ContactAdminSection({
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy user ID:', err);
+    }
+  };
+
+  const handleDownloadClick = () => {
+    console.log('Desktop app download button clicked');
+    if (posthog) {
+      posthog.capture('desktop_app_download_clicked', {
+        source: 'contact_admin_page',
+        user_id: userId,
+        download_url: 'https://cdn.crabnebula.app/asset/01K78EPA16XG8Z1GMZVKYTM2E4',
+        timestamp: new Date().toISOString(),
+      });
+      console.log('PostHog event "desktop_app_download_clicked" captured');
     }
   };
 
@@ -78,7 +93,11 @@ export default function ContactAdminSection({
                 <p className="text-gray-600 text-sm">
                   Native desktop automation app
                 </p>
-                <a href="https://cdn.crabnebula.app/asset/01K78EPA16XG8Z1GMZVKYTM2E4" download>
+                <a
+                  href="https://cdn.crabnebula.app/asset/01K78EPA16XG8Z1GMZVKYTM2E4"
+                  download
+                  onClick={handleDownloadClick}
+                >
                   <Button className="w-full bg-black text-white hover:bg-gray-800">
                     DOWNLOAD APP
                   </Button>
