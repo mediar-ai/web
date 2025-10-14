@@ -5,6 +5,7 @@ import {
 } from '@/lib/responseCache';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 
 // Helper function to get API parameter names from workflow schema
 async function getApiParameterNames(
@@ -98,6 +99,17 @@ export async function GET(
   { params }: { params: Promise<{ executionId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to execution details');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { executionId } = await params;
     const executionIdNum = parseInt(executionId);
     console.log(`[PERF] Unified execution details for ${executionIdNum}...`);
@@ -164,12 +176,56 @@ export async function GET(
       );
     }
 
-    // Get workflow details
+    // STEP 2: Get workflow details and verify authorization
     const { data: workflow } = await supabase
       .from('deployed_workflows')
-      .select('id, name, description, version, category')
+      .select('id, name, description, version, category, created_by, organization_id')
       .eq('id', typedExecution.workflow_id)
       .single();
+
+    if (!workflow) {
+      return NextResponse.json(
+        { success: false, error: 'Workflow not found' },
+        { status: 404 }
+      );
+    }
+
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', typedExecution.workflow_id)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow access if:
+    // - User is in Mediar org or is a Mediar admin (can view any execution)
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of execution ${executionIdNum} (workflow ${typedExecution.workflow_id})`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this execution' },
+        { status: 403 }
+      );
+    }
 
     // Get assigned machine details if available
     let assignedMachineName = null;
@@ -473,6 +529,17 @@ export async function DELETE(
   { params }: { params: Promise<{ executionId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to delete execution');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { executionId } = await params;
     const executionIdNum = parseInt(executionId);
 
@@ -488,10 +555,20 @@ export async function DELETE(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch execution to validate status
+    // STEP 2: Fetch execution and workflow to check authorization
     const { data: execution, error: fetchError } = await supabase
       .from('workflow_executions')
-      .select('id, status, workflow_id')
+      .select(`
+        id,
+        status,
+        workflow_id,
+        deployed_workflows!inner(
+          id,
+          name,
+          created_by,
+          organization_id
+        )
+      `)
       .eq('id', executionIdNum)
       .single();
 
@@ -510,6 +587,46 @@ export async function DELETE(
       return NextResponse.json(
         { success: false, error: `Execution ${executionIdNum} not found` },
         { status: 404 }
+      );
+    }
+
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const workflow = Array.isArray((execution as any).deployed_workflows)
+      ? (execution as any).deployed_workflows[0]
+      : (execution as any).deployed_workflows;
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', (execution as any).workflow_id)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow deletion if:
+    // - User is in Mediar org or is a Mediar admin (can delete any execution)
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized delete for execution ${executionIdNum} (workflow ${(execution as any).workflow_id})`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have permission to delete this execution' },
+        { status: 403 }
       );
     }
 

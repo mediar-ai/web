@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { auth } from '@clerk/nextjs/server';
 
 type JSONValue = string | number | boolean | { [x: string]: JSONValue } | Array<JSONValue> | null;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -174,6 +175,17 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
+  // STEP 1: Authenticate
+  const { userId: authenticatedUserId, has, orgId } = await auth();
+
+  if (!authenticatedUserId) {
+    console.warn('[SECURITY] Unauthenticated request to workflow overview');
+    return NextResponse.json(
+      { error: 'Unauthorized - Authentication required' },
+      { status: 401 }
+    );
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -182,6 +194,7 @@ export async function GET(
   }
 
   const { workflowId } = await params;
+  const workflowIdNum = parseInt(workflowId);
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   const { data: workflow, error } = await supabase
@@ -217,21 +230,61 @@ export async function GET(
     return NextResponse.json({ success: false, error: 'Workflow not found' }, { status: 404 });
   }
 
-  // Get automation_sequence from the main table
-  // Note: deployed_workflows_with_sequence view only shows status='active' workflows
-  // So we fetch directly from deployed_workflows to support all status values
-  const { data: workflowSequence, error: sequenceError } = await supabase
+  // STEP 2: Get workflow ownership data and verify authorization
+  const { data: workflowOwnership, error: ownershipError } = await supabase
     .from('deployed_workflows')
-    .select('automation_sequence')
+    .select('id, name, created_by, organization_id, automation_sequence')
     .eq('id', workflowId)
     .single();
 
-  if (sequenceError) {
-    console.error(`Failed to fetch workflow sequence for ${workflowId}:`, sequenceError);
-    return NextResponse.json({ success: false, error: 'Failed to fetch workflow sequence: ' + sequenceError.message }, { status: 500 });
+  if (ownershipError || !workflowOwnership) {
+    return NextResponse.json(
+      { success: false, error: 'Workflow not found' },
+      { status: 404 }
+    );
   }
 
-  if (!workflowSequence) {
+  // Import auth helper to check for Mediar org/admin status
+  const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+  const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+  // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+  const isOwner = workflowOwnership.created_by === authenticatedUserId;
+  const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+  const isSameOrg = workflowOwnership.organization_id && workflowOwnership.organization_id === orgId;
+
+  // Check workflow_organization_access table for organization-based access
+  let hasOrgAccess = false;
+  if (orgId && isOrgAdmin) {
+    const { data: orgAccess } = await supabase
+      .from('workflow_organization_access')
+      .select('organization_id')
+      .eq('workflow_id', workflowIdNum)
+      .eq('organization_id', orgId)
+      .single();
+
+    hasOrgAccess = !!orgAccess;
+  }
+
+  // Allow access if:
+  // - User is in Mediar org or is a Mediar admin (can view any workflow)
+  // - User is the workflow owner
+  // - User is org admin in the same org (legacy organization_id field)
+  // - User's organization has access via workflow_organization_access table
+  if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    console.warn(
+      `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of workflow ${workflowIdNum}`
+    );
+    return NextResponse.json(
+      { error: 'Forbidden - You do not have access to this workflow' },
+      { status: 403 }
+    );
+  }
+
+  // Use automation_sequence from workflowOwnership query
+  const workflowSequence = { automation_sequence: workflowOwnership.automation_sequence };
+
+  if (!workflowSequence.automation_sequence) {
     console.warn(`No automation sequence found for workflow ${workflowId}`);
     // Continue without sequence - we'll just return empty schema
   }

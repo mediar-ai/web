@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 
 // Import the required types
 type JSONValue =
@@ -421,6 +422,17 @@ export async function GET(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to workflow schema');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
 
@@ -466,10 +478,10 @@ export async function GET(
         );
       }
 
-      // Get basic workflow info
+      // STEP 2: Get basic workflow info with ownership data
       const { data: workflowInfo, error: workflowInfoError } = await supabase
         .from('deployed_workflows')
-        .select('id, name, description, status, estimated_duration_seconds')
+        .select('id, name, description, status, estimated_duration_seconds, created_by, organization_id')
         .eq('id', workflowIdNum)
         .single();
 
@@ -481,6 +493,43 @@ export async function GET(
             timestamp: new Date().toISOString(),
           },
           { status: 404 }
+        );
+      }
+
+      // Import auth helper to check for Mediar org/admin status
+      const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+      const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+      // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+      const isOwner = workflowInfo.created_by === authenticatedUserId;
+      const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+      const isSameOrg = workflowInfo.organization_id && workflowInfo.organization_id === orgId;
+
+      // Check workflow_organization_access table for organization-based access
+      let hasOrgAccess = false;
+      if (orgId && isOrgAdmin) {
+        const { data: orgAccess } = await supabase
+          .from('workflow_organization_access')
+          .select('organization_id')
+          .eq('workflow_id', workflowIdNum)
+          .eq('organization_id', orgId)
+          .single();
+
+        hasOrgAccess = !!orgAccess;
+      }
+
+      // Allow access if:
+      // - User is in Mediar org or is a Mediar admin (can view any workflow schema)
+      // - User is the workflow owner
+      // - User is org admin in the same org (legacy organization_id field)
+      // - User's organization has access via workflow_organization_access table
+      if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+        console.warn(
+          `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of workflow ${workflowIdNum} schema`
+        );
+        return NextResponse.json(
+          { error: 'Forbidden - You do not have access to this workflow' },
+          { status: 403 }
         );
       }
 
@@ -514,7 +563,63 @@ export async function GET(
         automation_sequence_yaml: versionData.automation_sequence_yaml,
       };
     } else {
-      // Fetch workflow data with active version (existing behavior)
+      // STEP 2: Fetch workflow data with active version (need ownership data from main table)
+      // First get ownership data from deployed_workflows
+      const { data: workflowOwnership, error: ownershipError } = await supabase
+        .from('deployed_workflows')
+        .select('id, name, created_by, organization_id')
+        .eq('id', workflowIdNum)
+        .single();
+
+      if (ownershipError || !workflowOwnership) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Workflow ${workflowIdNum} not found`,
+            timestamp: new Date().toISOString(),
+          },
+          { status: 404 }
+        );
+      }
+
+      // Import auth helper to check for Mediar org/admin status
+      const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+      const { isMediarOrg: isMediarOrgElse, isMediarAdmin: isMediarAdminElse } = await getEffectiveOrgId(null);
+
+      // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+      const isOwner = workflowOwnership.created_by === authenticatedUserId;
+      const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+      const isSameOrg = workflowOwnership.organization_id && workflowOwnership.organization_id === orgId;
+
+      // Check workflow_organization_access table for organization-based access
+      let hasOrgAccess = false;
+      if (orgId && isOrgAdmin) {
+        const { data: orgAccess } = await supabase
+          .from('workflow_organization_access')
+          .select('organization_id')
+          .eq('workflow_id', workflowIdNum)
+          .eq('organization_id', orgId)
+          .single();
+
+        hasOrgAccess = !!orgAccess;
+      }
+
+      // Allow access if:
+      // - User is in Mediar org or is a Mediar admin (can view any workflow schema)
+      // - User is the workflow owner
+      // - User is org admin in the same org (legacy organization_id field)
+      // - User's organization has access via workflow_organization_access table
+      if (!isMediarOrgElse && !isMediarAdminElse && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+        console.warn(
+          `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of workflow ${workflowIdNum} schema`
+        );
+        return NextResponse.json(
+          { error: 'Forbidden - You do not have access to this workflow' },
+          { status: 403 }
+        );
+      }
+
+      // Now fetch the actual workflow data with sequence
       const { data: activeWorkflow, error: workflowError } = await supabase
         .from('deployed_workflows_with_sequence')
         .select(
