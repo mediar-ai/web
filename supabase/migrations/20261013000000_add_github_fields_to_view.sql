@@ -1,10 +1,13 @@
 -- Migration: Add github_folder and github_ref to deployed_workflows_with_sequence view
 -- Created: 2026-10-13
 -- Description: The view was missing github_folder and github_ref columns needed by Rust executor
+-- Note: Must DROP and recreate because columns were removed from previous view definition
 
--- Update the deployed_workflows_with_sequence view to include github fields
--- Using only core columns that definitely exist in the base table
-CREATE OR REPLACE VIEW deployed_workflows_with_sequence AS
+-- Drop existing view (CASCADE removes dependencies)
+DROP VIEW IF EXISTS deployed_workflows_with_sequence CASCADE;
+
+-- Recreate view with only columns that exist after 20260109000000_remove_unused_workflow_fields migration
+CREATE VIEW deployed_workflows_with_sequence AS
 SELECT
     dw.id,
     dw.name,
