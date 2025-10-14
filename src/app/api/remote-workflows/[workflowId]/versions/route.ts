@@ -163,14 +163,42 @@ export async function GET(
     }
 
     // Get version history with execution counts
+    console.log(`📋 Fetching version history for workflow ${workflowIdNum}...`);
+    let versionsList: WorkflowVersion[] = [];
+
     const { data: versions, error: versionsError } = await supabase
       .rpc('get_workflow_version_history', { p_workflow_id: workflowIdNum });
 
     if (versionsError) {
-      throw new Error(`Failed to get version history: ${versionsError.message}`);
-    }
+      console.error(`❌ RPC failed: ${versionsError.message}`);
+      console.error('   Full error:', JSON.stringify(versionsError, null, 2));
 
-    const versionsList = (versions as WorkflowVersion[]) || [];
+      // Fallback: Query table directly if RPC doesn't exist
+      console.log('🔄 Falling back to direct table query...');
+      const { data: directVersions, error: directError } = await supabase
+        .from('deployed_workflow_versions')
+        .select('id, version_number, is_active, created_at, change_notes')
+        .eq('workflow_id', workflowIdNum)
+        .order('created_at', { ascending: false });
+
+      if (directError) {
+        console.error(`❌ Direct query also failed: ${directError.message}`);
+        throw new Error(`Failed to get version history: ${versionsError.message}`);
+      }
+
+      console.log(`✅ Direct query returned ${directVersions?.length || 0} versions`);
+      versionsList = (directVersions || []).map(v => ({
+        version_id: v.id,
+        version_number: v.version_number,
+        is_active: v.is_active,
+        created_at: v.created_at,
+        change_notes: v.change_notes || '',
+        execution_count: 0 // Can't get execution count without RPC
+      }));
+    } else {
+      console.log(`✅ Fetched ${versions?.length || 0} versions from RPC`);
+      versionsList = (versions as WorkflowVersion[]) || [];
+    }
 
     // Format response
     const response = {
