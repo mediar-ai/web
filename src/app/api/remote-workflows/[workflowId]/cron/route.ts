@@ -1,3 +1,4 @@
+import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -9,6 +10,17 @@ export async function PATCH(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to toggle cron schedule');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
 
@@ -45,6 +57,52 @@ export async function PATCH(
 
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // STEP 2: Get workflow info and verify ownership
+    const { data: workflow, error: workflowError } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, created_by, organization_id')
+      .eq('id', workflowIdNum)
+      .single();
+
+    if (workflowError || !workflow) {
+      return NextResponse.json(
+        { success: false, error: `Workflow ${workflowIdNum} not found` },
+        { status: 404 }
+      );
+    }
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow modification if:
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized cron toggle for workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have permission to modify this workflow' },
+        { status: 403 }
+      );
+    }
 
     // Update the cron_enabled status
     const { data: updatedWorkflow, error } = await supabase
@@ -100,6 +158,17 @@ export async function PUT(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to update cron configuration');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
 
@@ -151,6 +220,52 @@ export async function PUT(
 
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // STEP 2: Get workflow info and verify ownership
+    const { data: workflow, error: workflowError } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, created_by, organization_id')
+      .eq('id', workflowIdNum)
+      .single();
+
+    if (workflowError || !workflow) {
+      return NextResponse.json(
+        { success: false, error: `Workflow ${workflowIdNum} not found` },
+        { status: 404 }
+      );
+    }
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow modification if:
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized cron update for workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have permission to modify this workflow' },
+        { status: 403 }
+      );
+    }
 
     // Update the cron configuration
     const updateData: Record<string, any> = {
@@ -220,6 +335,17 @@ export async function GET(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to read cron configuration');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
 
@@ -245,11 +371,14 @@ export async function GET(
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // STEP 2: Get workflow info and verify ownership
     const { data: workflow, error } = await supabase
       .from('deployed_workflows')
       .select(`
         id,
         name,
+        created_by,
+        organization_id,
         cron_expression,
         cron_timezone,
         cron_enabled,
@@ -266,6 +395,38 @@ export async function GET(
       return NextResponse.json(
         { success: false, error: 'Workflow not found' },
         { status: 404 }
+      );
+    }
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow access if:
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of cron config for workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this workflow' },
+        { status: 403 }
       );
     }
 
