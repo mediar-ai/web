@@ -213,6 +213,10 @@ export async function PATCH(
       );
     }
 
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
@@ -232,10 +236,11 @@ export async function PATCH(
     }
 
     // Allow modification if:
+    // - User is in Mediar org or is a Mediar admin (can modify any workflow)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table
-    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized update for workflow ${workflowIdNum}`
       );
@@ -351,6 +356,10 @@ export async function DELETE(
       );
     }
 
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg: isMediarOrgDelete, isMediarAdmin: isMediarAdminDelete } = await getEffectiveOrgId(null);
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
@@ -370,10 +379,11 @@ export async function DELETE(
     }
 
     // Allow deletion if:
+    // - User is in Mediar org or is a Mediar admin (can delete any workflow)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table
-    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (!isMediarOrgDelete && !isMediarAdminDelete && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized deletion for workflow ${workflowIdNum}`
       );
