@@ -172,7 +172,6 @@ export default function SecretsPage() {
           <PageHeader
             title="Secrets"
             subtitle="Manage encrypted secrets for workflows"
-            icon={Key}
           />
 
           {/* Info banner */}
