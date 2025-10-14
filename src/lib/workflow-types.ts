@@ -58,6 +58,12 @@ export interface Workflow {
   cron_max_concurrent?: number;
   cron_retry_on_failure?: boolean;
   cron_retry_count?: number;
+  // Cron failure tracking fields
+  consecutive_failures?: number;
+  last_failure_message?: string | null;
+  cron_auto_paused?: boolean;
+  auto_paused_at?: string | null;
+  auto_pause_reason?: string | null;
   success_rate: number | null;
   // Version-specific statistics
   current_version_stats?: {

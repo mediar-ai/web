@@ -23,6 +23,7 @@ import {
   Share2,
   Copy,
   Upload,
+  AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -249,8 +250,30 @@ export function WorkflowCardEnhanced({
                   </TooltipContent>
                 </Tooltip>
               )}
-              {/* Show paused schedule indicator */}
-              {workflow.cron_expression && !workflow.cron_enabled && (
+              {/* Show auto-paused indicator */}
+              {workflow.cron_expression && !workflow.cron_enabled && workflow.cron_auto_paused && (
+                <Tooltip>
+                  <TooltipTrigger>
+                    <div className="flex items-center gap-1 bg-red-100 border border-red-600 rounded px-1.5 py-0.5 flex-shrink-0">
+                      <AlertCircle className="w-3 h-3 text-red-800 flex-shrink-0" />
+                      <span className="text-[10px] font-mono text-red-800 uppercase font-bold">Auto-Paused</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs bg-red-50 border-red-600">
+                    <p className="font-mono text-xs font-bold text-red-800">Workflow automatically paused</p>
+                    <p className="text-[10px] text-red-700 mt-1">
+                      {workflow.consecutive_failures} consecutive failures detected
+                    </p>
+                    {workflow.auto_pause_reason && (
+                      <p className="text-[10px] text-gray-600 mt-1 max-w-md">
+                        {workflow.auto_pause_reason}
+                      </p>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {/* Show paused schedule indicator (manual pause) */}
+              {workflow.cron_expression && !workflow.cron_enabled && !workflow.cron_auto_paused && (
                 <AnimatedBadge status="paused" className="text-xs py-0.5 px-2 flex-shrink-0">
                   PAUSED
                 </AnimatedBadge>

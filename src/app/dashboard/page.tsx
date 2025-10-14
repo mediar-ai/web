@@ -14,7 +14,7 @@ import { OrganizationAssignmentDialog } from '@/components/deployments/Organizat
 import { ExecutionsDataTable } from '@/components/dashboard/ExecutionsDataTable';
 import { Button } from '@/components/ui/button';
 import { useOrganization, useOrganizationList, useUser, useAuth } from '@clerk/nextjs';
-import { Activity, Workflow, TrendingUp, Zap, Plus, Search } from 'lucide-react';
+import { Activity, Workflow, TrendingUp, Zap, Plus, Search, AlertCircle, X } from 'lucide-react';
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
@@ -220,6 +220,7 @@ function DashboardContent() {
   const [selectedWorkflowForOrgAssignment, setSelectedWorkflowForOrgAssignment] = useState<WorkflowWithSettings | null>(null);
   const [uploadVersionOpen, setUploadVersionOpen] = useState(false);
   const [selectedWorkflowForVersion, setSelectedWorkflowForVersion] = useState<WorkflowWithSettings | null>(null);
+  const [autoPauseBannerDismissed, setAutoPauseBannerDismissed] = useState(false);
 
   // Use keyboard navigation
   const { selectedIndex: navSelectedIndex } = useKeyboardNavigation({
@@ -821,6 +822,48 @@ function DashboardContent() {
                 );
               })}
             </div>
+
+            {/* Auto-Pause Alert Banner */}
+            {(() => {
+              const autoPausedWorkflows = workflows.filter(w => w.cron_auto_paused);
+              if (autoPausedWorkflows.length > 0 && !autoPauseBannerDismissed) {
+                return (
+                  <div className="bg-red-100 border-2 border-red-600 p-4 mb-4 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-800 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="font-mono font-bold text-red-800 mb-1">
+                        {autoPausedWorkflows.length === 1 ? '1 Workflow Auto-Paused' : `${autoPausedWorkflows.length} Workflows Auto-Paused`}
+                      </h3>
+                      <p className="text-sm text-red-700 mb-2">
+                        {autoPausedWorkflows.length === 1
+                          ? `The workflow "${autoPausedWorkflows[0].name}" was automatically paused after ${autoPausedWorkflows[0].consecutive_failures} consecutive failures with the same error.`
+                          : `${autoPausedWorkflows.length} workflows were automatically paused due to consecutive failures. Review the failures and manually re-enable the cron schedules.`
+                        }
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {autoPausedWorkflows.map(workflow => (
+                          <button
+                            key={workflow.id}
+                            onClick={() => fetchWorkflowOverview(workflow.id)}
+                            className="px-3 py-1 bg-white border border-red-600 rounded text-xs font-mono text-red-800 hover:bg-red-50"
+                          >
+                            View {workflow.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setAutoPauseBannerDismissed(true)}
+                      className="p-1 hover:bg-red-200 rounded transition-colors"
+                      aria-label="Dismiss alert"
+                    >
+                      <X className="w-4 h-4 text-red-800" />
+                    </button>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             {/* Header with Actions */}
             <div className="flex items-center justify-between mb-3">
