@@ -209,27 +209,31 @@ export async function GET(
     .eq('id', workflowId)
     .single();
 
-  // Get automation_sequence from the main table
-  const { data: workflowSequence, error: sequenceError } = await supabase
-    .from('deployed_workflows_with_sequence')
-    .select('automation_sequence')
-    .eq('id', workflowId)
-    .single();
-
   if (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-  }
-
-  if (sequenceError) {
-    return NextResponse.json({ success: false, error: 'Failed to fetch workflow sequence: ' + sequenceError.message }, { status: 500 });
   }
 
   if (!workflow) {
     return NextResponse.json({ success: false, error: 'Workflow not found' }, { status: 404 });
   }
 
+  // Get automation_sequence from the main table
+  // Note: deployed_workflows_with_sequence view only shows status='active' workflows
+  // So we fetch directly from deployed_workflows to support all status values
+  const { data: workflowSequence, error: sequenceError } = await supabase
+    .from('deployed_workflows')
+    .select('automation_sequence')
+    .eq('id', workflowId)
+    .single();
+
+  if (sequenceError) {
+    console.error(`Failed to fetch workflow sequence for ${workflowId}:`, sequenceError);
+    return NextResponse.json({ success: false, error: 'Failed to fetch workflow sequence: ' + sequenceError.message }, { status: 500 });
+  }
+
   if (!workflowSequence) {
-    return NextResponse.json({ success: false, error: 'Workflow sequence not found' }, { status: 404 });
+    console.warn(`No automation sequence found for workflow ${workflowId}`);
+    // Continue without sequence - we'll just return empty schema
   }
 
   let executionSchema = {};
@@ -237,7 +241,7 @@ export async function GET(
   let expectedOutputs = {};
 
   try {
-    if (workflowSequence.automation_sequence && Array.isArray(workflowSequence.automation_sequence) && workflowSequence.automation_sequence.length > 0) {
+    if (workflowSequence && workflowSequence.automation_sequence && Array.isArray(workflowSequence.automation_sequence) && workflowSequence.automation_sequence.length > 0) {
       // Analyze the automation sequence for conditional logic
       const { coreVariables, conditionalVariables } = analyzeAutomationSequence(workflowSequence.automation_sequence);
       
@@ -318,7 +322,7 @@ export async function GET(
       current_version: workflow.current_version,
       total_versions: workflow.total_versions,
     },
-    automation_sequence: workflowSequence.automation_sequence,
+    automation_sequence: workflowSequence?.automation_sequence || null,
     created_at: workflow.created_at,
     updated_at: workflow.updated_at,
   };
