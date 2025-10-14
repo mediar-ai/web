@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
+import { auth } from '@clerk/nextjs/server';
 
 type JsonValue =
   | string
@@ -342,6 +343,17 @@ export async function POST(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to batch execute workflow');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
     const body = await request.json();
@@ -456,6 +468,52 @@ export async function POST(
       throw new Error('Supabase environment variables are not set');
     }
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // STEP 2: Check workflow exists and verify authorization
+    const { data: workflow, error: workflowError } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, status, created_by, organization_id')
+      .eq('id', workflowIdNum)
+      .single();
+
+    if (workflowError || !workflow) {
+      return NextResponse.json(
+        { success: false, error: `Workflow ${workflowIdNum} not found` },
+        { status: 404 }
+      );
+    }
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow batch execution if:
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized batch execution for workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have permission to execute this workflow' },
+        { status: 403 }
+      );
+    }
 
     // 🎯 Machine assignment with Load Balancer preference and optional user selection
     let assigned_machine_id: number | undefined = undefined;
