@@ -27,3 +27,9 @@ docker-compose.yml
 deploy.sh
 deploy-azure.sh
 .dockerignore
+
+# Environment files (CRITICAL: don't bake secrets into image!)
+.env
+.env.*
+!.env.example
+deploy_output*.txt

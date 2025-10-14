@@ -29,6 +29,13 @@ async fn main() -> Result<()> {
     // Initialize tracing
     init_tracing();
 
+    // Force flush to ensure logs are written
+    eprintln!("=== RUST EXECUTOR STARTING ===");
+    eprintln!("Environment: PORT={}, RUST_LOG={}",
+        std::env::var("PORT").unwrap_or_else(|_| "not set".to_string()),
+        std::env::var("RUST_LOG").unwrap_or_else(|_| "not set".to_string())
+    );
+
     info!("Starting Workflow Executor API");
 
     // Initialize database connection pool
@@ -37,16 +44,28 @@ async fn main() -> Result<()> {
 
     info!("Attempting to connect to database: {}", database_url.split('@').last().unwrap_or("unknown"));
 
-    let db_pool = match create_pool(&database_url).await {
-        Ok(pool) => {
+    // Try to connect with timeout
+    let db_pool_result = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        create_pool(&database_url)
+    ).await;
+
+    let db_pool = match db_pool_result {
+        Ok(Ok(pool)) => {
             info!("✓ Successfully connected to database");
             pool
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             error!("✗ Failed to connect to database: {}", e);
-            error!("  This may be due to network restrictions or invalid credentials");
-            error!("  The API will start anyway, but database operations will fail");
-            return Err(e);
+            error!("  Creating empty pool to allow API to start");
+            // Return error but with better message
+            return Err(anyhow::anyhow!("Database connection failed: {}. Check network connectivity to Supabase.", e));
+        }
+        Err(_) => {
+            error!("✗ Database connection timed out after 10 seconds");
+            error!("  This usually means DNS resolution or network connectivity issues");
+            error!("  Check that the container can reach: {}", database_url.split('@').last().unwrap_or("unknown"));
+            return Err(anyhow::anyhow!("Database connection timeout. Network/DNS issue suspected."));
         }
     };
 

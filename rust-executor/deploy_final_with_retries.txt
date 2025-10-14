@@ -1,0 +1,194 @@
+🔄 Deployment with automatic retries
+
+=== ATTEMPT 1/5 ===
+==================================================================
+🚀 Deploying Rust Workflow Executor to Azure
+==================================================================
+Environment:      dev
+Resource Group:   mediar-workflow-executor-rg
+ACR:              mediarworkflowacr
+Image:            workflow-executor:dev-20251012-143008
+Container:        workflow-executor-dev
+==================================================================
+
+📋 Step 1: Checking Azure CLI...
+✅ Azure CLI found: 2.76.0
+✅ Logged in as: Microsoft Azure Sponsorship
+
+📋 Step 2: Setting up resource group...
+🆕 Creating resource group 'mediar-workflow-executor-rg' in eastus...
+ERROR: ('Connection aborted.', ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None))
+❌ Attempt 1 failed (exit code: 1)
+⏳ Waiting 10s before retry...
+
+=== ATTEMPT 2/5 ===
+==================================================================
+🚀 Deploying Rust Workflow Executor to Azure
+==================================================================
+Environment:      dev
+Resource Group:   mediar-workflow-executor-rg
+ACR:              mediarworkflowacr
+Image:            workflow-executor:dev-20251012-143036
+Container:        workflow-executor-dev
+==================================================================
+
+📋 Step 1: Checking Azure CLI...
+✅ Azure CLI found: 2.76.0
+✅ Logged in as: Microsoft Azure Sponsorship
+
+📋 Step 2: Setting up resource group...
+🆕 Creating resource group 'mediar-workflow-executor-rg' in eastus...
+✅ Resource group created
+
+📋 Step 3: Setting up Azure Container Registry...
+🆕 Creating Azure Container Registry 'mediarworkflowacr'...
+ERROR: ('Connection aborted.', ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None))
+❌ Attempt 2 failed (exit code: 2)
+⏳ Waiting 20s before retry...
+
+=== ATTEMPT 3/5 ===
+==================================================================
+🚀 Deploying Rust Workflow Executor to Azure
+==================================================================
+Environment:      dev
+Resource Group:   mediar-workflow-executor-rg
+ACR:              mediarworkflowacr
+Image:            workflow-executor:dev-20251012-143122
+Container:        workflow-executor-dev
+==================================================================
+
+📋 Step 1: Checking Azure CLI...
+✅ Azure CLI found: 2.76.0
+✅ Logged in as: Microsoft Azure Sponsorship
+
+📋 Step 2: Setting up resource group...
+✅ Resource group 'mediar-workflow-executor-rg' already exists
+
+📋 Step 3: Setting up Azure Container Registry...
+✅ ACR 'mediarworkflowacr' already exists
+🔗 ACR Login Server: mediarworkflowacr.azurecr.io
+
+📋 Step 4: Building and pushing Docker image...
+🏗️  Building workflow-executor:dev-20251012-143122 in Azure...
+WARNING: Packing source code into tar to upload...
+WARNING: Excluding '.gitignore' based on default ignore rules
+WARNING: Uploading archived source code from 'C:\Users\louis\AppData\Local\Temp\build_archive_13f9e258ada84e4fb9b814b720eed75f.tar.gz'...
+WARNING: Sending context (46.654 KiB) to registry: mediarworkflowacr...
+WARNING: Queued a build with ID: cag
+WARNING: Waiting for an agent...
+{
+  "agentConfiguration": {
+    "cpu": 2
+  },
+  "agentPoolName": null,
+  "createTime": "2025-10-12T21:31:52.298970+00:00",
+  "customRegistries": null,
+  "finishTime": "2025-10-12T21:38:18.627559+00:00",
+  "id": "/subscriptions/5c0a60d0-92cf-47ca-9430-b462bc2fe194/resourceGroups/mediar-workflow-executor-rg/providers/Microsoft.ContainerRegistry/registries/mediarworkflowacr/runs/cag",
+  "imageUpdateTrigger": null,
+  "isArchiveEnabled": false,
+  "lastUpdatedTime": "2025-10-12T21:38:18+00:00",
+  "logArtifact": null,
+  "name": "cag",
+  "outputImages": [
+    {
+      "digest": "sha256:358dce36caf6ee8101098bb2cae180a30252537aefeac9d8f74b154b625f7f75",
+      "registry": "mediarworkflowacr.azurecr.io",
+      "repository": "workflow-executor",
+      "tag": "dev-20251012-143122"
+    },
+    {
+      "digest": "sha256:358dce36caf6ee8101098bb2cae180a30252537aefeac9d8f74b154b625f7f75",
+      "registry": "mediarworkflowacr.azurecr.io",
+      "repository": "workflow-executor",
+      "tag": "dev-latest"
+    }
+  ],
+  "platform": {
+    "architecture": "amd64",
+    "os": "linux",
+    "variant": null
+  },
+  "provisioningState": "Succeeded",
+  "resourceGroup": "mediar-workflow-executor-rg",
+  "runErrorMessage": null,
+  "runId": "cag",
+  "runType": "QuickRun",
+  "sourceRegistryAuth": null,
+  "sourceTrigger": null,
+  "startTime": "2025-10-12T21:31:52.609258+00:00",
+  "status": "Succeeded",
+  "systemData": {
+    "createdAt": null,
+    "createdBy": null,
+    "createdByType": null,
+    "lastModifiedAt": "2025-10-12T21:31:52.174604+00:00",
+    "lastModifiedBy": "louis@mediar.ai",
+    "lastModifiedByType": "User"
+  },
+  "task": null,
+  "timerTrigger": null,
+  "type": "Microsoft.ContainerRegistry/registries/runs",
+  "updateTriggerToken": null
+}
+✅ Image built and pushed to ACR
+
+📋 Step 5: Configuring environment variables...
+📄 Loading environment variables from .env file...
+✅ Environment configured
+
+📋 Step 6: Deploying to Azure Container Instances...
+ERROR: ('Connection aborted.', ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None))
+❌ Attempt 3 failed (exit code: 1)
+⏳ Waiting 30s before retry...
+
+=== ATTEMPT 4/5 ===
+==================================================================
+🚀 Deploying Rust Workflow Executor to Azure
+==================================================================
+Environment:      dev
+Resource Group:   mediar-workflow-executor-rg
+ACR:              mediarworkflowacr
+Image:            workflow-executor:dev-20251012-143908
+Container:        workflow-executor-dev
+==================================================================
+
+📋 Step 1: Checking Azure CLI...
+✅ Azure CLI found: 2.76.0
+✅ Logged in as: Microsoft Azure Sponsorship
+
+📋 Step 2: Setting up resource group...
+🆕 Creating resource group 'mediar-workflow-executor-rg' in eastus...
+✅ Resource group created
+
+📋 Step 3: Setting up Azure Container Registry...
+🆕 Creating Azure Container Registry 'mediarworkflowacr'...
+ERROR: ('Connection aborted.', ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None))
+❌ Attempt 4 failed (exit code: 2)
+⏳ Waiting 40s before retry...
+
+=== ATTEMPT 5/5 ===
+==================================================================
+🚀 Deploying Rust Workflow Executor to Azure
+==================================================================
+Environment:      dev
+Resource Group:   mediar-workflow-executor-rg
+ACR:              mediarworkflowacr
+Image:            workflow-executor:dev-20251012-144016
+Container:        workflow-executor-dev
+==================================================================
+
+📋 Step 1: Checking Azure CLI...
+✅ Azure CLI found: 2.76.0
+✅ Logged in as: Microsoft Azure Sponsorship
+
+📋 Step 2: Setting up resource group...
+🆕 Creating resource group 'mediar-workflow-executor-rg' in eastus...
+✅ Resource group created
+
+📋 Step 3: Setting up Azure Container Registry...
+🆕 Creating Azure Container Registry 'mediarworkflowacr'...
+ERROR: ('Connection aborted.', ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None))
+❌ Attempt 5 failed (exit code: 2)
+
+❌ All 5 attempts failed

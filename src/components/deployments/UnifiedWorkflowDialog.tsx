@@ -824,8 +824,8 @@ export function UnifiedWorkflowDialog({
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Success Rate:</dt>
                     <dd className="font-mono">
-                      {workflow.success_rate !== null
-                        ? `${workflow.success_rate}%`
+                      {workflow.success_rate !== null && workflow.success_rate !== undefined && typeof workflow.success_rate === 'number'
+                        ? `${Math.round(workflow.success_rate)}%`
                         : '—'}
                     </dd>
                   </div>
@@ -1080,6 +1080,82 @@ export function UnifiedWorkflowDialog({
                       onChange={setCronConfig}
                       showAdvanced={true}
                     />
+
+                    {/* Machine Assignment Indicator */}
+                    <div className="p-4 border-2 border-black rounded-lg bg-gray-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-mono text-xs uppercase text-gray-600 flex items-center gap-2">
+                          <Monitor className="w-4 h-4" />
+                          Execution Machine
+                        </h4>
+                      </div>
+                      {machineAssignments.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="text-sm">
+                            {(() => {
+                              // Get the highest priority assignment (exclusive > preferred)
+                              const exclusiveAssignment = machineAssignments.find(a => a.assignment_type === 'exclusive');
+                              const preferredAssignment = machineAssignments.find(a => a.assignment_type === 'preferred');
+                              const primaryAssignment = exclusiveAssignment || preferredAssignment;
+
+                              if (primaryAssignment) {
+                                const machineData = availableMachines.find(m => m.id === primaryAssignment.machine_id);
+                                return (
+                                  <div className="flex items-center gap-2 p-2 bg-white border border-black rounded">
+                                    <span className="font-mono font-bold">{primaryAssignment.machine_name}</span>
+                                    {machineData && (
+                                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                        machineData.health_status === 'healthy' ? 'bg-black animate-pulse' :
+                                        machineData.health_status === 'unhealthy' ? 'bg-gray-800' :
+                                        'bg-gray-400'
+                                      }`} title={`Health: ${machineData.health_status || 'unknown'}`} />
+                                    )}
+                                    <Badge className={primaryAssignment.assignment_type === 'exclusive'
+                                      ? 'bg-black text-white text-xs'
+                                      : 'bg-white text-black border border-black text-xs'
+                                    }>
+                                      {primaryAssignment.assignment_type}
+                                    </Badge>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+                          <p className="text-xs text-gray-600">
+                            Cron jobs will execute on the assigned machine.{' '}
+                            <button
+                              onClick={() => {
+                                const tabsList = document.querySelector('[value="machines"]');
+                                if (tabsList instanceof HTMLElement) {
+                                  tabsList.click();
+                                }
+                              }}
+                              className="underline hover:text-black font-mono"
+                            >
+                              View all assignments →
+                            </button>
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-sm text-gray-600">
+                            No machine assigned. Cron jobs will use automatic load-balanced assignment.
+                          </p>
+                          <button
+                            onClick={() => {
+                              const tabsList = document.querySelector('[value="machines"]');
+                              if (tabsList instanceof HTMLElement) {
+                                tabsList.click();
+                              }
+                            }}
+                            className="text-xs underline hover:text-black font-mono"
+                          >
+                            Assign a machine →
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
                     <div className="flex justify-end gap-2">
                       <Button
