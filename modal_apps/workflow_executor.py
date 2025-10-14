@@ -1545,7 +1545,10 @@ async def execute_mcp_workflow(
                 _client_factory,
                 endpoint_url,
                 init_request,
-                {"Accept": "application/json, text/event-stream"},
+                {
+                    "Accept": "application/json, text/event-stream",
+                    "Authorization": "Bearer ***REMOVED***"
+                },
             )
             return client, resp
 
@@ -1646,6 +1649,7 @@ async def execute_mcp_workflow(
                 headers={
                     "Accept": "application/json, text/event-stream",
                     "Mcp-Session-Id": session_id,
+                    "Authorization": "Bearer ***REMOVED***"
                 },
             )
             logger.info("[DEBUG] _post_with_session: POST returned, status=%s", resp.status_code)
@@ -1667,6 +1671,7 @@ async def execute_mcp_workflow(
                     headers={
                         "Accept": "application/json, text/event-stream",
                         "Mcp-Session-Id": session_id,
+                        "Authorization": "Bearer ***REMOVED***"
                     },
                 )
                 logger.info("[DEBUG] _post_with_session: Retry POST returned, status=%s", resp.status_code)
