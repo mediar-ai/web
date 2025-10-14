@@ -5,6 +5,7 @@ import {
 } from '@/lib/responseCache';
 import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 
 // Types for execution and workflow data
 interface ExecutionResults {
@@ -268,6 +269,17 @@ export async function POST(
     searchParams.get('full_detailed_response') === 'true';
 
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to execute workflow synchronously');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
 
@@ -299,7 +311,7 @@ export async function POST(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get workflow details
+    // STEP 2: Get workflow details and verify authorization
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
       .select('*')
@@ -314,6 +326,38 @@ export async function POST(
           timestamp: new Date().toISOString(),
         },
         { status: 404 }
+      );
+    }
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow synchronous execution if:
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized sync execution for workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have permission to execute this workflow' },
+        { status: 403 }
       );
     }
 
