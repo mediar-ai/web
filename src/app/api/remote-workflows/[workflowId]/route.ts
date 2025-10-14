@@ -165,6 +165,17 @@ export async function PATCH(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to update workflow');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
     const body = await request.json();
@@ -187,6 +198,52 @@ export async function PATCH(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // STEP 2: Get workflow info and verify ownership
+    const { data: workflow, error: workflowError } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, created_by, organization_id')
+      .eq('id', workflowIdNum)
+      .single();
+
+    if (workflowError || !workflow) {
+      return NextResponse.json(
+        { success: false, error: `Workflow ${workflowIdNum} not found` },
+        { status: 404 }
+      );
+    }
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow modification if:
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized update for workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have permission to modify this workflow' },
+        { status: 403 }
+      );
+    }
 
     // Build update object with only provided fields
     const updateData: any = {};
@@ -215,6 +272,8 @@ export async function PATCH(
       );
     }
 
+    console.log(`[SUCCESS] Updated workflow ${workflowIdNum} (${workflow.name})`);
+
     return NextResponse.json({
       success: true,
       workflow: data,
@@ -242,6 +301,17 @@ export async function DELETE(
   console.log('🚨 Request URL:', request.url);
 
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to delete workflow');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     console.log('🚨 Workflow ID from params:', workflowId);
     const workflowIdNum = parseInt(workflowId);
@@ -253,51 +323,7 @@ export async function DELETE(
       );
     }
 
-    // Check authentication
-    const { userId } = await auth();
-
-    console.log(`🔐 Delete request for workflow ${workflowIdNum} from user: ${userId || 'anonymous'}`);
-
-    if (!userId) {
-      console.log('❌ No userId found in auth');
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Get user email from Clerk
-    const { clerkClient } = await import('@clerk/nextjs/server');
-    const client = await clerkClient();
-
-    let userEmail = '';
-    try {
-      const user = await client.users.getUser(userId);
-      userEmail = user.emailAddresses?.[0]?.emailAddress || '';
-      console.log(`🔐 User email: ${userEmail}`);
-    } catch (error) {
-      console.error('❌ Failed to get user email from Clerk:', error);
-      return NextResponse.json(
-        { success: false, error: 'Failed to verify user identity' },
-        { status: 500 }
-      );
-    }
-
-    // Hardcoded admin emails for maximum safety
-    const ADMIN_EMAILS = ['louis@mediar.ai', 'matt@mediar.ai'];
-    const canDelete = ADMIN_EMAILS.includes(userEmail.toLowerCase());
-
-    console.log(`🔐 Permission check - User: ${userEmail}, Can Delete: ${canDelete}`);
-
-    if (!canDelete) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Only louis@mediar.ai and matt@mediar.ai can delete workflows'
-        },
-        { status: 403 }
-      );
-    }
+    console.log(`🔐 Delete request for workflow ${workflowIdNum} from user: ${authenticatedUserId}`);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -311,10 +337,10 @@ export async function DELETE(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // First, check if workflow exists and get its details including github_folder
+    // STEP 2: Get workflow info and verify ownership
     const { data: workflow, error: fetchError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, status, created_by, created_at, github_folder')
+      .select('id, name, status, created_by, created_at, github_folder, organization_id')
       .eq('id', workflowIdNum)
       .single();
 
@@ -323,6 +349,52 @@ export async function DELETE(
         { success: false, error: `Workflow ${workflowIdNum} not found` },
         { status: 404 }
       );
+    }
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow deletion if:
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized deletion for workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have permission to delete this workflow' },
+        { status: 403 }
+      );
+    }
+
+    console.log(`🔐 Authorization check passed - User ${authenticatedUserId} can delete workflow ${workflowIdNum}`);
+
+    // Get user email for logging (optional, best effort)
+    let userEmail = '';
+    try {
+      const { clerkClient } = await import('@clerk/nextjs/server');
+      const client = await clerkClient();
+      const user = await client.users.getUser(authenticatedUserId);
+      userEmail = user.emailAddresses?.[0]?.emailAddress || '';
+    } catch (error) {
+      console.warn('⚠️ Failed to get user email from Clerk:', error);
+      // Continue without email - not critical for deletion
     }
 
     // Check for any running or queued executions
@@ -357,7 +429,7 @@ export async function DELETE(
       .select('*', { count: 'exact', head: true })
       .eq('workflow_id', workflowIdNum);
 
-    console.log(`🗑️ Admin ${userId} deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`);
+    console.log(`🗑️ User ${authenticatedUserId} (${userEmail || 'email unknown'}) deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`);
 
     // Step 1: Delete from GitHub if workflow has github_folder
     if (workflow.github_folder) {
