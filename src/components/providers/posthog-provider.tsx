@@ -12,13 +12,59 @@ function PostHogPageViewInner() {
   const { isSignedIn } = useAuth();
   const { user } = useUser();
   const hasIdentified = useRef(false);
+  const hasCapturedSurveyData = useRef(false);
+
+  // Store survey data in localStorage when it arrives via URL params
+  useEffect(() => {
+    if (!hasCapturedSurveyData.current) {
+      const submissionId = searchParams?.get('submissionId');
+      const fromSurvey = searchParams?.get('fromSurvey');
+      const email = searchParams?.get('email');
+
+      if (submissionId && fromSurvey === 'true') {
+        console.log('[PostHog] Storing survey data in localStorage:', {
+          submissionId,
+          email,
+          fromSurvey,
+          timestamp: new Date().toISOString()
+        });
+
+        // Store in localStorage for persistence across auth redirects
+        localStorage.setItem('mediar_survey_tracking', JSON.stringify({
+          submissionId,
+          email,
+          fromSurvey,
+          timestamp: new Date().toISOString()
+        }));
+
+        hasCapturedSurveyData.current = true;
+      }
+    }
+  }, [searchParams]);
 
   // Handle survey → user conversion tracking
   useEffect(() => {
     if (isSignedIn && user && posthog && !hasIdentified.current) {
-      const submissionId = searchParams?.get('submissionId');
-      const fromSurvey = searchParams?.get('fromSurvey');
-      const email = searchParams?.get('email');
+      // First try URL params, then fall back to localStorage
+      let submissionId = searchParams?.get('submissionId');
+      let fromSurvey = searchParams?.get('fromSurvey');
+      let surveyEmail = searchParams?.get('email');
+
+      // If no URL params, check localStorage
+      if (!submissionId || !fromSurvey) {
+        const storedData = localStorage.getItem('mediar_survey_tracking');
+        if (storedData) {
+          try {
+            const parsed = JSON.parse(storedData);
+            console.log('[PostHog] Found stored survey data:', parsed);
+            submissionId = submissionId || parsed.submissionId;
+            fromSurvey = fromSurvey || parsed.fromSurvey;
+            surveyEmail = surveyEmail || parsed.email;
+          } catch (e) {
+            console.error('[PostHog] Error parsing stored survey data:', e);
+          }
+        }
+      }
 
       console.log('[PostHog] User signed in, identifying:', {
         userId: user.id,
@@ -41,7 +87,7 @@ function PostHogPageViewInner() {
         posthog.setPersonProperties({
           survey_submission_id: submissionId,
           survey_source: 'mediar_website',
-          survey_email: email || user.primaryEmailAddress?.emailAddress,
+          survey_email: surveyEmail || user.primaryEmailAddress?.emailAddress,
         });
 
         // Track conversion event
@@ -49,10 +95,15 @@ function PostHogPageViewInner() {
           submission_id: submissionId,
           user_id: user.id,
           email: user.primaryEmailAddress?.emailAddress,
+          survey_email: surveyEmail,
           timestamp: new Date().toISOString(),
         });
 
         console.log('[PostHog] ✓ Survey conversion tracked');
+
+        // Clear the stored data after successful tracking
+        localStorage.removeItem('mediar_survey_tracking');
+        console.log('[PostHog] Cleared stored survey data');
       }
 
       hasIdentified.current = true;
