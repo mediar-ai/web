@@ -130,6 +130,10 @@ export async function GET(
       );
     }
 
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
@@ -149,10 +153,11 @@ export async function GET(
     }
 
     // Allow access if:
+    // - User is in Mediar org or is a Mediar admin (can see all workflows)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table
-    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized access to workflow ${workflowIdNum}`
       );
@@ -424,6 +429,10 @@ export async function POST(
       );
     }
 
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg: isMediarOrgPost, isMediarAdmin: isMediarAdminPost } = await getEffectiveOrgId(null);
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
@@ -443,10 +452,11 @@ export async function POST(
     }
 
     // Allow modification if:
+    // - User is in Mediar org or is a Mediar admin (can modify all workflows)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table
-    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (!isMediarOrgPost && !isMediarAdminPost && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized version creation for workflow ${workflowIdNum}`
       );
