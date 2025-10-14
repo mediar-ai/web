@@ -6,7 +6,7 @@ export interface NotificationConfig {
   enabled: boolean;
   email_enabled: boolean;
   email_recipients: string[];
-  condition_type: 'error' | 'exception' | 'failure_rate' | 'execution_time' | 'custom';
+  condition_type: 'error' | 'exception' | 'failure_rate' | 'execution_time' | 'cron_auto_pause' | 'custom';
   condition_value: any;
   cooldown_minutes: number;
   max_alerts_per_hour: number;
@@ -457,6 +457,48 @@ export class NotificationService {
         case 'failure_rate':
           // This would need to calculate failure rate over a time window
           // Implementation depends on your specific requirements
+          break;
+
+        case 'cron_auto_pause':
+          // Check if this workflow was just auto-paused
+          const { data: workflowData } = await supabase
+            .from('deployed_workflows')
+            .select('cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures, last_failure_message')
+            .eq('id', execution.workflow_id)
+            .single();
+
+          if (workflowData?.cron_auto_paused && workflowData.auto_paused_at) {
+            // Check if auto-pause happened recently (within last minute)
+            const autoPausedTime = new Date(workflowData.auto_paused_at).getTime();
+            const now = new Date().getTime();
+            const timeDiff = now - autoPausedTime;
+
+            if (timeDiff < 60000) { // Within last minute
+              shouldAlert = true;
+              alertDetails = {
+                ...alertDetails,
+                alert_type: 'cron_auto_paused',
+                severity: 'high',
+                title: `Workflow Auto-Paused: ${execution.workflow_name || 'Unknown'}`,
+                message: `Workflow automatically paused after ${workflowData.consecutive_failures} consecutive failures with same error`,
+                error_message: workflowData.last_failure_message || 'Unknown error',
+                details: {
+                  workflow_id: execution.workflow_id,
+                  workflow_name: execution.workflow_name,
+                  consecutive_failures: workflowData.consecutive_failures,
+                  failure_message: workflowData.last_failure_message,
+                  auto_paused_at: workflowData.auto_paused_at,
+                  auto_pause_reason: workflowData.auto_pause_reason,
+                  resolution_steps: [
+                    'Review the failure message and execution logs',
+                    'Fix the underlying issue causing the failures',
+                    'Manually re-enable the cron schedule from the workflow settings',
+                    'Monitor the next few executions to ensure the issue is resolved'
+                  ]
+                },
+              };
+            }
+          }
           break;
       }
 
