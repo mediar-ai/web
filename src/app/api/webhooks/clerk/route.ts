@@ -2,8 +2,15 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { createClient } from '@supabase/supabase-js';
 
 const MEDIAR_ADMINS = ['louis@mediar.ai', 'matt@mediar.ai'];
+
+// Initialize Supabase client for querying survey submissions
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+);
 
 export async function POST(req: Request) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -50,6 +57,26 @@ export async function POST(req: Request) {
 
     console.log(`[Clerk Webhook] User created: ${primaryEmail} (${userId})`);
 
+    // Query Supabase for survey submission by email
+    let submissionId: string | null = null;
+    try {
+      const { data: surveyData, error } = await supabase
+        .from('mediar_surveys')
+        .select('submission_id, created_at')
+        .eq('user_email', primaryEmail)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (!error && surveyData && surveyData.length > 0) {
+        submissionId = surveyData[0].submission_id;
+        console.log(`[Clerk Webhook] Found survey submission for ${primaryEmail}: ${submissionId}`);
+      } else {
+        console.log(`[Clerk Webhook] No survey submission found for ${primaryEmail}`);
+      }
+    } catch (err) {
+      console.error(`[Clerk Webhook] Error querying survey submissions:`, err);
+    }
+
     // Track user signup in PostHog
     posthog.capture({
       distinctId: userId,
@@ -59,14 +86,17 @@ export async function POST(req: Request) {
         first_name: first_name || '',
         last_name: last_name || '',
         created_at: created_at,
+        submission_id: submissionId, // Link to survey submission if found
+        came_from_survey: !!submissionId,
         $set: {
           email: primaryEmail,
           name: [first_name, last_name].filter(Boolean).join(' ') || primaryEmail,
+          survey_submission_id: submissionId, // Store as person property
         },
       },
     });
 
-    console.log(`[Clerk Webhook] ✓ Tracked user_created in PostHog: ${primaryEmail}`);
+    console.log(`[Clerk Webhook] ✓ Tracked user_created in PostHog: ${primaryEmail}${submissionId ? ` (linked to survey: ${submissionId})` : ''}`);
   }
 
   // Handle session.created event
