@@ -136,7 +136,38 @@
    - Missing imports or undefined variables
    - useSearchParams() must be wrapped in Suspense boundary
    - TypeScript type errors
+   - **Next.js 15 API Routes**: `params` must be typed as `Promise` and awaited
 5. If build succeeds locally, it should deploy successfully on Vercel
+
+### Next.js 15 API Route Params (CRITICAL)
+**IMPORTANT: Route params are now async in Next.js 15**
+
+❌ **WRONG (Next.js 14 style):**
+```typescript
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  const { id } = params;  // ERROR: params is not awaited
+  // ...
+}
+```
+
+✅ **CORRECT (Next.js 15 style):**
+```typescript
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;  // Must await params
+  // ...
+}
+```
+
+**This applies to ALL dynamic route parameters:**
+- `[id]` → `params: Promise<{ id: string }>`
+- `[userId]/[sessionId]` → `params: Promise<{ userId: string; sessionId: string }>`
+- Any nested dynamic segments must use Promise type and await
 
 ### Modal Deployment (Windows Encoding Fix)
 - If you encounter encoding errors when deploying Modal apps on Windows:

@@ -201,7 +201,7 @@ impl WorkflowQueries {
         .bind(status_str)
         .bind(error_message)
         .bind(result)
-        .bind(if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled) {
+        .bind(if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled | ExecutionStatus::Exception) {
             Some(now)
         } else {
             None
@@ -279,6 +279,7 @@ impl WorkflowQueries {
             "failed" => ExecutionStatus::Failed,
             "cancelled" => ExecutionStatus::Cancelled,
             "paused" => ExecutionStatus::Paused,
+            "exception" => ExecutionStatus::Exception,
             _ => ExecutionStatus::Queued,
         }
     }
@@ -291,6 +292,7 @@ impl WorkflowQueries {
             ExecutionStatus::Failed => "failed",
             ExecutionStatus::Cancelled => "cancelled",
             ExecutionStatus::Paused => "paused",
+            ExecutionStatus::Exception => "exception",
         }
     }
 }
