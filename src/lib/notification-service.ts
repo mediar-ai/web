@@ -159,17 +159,22 @@ export class NotificationService {
     const hourAgo = new Date();
     hourAgo.setHours(hourAgo.getHours() - 1);
 
-    const { count } = await supabase
+    const { data: alertsInWindow, count } = await supabase
       .from('notification_alerts')
-      .select('*', { count: 'exact', head: true })
+      .select('email_sent_at, created_at')
       .eq('config_id', configId)
       .eq('email_sent', true)
-      .gte('created_at', hourAgo.toISOString());
+      .gte('created_at', hourAgo.toISOString())
+      .order('created_at', { ascending: true });
 
     if (count && count >= config.max_alerts_per_hour) {
-      // Schedule for 5 minutes from now (will retry then)
-      const waitUntil = new Date(Date.now() + (5 * 60 * 1000));
-      console.log(`Rate limit reached for config ${configId}, scheduling for ${waitUntil.toISOString()}`);
+      // Calculate when the oldest alert will fall outside the 1-hour window
+      // This is when we can send the next alert
+      const oldestAlert = alertsInWindow![0];
+      const oldestTime = new Date(oldestAlert.email_sent_at || oldestAlert.created_at);
+      const waitUntil = new Date(oldestTime.getTime() + (60 * 60 * 1000) + (60 * 1000)); // 1 hour + 1 minute buffer
+
+      console.log(`Rate limit reached for config ${configId} (${count}/${config.max_alerts_per_hour}), scheduling for ${waitUntil.toISOString()}`);
       return { shouldSend: false, waitUntil };
     }
 
