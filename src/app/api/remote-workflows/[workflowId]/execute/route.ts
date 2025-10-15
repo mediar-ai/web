@@ -274,7 +274,7 @@ export async function POST(
     // STEP 2: Check if workflow exists and verify authorization
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows_with_sequence')
-      .select('name, status, automation_sequence, version, created_by, organization_id')
+      .select('name, status, automation_sequence, version, created_by')
       .eq('id', workflowIdNum)
       .single();
 
@@ -296,9 +296,18 @@ export async function POST(
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     // Skip authorization checks for cron executions (already authenticated via service role key)
     if (!isCronExecution) {
+      // Fetch organization_id from base table (not in view)
+      const { data: workflowBase } = await supabase
+        .from('deployed_workflows')
+        .select('organization_id')
+        .eq('id', workflowIdNum)
+        .single();
+
+      const workflow_organization_id = workflowBase?.organization_id;
+
       const isOwner = workflow.created_by === authenticatedUserId;
       const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
-      const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+      const isSameOrg = workflow_organization_id && workflow_organization_id === orgId;
 
       // Check workflow_organization_access table for organization-based access
       let hasOrgAccess = false;
