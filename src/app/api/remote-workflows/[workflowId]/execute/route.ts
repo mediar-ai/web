@@ -156,15 +156,42 @@ export async function POST(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
-    // STEP 1: Authenticate
-    const { userId: authenticatedUserId, has, orgId } = await auth();
+    // Check if this is a cron-triggered execution
+    const isCronExecution = request.headers.get('X-Cron-Execution') === 'true';
+    const authHeader = request.headers.get('Authorization');
 
-    if (!authenticatedUserId) {
-      console.warn('[SECURITY] Unauthenticated request to execute workflow');
-      return NextResponse.json(
-        { error: 'Unauthorized - Authentication required' },
-        { status: 401 }
-      );
+    let authenticatedUserId: string | null = null;
+    let has: any = null;
+    let orgId: string | null | undefined = null;
+
+    // STEP 1: Authenticate
+    if (isCronExecution) {
+      // For cron executions, verify the service role key
+      const expectedKey = `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`;
+      if (authHeader !== expectedKey) {
+        console.warn('[SECURITY] Invalid service role key for cron execution');
+        return NextResponse.json(
+          { error: 'Unauthorized - Invalid service role key' },
+          { status: 401 }
+        );
+      }
+      console.log('[AUTH] Cron execution authenticated via service role key');
+      // For cron executions, we skip user-based auth checks
+      authenticatedUserId = 'cron-scheduler';
+    } else {
+      // For regular user requests, use Clerk authentication
+      const authResult = await auth();
+      authenticatedUserId = authResult.userId;
+      has = authResult.has;
+      orgId = authResult.orgId;
+
+      if (!authenticatedUserId) {
+        console.warn('[SECURITY] Unauthenticated request to execute workflow');
+        return NextResponse.json(
+          { error: 'Unauthorized - Authentication required' },
+          { status: 401 }
+        );
+      }
     }
 
     const startTime = Date.now();
@@ -267,35 +294,40 @@ export async function POST(
     }
 
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
-    const isOwner = workflow.created_by === authenticatedUserId;
-    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
-    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+    // Skip authorization checks for cron executions (already authenticated via service role key)
+    if (!isCronExecution) {
+      const isOwner = workflow.created_by === authenticatedUserId;
+      const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+      const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
-    // Check workflow_organization_access table for organization-based access
-    let hasOrgAccess = false;
-    if (orgId && isOrgAdmin) {
-      const { data: orgAccess } = await supabase
-        .from('workflow_organization_access')
-        .select('organization_id')
-        .eq('workflow_id', workflowIdNum)
-        .eq('organization_id', orgId)
-        .single();
+      // Check workflow_organization_access table for organization-based access
+      let hasOrgAccess = false;
+      if (orgId && isOrgAdmin) {
+        const { data: orgAccess } = await supabase
+          .from('workflow_organization_access')
+          .select('organization_id')
+          .eq('workflow_id', workflowIdNum)
+          .eq('organization_id', orgId)
+          .single();
 
-      hasOrgAccess = !!orgAccess;
-    }
+        hasOrgAccess = !!orgAccess;
+      }
 
-    // Allow execution if:
-    // - User is the workflow owner
-    // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table
-    if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
-      console.warn(
-        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized execution for workflow ${workflowIdNum}`
-      );
-      return NextResponse.json(
-        { error: 'Forbidden - You do not have permission to execute this workflow' },
-        { status: 403 }
-      );
+      // Allow execution if:
+      // - User is the workflow owner
+      // - User is org admin in the same org (legacy organization_id field)
+      // - User's organization has access via workflow_organization_access table
+      if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+        console.warn(
+          `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized execution for workflow ${workflowIdNum}`
+        );
+        return NextResponse.json(
+          { error: 'Forbidden - You do not have permission to execute this workflow' },
+          { status: 403 }
+        );
+      }
+    } else {
+      console.log('[AUTH] Skipping user authorization checks for cron execution');
     }
 
     if (workflow.status !== 'deployed') {
