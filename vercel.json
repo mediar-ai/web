@@ -11,6 +11,9 @@
     },
     "src/app/api/cron/health-check-supabase/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/cron/process-pending-notifications/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
@@ -21,6 +24,10 @@
     {
       "path": "/api/cron/health-check-supabase",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/process-pending-notifications",
+      "schedule": "* * * * *"
     }
   ]
 } 

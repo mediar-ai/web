@@ -115,16 +115,24 @@ export class NotificationService {
     const config = await this.getConfig(alert.config_id);
     if (config?.enabled && config?.email_enabled && config?.email_recipients?.length > 0) {
       // Check cooldown and rate limiting
-      const shouldSend = await this.checkRateLimits(alert.config_id, config);
-      if (shouldSend) {
+      const rateLimit = await this.checkRateLimits(alert.config_id, config);
+      if (rateLimit.shouldSend) {
+        // Send immediately
         await this.sendEmailNotification(data, config);
+      } else if (rateLimit.waitUntil) {
+        // Queue for later delivery
+        console.log(`Queueing email for alert ${data.id} until ${rateLimit.waitUntil.toISOString()}`);
+        await supabase
+          .from('notification_alerts')
+          .update({ scheduled_for: rateLimit.waitUntil.toISOString() })
+          .eq('id', data.id);
       }
     }
 
     return data;
   }
 
-  private async checkRateLimits(configId: number, config: NotificationConfig): Promise<boolean> {
+  private async checkRateLimits(configId: number, config: NotificationConfig): Promise<{ shouldSend: boolean; waitUntil?: Date }> {
 
     // Check cooldown period
     const cooldownTime = new Date();
@@ -132,7 +140,7 @@ export class NotificationService {
 
     const { data: recentAlerts } = await supabase
       .from('notification_alerts')
-      .select('created_at')
+      .select('created_at, email_sent_at')
       .eq('config_id', configId)
       .eq('email_sent', true)
       .gte('created_at', cooldownTime.toISOString())
@@ -140,8 +148,11 @@ export class NotificationService {
       .limit(1);
 
     if (recentAlerts && recentAlerts.length > 0) {
-      console.log(`Cooldown active for config ${configId}, skipping notification`);
-      return false;
+      // Calculate when cooldown expires
+      const lastEmailTime = new Date(recentAlerts[0].email_sent_at || recentAlerts[0].created_at);
+      const waitUntil = new Date(lastEmailTime.getTime() + (config.cooldown_minutes * 60 * 1000));
+      console.log(`Cooldown active for config ${configId}, scheduling for ${waitUntil.toISOString()}`);
+      return { shouldSend: false, waitUntil };
     }
 
     // Check hourly rate limit
@@ -156,11 +167,13 @@ export class NotificationService {
       .gte('created_at', hourAgo.toISOString());
 
     if (count && count >= config.max_alerts_per_hour) {
-      console.log(`Rate limit reached for config ${configId}, skipping notification`);
-      return false;
+      // Schedule for 5 minutes from now (will retry then)
+      const waitUntil = new Date(Date.now() + (5 * 60 * 1000));
+      console.log(`Rate limit reached for config ${configId}, scheduling for ${waitUntil.toISOString()}`);
+      return { shouldSend: false, waitUntil };
     }
 
-    return true;
+    return { shouldSend: true };
   }
 
   private async sendEmailNotification(alert: NotificationAlert, config: NotificationConfig): Promise<void> {
