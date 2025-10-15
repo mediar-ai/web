@@ -10,14 +10,34 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Browser Workflow Capture",
+  title: "Mediar dashboard",
   description: "Capture and analyze browser workflows with AI",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://mediar.ai'),
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+  },
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' }
+  ],
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },
       { url: "/favicon.ico", sizes: "any" }
     ],
     apple: { url: "/icon.svg", type: "image/svg+xml" }
+  },
+  openGraph: {
+    title: "Mediar dashboard",
+    description: "Capture and analyze browser workflows with AI",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Mediar dashboard",
+    description: "Capture and analyze browser workflows with AI",
   }
 };
 
