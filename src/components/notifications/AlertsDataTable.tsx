@@ -57,9 +57,9 @@ interface AlertsDataTableProps {
 
 function getSeverityBadgeColor(severity: string) {
   const colors = {
-    low: 'bg-gray-200 text-gray-800',
-    medium: 'bg-yellow-100 text-yellow-800 border border-yellow-300',
-    high: 'bg-black text-white',
+    low: 'bg-gray-200 text-gray-800 border-2 border-black',
+    medium: 'bg-yellow-100 text-yellow-800 border-2 border-black',
+    high: 'bg-black text-white border-2 border-black',
     critical: 'bg-black text-white font-bold border-2 border-black'
   };
   return colors[severity as keyof typeof colors] || colors.medium;
@@ -72,14 +72,14 @@ function getExecutionStatusBadge(status?: string) {
     case 'completed':
       return { badge: 'COMPLETED', badgeColor: 'bg-white border-2 border-black' };
     case 'running':
-      return { badge: 'RUNNING', badgeColor: 'bg-black text-white animate-pulse' };
+      return { badge: 'RUNNING', badgeColor: 'bg-black text-white border-2 border-black animate-pulse' };
     case 'error':
     case 'failed':
-      return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
+      return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold border-2 border-black' };
     case 'cancelled':
       return { badge: 'CANCELLED', badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black' };
     default:
-      return { badge: status.toUpperCase(), badgeColor: 'bg-gray-200 text-gray-800' };
+      return { badge: status.toUpperCase(), badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black' };
   }
 }
 
@@ -188,14 +188,14 @@ export const AlertsDataTable = memo(function AlertsDataTable({
             );
           } else if (alert.scheduled_for) {
             return (
-              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 border border-yellow-300 font-mono text-[10px] inline-flex items-center gap-1">
+              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 border-2 border-black font-mono text-[10px] inline-flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 QUEUED
               </span>
             );
           } else {
             return (
-              <span className="px-2 py-1 bg-gray-200 text-gray-800 font-mono text-[10px]">
+              <span className="px-2 py-1 bg-gray-200 text-gray-800 border-2 border-black font-mono text-[10px]">
                 SKIPPED
               </span>
             );
