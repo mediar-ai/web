@@ -204,12 +204,52 @@ export class NotificationService {
 
           targetOrgId = workflow?.organization_id;
           console.log(`Global rule - using workflow's organization: ${targetOrgId || 'none'}`);
+
+          // If workflow has no owner (NULL organization_id), it's a shared workflow
+          // Fetch members from ALL organizations with access
+          if (!targetOrgId) {
+            console.log(`Workflow ${alert.workflow_id} has no owner - checking for shared organizations`);
+            try {
+              const { data: sharedOrgs } = await supabase
+                .from('workflow_organization_access')
+                .select('organization_id')
+                .eq('workflow_id', alert.workflow_id);
+
+              if (sharedOrgs && sharedOrgs.length > 0) {
+                console.log(`Found ${sharedOrgs.length} organizations with access to workflow ${alert.workflow_id}`);
+
+                // Fetch members from each organization
+                for (const org of sharedOrgs) {
+                  try {
+                    const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${org.organization_id}`, {
+                      headers: { 'Content-Type': 'application/json' },
+                    });
+
+                    if (orgMembersResponse.ok) {
+                      const orgMembersData = await orgMembersResponse.json();
+                      const orgEmails = orgMembersData.members?.map((m: any) => m.email).filter(Boolean) || [];
+                      console.log(`Found ${orgEmails.length} members in org ${org.organization_id}: ${orgEmails.join(', ')}`);
+                      recipients.push(...orgEmails);
+                    }
+                  } catch (err) {
+                    console.error(`Error fetching members for org ${org.organization_id}:`, err);
+                  }
+                }
+
+                // Deduplicate emails (important for shared workflows)
+                recipients = [...new Set(recipients)];
+                console.log(`Total unique recipients after deduplication: ${recipients.length}`);
+              }
+            } catch (err) {
+              console.error('Error fetching shared organizations:', err);
+            }
+          }
         } catch (err) {
           console.error('Error fetching workflow organization:', err);
         }
       }
 
-      // Fetch organization members if we have a target organization
+      // Fetch organization members if we have a single target organization
       if (targetOrgId) {
         try {
           console.log(`Fetching organization members for ${targetOrgId}`);

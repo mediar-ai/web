@@ -85,16 +85,30 @@ export async function POST(_request: NextRequest) {
             .eq('id', alert.workflow_id)
             .single();
           targetOrgId = workflow?.organization_id;
+
+          // If workflow has no owner, fetch members from all shared organizations
+          if (!targetOrgId) {
+            const { data: sharedOrgs } = await supabase
+              .from('workflow_organization_access')
+              .select('organization_id')
+              .eq('workflow_id', alert.workflow_id);
+
+            if (sharedOrgs && sharedOrgs.length > 0) {
+              console.log(`[Alert ${alert.id}] Workflow ${alert.workflow_id} shared with ${sharedOrgs.length} orgs`);
+            }
+          }
         }
 
         // Fetch recipients
         let recipients = config.email_recipients || [];
 
-        if (targetOrgId) {
-          try {
-            const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
-              (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.mediar.ai');
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.mediar.ai');
 
+        // Fetch org members based on workflow ownership
+        if (targetOrgId) {
+          // Single organization owner
+          try {
             const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${targetOrgId}`);
             if (orgMembersResponse.ok) {
               const orgMembersData = await orgMembersResponse.json();
@@ -103,6 +117,33 @@ export async function POST(_request: NextRequest) {
             }
           } catch (err) {
             console.error(`Error fetching organization members for alert ${alert.id}:`, err);
+          }
+        } else if (alert.workflow_id) {
+          // Shared workflow - fetch members from all organizations with access
+          try {
+            const { data: sharedOrgs } = await supabase
+              .from('workflow_organization_access')
+              .select('organization_id')
+              .eq('workflow_id', alert.workflow_id);
+
+            if (sharedOrgs && sharedOrgs.length > 0) {
+              for (const org of sharedOrgs) {
+                try {
+                  const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${org.organization_id}`);
+                  if (orgMembersResponse.ok) {
+                    const orgMembersData = await orgMembersResponse.json();
+                    const orgEmails = orgMembersData.members?.map((m: any) => m.email).filter(Boolean) || [];
+                    recipients.push(...orgEmails);
+                  }
+                } catch (err) {
+                  console.error(`Error fetching members for org ${org.organization_id}:`, err);
+                }
+              }
+              // Deduplicate emails
+              recipients = [...new Set(recipients)];
+            }
+          } catch (err) {
+            console.error(`Error fetching shared organizations for alert ${alert.id}:`, err);
           }
         }
 
@@ -117,9 +158,6 @@ export async function POST(_request: NextRequest) {
 
         // Send email
         console.log(`📤 Sending email for alert ${alert.id} to ${recipients.length} recipients`);
-
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.mediar.ai');
 
         const emailResponse = await fetch(`${baseUrl}/api/internal/send-notification-email`, {
           method: 'POST',
