@@ -72,6 +72,11 @@ function AdminPageContent() {
     tags: [] as string[]
   });
 
+  // Machine organization assignment state
+  const [editingMachineOrgs, setEditingMachineOrgs] = useState<number | null>(null);
+  const [machineOrgAssignments, setMachineOrgAssignments] = useState<{[key: number]: string[]}>({});
+  const [machineIsGlobal, setMachineIsGlobal] = useState<{[key: number]: boolean}>({});
+
   // Check if user is Mediar admin
   const hasMediarEmail = user?.emailAddresses?.some(
     email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
@@ -221,7 +226,28 @@ function AdminPageContent() {
       const response = await fetch('/api/machines?include_load=true&status=all');
       if (response.ok) {
         const data = await response.json();
-        setMachines(data.machines || []);
+        const fetchedMachines = data.machines || [];
+        setMachines(fetchedMachines);
+
+        // Fetch organization assignments for each machine
+        const orgAssignments: {[key: number]: string[]} = {};
+        const isGlobalFlags: {[key: number]: boolean} = {};
+
+        for (const machine of fetchedMachines) {
+          try {
+            const orgResponse = await fetch(`/api/machines/${machine.id}/organizations`);
+            if (orgResponse.ok) {
+              const orgData = await orgResponse.json();
+              orgAssignments[machine.id] = orgData.organizations.map((o: any) => o.organization_id);
+              isGlobalFlags[machine.id] = orgData.machine.is_global;
+            }
+          } catch (err) {
+            console.error(`Error fetching orgs for machine ${machine.id}:`, err);
+          }
+        }
+
+        setMachineOrgAssignments(orgAssignments);
+        setMachineIsGlobal(isGlobalFlags);
       }
     } catch (error) {
       console.error('Error fetching machines:', error);
@@ -329,6 +355,55 @@ function AdminPageContent() {
       console.error('Error deleting machine:', error);
       toast.error('Failed to delete machine');
     }
+  };
+
+  const handleEditMachineOrgs = (machineId: number) => {
+    setEditingMachineOrgs(machineId);
+  };
+
+  const handleSaveMachineOrgs = async (machineId: number) => {
+    try {
+      const isGlobal = machineIsGlobal[machineId] ?? true;
+      const orgIds = machineOrgAssignments[machineId] || [];
+
+      const response = await fetch(`/api/machines/${machineId}/organizations`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_global: isGlobal,
+          organization_ids: orgIds
+        })
+      });
+
+      if (response.ok) {
+        toast.success('Organization assignments updated');
+        setEditingMachineOrgs(null);
+        await fetchMachines();
+      } else {
+        const error = await response.json();
+        toast.error(`Failed to update assignments: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error updating machine orgs:', error);
+      toast.error('Failed to update organization assignments');
+    }
+  };
+
+  const toggleMachineOrgAssignment = (machineId: number, orgId: string) => {
+    setMachineOrgAssignments(prev => {
+      const current = prev[machineId] || [];
+      const newAssignments = current.includes(orgId)
+        ? current.filter(id => id !== orgId)
+        : [...current, orgId];
+      return { ...prev, [machineId]: newAssignments };
+    });
+  };
+
+  const toggleMachineIsGlobal = (machineId: number) => {
+    setMachineIsGlobal(prev => ({
+      ...prev,
+      [machineId]: !(prev[machineId] ?? true)
+    }));
   };
 
   const fetchAllOrganizations = async () => {
@@ -819,7 +894,7 @@ function AdminPageContent() {
                       </div>
                     ) : (
                       <div className="overflow-x-scroll w-full">
-                        <table className="min-w-full table-fixed" style={{ width: '1100px' }}>
+                        <table className="min-w-full table-fixed" style={{ width: '1400px' }}>
                           <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">NAME</th>
@@ -829,6 +904,7 @@ function AdminPageContent() {
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LAST CHECK</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LOAD</th>
                               <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">PRIORITY</th>
+                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">ORGANIZATIONS</th>
                               <th className="px-4 py-3 text-right font-mono text-xs text-gray-600">ACTIONS</th>
                             </tr>
                           </thead>
@@ -1005,6 +1081,26 @@ function AdminPageContent() {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
+                                  <div className="flex items-center gap-1">
+                                    {machineIsGlobal[machine.id] ?? true ? (
+                                      <span className="font-mono text-xs px-2 py-1 bg-black text-white">
+                                        ALL ORGS
+                                      </span>
+                                    ) : (
+                                      <span className="font-mono text-xs px-2 py-1 border border-black">
+                                        {(machineOrgAssignments[machine.id] || []).length} ORG{(machineOrgAssignments[machine.id] || []).length !== 1 ? 'S' : ''}
+                                      </span>
+                                    )}
+                                    <button
+                                      onClick={() => handleEditMachineOrgs(machine.id)}
+                                      className="p-1 hover:bg-black hover:text-white border border-black text-xs"
+                                      title="Manage organization access"
+                                    >
+                                      <Building2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
                                   <div className="flex items-center justify-end gap-1">
                                     {editingMachine === machine.id ? (
                                       <>
@@ -1050,7 +1146,7 @@ function AdminPageContent() {
                             ))}
                             {machines.length === 0 && (
                               <tr>
-                                <td colSpan={8} className="px-4 py-8 text-center text-gray-500 font-mono">
+                                <td colSpan={9} className="px-4 py-8 text-center text-gray-500 font-mono">
                                   No machines registered
                                 </td>
                               </tr>
@@ -1178,6 +1274,102 @@ function AdminPageContent() {
                     }
                   }}
                 />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Machine Organizations Modal */}
+        {editingMachineOrgs !== null && isGlobalAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white border-2 border-black max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-4 border-b-2 border-black flex items-center justify-between sticky top-0 bg-white">
+                <h2 className="font-mono font-bold flex items-center gap-2">
+                  <Building2 className="w-5 h-5" />
+                  MANAGE ORGANIZATION ACCESS
+                </h2>
+                <button
+                  onClick={() => setEditingMachineOrgs(null)}
+                  className="p-1 hover:bg-gray-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <p className="font-mono text-sm mb-4">
+                    Machine: <span className="font-bold">{machines.find(m => m.id === editingMachineOrgs)?.name}</span>
+                  </p>
+                </div>
+
+                <div className="border-2 border-black p-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={machineIsGlobal[editingMachineOrgs] ?? true}
+                      onChange={() => toggleMachineIsGlobal(editingMachineOrgs)}
+                      className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black"
+                    />
+                    <span className="font-mono font-bold">
+                      AVAILABLE TO ALL ORGANIZATIONS
+                    </span>
+                  </label>
+                  <p className="font-mono text-xs text-gray-600 mt-2 ml-6">
+                    When enabled, this machine is available to all organizations. When disabled, only selected organizations can use this machine.
+                  </p>
+                </div>
+
+                {!(machineIsGlobal[editingMachineOrgs] ?? true) && (
+                  <div className="border-2 border-black">
+                    <div className="bg-gray-50 p-4 border-b-2 border-black">
+                      <h3 className="font-mono font-bold">SELECT ORGANIZATIONS</h3>
+                      <p className="font-mono text-xs text-gray-600 mt-1">
+                        Only selected organizations will have access to this machine
+                      </p>
+                    </div>
+                    <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+                      {allOrganizations.length === 0 ? (
+                        <div className="p-8 text-center text-gray-500 font-mono">
+                          No organizations available
+                        </div>
+                      ) : (
+                        allOrganizations.map((org) => (
+                          <div key={org.clerk_organization_id || org.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={(machineOrgAssignments[editingMachineOrgs] || []).includes(org.clerk_organization_id || org.id)}
+                                onChange={() => toggleMachineOrgAssignment(editingMachineOrgs, org.clerk_organization_id || org.id)}
+                                className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black"
+                              />
+                              <div>
+                                <p className="font-mono font-bold">{org.name}</p>
+                                <p className="font-mono text-xs text-gray-600">
+                                  {org.member_count || 0} member{org.member_count !== 1 ? 's' : ''}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => setEditingMachineOrgs(null)}
+                    className="px-4 py-2 font-mono font-bold border-2 border-black hover:bg-gray-100"
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    onClick={() => handleSaveMachineOrgs(editingMachineOrgs)}
+                    className="px-4 py-2 font-mono font-bold bg-black text-white hover:bg-gray-800"
+                  >
+                    SAVE CHANGES
+                  </button>
+                </div>
               </div>
             </div>
           </div>
