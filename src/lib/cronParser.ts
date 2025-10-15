@@ -166,7 +166,7 @@ export function shouldExecuteAt(cronExpression: string, time: Date, _timezone: s
 
   // Convert time to specified timezone
   const timeInTz = new Date(time.toLocaleString('en-US', { timeZone: _timezone }));
-  
+
   // Seconds are not checked - Vercel triggers at random seconds
   const minute = timeInTz.getMinutes();
   const hour = timeInTz.getHours();
@@ -174,16 +174,26 @@ export function shouldExecuteAt(cronExpression: string, time: Date, _timezone: s
   const month = timeInTz.getMonth() + 1; // JS months are 0-based
   const dayOfWeek = timeInTz.getDay(); // 0 = Sunday
 
+  const minuteMatch = matchesCronField(parsed.minute, minute);
+  const hourMatch = matchesCronField(parsed.hour, hour);
+  const dayMatch = matchesCronField(parsed.day, day);
+  const monthMatch = matchesCronField(parsed.month, month);
+  const dowMatch = matchesCronField(parsed.dayOfWeek, dayOfWeek);
+
+  console.log(`[shouldExecuteAt] expr=${cronExpression}, time=${time.toISOString()}, tz=${_timezone}`);
+  console.log(`[shouldExecuteAt] converted=${timeInTz.toISOString()}, minute=${minute}, hour=${hour}`);
+  console.log(`[shouldExecuteAt] matches: min=${minuteMatch}, hr=${hourMatch}, day=${dayMatch}, mon=${monthMatch}, dow=${dowMatch}`);
+
   // IMPORTANT: Skip second matching for Vercel cron compatibility
   // Vercel cron triggers at random seconds, not at second=0
   // So we ignore the seconds field to allow workflows to trigger
   return (
     // matchesCronField(parsed.second, second) &&  // DISABLED for Vercel
-    matchesCronField(parsed.minute, minute) &&
-    matchesCronField(parsed.hour, hour) &&
-    matchesCronField(parsed.day, day) &&
-    matchesCronField(parsed.month, month) &&
-    matchesCronField(parsed.dayOfWeek, dayOfWeek)
+    minuteMatch &&
+    hourMatch &&
+    dayMatch &&
+    monthMatch &&
+    dowMatch
   );
 }
 
