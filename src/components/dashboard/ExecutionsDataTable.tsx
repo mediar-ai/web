@@ -178,7 +178,7 @@ function getExecutionStatus(execution: Execution, formattedResult: any, isLive: 
 
   // Check skipped status
   if (formattedResult?.skipped || execution.status === 'skipped') {
-    return { badge: 'SKIPPED', badgeColor: 'bg-gray-200 text-gray-800' };
+    return { badge: 'SKIPPED', badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black' };
   }
 
   // Check success/failure from parser
@@ -199,7 +199,7 @@ function getExecutionStatus(execution: Execution, formattedResult: any, isLive: 
     case 'failed':
       return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
     case 'cancelled':
-      return { badge: 'CANCELLED', badgeColor: 'bg-gray-200 text-gray-800' };
+      return { badge: 'CANCELLED', badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black' };
     default:
       return { badge: execution.status.toUpperCase(), badgeColor: 'bg-gray-200 text-gray-800' };
   }
