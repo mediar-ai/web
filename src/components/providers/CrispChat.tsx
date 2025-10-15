@@ -18,6 +18,35 @@ export function CrispChat() {
   const { user } = useUser();
   const websiteId = process.env.NEXT_PUBLIC_CRISP_WEBSITE_ID;
 
+  // Suppress Crisp errors globally
+  useEffect(() => {
+    const originalError = console.error;
+    const handleError = (event: ErrorEvent) => {
+      if (event.message && event.message.includes('Invalid data')) {
+        event.preventDefault();
+        console.warn('Crisp error suppressed:', event.message);
+        return true;
+      }
+    };
+
+    window.addEventListener('error', handleError);
+
+    // Suppress console errors from Crisp
+    console.error = (...args: any[]) => {
+      const errorString = args.join(' ');
+      if (errorString.includes('Invalid data') || errorString.includes('crisp')) {
+        console.warn('Crisp console error suppressed:', ...args);
+        return;
+      }
+      originalError.apply(console, args);
+    };
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      console.error = originalError;
+    };
+  }, []);
+
   // Set user data when logged in
   useEffect(() => {
     if (!websiteId) return;
@@ -53,15 +82,22 @@ export function CrispChat() {
         strategy="afterInteractive"
         dangerouslySetInnerHTML={{
           __html: `
-            window.$crisp = [];
-            window.CRISP_WEBSITE_ID = "${websiteId}";
-            (function(){
-              var d = document;
-              var s = d.createElement("script");
-              s.src = "https://client.crisp.chat/l.js";
-              s.async = 1;
-              d.getElementsByTagName("head")[0].appendChild(s);
-            })();
+            try {
+              window.$crisp = [];
+              window.CRISP_WEBSITE_ID = "${websiteId}";
+              (function(){
+                var d = document;
+                var s = d.createElement("script");
+                s.src = "https://client.crisp.chat/l.js";
+                s.async = 1;
+                s.onerror = function() {
+                  console.warn('Crisp chat failed to load, but continuing...');
+                };
+                d.getElementsByTagName("head")[0].appendChild(s);
+              })();
+            } catch (error) {
+              console.warn('Crisp initialization error (suppressed):', error);
+            }
           `,
         }}
       />
@@ -70,61 +106,67 @@ export function CrispChat() {
         strategy="afterInteractive"
       >
         {`
-          // Black & White minimalist theme (official Crisp config)
-          window.$crisp.push(["config", "color:theme", ["black"]]);
-          window.$crisp.push(["config", "position:reverse", [false]]);
-
-          // Show preview message after Crisp loads
-          window.$crisp.push(["on", "session:loaded", function() {
-            console.log("Crisp session loaded!");
-
-            // Check if preview was already shown
-            if (!sessionStorage.getItem('crisp_preview_shown')) {
-              console.log("Showing preview message...");
-              setTimeout(function() {
-                window.$crisp.push(["do", "message:show", ["text", "Founder is here, chat with me"]]);
-                sessionStorage.setItem('crisp_preview_shown', 'true');
-              }, 2000);
-            } else {
-              console.log("Preview already shown this session");
-            }
-          }]);
-
-          // Helper function: Show preview message bubble next to chat button
-          window.crispShowPreview = function(message) {
+          try {
+            // Black & White minimalist theme (official Crisp config)
             if (window.$crisp) {
-              // Show a message in the chat (creates preview bubble + unread badge)
-              window.$crisp.push(["do", "message:show", ["text", message]]);
-              console.log("Crisp preview shown:", message);
-            }
-          };
+              window.$crisp.push(["config", "color:theme", ["black"]]);
+              window.$crisp.push(["config", "position:reverse", [false]]);
 
-          // Helper function: Trigger attention animation on chat button
-          window.crispTriggerAttention = function() {
-            if (window.$crisp) {
-              // Open and close quickly to trigger attention (creates a "pulse" effect)
-              var chatButton = document.querySelector('.crisp-client [role="button"]');
-              if (chatButton) {
-                // Add CSS animation class
-                chatButton.style.animation = 'crisp-pulse 2s ease-in-out';
-                setTimeout(function() {
-                  chatButton.style.animation = '';
-                }, 2000);
+              // Show preview message after Crisp loads
+              window.$crisp.push(["on", "session:loaded", function() {
+                console.log("Crisp session loaded!");
+
+                // Check if preview was already shown
+                if (!sessionStorage.getItem('crisp_preview_shown')) {
+                  console.log("Showing preview message in 10 seconds...");
+                  setTimeout(function() {
+                    window.$crisp.push(["do", "message:show", ["text", "Founder is here, chat with me"]]);
+                    sessionStorage.setItem('crisp_preview_shown', 'true');
+                  }, 10000);
+                } else {
+                  console.log("Preview already shown this session");
+                }
+              }]);
+            }
+
+            // Helper function: Show preview message bubble next to chat button
+            window.crispShowPreview = function(message) {
+              if (window.$crisp) {
+                // Show a message in the chat (creates preview bubble + unread badge)
+                window.$crisp.push(["do", "message:show", ["text", message]]);
+                console.log("Crisp preview shown:", message);
               }
-            }
-          };
+            };
 
-          // Define pulse animation
-          var style = document.createElement('style');
-          style.innerHTML = \`
-            @keyframes crisp-pulse {
-              0%, 100% { transform: scale(1); }
-              25% { transform: scale(1.1); }
-              50% { transform: scale(1); }
-              75% { transform: scale(1.1); }
-            }
-          \`;
-          document.head.appendChild(style);
+            // Helper function: Trigger attention animation on chat button
+            window.crispTriggerAttention = function() {
+              if (window.$crisp) {
+                // Open and close quickly to trigger attention (creates a "pulse" effect)
+                var chatButton = document.querySelector('.crisp-client [role="button"]');
+                if (chatButton) {
+                  // Add CSS animation class
+                  chatButton.style.animation = 'crisp-pulse 2s ease-in-out';
+                  setTimeout(function() {
+                    chatButton.style.animation = '';
+                  }, 2000);
+                }
+              }
+            };
+
+            // Define pulse animation
+            var style = document.createElement('style');
+            style.innerHTML = \`
+              @keyframes crisp-pulse {
+                0%, 100% { transform: scale(1); }
+                25% { transform: scale(1.1); }
+                50% { transform: scale(1); }
+                75% { transform: scale(1.1); }
+              }
+            \`;
+            document.head.appendChild(style);
+          } catch (error) {
+            console.warn('Crisp config error (suppressed):', error);
+          }
         `}
       </Script>
     </>
