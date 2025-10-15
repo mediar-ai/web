@@ -3112,6 +3112,63 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                 "    This prevents the queue-blocking issue that affected job #1444"
             )
 
+            # CRITICAL FIX: Trigger alerts for auto-cleaned executions
+            # Fetch full execution data including workflow name for alert payload
+            for cleaned_job in cleaned_jobs:
+                execution_id = cleaned_job[0]
+                workflow_id = cleaned_job[1]
+
+                try:
+                    # Get full execution data including workflow name, started_at, completed_at
+                    cur.execute(
+                        """
+                        SELECT we.id, we.workflow_id, w.name as workflow_name,
+                               we.status, we.error_message, we.started_at,
+                               we.completed_at, we.execution_duration_seconds
+                        FROM workflow_executions we
+                        JOIN workflows w ON w.id = we.workflow_id
+                        WHERE we.id = %s
+                        """,
+                        (execution_id,)
+                    )
+
+                    execution_row = cur.fetchone()
+                    if not execution_row:
+                        logger.warning(f"Could not fetch execution data for alert: execution {execution_id}")
+                        continue
+
+                    # Build monitor payload matching the format used in normal failures
+                    import requests
+
+                    monitor_payload = {
+                        "execution": {
+                            "id": execution_row[0],
+                            "execution_id": execution_row[0],
+                            "workflow_id": execution_row[1],
+                            "workflow_name": execution_row[2],
+                            "status": execution_row[3],
+                            "error_message": execution_row[4],
+                            "started_at": execution_row[5].isoformat() if execution_row[5] else None,
+                            "completed_at": execution_row[6].isoformat() if execution_row[6] else None,
+                            "execution_time_seconds": execution_row[7],
+                            "trigger_source": "auto_cleanup",
+                        }
+                    }
+
+                    app_url = os.environ.get("APP_URL", "https://app.mediar.ai")
+                    monitor_url = f"{app_url}/api/remote-workflows/executions/monitor"
+
+                    logger.info(f"🚨 Triggering alert for auto-cleaned execution {execution_id}")
+                    response = requests.post(monitor_url, json=monitor_payload, timeout=5)
+
+                    if response.status_code == 200:
+                        logger.info(f"✅ Alert triggered successfully for auto-cleaned execution {execution_id}")
+                    else:
+                        logger.warning(f"⚠️ Failed to trigger alert for execution {execution_id}: {response.status_code} - {response.text}")
+
+                except Exception as alert_error:
+                    logger.error(f"❌ Error triggering alert for auto-cleaned execution {execution_id}: {alert_error}")
+
         # ENHANCED: Also clean up jobs that never started (NULL raw_logs)
         # These are jobs that were dispatched to Modal but never actually executed
         cur.execute(
@@ -3178,6 +3235,62 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                 logger.warning(
                     "    These jobs were dispatched to Modal but never actually started"
                 )
+
+                # CRITICAL FIX: Trigger alerts for NULL logs auto-cleaned executions
+                for cleaned_job in null_logs_cleaned:
+                    execution_id = cleaned_job[0]
+                    workflow_id = cleaned_job[1]
+
+                    try:
+                        # Get full execution data including workflow name, started_at, completed_at
+                        cur.execute(
+                            """
+                            SELECT we.id, we.workflow_id, w.name as workflow_name,
+                                   we.status, we.error_message, we.started_at,
+                                   we.completed_at, we.execution_duration_seconds
+                            FROM workflow_executions we
+                            JOIN workflows w ON w.id = we.workflow_id
+                            WHERE we.id = %s
+                            """,
+                            (execution_id,)
+                        )
+
+                        execution_row = cur.fetchone()
+                        if not execution_row:
+                            logger.warning(f"Could not fetch execution data for alert: execution {execution_id}")
+                            continue
+
+                        # Build monitor payload matching the format used in normal failures
+                        import requests
+
+                        monitor_payload = {
+                            "execution": {
+                                "id": execution_row[0],
+                                "execution_id": execution_row[0],
+                                "workflow_id": execution_row[1],
+                                "workflow_name": execution_row[2],
+                                "status": execution_row[3],
+                                "error_message": execution_row[4],
+                                "started_at": execution_row[5].isoformat() if execution_row[5] else None,
+                                "completed_at": execution_row[6].isoformat() if execution_row[6] else None,
+                                "execution_time_seconds": execution_row[7],
+                                "trigger_source": "auto_cleanup_null_logs",
+                            }
+                        }
+
+                        app_url = os.environ.get("APP_URL", "https://app.mediar.ai")
+                        monitor_url = f"{app_url}/api/remote-workflows/executions/monitor"
+
+                        logger.info(f"🚨 Triggering alert for NULL logs auto-cleaned execution {execution_id}")
+                        response = requests.post(monitor_url, json=monitor_payload, timeout=5)
+
+                        if response.status_code == 200:
+                            logger.info(f"✅ Alert triggered successfully for NULL logs execution {execution_id}")
+                        else:
+                            logger.warning(f"⚠️ Failed to trigger alert for execution {execution_id}: {response.status_code} - {response.text}")
+
+                    except Exception as alert_error:
+                        logger.error(f"❌ Error triggering alert for NULL logs execution {execution_id}: {alert_error}")
 
         total_cleaned = len(cleaned_jobs) + (
             len(null_logs_cleaned) if null_logs_jobs else 0
