@@ -7,6 +7,7 @@ import { UserButton } from '@clerk/nextjs';
 import { CheckCircle, Copy, Mail, MessageSquare, Play } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { usePostHog } from 'posthog-js/react';
 
 interface ContactAdminSectionProps {
   userId: string;
@@ -16,6 +17,7 @@ export default function ContactAdminSection({
   userId
 }: ContactAdminSectionProps) {
   const [copied, setCopied] = useState(false);
+  const posthog = usePostHog();
 
   const copyUserId = async () => {
     try {
@@ -28,6 +30,13 @@ export default function ContactAdminSection({
   };
 
   const handleDownloadClick = () => {
+    posthog?.capture('desktop_app_download_clicked', {
+      user_id: userId,
+      download_url: 'https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/nsis-x86_64',
+      platform: 'windows',
+      source: 'contact_admin_page',
+      timestamp: new Date().toISOString()
+    });
     console.log('Desktop app download button clicked');
   };
 
