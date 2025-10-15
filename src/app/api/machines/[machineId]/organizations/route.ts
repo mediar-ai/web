@@ -13,10 +13,11 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 // GET /api/machines/[machineId]/organizations - Get all organizations assigned to a machine
 export async function GET(
   request: NextRequest,
-  { params }: { params: { machineId: string } }
+  { params }: { params: Promise<{ machineId: string }> }
 ) {
   try {
-    const machineId = parseInt(params.machineId);
+    const { machineId: machineIdStr } = await params;
+    const machineId = parseInt(machineIdStr);
 
     if (isNaN(machineId)) {
       return NextResponse.json(
@@ -77,10 +78,11 @@ export async function GET(
 // PUT /api/machines/[machineId]/organizations - Update organization assignments for a machine
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { machineId: string } }
+  { params }: { params: Promise<{ machineId: string }> }
 ) {
   try {
-    const machineId = parseInt(params.machineId);
+    const { machineId: machineIdStr } = await params;
+    const machineId = parseInt(machineIdStr);
     const body = await request.json();
 
     if (isNaN(machineId)) {
