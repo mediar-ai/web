@@ -314,109 +314,13 @@ export function UnifiedWorkflowDialog({
     setSuccessMessage('');
 
     try {
-      // Step 1: Get active version YAML or current workflow YAML
-      let yamlToUpdate = currentYaml;
-
-      if (!yamlToUpdate) {
-        // If no YAML loaded yet, fetch it
-        const yamlResponse = await fetch(`/api/remote-workflows/${workflow.id}/github-yaml`);
-        if (yamlResponse.ok) {
-          const yamlData = await yamlResponse.json();
-          yamlToUpdate = yamlData.yaml || '';
-        }
-      }
-
-      // Step 1.5: If still no YAML, try to get JSON and convert to YAML
-      if (!yamlToUpdate) {
-        console.log('⚠️ No YAML found, fetching JSON from active version...');
-        const { data: activeVersion } = await fetch(`/api/remote-workflows/${workflow.id}/versions`).then(r => r.json());
-
-        if (activeVersion?.versions) {
-          const active = activeVersion.versions.find((v: any) => v.is_active);
-          if (active?.automation_sequence) {
-            // Convert JSON to YAML
-            console.log('📝 Converting JSON to YAML format...');
-            yamlToUpdate = yaml.dump(active.automation_sequence);
-          }
-        }
-      }
-
-      if (!yamlToUpdate) {
-        setErrorMessage('No workflow configuration found. Please ensure the workflow has a valid configuration.');
-        return;
-      }
-
-      // Step 2: Parse YAML and update cron fields
-      let parsedYaml: any;
-      try {
-        parsedYaml = yaml.load(yamlToUpdate) as any;
-      } catch (parseError) {
-        console.error('Failed to parse YAML:', parseError);
-        setErrorMessage('Failed to parse workflow configuration. Please check the YAML syntax.');
-        return;
-      }
-
-      // Update cron fields in YAML
-      parsedYaml.cron = cronConfig.expression;
-      parsedYaml.timezone = cronConfig.timezone;
-      parsedYaml.cron_enabled = cronConfig.enabled;
-      parsedYaml.max_concurrent = cronConfig.maxConcurrent;
-      parsedYaml.retry_on_failure = cronConfig.retryOnFailure;
-      parsedYaml.retry_count = cronConfig.retryCount;
-
-      const updatedYaml = yaml.dump(parsedYaml);
-
-      console.log('📅 Updated YAML with cron config:', {
+      console.log('📅 Saving cron config to database:', {
         cron: cronConfig.expression,
         timezone: cronConfig.timezone,
         enabled: cronConfig.enabled,
-        yamlPreview: updatedYaml.substring(0, 200) + '...'
       });
 
-      // Step 3: Create new version with updated YAML
-      const requestBody = {
-        automation_sequence: updatedYaml,
-        set_as_active: false, // Don't auto-activate
-        change_notes: `Updated cron schedule: ${cronConfig.expression}`
-      };
-
-      console.log('📦 Request body:', {
-        automation_sequence_length: requestBody.automation_sequence?.length,
-        automation_sequence_preview: requestBody.automation_sequence?.substring(0, 100),
-        set_as_active: requestBody.set_as_active,
-        change_notes: requestBody.change_notes
-      });
-
-      const versionResponse = await fetch(`/api/remote-workflows/${workflow.id}/versions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
-
-      console.log('📦 Version creation response status:', versionResponse.status);
-
-      const versionData = await versionResponse.json();
-
-      console.log('📦 Version creation result:', versionData);
-
-      if (!versionResponse.ok || !versionData.success) {
-        const errorDetails = versionData.error || versionData.details || 'Failed to create new version';
-        console.error('❌ Version creation failed:', errorDetails);
-        console.error('Full error response:', versionData);
-        setErrorMessage(`Failed to save: ${errorDetails}`);
-        return;
-      }
-
-      const newVersionNumber = versionData.version?.version_number;
-
-      // Log GitHub sync result
-      if (versionData.github_sync) {
-        console.log('🐙 GitHub sync result:', versionData.github_sync);
-      } else {
-        console.warn('⚠️ No GitHub sync info in response');
-      }
-
-      // Step 4: Update workflow-level cron config in database for scheduler
+      // Update workflow-level cron config in database (single source of truth)
       const cronDbResponse = await fetch(`/api/remote-workflows/${workflow.id}/cron`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -431,37 +335,15 @@ export function UnifiedWorkflowDialog({
       });
 
       const cronDbData = await cronDbResponse.json();
+
       if (!cronDbData.success) {
-        console.error('Failed to update database cron config:', cronDbData.error);
+        throw new Error(cronDbData.error || 'Failed to update cron config');
       }
 
-      // Step 5: Ask user if they want to set this version as active
-      const shouldActivate = window.confirm(
-        `Schedule updated successfully! Created new version ${newVersionNumber}.\n\n` +
-        `Would you like to set this version as ACTIVE?\n\n` +
-        `(The cron schedule will run using the active version)`
-      );
+      setSuccessMessage('Schedule updated successfully!');
 
-      if (shouldActivate) {
-        // Activate the new version
-        const activateResponse = await fetch(
-          `/api/remote-workflows/${workflow.id}/activate/${newVersionNumber}`,
-          { method: 'POST' }
-        );
-
-        const activateData = await activateResponse.json();
-        if (activateData.success) {
-          setSuccessMessage(`Schedule updated and version ${newVersionNumber} set as ACTIVE`);
-          // Reload versions to show the new active version
-          await loadVersions();
-          if (onSettingsUpdated) onSettingsUpdated();
-        } else {
-          setErrorMessage(`Version created but failed to activate: ${activateData.error}`);
-        }
-      } else {
-        setSuccessMessage(`Schedule updated! Created version ${newVersionNumber} (not active)`);
-        // Reload versions to show the new version
-        await loadVersions();
+      if (onSettingsUpdated) {
+        onSettingsUpdated();
       }
 
     } catch (error) {
@@ -470,7 +352,7 @@ export function UnifiedWorkflowDialog({
     } finally {
       setSavingCron(false);
     }
-  }, [workflow, cronConfig, currentYaml, loadVersions, onSettingsUpdated]);
+  }, [workflow, cronConfig, onSettingsUpdated]);
 
   // Load data when modal opens
   useEffect(() => {
