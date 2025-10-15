@@ -202,37 +202,39 @@ export function shouldExecuteAt(cronExpression: string, time: Date, _timezone: s
  */
 function matchesCronField(field: string, value: number): boolean {
   if (field === '*') return true;
-  
+
   // Handle comma-separated values
   if (field.includes(',')) {
     const values = field.split(',').map(Number);
     return values.includes(value);
   }
-  
+
   // Handle ranges
   if (field.includes('-') && !field.includes('/')) {
     const [start, end] = field.split('-').map(Number);
     return value >= start && value <= end;
   }
-  
+
   // Handle step values
   if (field.includes('/')) {
     const [range, step] = field.split('/');
     const stepNum = Number(step);
-    
+
     if (range === '*') {
-      return value % stepNum === 0;
+      const result = value % stepNum === 0;
+      console.log(`  [matchField] field=${field}, value=${value}, calc: ${value} % ${stepNum} = ${value % stepNum}, result=${result}`);
+      return result;
     }
-    
+
     if (range.includes('-')) {
       const [start, end] = range.split('-').map(Number);
       return value >= start && value <= end && (value - start) % stepNum === 0;
     }
-    
+
     const rangeNum = Number(range);
     return value >= rangeNum && (value - rangeNum) % stepNum === 0;
   }
-  
+
   // Handle single number
   return Number(field) === value;
 }
