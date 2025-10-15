@@ -198,51 +198,24 @@ export function BatchTestDialog({
       const fetchMachines = async () => {
         setLoadingMachines(true);
         try {
-          // Fuck the API, use Supabase directly
-          const { createClient } = await import('@supabase/supabase-js');
-          const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-          );
+          // Use the new accessible machines API endpoint
+          const response = await fetch('/api/remote-machines/accessible');
+          const data = await response.json();
 
-          // Load all machines, regardless of status (including inactive/failed ones)
-          const { data: machines, error } = await supabase
-            .from('remote_machines')
-            .select('*')
-            .order('priority', { ascending: true })
-            .order('name', { ascending: true });
-
-          if (error) {
-            console.error('[ERROR] Failed to load machines:', error);
+          if (!response.ok) {
+            console.error('[ERROR] Failed to load accessible machines:', data.error);
+            setAvailableMachines([]);
             return;
           }
 
-          if (machines && machines.length > 0) {
-            // Format machines to match expected structure
-            const formattedMachines = machines.map(m => ({
-              ...m,
-              // Ensure health_status is set properly (fallback to status if health_status is missing)
-              health_status: m.health_status || m.status || 'unknown',
-              endpoints: {
-                mcp: m.mcp_endpoint,
-                management: m.management_endpoint,
-                health: m.health_endpoint
-              },
-              load_info: {
-                current_executions: 0,
-                queued_executions: 0,
-                available_capacity: m.max_concurrent_executions || 1,
-                load_percentage: 0
-              }
-            }));
-
-            setAvailableMachines(formattedMachines);
-            console.log('📋 Loaded machines for testing:', formattedMachines);
+          if (data.success && data.machines && data.machines.length > 0) {
+            setAvailableMachines(data.machines);
+            console.log('📋 Loaded accessible machines for testing:', data.machines);
 
             // Set initial selection to first machine if no machine is selected yet
-            if (!selectedMachineId && formattedMachines.length > 0) {
+            if (!selectedMachineId && data.machines.length > 0) {
               // Sort machines by priority (active & healthy first, then by load)
-              const sortedMachines = [...formattedMachines].sort((a, b) => {
+              const sortedMachines = [...data.machines].sort((a: Machine, b: Machine) => {
                 // First prioritize active status
                 if (a.status === 'active' && b.status !== 'active') return -1;
                 if (a.status !== 'active' && b.status === 'active') return 1;
@@ -264,14 +237,15 @@ export function BatchTestDialog({
             // After loading machines, fetch optimal machine to potentially override default
             // Only fetch optimal if user hasn't manually selected a machine
             if (!userSelectedMachineRef.current) {
-              await fetchOptimalMachine(formattedMachines);
+              await fetchOptimalMachine(data.machines);
             }
           } else {
-            console.warn('[WARNING] No machines in database');
+            console.warn('[WARNING] No accessible machines available:', data.message);
             setAvailableMachines([]);
           }
         } catch (error) {
-          console.error('[ERROR] Error fetching machines:', error);
+          console.error('[ERROR] Error fetching accessible machines:', error);
+          setAvailableMachines([]);
         } finally {
           setLoadingMachines(false);
         }
@@ -607,6 +581,23 @@ export function BatchTestDialog({
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Loading machines...
                   </div>
+                ) : availableMachines.length === 0 ? (
+                  <div className="border-2 border-black p-4 bg-gray-50">
+                    <p className="text-sm font-mono mb-2">
+                      No remote machines available for your organization.
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Your organization needs access to at least one remote machine to execute workflows.
+                    </p>
+                    <a
+                      href="https://mediar.ai/contact"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block px-4 py-2 bg-black text-white hover:bg-gray-800 transition-colors text-sm font-mono uppercase"
+                    >
+                      Contact Support
+                    </a>
+                  </div>
                 ) : (
                   <Select
                     value={selectedMachineId}
@@ -619,7 +610,7 @@ export function BatchTestDialog({
                       <SelectValue placeholder="Select a machine" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableMachines.filter(m => m.status === 'active').map(machine => {
+                      {availableMachines.map(machine => {
                         // Determine machine status for display
                         const isActive = machine.status === 'active';
                         const now = new Date();
