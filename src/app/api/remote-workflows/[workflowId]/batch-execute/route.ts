@@ -12,80 +12,80 @@ type JsonValue =
   | Array<JsonValue>;
 type JsonObject = { [x: string]: JsonValue };
 
-// Helper function to fetch workflow schema and identify array fields
+// Helper function to identify checkbox-list fields from automation sequence
+// This uses the same logic as the schema endpoint to ensure consistency
 const getArrayFields = async (
   workflowId: number,
-  supabase: ReturnType<typeof createClient>
+  supabase: any,
+  _versionNumber?: string
 ): Promise<Set<string>> => {
   const arrayFields = new Set<string>();
 
   try {
-    // Fetch workflow data to get automation sequence
+    console.log(
+      `🔍 BATCH EXECUTE: Analyzing workflow ${workflowId} for checkbox-list fields...`
+    );
+
+    // Fetch automation sequence from database
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows_with_sequence')
       .select('automation_sequence')
       .eq('id', workflowId)
       .single();
 
-    if (workflowError || !workflow) {
+    if (workflowError || !workflow || !workflow.automation_sequence) {
       console.warn(
-        `[WARN] Could not fetch workflow ${workflowId} for schema analysis:`,
+        `[WARN] Could not fetch workflow ${workflowId}:`,
         workflowError?.message
       );
       return arrayFields;
     }
 
-    if (
-      workflow.automation_sequence &&
-      Array.isArray(workflow.automation_sequence) &&
-      workflow.automation_sequence.length > 0
-    ) {
-      const mainSequence = workflow.automation_sequence[0];
-      const variables = mainSequence?.arguments?.variables || {};
+    const automationSequence = workflow.automation_sequence;
 
-      console.log(
-        '🔍 BATCH EXECUTE: Analyzing variables for array fields:',
-        Object.keys(variables)
-      );
+    // Handle both object and array formats
+    const sequenceArray = Array.isArray(automationSequence)
+      ? automationSequence
+      : [automationSequence];
 
-      // Recursively find array-type fields
-      const findArrayFields = (obj: Record<string, JsonValue>, prefix = '') => {
-        Object.entries(obj).forEach(([key, value]) => {
-          const fullKey = prefix ? `${prefix}.${key}` : key;
-
-          if (value && typeof value === 'object' && !Array.isArray(value)) {
-            const valueObj = value as Record<string, JsonValue>;
-            console.log(
-              `🔍 BATCH EXECUTE: Checking ${fullKey}: type=${valueObj.type}, hasOptions=${!!valueObj.options}`
-            );
-
-            // Check if this is a parameter definition with array type
-            if (valueObj.type === 'array') {
-              arrayFields.add(fullKey);
-              console.log(
-                `✅ BATCH EXECUTE: Identified array field: ${fullKey}`
-              );
-            } else if (
-              !valueObj.type &&
-              !valueObj.description &&
-              !valueObj.hasOwnProperty('default')
-            ) {
-              // This might be a nested group - recurse
-              findArrayFields(valueObj, fullKey);
-            }
-          }
-        });
-      };
-
-      findArrayFields(variables);
-      console.log(
-        '🔍 BATCH EXECUTE: Final array fields detected:',
-        Array.from(arrayFields)
-      );
+    if (sequenceArray.length === 0) {
+      console.warn(`[WARN] Empty automation sequence for workflow ${workflowId}`);
+      return arrayFields;
     }
+
+    const mainSequence = sequenceArray[0];
+
+    // Extract variables from the correct location (YAML format: top-level variables)
+    const variables =
+      (mainSequence as Record<string, JsonValue>)?.variables ||
+      ({} as Record<string, JsonValue>);
+
+    console.log(
+      `🔍 BATCH EXECUTE: Found ${Object.keys(variables).length} variables in automation sequence`
+    );
+
+    // Identify array-type fields (which should be treated as checkbox-list)
+    Object.entries(variables).forEach(([key, value]) => {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const varDef = value as Record<string, JsonValue>;
+
+        // Check if this is an array type variable
+        if (varDef.type === 'array') {
+          arrayFields.add(key);
+          console.log(
+            `✅ BATCH EXECUTE: Identified array field (checkbox-list): ${key}`
+          );
+        }
+      }
+    });
+
+    console.log(
+      `🔍 BATCH EXECUTE: Final checkbox-list fields detected:`,
+      Array.from(arrayFields)
+    );
   } catch (error) {
     console.warn(
-      '[WARN] Error analyzing workflow schema for array fields:',
+      `[WARN] Error analyzing workflow ${workflowId} for checkbox fields:`,
       error
     );
   }
@@ -403,22 +403,25 @@ export async function POST(
     // This allows the batch-execute endpoint to handle both single and batch executions
     const isSingleExecution = Object.keys(dynamic_parameters).length === 0;
 
+    // Initialize Supabase early for schema analysis
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables are not set');
+    }
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     // Generate all unique parameter combinations
+    // Fetch checkbox-list fields by analyzing automation sequence
     const arrayFields = await getArrayFields(
       workflowIdNum,
-      createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_KEY!
-      )
+      supabase,
+      version_number
     );
 
-    // 🔧 TEMPORARY FIX: Hardcode known array fields that should be treated as checkbox fields
-    // These fields should be treated as a single selection, not iterated over
-    const knownArrayFields = new Set(['product_types']);
-    knownArrayFields.forEach(field => arrayFields.add(field));
-
     console.log(
-      '🔧 BATCH EXECUTE: Combined array fields (detected + hardcoded):',
+      '🔍 BATCH EXECUTE: Detected checkbox-list fields:',
       Array.from(arrayFields)
     );
 
@@ -459,15 +462,6 @@ export async function POST(
         { status: 400 }
       );
     }
-
-    // Initialize Supabase
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Supabase environment variables are not set');
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // STEP 2: Check workflow exists and verify authorization
     const { data: workflow, error: workflowError } = await supabase
