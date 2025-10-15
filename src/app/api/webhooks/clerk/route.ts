@@ -5,6 +5,7 @@ import { getPostHogClient } from '@/lib/posthog-server';
 import { createClient } from '@supabase/supabase-js';
 
 const MEDIAR_ADMINS = ['louis@mediar.ai', 'matt@mediar.ai'];
+const MEDIAR_ORG_IDS = ['org_2yynzGa53bNM1GTPLp5mc2lYRyD', 'org_2yydAO45WOB4RaCE4F4BNUPtw9c'];
 
 // Initialize Supabase client for querying survey submissions
 const supabase = createClient(
@@ -57,6 +58,10 @@ export async function POST(req: Request) {
 
     console.log(`[Clerk Webhook] User created: ${primaryEmail} (${userId})`);
 
+    // Import Clerk client for org operations
+    const { clerkClient } = await import('@clerk/nextjs/server');
+    const client = await clerkClient();
+
     // Query Supabase for survey submission by email
     let submissionId: string | null = null;
     try {
@@ -77,6 +82,96 @@ export async function POST(req: Request) {
       console.error(`[Clerk Webhook] Error querying survey submissions:`, err);
     }
 
+    // Check if user was invited to any organization
+    let hasInvitations = false;
+
+    try {
+      // Check for pending invitations by email
+      const invitations = await client.invitations.getInvitationList();
+      const userInvitations = invitations.data.filter(
+        (inv: any) => inv.emailAddress === primaryEmail && inv.status === 'pending'
+      );
+      hasInvitations = userInvitations.length > 0;
+
+      console.log(`[Clerk Webhook] User has ${userInvitations.length} pending invitation(s)`);
+    } catch (err) {
+      console.error(`[Clerk Webhook] Error checking invitations:`, err);
+    }
+
+    // Check if user is Mediar admin
+    const isMediarAdmin = primaryEmail.toLowerCase().endsWith('@mediar.ai');
+
+    // Determine if we should create personal workspace
+    const shouldCreatePersonalWorkspace = !hasInvitations || isMediarAdmin;
+
+    if (shouldCreatePersonalWorkspace) {
+      console.log(`[Clerk Webhook] Creating personal workspace for ${primaryEmail} (organic signup)`);
+
+      try {
+        // Generate personal workspace name
+        const workspaceName = first_name
+          ? `${first_name}'s Workspace`
+          : primaryEmail.split('@')[0] + '-workspace';
+
+        // Create personal organization
+        const personalOrg = await client.organizations.createOrganization({
+          name: workspaceName,
+          createdBy: userId,
+        });
+
+        console.log(`[Clerk Webhook] ✓ Created personal workspace: ${workspaceName} (${personalOrg.id})`);
+
+        // Add user as owner
+        await client.organizations.createOrganizationMembership({
+          organizationId: personalOrg.id,
+          userId: userId,
+          role: 'org:owner'
+        });
+
+        console.log(`[Clerk Webhook] ✓ Added ${primaryEmail} as owner of personal workspace`);
+
+        // Track personal workspace creation in PostHog
+        posthog.capture({
+          distinctId: userId,
+          event: 'personal_workspace_created',
+          properties: {
+            organization_id: personalOrg.id,
+            organization_name: workspaceName,
+            is_personal: true,
+            signup_type: 'organic',
+            came_from_survey: !!submissionId,
+            is_mediar_admin: isMediarAdmin,
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        console.log(`[Clerk Webhook] ✓ Tracked personal_workspace_created in PostHog`);
+
+        // If Mediar admin, also add to Mediar organizations
+        if (isMediarAdmin) {
+          console.log(`[Clerk Webhook] Adding Mediar admin ${primaryEmail} to Mediar organizations`);
+
+          for (const mediarOrgId of MEDIAR_ORG_IDS) {
+            try {
+              await client.organizations.createOrganizationMembership({
+                organizationId: mediarOrgId,
+                userId: userId,
+                role: 'org:admin'
+              });
+              console.log(`[Clerk Webhook] ✓ Added ${primaryEmail} to Mediar org: ${mediarOrgId}`);
+            } catch (err) {
+              console.error(`[Clerk Webhook] ✗ Failed to add ${primaryEmail} to Mediar org ${mediarOrgId}:`, err);
+            }
+          }
+        }
+
+      } catch (err) {
+        console.error(`[Clerk Webhook] ✗ Failed to create personal workspace for ${primaryEmail}:`, err);
+      }
+    } else {
+      console.log(`[Clerk Webhook] Skipping personal workspace creation for ${primaryEmail} (has pending invitations)`);
+    }
+
     // Track user signup in PostHog
     posthog.capture({
       distinctId: userId,
@@ -86,17 +181,22 @@ export async function POST(req: Request) {
         first_name: first_name || '',
         last_name: last_name || '',
         created_at: created_at,
-        submission_id: submissionId, // Link to survey submission if found
+        submission_id: submissionId,
         came_from_survey: !!submissionId,
+        signup_type: hasInvitations ? 'invited' : 'organic',
+        has_pending_invitations: hasInvitations,
+        has_personal_workspace: shouldCreatePersonalWorkspace,
+        is_mediar_admin: isMediarAdmin,
         $set: {
           email: primaryEmail,
           name: [first_name, last_name].filter(Boolean).join(' ') || primaryEmail,
-          survey_submission_id: submissionId, // Store as person property
+          survey_submission_id: submissionId,
+          is_mediar_admin: isMediarAdmin,
         },
       },
     });
 
-    console.log(`[Clerk Webhook] ✓ Tracked user_created in PostHog: ${primaryEmail}${submissionId ? ` (linked to survey: ${submissionId})` : ''}`);
+    console.log(`[Clerk Webhook] ✓ Tracked user_created in PostHog: ${primaryEmail}${submissionId ? ` (linked to survey: ${submissionId})` : ''} (signup_type: ${hasInvitations ? 'invited' : 'organic'})`);
   }
 
   // Handle session.created event
@@ -119,26 +219,61 @@ export async function POST(req: Request) {
 
   // Handle organization.created event
   if (evt.type === 'organization.created') {
-    const { id: orgId, name } = evt.data;
+    const { id: orgId, name, created_by } = evt.data;
 
     console.log(`[Clerk Webhook] Organization created: ${name} (${orgId})`);
-    console.log(`[Clerk Webhook] Auto-inviting Mediar admins: ${MEDIAR_ADMINS.join(', ')}`);
 
-    // Invite Mediar admins to the new organization
+    // Import Clerk client
     const { clerkClient } = await import('@clerk/nextjs/server');
     const client = await clerkClient();
 
-    for (const email of MEDIAR_ADMINS) {
-      try {
-        await client.organizations.createOrganizationInvitation({
-          organizationId: orgId,
-          emailAddress: email,
-          role: 'org:admin',
-        });
-        console.log(`[Clerk Webhook] ✓ Invited ${email} to ${name}`);
-      } catch (error) {
-        console.error(`[Clerk Webhook] ✗ Failed to invite ${email}:`, error);
+    // Check if this is a personal workspace (name ends with "'s Workspace" or "-workspace")
+    const isPersonalWorkspace = name.endsWith("'s Workspace") || name.endsWith('-workspace');
+
+    // Get creator info for PostHog tracking
+    let creatorEmail = 'unknown';
+    try {
+      if (created_by) {
+        const creator = await client.users.getUser(created_by);
+        creatorEmail = creator.emailAddresses?.[0]?.emailAddress || 'unknown';
       }
+    } catch (err) {
+      console.error(`[Clerk Webhook] Error fetching creator info:`, err);
+    }
+
+    // Track organization creation in PostHog
+    posthog.capture({
+      distinctId: created_by || 'system',
+      event: 'organization_created',
+      properties: {
+        organization_id: orgId,
+        organization_name: name,
+        is_personal: isPersonalWorkspace,
+        creator_email: creatorEmail,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    console.log(`[Clerk Webhook] ✓ Tracked organization_created in PostHog: ${name} (is_personal: ${isPersonalWorkspace})`);
+
+    // Only invite Mediar admins to team organizations (not personal workspaces)
+    if (!isPersonalWorkspace) {
+      console.log(`[Clerk Webhook] Auto-inviting Mediar admins to team org: ${MEDIAR_ADMINS.join(', ')}`);
+
+      for (const email of MEDIAR_ADMINS) {
+        try {
+          await client.organizations.createOrganizationInvitation({
+            organizationId: orgId,
+            emailAddress: email,
+            role: 'org:admin',
+          });
+          console.log(`[Clerk Webhook] ✓ Invited ${email} to ${name}`);
+        } catch (error) {
+          console.error(`[Clerk Webhook] ✗ Failed to invite ${email}:`, error);
+        }
+      }
+    } else {
+      console.log(`[Clerk Webhook] Skipping Mediar admin invites for personal workspace: ${name}`);
     }
   }
 

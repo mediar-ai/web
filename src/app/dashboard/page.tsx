@@ -17,6 +17,7 @@ import { useOrganization, useOrganizationList, useUser, useAuth } from '@clerk/n
 import { Activity, Workflow, TrendingUp, Zap, Plus, Search } from 'lucide-react';
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { usePostHog } from 'posthog-js/react';
 import {
   Execution,
   LiveExecutionStatus,
@@ -34,6 +35,7 @@ function DashboardContent() {
   const { userMemberships } = useOrganizationList();
   const searchParams = useSearchParams();
   const viewOrgId = searchParams.get('viewOrgId');
+  const posthog = usePostHog();
 
   // Redirect unauthenticated users to sign-in
   useEffect(() => {
@@ -428,6 +430,11 @@ function DashboardContent() {
 
   const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
     try {
+      posthog?.capture('dashboard_view_workflow_details', {
+        workflow_id: workflowId,
+        timestamp: new Date().toISOString(),
+      });
+
       const response = await fetch(`/api/remote-workflows/${workflowId}/overview`);
       const overviewData = await response.json();
       if (response.ok && overviewData.success) {
@@ -437,10 +444,15 @@ function DashboardContent() {
     } catch (error) {
       console.error('Failed to fetch workflow overview:', error);
     }
-  }, []);
+  }, [posthog]);
 
   const fetchExecutionDetails = useCallback(async (executionId: number) => {
     try {
+      posthog?.capture('dashboard_view_execution_details', {
+        execution_id: executionId,
+        timestamp: new Date().toISOString(),
+      });
+
       setSelectedExecution(null);
       setExecutionDetailsOpen(true);
       // Fetch only basic info first - heavy fields will be loaded on demand
@@ -453,10 +465,15 @@ function DashboardContent() {
       console.error('Failed to fetch execution details:', error);
       setExecutionDetailsOpen(false);
     }
-  }, []);
+  }, [posthog]);
 
   const handleCancelExecution = useCallback(async (executionId: number) => {
     try {
+      posthog?.capture('dashboard_cancel_execution', {
+        execution_id: executionId,
+        timestamp: new Date().toISOString(),
+      });
+
       const response = await fetch(`/api/remote-workflows/executions/${executionId}/cancel`, {
         method: 'POST',
       });
@@ -472,10 +489,15 @@ function DashboardContent() {
       console.error('Error canceling execution:', error);
       toast.error('Error canceling execution');
     }
-  }, [fetchExecutions, fetchLiveExecutions]);
+  }, [fetchExecutions, fetchLiveExecutions, posthog]);
 
   const handleDeleteExecution = useCallback(async (executionId: number) => {
     try {
+      posthog?.capture('dashboard_delete_execution', {
+        execution_id: executionId,
+        timestamp: new Date().toISOString(),
+      });
+
       const response = await fetch(`/api/remote-workflows/executions/${executionId}/delete`, {
         method: 'DELETE',
       });
@@ -491,7 +513,7 @@ function DashboardContent() {
       console.error('Error deleting execution:', error);
       toast.error('Error deleting execution');
     }
-  }, [fetchExecutions, fetchLiveExecutions]);
+  }, [fetchExecutions, fetchLiveExecutions, posthog]);
 
   const handleRefreshExecutions = useCallback(() => {
     fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize);
@@ -499,6 +521,11 @@ function DashboardContent() {
 
   // Handle filter changes - refetch from API and save to localStorage
   const handleWorkflowFilterChange = useCallback((workflowName: string | undefined) => {
+    posthog?.capture('dashboard_filter_workflow', {
+      workflow_name: workflowName,
+      timestamp: new Date().toISOString(),
+    });
+
     setActiveWorkflowFilter(workflowName);
     setCurrentPage(1); // Reset to first page on filter change
     if (typeof window !== 'undefined') {
@@ -509,9 +536,14 @@ function DashboardContent() {
       }
     }
     fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, 1, pageSize);
-  }, [fetchExecutions, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize]);
+  }, [fetchExecutions, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
 
   const handleStatusFilterChange = useCallback((status: string | undefined) => {
+    posthog?.capture('dashboard_filter_status', {
+      status,
+      timestamp: new Date().toISOString(),
+    });
+
     setActiveStatusFilter(status);
     setCurrentPage(1); // Reset to first page on filter change
     if (typeof window !== 'undefined') {
@@ -522,9 +554,14 @@ function DashboardContent() {
       }
     }
     fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize]);
+  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
 
   const handleMachineFilterChange = useCallback((machine: string | undefined) => {
+    posthog?.capture('dashboard_filter_machine', {
+      machine,
+      timestamp: new Date().toISOString(),
+    });
+
     setActiveMachineFilter(machine);
     setCurrentPage(1); // Reset to first page on filter change
     if (typeof window !== 'undefined') {
@@ -535,9 +572,16 @@ function DashboardContent() {
       }
     }
     fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine, activeSearchFilter, activeSearchField, activeSearchMode, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize]);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
 
   const handleSearchFilterChange = useCallback((search: string) => {
+    posthog?.capture('dashboard_search_executions', {
+      search_query: search,
+      search_field: activeSearchField,
+      search_mode: activeSearchMode,
+      timestamp: new Date().toISOString(),
+    });
+
     setActiveSearchFilter(search);
     setCurrentPage(1); // Reset to first page on search change
     if (typeof window !== 'undefined') {
@@ -548,7 +592,7 @@ function DashboardContent() {
       }
     }
     fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, search, activeSearchField, activeSearchMode, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchField, activeSearchMode, pageSize]);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
 
   const handleSearchFieldChange = useCallback((searchField: string) => {
     setActiveSearchField(searchField);
@@ -583,18 +627,28 @@ function DashboardContent() {
   }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, currentPage, pageSize]);
 
   const handlePageChange = useCallback((newPage: number) => {
+    posthog?.capture('dashboard_change_page', {
+      page: newPage,
+      timestamp: new Date().toISOString(),
+    });
+
     setCurrentPage(newPage);
     fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, newPage, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize]);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
 
   const handlePageSizeChange = useCallback((newPageSize: number) => {
+    posthog?.capture('dashboard_change_page_size', {
+      page_size: newPageSize,
+      timestamp: new Date().toISOString(),
+    });
+
     setPageSize(newPageSize);
     setCurrentPage(1); // Reset to first page when changing page size
     if (typeof window !== 'undefined') {
       localStorage.setItem('executions-page-size', newPageSize.toString());
     }
     fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, 1, newPageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode]);
+  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, posthog]);
 
   // Handlers
   const handleWorkflowCreated = useCallback((_newWorkflow: any) => {
@@ -605,9 +659,15 @@ function DashboardContent() {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
 
+    posthog?.capture('dashboard_execute_workflow', {
+      workflow_id: workflowId,
+      workflow_name: workflow.name,
+      timestamp: new Date().toISOString(),
+    });
+
     setSelectedWorkflowForAction(workflow);
     setBatchTestOpen(true);
-  }, [workflows]);
+  }, [workflows, posthog]);
 
   const _handleQuickEdit = useCallback((workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
@@ -622,10 +682,16 @@ function DashboardContent() {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
 
+    posthog?.capture('dashboard_duplicate_workflow', {
+      workflow_id: workflowId,
+      workflow_name: workflow.name,
+      timestamp: new Date().toISOString(),
+    });
+
     setSelectedWorkflowForAction(workflow);
     setActionsDialogMode('duplicate');
     setActionsDialogOpen(true);
-  }, [workflows]);
+  }, [workflows, posthog]);
 
   const handleDeleteWorkflow = useCallback(async (workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
@@ -634,6 +700,12 @@ function DashboardContent() {
     if (!confirm(`Are you sure you want to delete "${workflow.name}"?`)) {
       return;
     }
+
+    posthog?.capture('dashboard_delete_workflow', {
+      workflow_id: workflowId,
+      workflow_name: workflow.name,
+      timestamp: new Date().toISOString(),
+    });
 
     try {
       const response = await fetch(`/api/remote-workflows/${workflowId}`, {
@@ -649,11 +721,18 @@ function DashboardContent() {
     } catch (error) {
       console.error('Error deleting workflow:', error);
     }
-  }, [workflows, fetchWorkflows]);
+  }, [workflows, fetchWorkflows, posthog]);
 
   const handleToggleCron = useCallback(async (workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
+
+    posthog?.capture('dashboard_toggle_cron', {
+      workflow_id: workflowId,
+      workflow_name: workflow.name,
+      action: !workflow.cron_enabled ? 'enable' : 'disable',
+      timestamp: new Date().toISOString(),
+    });
 
     try {
       const response = await fetch(`/api/remote-workflows/${workflowId}/cron`, {
@@ -671,23 +750,35 @@ function DashboardContent() {
     } catch (error) {
       console.error('Error toggling cron:', error);
     }
-  }, [workflows, fetchWorkflows]);
+  }, [workflows, fetchWorkflows, posthog]);
 
   const handleManageOrganizations = useCallback((workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
 
+    posthog?.capture('dashboard_manage_organizations', {
+      workflow_id: workflowId,
+      workflow_name: workflow.name,
+      timestamp: new Date().toISOString(),
+    });
+
     setSelectedWorkflowForOrgAssignment(workflow);
     setOrgAssignmentOpen(true);
-  }, [workflows]);
+  }, [workflows, posthog]);
 
   const handleUploadVersion = useCallback((workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
 
+    posthog?.capture('dashboard_upload_version', {
+      workflow_id: workflowId,
+      workflow_name: workflow.name,
+      timestamp: new Date().toISOString(),
+    });
+
     setSelectedWorkflowForVersion(workflow);
     setUploadVersionOpen(true);
-  }, [workflows]);
+  }, [workflows, posthog]);
 
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
@@ -828,7 +919,12 @@ function DashboardContent() {
               <div className="flex items-center gap-2">
                 {/* Command Bar */}
                 <button
-                  onClick={() => setCommandPaletteOpen(true)}
+                  onClick={() => {
+                    posthog?.capture('dashboard_open_command_palette', {
+                      timestamp: new Date().toISOString(),
+                    });
+                    setCommandPaletteOpen(true);
+                  }}
                   className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm"
                   aria-label="Open command palette"
                 >
@@ -840,7 +936,12 @@ function DashboardContent() {
                 </button>
 
                 <Button
-                  onClick={() => setCreateWorkflowOpen(true)}
+                  onClick={() => {
+                    posthog?.capture('dashboard_create_workflow', {
+                      timestamp: new Date().toISOString(),
+                    });
+                    setCreateWorkflowOpen(true);
+                  }}
                   className="bg-black text-white hover:bg-gray-800 relative"
                   title="Create new workflow (N)"
                 >

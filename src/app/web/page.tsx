@@ -26,6 +26,7 @@ import { Bug, MoreHorizontal, Pencil, RefreshCw, Settings, User } from 'lucide-r
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { usePostHog } from 'posthog-js/react';
 import ErrorNotification from '../../components/capture/ErrorNotification';
 import ExportStatusDialog from '../../components/capture/ExportStatusDialog';
 import PageHeaderControls from '../../components/capture/PageHeaderControls';
@@ -60,6 +61,7 @@ function HomeComponent() {
   const EVENTS_MODEL_NAME = 'gemini-2.5-flash'; // 🔥 Updated to stable Vertex AI model name
   const MAX_PARALLEL_ANALYSES = 5;
 
+  const posthog = usePostHog();
   const viewingMode = useViewingMode();
   const [dataProvider, setDataProvider] = useState<DataProvider>(LocalDataProvider);
   const [remoteUserName, setRemoteUserName] = useState<string | null>(null);
@@ -649,6 +651,10 @@ function HomeComponent() {
   }, []);
 
   const copyLogsToClipboard = useCallback(async () => {
+    posthog?.capture('web_app_copy_logs', {
+      logs_count: frontendLogs.length,
+      timestamp: new Date().toISOString(),
+    });
     try {
       const logsText = frontendLogs.join('\n');
       await navigator.clipboard.writeText(logsText);
@@ -658,14 +664,20 @@ function HomeComponent() {
     } catch (err) {
       logError('[copyLogsToClipboard] Failed to copy logs:', err);
     }
-  }, [frontendLogs, logToUI, logError]);
+  }, [frontendLogs, logToUI, logError, posthog]);
 
   const clearAllData = useCallback(async () => {
+    posthog?.capture('web_app_clear_all_data', {
+      activity_items_count: activityItems.length,
+      events_count: events.length,
+      logs_count: frontendLogs.length,
+      timestamp: new Date().toISOString(),
+    });
     try {
       await clearPersistedData();
       setEvents([]);
       setFrontendLogs([]);
-      setActivityItems([]); 
+      setActivityItems([]);
       setCompletedAnalyses([]);
       setCaptureSessionId(1);
       localStorage.setItem('capture_session_id', '1');
@@ -673,7 +685,7 @@ function HomeComponent() {
     } catch (err) {
       logError('[clearAllData] Failed to clear data:', err);
     }
-  }, [logToUI, logError, setActivityItems]);
+  }, [logToUI, logError, setActivityItems, activityItems.length, events.length, frontendLogs.length, posthog]);
 
   const dismissError = useCallback(() => {
     setShowError(false);
@@ -681,6 +693,12 @@ function HomeComponent() {
   }, []);
 
   const handleStopScreenShare = useCallback(() => {
+    posthog?.capture('web_app_stop_recording', {
+      timestamp: new Date().toISOString(),
+      viewing_mode: viewingMode.type,
+      activity_items_count: activityItems.length,
+      events_count: events.length,
+    });
     logToUI('[handleStopScreenShare] Stopping screen share.');
     if (pipWindow) {
       pipWindow.close();
@@ -718,6 +736,10 @@ function HomeComponent() {
   ]); 
 
   const handleStartScreenShare = useCallback(async () => {
+    posthog?.capture('web_app_start_recording', {
+      timestamp: new Date().toISOString(),
+      viewing_mode: viewingMode.type,
+    });
     logToUI('[handleStartScreenShare] Attempting start...');
     setError(null);
     setReconnectRequired(false);
@@ -983,6 +1005,10 @@ function HomeComponent() {
   const toggleDetailsPanel = () => {
     setDetailsCollapsed(prevState => {
       const newState = !prevState;
+      posthog?.capture('web_app_toggle_details_panel', {
+        action: newState ? 'collapse' : 'expand',
+        timestamp: new Date().toISOString(),
+      });
       localStorage.setItem('detailsCollapsed', String(newState));
       return newState;
     });
@@ -991,6 +1017,10 @@ function HomeComponent() {
   const toggleAnalysesPanel = () => {
     setAnalysesPanelCollapsed(prevState => {
       const newState = !prevState;
+      posthog?.capture('web_app_toggle_analyses_panel', {
+        action: newState ? 'collapse' : 'expand',
+        timestamp: new Date().toISOString(),
+      });
       localStorage.setItem('analysesPanelCollapsed', String(newState));
       return newState;
     });
@@ -1082,6 +1112,10 @@ function HomeComponent() {
   }, [events, pipWindow, stream, mainStatus, error, handleStartScreenShare, handleStopScreenShare]);
 
   const handleTogglePip = async (open?: boolean) => {
+    posthog?.capture('web_app_toggle_pip', {
+      action: open === true ? 'open' : open === false ? 'close' : 'toggle',
+      timestamp: new Date().toISOString(),
+    });
     if (open === false && pipWindow) {
       pipWindow.close();
       setPipWindow(null);
@@ -1163,7 +1197,13 @@ function HomeComponent() {
       logError('[handleSaveName] User ID not found or name is empty.');
       return;
     }
-    
+
+    posthog?.capture('web_app_save_user_name', {
+      viewing_mode: viewingMode.type,
+      user_id: viewingMode.userId,
+      timestamp: new Date().toISOString(),
+    });
+
     try {
       const response = await fetch(`/api/users/${viewingMode.userId}`, {
         method: 'PUT',
@@ -1259,7 +1299,13 @@ function HomeComponent() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => loadData(dataProvider)}>
+            <Button variant="outline" size="sm" onClick={() => {
+              posthog?.capture('web_app_refresh_data', {
+                viewing_mode: viewingMode.type,
+                timestamp: new Date().toISOString(),
+              });
+              loadData(dataProvider);
+            }}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
@@ -1324,6 +1370,10 @@ function HomeComponent() {
       <div className="w-full grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="lg:col-span-2 flex flex-col gap-4">
           <Tabs defaultValue='recent' className='w-full -mt-2' value={selectedMoreOption || selectedMainTab} onValueChange={(value) => {
+            posthog?.capture('web_app_tab_change', {
+              tab: value,
+              timestamp: new Date().toISOString(),
+            });
             if (value === 'settings' || value === 'debug' || value === 'low-level') {
               setSelectedMoreOption(value);
             } else {

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { memo } from 'react';
+import { usePostHog } from 'posthog-js/react';
 import {
   ColumnDef,
   SortingState,
@@ -236,6 +237,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   pageSize: serverPageSize = 100,
   totalRecords = 0,
 }: ExecutionsDataTableProps) {
+  const posthog = usePostHog();
   const [sorting, setSorting] = React.useState<SortingState>([
     {
       id: 'started_at',
@@ -900,7 +902,12 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={onRefresh}
+                onClick={() => {
+                  posthog?.capture('dashboard_table_refresh', {
+                    timestamp: new Date().toISOString(),
+                  });
+                  onRefresh();
+                }}
                 className="h-7 w-7 p-0 border-2 border-black hover:bg-black hover:text-white"
               >
                 <RefreshCw className="h-3 w-3" />
@@ -932,7 +939,14 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                         key={column.id}
                         className="font-mono text-sm capitalize hover:bg-gray-100"
                         checked={column.getIsVisible()}
-                        onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                        onCheckedChange={(value) => {
+                          posthog?.capture('dashboard_table_toggle_column', {
+                            column: column.id,
+                            visible: !!value,
+                            timestamp: new Date().toISOString(),
+                          });
+                          column.toggleVisibility(!!value);
+                        }}
                       >
                         {column.id.replace(/_/g, ' ')}
                       </DropdownMenuCheckboxItem>
@@ -1013,6 +1027,14 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
               variant="outline"
               size="sm"
               onClick={() => {
+                posthog?.capture('dashboard_table_clear_filters', {
+                  had_workflow_filter: !!activeWorkflowFilter,
+                  had_status_filter: !!activeStatusFilter,
+                  had_machine_filter: !!activeMachineFilter,
+                  had_search_filter: !!activeSearchFilter,
+                  timestamp: new Date().toISOString(),
+                });
+
                 // Clear all server-side filters
                 if (onWorkflowFilterChange) onWorkflowFilterChange(undefined);
                 if (onStatusFilterChange) onStatusFilterChange(undefined);
