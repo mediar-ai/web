@@ -2684,7 +2684,7 @@ def execute_workflow(
                             "error_message": error_message_for_db,
                             "formatted_output": formatted_output,  # Include formatted output for business logic checks
                             "started_at": execution_data["started_at"].isoformat() if execution_data["started_at"] else None,
-                            "completed_at": completion_time.isoformat(),
+                            "completed_at": datetime.now(timezone.utc).isoformat(),
                             "execution_time_seconds": execution_duration,
                             "trigger_source": "modal_executor",
                         }
