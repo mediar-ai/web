@@ -45,7 +45,7 @@ export async function POST(_request: NextRequest) {
 
   try {
     // 1. Get all active cron jobs from deployed_workflows_with_sequence view
-    // This view joins with the active version, so we can check the YAML
+    // Database is the single source of truth for cron configuration
     const { data: workflows, error: fetchError } = await supabase
       .from('deployed_workflows_with_sequence')
       .select(
@@ -59,8 +59,7 @@ export async function POST(_request: NextRequest) {
         next_scheduled_execution,
         cron_max_concurrent,
         cron_retry_on_failure,
-        cron_retry_count,
-        automation_sequence_yaml
+        cron_retry_count
       `
       )
       .eq('cron_enabled', true)
@@ -94,29 +93,8 @@ export async function POST(_request: NextRequest) {
       next_scheduled_execution: string;
     }> = [];
 
-    for (const workflow of workflows as (ScheduledWorkflow & { automation_sequence_yaml?: string })[]) {
+    for (const workflow of workflows as ScheduledWorkflow[]) {
       try {
-        // IMPORTANT: Verify that the active version's YAML actually has cron enabled
-        // This prevents workflows from running when they shouldn't
-        if (workflow.automation_sequence_yaml) {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const yaml = require('js-yaml');
-            const yamlContent = yaml.load(workflow.automation_sequence_yaml);
-
-            // Check if cron is actually enabled in the YAML
-            if (!yamlContent?.cron || yamlContent?.cron_enabled === false) {
-              console.log(
-                `⏭️  Workflow ${workflow.name} has cron_enabled in DB but not in active version YAML, skipping`
-              );
-              continue;
-            }
-          } catch (yamlError) {
-            console.error(`❌ Failed to parse YAML for workflow ${workflow.id}:`, yamlError);
-            continue;
-          }
-        }
-
         const cronExpression = workflow.cron_expression;
         const timezone = workflow.cron_timezone || 'UTC';
 

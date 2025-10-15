@@ -130,26 +130,6 @@ export function CreateWorkflowDialog({
 
     setLoading(true);
     try {
-      // If cron is configured, update the YAML to include it
-      let finalAutomationSequence = automationSequence;
-      if (cronConfig.enabled && cronConfig.expression) {
-        try {
-          const parsedYaml = yaml.load(automationSequence);
-          const updatedYaml = {
-            cron: cronConfig.expression,
-            timezone: cronConfig.timezone,
-            cron_enabled: cronConfig.enabled,
-            max_concurrent: cronConfig.maxConcurrent,
-            retry_on_failure: cronConfig.retryOnFailure,
-            retry_count: cronConfig.retryCount,
-            ...(typeof parsedYaml === 'object' && parsedYaml !== null ? parsedYaml : {}),
-          };
-          finalAutomationSequence = yaml.dump(updatedYaml);
-        } catch (_yamlError) {
-          console.warn('Could not parse YAML to add cron config, sending as-is');
-        }
-      }
-
       const response = await fetch('/api/workflows/create', {
         method: 'POST',
         headers: {
@@ -161,7 +141,7 @@ export function CreateWorkflowDialog({
           category,
           difficulty_level: difficulty,
           estimated_duration_seconds: estimatedDuration,
-          automation_sequence: finalAutomationSequence,
+          automation_sequence: automationSequence,
           tags,
           set_as_active: true
         }),
@@ -173,6 +153,33 @@ export function CreateWorkflowDialog({
         const workflow = result.workflow;
         const folderName = workflow.github_folder ||
                           name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+        // If cron was configured, update it in database after workflow creation
+        if (cronConfig.enabled && cronConfig.expression && workflow.id) {
+          try {
+            const cronResponse = await fetch(`/api/remote-workflows/${workflow.id}/cron`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                cron_expression: cronConfig.expression,
+                cron_timezone: cronConfig.timezone,
+                cron_enabled: cronConfig.enabled,
+                cron_max_concurrent: cronConfig.maxConcurrent,
+                cron_retry_on_failure: cronConfig.retryOnFailure,
+                cron_retry_count: cronConfig.retryCount,
+              }),
+            });
+
+            const cronResult = await cronResponse.json();
+            if (!cronResult.success) {
+              console.warn('Failed to update cron config:', cronResult.error);
+              toast.warning('Workflow created but cron schedule update failed');
+            }
+          } catch (cronError) {
+            console.error('Error updating cron config:', cronError);
+            toast.warning('Workflow created but cron schedule update failed');
+          }
+        }
 
         toast.success(
           `Workflow "${name}" created successfully! Synced to GitHub: ${folderName}/workflow.yaml - Version: ${workflow.version_info?.version_number || '1.0.0'}`
