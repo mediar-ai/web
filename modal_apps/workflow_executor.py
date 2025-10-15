@@ -2684,7 +2684,7 @@ def execute_workflow(
                             "error_message": error_message_for_db,
                             "formatted_output": formatted_output,  # Include formatted output for business logic checks
                             "started_at": execution_data["started_at"].isoformat() if execution_data["started_at"] else None,
-                            "completed_at": datetime.now(timezone.utc).isoformat(),
+                            "completed_at": execution_data["completed_at"].isoformat() if execution_data["completed_at"] else None,
                             "execution_time_seconds": execution_duration,
                             "trigger_source": "modal_executor",
                         }
@@ -2884,7 +2884,7 @@ def execute_workflow(
                                 "status": "failed",
                                 "error_message": error_msg,
                                 "started_at": execution_data["started_at"].isoformat() if execution_data["started_at"] else None,
-                                "completed_at": datetime.now(timezone.utc).isoformat(),
+                                "completed_at": execution_data["completed_at"].isoformat() if execution_data["completed_at"] else None,
                                 "execution_time_seconds": int(time.time() - start_time),
                                 "trigger_source": "modal_executor_exception",
                             }
