@@ -75,6 +75,7 @@ export function WorkflowCardEnhanced({
   className,
 }: WorkflowCardEnhancedProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [liveCountdown, setLiveCountdown] = useState<string>('');
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Calculate metrics from workflow stats (not from limited executions array)
@@ -126,6 +127,51 @@ export function WorkflowCardEnhanced({
     return `${minutes}m ${remainingSeconds}s`;
   };
 
+  // Live countdown timer for next execution
+  React.useEffect(() => {
+    if (!workflow.cron_enabled || !workflow.next_scheduled_execution) {
+      setLiveCountdown('');
+      return;
+    }
+
+    const updateCountdown = () => {
+      if (!workflow.next_scheduled_execution) return;
+
+      const nextRun = new Date(workflow.next_scheduled_execution);
+      const now = new Date();
+      const diffMs = nextRun.getTime() - now.getTime();
+
+      if (diffMs < 0) {
+        setLiveCountdown('overdue');
+        return;
+      }
+
+      const diffSeconds = Math.floor(diffMs / 1000);
+      const minutes = Math.floor(diffSeconds / 60);
+      const seconds = diffSeconds % 60;
+
+      if (minutes < 1) {
+        setLiveCountdown(`${seconds}s`);
+      } else if (minutes < 60) {
+        setLiveCountdown(`${minutes}m ${seconds}s`);
+      } else if (minutes < 1440) {
+        const hours = nextRun.getHours();
+        const mins = nextRun.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        setLiveCountdown(`${displayHours}:${mins.toString().padStart(2, '0')} ${ampm}`);
+      } else {
+        const days = Math.floor(minutes / 1440);
+        setLiveCountdown(`${days}d`);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [workflow.cron_enabled, workflow.next_scheduled_execution]);
+
   // Calculate cron schedule info for inline display
   const getNextRunInfo = useMemo(() => {
     if (!workflow.cron_expression) return null;
@@ -153,38 +199,12 @@ export function WorkflowCardEnhanced({
       shortDescription = 'Monthly';
     }
 
-    // Calculate next run time
-    let nextRunText = '';
-    if (workflow.cron_enabled) {
-      if (workflow.next_scheduled_execution) {
-        const nextRun = new Date(workflow.next_scheduled_execution);
-        const now = new Date();
-        const diffMs = nextRun.getTime() - now.getTime();
-        const diffMinutes = Math.floor(diffMs / 60000);
-
-        if (diffMinutes < 1) {
-          nextRunText = 'now';
-        } else if (diffMinutes < 60) {
-          nextRunText = `${diffMinutes}m`;
-        } else if (diffMinutes < 1440) { // Less than 24 hours
-          const hours = nextRun.getHours();
-          const minutes = nextRun.getMinutes();
-          const ampm = hours >= 12 ? 'PM' : 'AM';
-          const displayHours = hours % 12 || 12;
-          nextRunText = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-        } else {
-          const days = Math.floor(diffMinutes / 1440);
-          nextRunText = `${days}d`;
-        }
-      }
-    }
-
     return {
       shortDescription,
-      nextRunText,
+      nextRunText: liveCountdown,
       isEnabled: workflow.cron_enabled
     };
-  }, [workflow.cron_expression, workflow.cron_enabled, workflow.next_scheduled_execution]);
+  }, [workflow.cron_expression, workflow.cron_enabled, liveCountdown]);
 
   return (
     <TooltipProvider>
