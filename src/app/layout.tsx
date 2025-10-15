@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Mediar dashboard",
-  description: "Capture and analyze browser workflows with AI",
+  description: "AI-powered desktop automation for browser workflows and data entry",
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://mediar.ai'),
   viewport: {
     width: 'device-width',
@@ -31,13 +31,13 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Mediar dashboard",
-    description: "Capture and analyze browser workflows with AI",
+    description: "AI-powered desktop automation for browser workflows and data entry",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Mediar dashboard",
-    description: "Capture and analyze browser workflows with AI",
+    description: "AI-powered desktop automation for browser workflows and data entry",
   }
 };
 
