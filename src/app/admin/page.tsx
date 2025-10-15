@@ -893,26 +893,23 @@ function AdminPageContent() {
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
                       </div>
                     ) : (
-                      <div className="overflow-x-scroll w-full">
-                        <table className="min-w-full table-fixed" style={{ width: '1400px' }}>
-                          <thead className="bg-gray-50 border-b border-gray-200">
+                      <div className="overflow-x-auto w-full border-t border-gray-200">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
                             <tr>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">NAME</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">STATUS</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">HEALTH</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">RELIABILITY</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LAST CHECK</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">LOAD</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">PRIORITY</th>
-                              <th className="px-4 py-3 text-left font-mono text-xs text-gray-600">ORGANIZATIONS</th>
-                              <th className="px-4 py-3 text-right font-mono text-xs text-gray-600">ACTIONS</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '180px' }}>NAME</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '100px' }}>STATUS</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '120px' }}>HEALTH</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '80px' }}>LOAD</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '140px' }}>ORGANIZATIONS</th>
+                              <th className="px-3 py-3 text-right font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '100px' }}>ACTIONS</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200">
                             {machines.map((machine) => (
                               <tr key={machine.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3">
-                                  <div className="max-w-xs">
+                                <td className="px-3 py-3">
+                                  <div>
                                     {editingMachine === machine.id ? (
                                       <input
                                         type="text"
@@ -921,20 +918,20 @@ function AdminPageContent() {
                                           ...editedMachineData,
                                           name: e.target.value
                                         })}
-                                        className="w-full px-2 py-1 font-mono font-bold border border-black focus:outline-none focus:ring-1 focus:ring-black"
+                                        className="w-full px-2 py-1 font-mono font-bold text-sm border border-black focus:outline-none focus:ring-1 focus:ring-black"
                                         placeholder="Machine name"
                                       />
                                     ) : (
                                       <button
                                         onClick={() => copyToClipboard(machine.name, 'Machine name')}
-                                        className="font-mono font-bold truncate hover:bg-gray-100 px-2 py-1 -mx-2 -my-1 rounded text-left w-full"
+                                        className="font-mono font-bold text-sm hover:bg-gray-100 px-2 py-1 -mx-2 -my-1 rounded text-left"
                                         title={`${machine.name} (click to copy)`}
                                       >
                                         {machine.name}
                                       </button>
                                     )}
                                     {(machine.description || editingMachine === machine.id) && (
-                                      <p className="font-mono text-xs text-gray-600 mt-1 truncate" title={machine.description || ''}>
+                                      <p className="font-mono text-xs text-gray-600 mt-1" title={machine.description || ''}>
                                         {editingMachine === machine.id ? (
                                           <input
                                             type="text"
@@ -946,12 +943,21 @@ function AdminPageContent() {
                                             className="w-full px-2 py-1 font-mono text-xs border border-black focus:outline-none focus:ring-1 focus:ring-black"
                                             placeholder="Description"
                                           />
-                                        ) : machine.description}
+                                        ) : (
+                                          <span className="line-clamp-2">{machine.description}</span>
+                                        )}
                                       </p>
+                                    )}
+                                    {editingMachine !== machine.id && (
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className="font-mono text-xs text-gray-600">
+                                          Priority: {machine.priority}
+                                        </span>
+                                      </div>
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="px-3 py-3">
                                   {editingMachine === machine.id ? (
                                     <select
                                       value={editedMachineData.status}
@@ -967,7 +973,7 @@ function AdminPageContent() {
                                       <option value="failed">FAILED</option>
                                     </select>
                                   ) : (
-                                    <span className={`font-mono text-xs px-2 py-1 ${
+                                    <span className={`font-mono text-xs px-2 py-1 whitespace-nowrap ${
                                       machine.status === 'active' ? 'bg-black text-white' :
                                       machine.status === 'maintenance' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
                                       machine.status === 'failed' ? 'bg-black text-white font-bold' :
@@ -977,85 +983,65 @@ function AdminPageContent() {
                                     </span>
                                   )}
                                 </td>
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center gap-1">
-                                    <Activity className={`w-4 h-4 ${
-                                      machine.health_status === 'healthy' ? 'text-black' :
-                                      machine.health_status === 'unhealthy' ? 'text-gray-600' :
-                                      'text-gray-400'
-                                    } ${machine.health_status === 'healthy' ? 'animate-pulse' : ''}`} />
-                                    <span className="font-mono text-xs">
-                                      {machine.health_status?.toUpperCase() || 'UNKNOWN'}
-                                    </span>
+                                <td className="px-3 py-3">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-1">
+                                      <Activity className={`w-3 h-3 ${
+                                        machine.health_status === 'healthy' ? 'text-black' :
+                                        machine.health_status === 'unhealthy' ? 'text-gray-600' :
+                                        'text-gray-400'
+                                      } ${machine.health_status === 'healthy' ? 'animate-pulse' : ''}`} />
+                                      <span className="font-mono text-xs">
+                                        {machine.health_status?.toUpperCase() || 'UNKNOWN'}
+                                      </span>
+                                    </div>
+                                    <div className="font-mono text-xs text-gray-600">
+                                      {(() => {
+                                        const totalChecks = (machine as any).total_checks || 0;
+                                        const successfulChecks = (machine as any).successful_checks || 0;
+                                        const lastCheck = machine.last_health_check;
+
+                                        if (machine.status === 'inactive') {
+                                          return <span title="Machine is inactive">N/A</span>;
+                                        }
+
+                                        if (totalChecks === 0) {
+                                          return <span>No checks</span>;
+                                        }
+
+                                        let uptimePercent = ((successfulChecks / totalChecks) * 100);
+
+                                        if (lastCheck) {
+                                          const hoursSinceCheck = (Date.now() - new Date(lastCheck).getTime()) / (1000 * 60 * 60);
+                                          if (hoursSinceCheck > 24) {
+                                            const daysSinceCheck = hoursSinceCheck / 24;
+                                            const stalePenalty = Math.min(daysSinceCheck * 10, uptimePercent);
+                                            uptimePercent = Math.max(0, uptimePercent - stalePenalty);
+                                          }
+                                        }
+
+                                        const uptimeStr = uptimePercent.toFixed(1);
+                                        const title = lastCheck && Date.now() - new Date(lastCheck).getTime() > 86400000
+                                          ? `${successfulChecks}/${totalChecks} checks (stale)`
+                                          : `${successfulChecks}/${totalChecks} checks`;
+
+                                        return (
+                                          <span title={title}>
+                                            {uptimeStr}% • {formatTimeAgo(machine.last_health_check)}
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">
-                                  {(() => {
-                                    const totalChecks = (machine as any).total_checks || 0;
-                                    const successfulChecks = (machine as any).successful_checks || 0;
-                                    const lastCheck = machine.last_health_check;
-
-                                    // Inactive machines should show N/A
-                                    if (machine.status === 'inactive') {
-                                      return (
-                                        <span className="font-mono text-xs text-gray-400" title="Machine is inactive">
-                                          N/A
-                                        </span>
-                                      );
-                                    }
-
-                                    // No checks or too few checks
-                                    if (totalChecks === 0) {
-                                      return <span className="font-mono text-xs text-gray-400">-</span>;
-                                    }
-
-                                    // Calculate base reliability
-                                    let uptimePercent = ((successfulChecks / totalChecks) * 100);
-
-                                    // Penalize stale checks (last check > 1 day ago)
-                                    if (lastCheck) {
-                                      const hoursSinceCheck = (Date.now() - new Date(lastCheck).getTime()) / (1000 * 60 * 60);
-                                      if (hoursSinceCheck > 24) {
-                                        // Reduce reliability by 10% for every day without checks, min 0%
-                                        const daysSinceCheck = hoursSinceCheck / 24;
-                                        const stalePenalty = Math.min(daysSinceCheck * 10, uptimePercent);
-                                        uptimePercent = Math.max(0, uptimePercent - stalePenalty);
-                                      }
-                                    }
-
-                                    const uptimeStr = uptimePercent.toFixed(1);
-                                    const color = uptimePercent >= 99 ? 'text-black' :
-                                                 uptimePercent >= 95 ? 'text-gray-700' :
-                                                 uptimePercent >= 90 ? 'text-gray-600' :
-                                                 uptimePercent >= 75 ? 'text-gray-500' : 'text-gray-400';
-
-                                    const title = lastCheck && Date.now() - new Date(lastCheck).getTime() > 86400000
-                                      ? `${successfulChecks}/${totalChecks} checks successful (stale: last check > 24h ago)`
-                                      : `${successfulChecks}/${totalChecks} checks successful`;
-
-                                    return (
-                                      <span
-                                        className={`font-mono text-xs font-bold ${color}`}
-                                        title={title}
-                                      >
-                                        {uptimeStr}%
-                                      </span>
-                                    );
-                                  })()}
-                                </td>
-                                <td className="px-4 py-3">
-                                  <span className="font-mono text-xs" title={machine.last_health_check ? new Date(machine.last_health_check).toLocaleString() : 'Never checked'}>
-                                    {formatTimeAgo(machine.last_health_check)}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3">
+                                <td className="px-3 py-3">
                                   <div className="font-mono text-xs">
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex items-center gap-1 mb-1">
                                       <span className={`${machine.load_info?.load_percentage > 80 ? 'font-bold' : ''}`}>
                                         {machine.load_info?.current_executions || 0}/{machine.max_concurrent_executions}
                                       </span>
                                     </div>
-                                    <div className="w-16 h-2 bg-gray-200 border border-black mt-1">
+                                    <div className="w-20 h-2 bg-gray-200 border border-black">
                                       <div
                                         className="h-full bg-black transition-all"
                                         style={{ width: `${machine.load_info?.load_percentage || 0}%` }}
@@ -1063,31 +1049,14 @@ function AdminPageContent() {
                                     </div>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">
-                                  {editingMachine === machine.id ? (
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      max="10"
-                                      value={editedMachineData.priority}
-                                      onChange={(e) => setEditedMachineData({
-                                        ...editedMachineData,
-                                        priority: parseInt(e.target.value)
-                                      })}
-                                      className="w-16 px-2 py-1 font-mono text-xs border border-black focus:outline-none focus:ring-1 focus:ring-black"
-                                    />
-                                  ) : (
-                                    <span className="font-mono text-xs">{machine.priority}</span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3">
+                                <td className="px-3 py-3">
                                   <div className="flex items-center gap-1">
                                     {machineIsGlobal[machine.id] ?? true ? (
-                                      <span className="font-mono text-xs px-2 py-1 bg-black text-white">
+                                      <span className="font-mono text-xs px-2 py-1 bg-black text-white whitespace-nowrap">
                                         ALL ORGS
                                       </span>
                                     ) : (
-                                      <span className="font-mono text-xs px-2 py-1 border border-black">
+                                      <span className="font-mono text-xs px-2 py-1 border border-black whitespace-nowrap">
                                         {(machineOrgAssignments[machine.id] || []).length} ORG{(machineOrgAssignments[machine.id] || []).length !== 1 ? 'S' : ''}
                                       </span>
                                     )}
@@ -1100,10 +1069,24 @@ function AdminPageContent() {
                                     </button>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="px-3 py-3">
                                   <div className="flex items-center justify-end gap-1">
                                     {editingMachine === machine.id ? (
                                       <>
+                                        <div className="flex items-center gap-1 mr-2">
+                                          <span className="font-mono text-xs text-gray-600">P:</span>
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            max="10"
+                                            value={editedMachineData.priority}
+                                            onChange={(e) => setEditedMachineData({
+                                              ...editedMachineData,
+                                              priority: parseInt(e.target.value)
+                                            })}
+                                            className="w-12 px-2 py-1 font-mono text-xs border border-black focus:outline-none focus:ring-1 focus:ring-black"
+                                          />
+                                        </div>
                                         <button
                                           onClick={() => handleSaveMachine(machine.id)}
                                           className="p-1 hover:bg-black hover:text-white border border-black"
@@ -1146,7 +1129,7 @@ function AdminPageContent() {
                             ))}
                             {machines.length === 0 && (
                               <tr>
-                                <td colSpan={9} className="px-4 py-8 text-center text-gray-500 font-mono">
+                                <td colSpan={6} className="px-4 py-8 text-center text-gray-500 font-mono">
                                   No machines registered
                                 </td>
                               </tr>

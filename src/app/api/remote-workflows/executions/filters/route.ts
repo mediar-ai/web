@@ -96,20 +96,40 @@ export async function GET(request: NextRequest) {
     ].sort();
     console.log('[Filters API] Statuses:', uniqueStatuses.length, uniqueStatuses);
 
-    // Fetch ALL machines from remote_machines table (no org filtering - table has no organization_id column)
-    const { data: machinesData, error: machinesError } = await supabase
+    // Fetch machines that the user's organization has access to
+    // Use check_machine_access function to filter by organization
+    const { data: allMachinesData, error: machinesError } = await supabase
       .from('remote_machines')
-      .select('name')
+      .select('id, name')
       .order('name');
 
     if (machinesError) {
       console.error('[Filters API] Error fetching machines:', machinesError);
     }
 
-    const uniqueMachines = machinesData
-      ? Array.from(new Set(machinesData.map((m: any) => m.name).filter(Boolean))).sort()
-      : [];
-    console.log('[Filters API] Machines:', uniqueMachines.length, uniqueMachines);
+    // Filter machines by organization access
+    const accessibleMachines = [];
+    if (allMachinesData) {
+      for (const machine of allMachinesData) {
+        const { data: hasAccess, error: accessError } = await supabase
+          .rpc('check_machine_access', {
+            p_machine_id: machine.id,
+            p_organization_id: orgId
+          });
+
+        if (accessError) {
+          console.error(`[Filters API] Failed to check access for machine ${machine.id}:`, accessError);
+          continue;
+        }
+
+        if (hasAccess) {
+          accessibleMachines.push(machine.name);
+        }
+      }
+    }
+
+    const uniqueMachines = Array.from(new Set(accessibleMachines.filter(Boolean))).sort();
+    console.log('[Filters API] Accessible machines for org:', uniqueMachines.length, uniqueMachines);
 
     return NextResponse.json({
       success: true,
