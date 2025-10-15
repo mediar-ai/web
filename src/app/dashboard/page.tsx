@@ -794,10 +794,9 @@ function DashboardContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchWorkflows, fetchLiveExecutions, fetchExecutionFilters, viewOrgId]);
 
-  // Polling for executions - always poll to catch new executions
+  // Polling for workflows and executions - always poll to catch changes
   useEffect(() => {
     let localPollCount = 0;
-    // Always poll for executions
     const pollTimer = setInterval(() => {
       localPollCount++;
       setPollCount(localPollCount);
@@ -821,10 +820,16 @@ function DashboardContent() {
           pageSizeRef.current
         );
       }
+
+      // Fetch workflows every 10 seconds (every 4th poll) to update stats, version info, and cron schedules
+      // This keeps success rates, average durations, total execution counts, and next scheduled times up-to-date
+      if (localPollCount % 4 === 0) {
+        fetchWorkflows(false);
+      }
     }, 2500); // Poll every 2.5 seconds
 
     return () => clearInterval(pollTimer);
-  }, [fetchLiveExecutions, fetchExecutions]); // Only depends on fetch functions, not filter values
+  }, [fetchLiveExecutions, fetchExecutions, fetchWorkflows]); // Only depends on fetch functions, not filter values
 
   // Handle URL parameters for deep linking
   useEffect(() => {
