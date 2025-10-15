@@ -3,11 +3,13 @@
 -- Issue: View was filtering by status='active' but all workflows have status='deployed'
 -- Result: View returned 0 rows, causing cron schedules to not display in workflow table
 -- Impact: 4 workflows with active cron schedules were not showing schedule info in UI
+-- Additional fix: Add missing columns (workflow_type, parent_workflow_id, display_order) required by API
 
 -- Drop the existing view
 DROP VIEW IF EXISTS public.deployed_workflows_with_sequence CASCADE;
 
 -- Recreate view with updated filter to support both 'active' and 'deployed' statuses
+-- and add missing columns required by the API query
 CREATE OR REPLACE VIEW public.deployed_workflows_with_sequence AS
 SELECT
     dw.id,
@@ -23,7 +25,10 @@ SELECT
     dw.updated_at,
     dw.github_folder,
     dw.github_ref,
-    dw.github_path
+    dw.github_path,
+    dw.workflow_type,
+    dw.parent_workflow_id,
+    dw.display_order
 FROM deployed_workflows dw
 WHERE dw.status IN ('active', 'deployed');
 
