@@ -131,9 +131,17 @@ def inject_secrets_into_params(
 
     # Mode 2: Add secrets as top-level parameters
     # This allows workflows to access secrets directly as variables
+    # Support both UPPERCASE and lowercase_with_underscores naming conventions
     for name, value in secrets.items():
+        # Add secret with original name
         if name not in result:
             result[name] = value
+
+        # Also add lowercase version for compatibility
+        # E.g., APOLLO_API_KEY -> apollo_api_key
+        lowercase_name = name.lower()
+        if lowercase_name not in result:
+            result[lowercase_name] = value
 
     return result
 
