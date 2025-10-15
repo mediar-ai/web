@@ -600,7 +600,12 @@ export async function GET(request: NextRequest) {
           next_scheduled_execution,
           cron_max_concurrent,
           cron_retry_on_failure,
-          cron_retry_count
+          cron_retry_count,
+          cron_auto_paused,
+          auto_paused_at,
+          auto_pause_reason,
+          consecutive_failures,
+          last_failure_message
         `
         )
         .in('id', workflowIds);
@@ -620,7 +625,12 @@ export async function GET(request: NextRequest) {
             next_scheduled_execution: cw.next_scheduled_execution,
             cron_max_concurrent: cw.cron_max_concurrent,
             cron_retry_on_failure: cw.cron_retry_on_failure,
-            cron_retry_count: cw.cron_retry_count
+            cron_retry_count: cw.cron_retry_count,
+            cron_auto_paused: cw.cron_auto_paused,
+            auto_paused_at: cw.auto_paused_at,
+            auto_pause_reason: cw.auto_pause_reason,
+            consecutive_failures: cw.consecutive_failures,
+            last_failure_message: cw.last_failure_message
           };
         });
         console.log('[API] Total workflows with cron data in cronData:', Object.keys(cronData).filter(id => cronData[parseInt(id)].cron_expression).length);
@@ -846,6 +856,12 @@ export async function GET(request: NextRequest) {
           cron_retry_on_failure:
             automationSequences[workflow.id]?.cron_retry_on_failure,
           cron_retry_count: automationSequences[workflow.id]?.cron_retry_count,
+          // Add auto-pause fields
+          cron_auto_paused: automationSequences[workflow.id]?.cron_auto_paused,
+          auto_paused_at: automationSequences[workflow.id]?.auto_paused_at,
+          auto_pause_reason: automationSequences[workflow.id]?.auto_pause_reason,
+          consecutive_failures: automationSequences[workflow.id]?.consecutive_failures,
+          last_failure_message: automationSequences[workflow.id]?.last_failure_message,
           // Add version-specific statistics as additional fields
           current_version_stats: {
             successful_runs: workflow.current_version_successful_runs,
