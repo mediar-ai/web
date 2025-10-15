@@ -479,6 +479,53 @@ export function ExecutionDetailsDialog({
                     </div>
                   )}
 
+                  {execution.screenshots && execution.screenshots.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-medium flex items-center gap-2">
+                        <span className="text-lg">📸</span> Monitor Screenshots
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        {execution.screenshots.map((screenshot, idx) => {
+                          const isUrl = screenshot.startsWith('http://') || screenshot.startsWith('https://');
+
+                          // If URL contains supabase storage, route through API for org-level access control
+                          let imageSrc = isUrl ? screenshot : `data:image/png;base64,${screenshot}`;
+                          if (isUrl && screenshot.includes('supabase')) {
+                            // Extract filename from Supabase URL path
+                            // URL format: https://...supabase.../workflow-screenshots/{execution_id}/monitor_1.png
+                            const filename = screenshot.split('/').pop() || `monitor_${idx + 1}.png`;
+                            imageSrc = `/api/workflows/executions/screenshot/${execution.execution_id}/${filename}`;
+                          }
+
+                          return (
+                            <div key={idx} className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-mono text-muted-foreground">
+                                  Monitor {idx + 1}
+                                </p>
+                                <a
+                                  href={imageSrc}
+                                  download={`execution-${execution.execution_id}-monitor-${idx + 1}.png`}
+                                  className="text-xs font-mono hover:underline"
+                                >
+                                  Download
+                                </a>
+                              </div>
+                              <div className="border-2 border-black rounded-md overflow-hidden bg-gray-50">
+                                <img
+                                  src={imageSrc}
+                                  alt={`Monitor ${idx + 1} screenshot`}
+                                  className="w-full h-auto"
+                                  loading="lazy"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <ApiRequestBlock
                       method="POST"
