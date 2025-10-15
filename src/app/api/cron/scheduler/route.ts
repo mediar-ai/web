@@ -108,7 +108,9 @@ export async function POST(_request: NextRequest) {
         }
 
         // Check if workflow should execute at current time
-        if (shouldExecuteAt(cronExpression, currentTime, timezone)) {
+        const shouldExecute = shouldExecuteAt(cronExpression, currentTime, timezone);
+        console.log(`🔍 Checking ${workflow.name}: expression=${cronExpression}, currentTime=${currentTime.toISOString()}, shouldExecute=${shouldExecute}`);
+        if (shouldExecute) {
           // Check if we haven't already executed this minute
           const lastExecution = workflow.last_scheduled_execution
             ? new Date(workflow.last_scheduled_execution)
