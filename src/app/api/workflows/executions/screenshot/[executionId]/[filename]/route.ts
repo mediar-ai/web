@@ -23,7 +23,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
  */
 export async function GET(
   request: Request,
-  { params }: { params: { executionId: string; filename: string } }
+  { params }: { params: Promise<{ executionId: string; filename: string }> }
 ) {
   try {
     const { userId, orgId } = await auth();
@@ -32,7 +32,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { executionId, filename } = params;
+    const { executionId, filename } = await params;
 
     // Get the workflow execution and check organization access
     const { data: execution, error: executionError } = await supabaseAdmin

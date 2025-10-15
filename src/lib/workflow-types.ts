@@ -180,6 +180,7 @@ export interface Execution {
     has_mcp_response: boolean;
     has_execution_logs: boolean;
   };
+  screenshots?: string[] | null; // Array of S3 URLs or base64 PNG strings
 }
 
 export interface LiveExecutionStatus {

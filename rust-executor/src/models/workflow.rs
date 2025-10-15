@@ -61,6 +61,15 @@ pub struct WorkflowSequence {
     pub stop_on_error: Option<bool>,
     pub include_detailed_results: Option<bool>,
     pub cron: Option<String>,
+
+    // NEW: Partial execution support (for debugging/recovery)
+    pub start_from_step: Option<String>,
+    pub end_at_step: Option<String>,
+    pub follow_fallback: Option<bool>,
+    pub execute_jumps_at_end: Option<bool>,
+
+    // NEW: File support for workflows requiring external scripts
+    pub scripts_base_path: Option<String>,
 }
 
 impl WorkflowSequence {
@@ -164,6 +173,11 @@ mod tests {
             stop_on_error: None,
             include_detailed_results: None,
             cron: None,
+            start_from_step: None,
+            end_at_step: None,
+            follow_fallback: None,
+            execute_jumps_at_end: None,
+            scripts_base_path: None,
         };
 
         assert!(sequence.validate().is_err());
@@ -180,6 +194,53 @@ mod tests {
             fallback_id: None,
         });
 
+        assert!(sequence.validate().is_ok());
+    }
+
+    #[test]
+    fn test_workflow_partial_execution() {
+        let sequence = WorkflowSequence {
+            steps: vec![
+                WorkflowStep {
+                    id: Some("step1".to_string()),
+                    tool_name: Some("tool1".to_string()),
+                    group_name: None,
+                    arguments: None,
+                    description: None,
+                    retry_count: None,
+                    timeout: None,
+                    on_error: None,
+                    fallback_id: None,
+                },
+                WorkflowStep {
+                    id: Some("step2".to_string()),
+                    tool_name: Some("tool2".to_string()),
+                    group_name: None,
+                    arguments: None,
+                    description: None,
+                    retry_count: None,
+                    timeout: None,
+                    on_error: None,
+                    fallback_id: None,
+                },
+            ],
+            variables: None,
+            selectors: None,
+            inputs: None,
+            stop_on_error: Some(true),
+            include_detailed_results: None,
+            cron: None,
+            start_from_step: Some("step1".to_string()),
+            end_at_step: Some("step2".to_string()),
+            follow_fallback: Some(false),
+            execute_jumps_at_end: Some(false),
+            scripts_base_path: Some("S:\\workflows\\123\\".to_string()),
+        };
+
+        assert_eq!(sequence.start_from_step, Some("step1".to_string()));
+        assert_eq!(sequence.end_at_step, Some("step2".to_string()));
+        assert_eq!(sequence.follow_fallback, Some(false));
+        assert_eq!(sequence.scripts_base_path, Some("S:\\workflows\\123\\".to_string()));
         assert!(sequence.validate().is_ok());
     }
 }

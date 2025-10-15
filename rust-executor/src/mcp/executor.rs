@@ -162,34 +162,44 @@ impl WorkflowExecutor {
 
         // Execute with retry if configured
         let retry_count = step.retry_count.unwrap_or(0);
-        let result = if retry_count > 0 {
-            self.client.execute_tool_with_retry(
-                tool_name.clone(),
-                arguments,
-                retry_count,
-            ).await
-        } else {
-            self.client.execute_tool(tool_name.clone(), arguments).await
-        };
+        let mut last_error = None;
 
-        let duration_ms = start_time.elapsed().as_millis() as u64;
-
-        match result {
-            Ok(value) => {
-                Ok(StepResult {
-                    step_id,
-                    tool_name,
-                    status: StepStatus::Success,
-                    result: Some(value),
-                    error: None,
-                    duration_ms: Some(duration_ms),
-                    retry_count: Some(retry_count),
-                })
+        for attempt in 0..=retry_count {
+            if attempt > 0 {
+                warn!("Retrying step {} (attempt {}/{})", step_id, attempt + 1, retry_count + 1);
             }
-            Err(e) => {
-                Err(anyhow::anyhow!("Step execution failed: {}", e))
+
+            let result = self.client.execute_tool(tool_name.clone(), arguments.clone()).await;
+
+            match result {
+                Ok(value) => {
+                    let duration_ms = start_time.elapsed().as_millis() as u64;
+                    return Ok(StepResult {
+                        step_id,
+                        tool_name,
+                        status: StepStatus::Success,
+                        result: Some(value),
+                        error: None,
+                        duration_ms: Some(duration_ms),
+                        retry_count: Some(attempt),
+                    });
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < retry_count {
+                        // Wait before retry with exponential backoff
+                        let wait_ms = 1000 * (2_u64.pow(attempt));
+                        tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
+                    }
+                }
             }
         }
+
+        Err(anyhow::anyhow!(
+            "Step execution failed after {} retries: {}",
+            retry_count,
+            last_error.unwrap()
+        ))
     }
 
     /// Process workflow variables
@@ -316,6 +326,11 @@ mod tests {
             stop_on_error: Some(true),
             include_detailed_results: None,
             cron: None,
+            start_from_step: None,
+            end_at_step: None,
+            follow_fallback: None,
+            execute_jumps_at_end: None,
+            scripts_base_path: None,
         };
 
         let execution_id = Uuid::new_v4();
@@ -336,6 +351,11 @@ mod tests {
             stop_on_error: None,
             include_detailed_results: None,
             cron: None,
+            start_from_step: None,
+            end_at_step: None,
+            follow_fallback: None,
+            execute_jumps_at_end: None,
+            scripts_base_path: None,
         };
 
         let executor = WorkflowExecutor::new(client, sequence, Uuid::new_v4());

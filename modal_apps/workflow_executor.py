@@ -793,6 +793,62 @@ def extract_defaults_recursive(schema_node: Dict[str, Any]) -> Dict[str, Any]:
     return defaults
 
 
+async def upload_screenshots_to_s3(screenshots: List[str], execution_id: str) -> List[str]:
+    """
+    Upload screenshots to Supabase Storage via API endpoint.
+
+    Args:
+        screenshots: List of base64-encoded PNG strings
+        execution_id: Workflow execution ID for organizing uploads
+
+    Returns:
+        List of public URLs to uploaded screenshots
+    """
+    import httpx
+
+    if not screenshots:
+        return []
+
+    screenshot_urls = []
+    api_base_url = os.getenv("NEXT_PUBLIC_BASE_URL", "https://mediar.ai")
+    upload_endpoint = f"{api_base_url}/api/workflows/executions/upload-screenshot"
+
+    logger.info(f"📸 Uploading {len(screenshots)} screenshots to S3 for execution {execution_id}")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for idx, base64_data in enumerate(screenshots):
+            try:
+                # Call API endpoint to upload screenshot
+                response = await client.post(
+                    upload_endpoint,
+                    json={
+                        "execution_id": execution_id,
+                        "monitor_index": idx,
+                        "base64_data": base64_data,
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    url = result.get("url")
+                    if url:
+                        screenshot_urls.append(url)
+                        logger.info(f"   ✓ Monitor {idx + 1} uploaded: {url}")
+                    else:
+                        logger.error(f"   ✗ Monitor {idx + 1} upload failed: No URL in response")
+                else:
+                    logger.error(
+                        f"   ✗ Monitor {idx + 1} upload failed: HTTP {response.status_code} - {response.text}"
+                    )
+
+            except Exception as e:
+                logger.error(f"   ✗ Monitor {idx + 1} upload exception: {e}")
+
+    logger.info(f"📸 Successfully uploaded {len(screenshot_urls)}/{len(screenshots)} screenshots")
+    return screenshot_urls
+
+
 async def check_mcp_server_health(health_endpoint: str) -> bool:
     """
     Check if the MCP server is healthy and reachable.
@@ -1483,6 +1539,22 @@ async def execute_mcp_workflow(
             arguments["execute_jumps_at_end"] = execute_jumps_at_end
             logger.info(f" Partial execution: execute_jumps_at_end={execute_jumps_at_end}")
 
+        # NEW: Enable screenshot capture for all MCP tool calls
+        # This will add include_monitor_screenshots: true to every step's arguments
+        logger.info(" Enabling screenshot capture for workflow execution")
+        if "steps" in arguments:
+            for step in arguments["steps"]:
+                if "arguments" not in step:
+                    step["arguments"] = {}
+                step["arguments"]["include_monitor_screenshots"] = True
+
+        # Also enable for troubleshooting steps if they exist
+        if "troubleshooting" in arguments:
+            for step in arguments["troubleshooting"]:
+                if "arguments" not in step:
+                    step["arguments"] = {}
+                step["arguments"]["include_monitor_screenshots"] = True
+
         # The entire `arguments` object, containing the `variables` schema, the final `inputs`,
         # and the `items`, is sent to MCP. The template engine inside MCP will know
         # to use the `inputs` block for template substitution.
@@ -1798,24 +1870,45 @@ async def execute_mcp_workflow(
 
                 # Extract the actual content from the MCP response
                 mcp_content = None
+                screenshots = []  # NEW: Collect base64 screenshots from MCP response
                 if isinstance(result_data, dict) and "result" in result_data:
                     result_content = result_data.get("result", {}).get("content", [])
                     if result_content and isinstance(result_content, list):
-                        # The actual workflow result is in the text content
+                        # Process all content items (text + images)
                         for content_item in result_content:
                             if content_item.get("type") == "text":
-                                try:
-                                    # The text content is a JSON string, so we load it
-                                    mcp_content_text = content_item.get("text", "{}")
-                                    mcp_content = json.loads(mcp_content_text)
+                                # Only parse text content if not already parsed
+                                if not mcp_content:
+                                    try:
+                                        # The text content is a JSON string, so we load it
+                                        mcp_content_text = content_item.get("text", "{}")
+                                        mcp_content = json.loads(mcp_content_text)
+                                    except json.JSONDecodeError:
+                                        logger.warning(
+                                            "Failed to parse MCP content text as JSON, using raw text"
+                                        )
+                                        # Fallback to using the text directly if it's not JSON
+                                        mcp_content = {"raw_text": content_item.get("text")}
+                            elif content_item.get("type") == "image":
+                                # NEW: Extract base64 image data from MCP response
+                                image_data = content_item.get("data", "")
+                                if image_data:
+                                    screenshots.append(image_data)
+                                    logger.info(f" Captured screenshot {len(screenshots)} from MCP response")
 
-                                    break
-                                except json.JSONDecodeError:
-                                    logger.warning(
-                                        "Failed to parse MCP content text as JSON, using raw text"
-                                    )
-                                    # Fallback to using the text directly if it's not JSON
-                                    mcp_content = {"raw_text": content_item.get("text")}
+                # Log screenshot collection summary and upload to S3
+                screenshot_urls = []
+                if screenshots:
+                    logger.info(f" Total screenshots captured: {len(screenshots)}")
+
+                    # Upload screenshots to S3 and get URLs
+                    try:
+                        screenshot_urls = await upload_screenshots_to_s3(screenshots, execution_id)
+                        logger.info(f" Successfully uploaded {len(screenshot_urls)} screenshots to S3")
+                    except Exception as s3_error:
+                        logger.error(f" Failed to upload screenshots to S3: {s3_error}")
+                        # Keep base64 as fallback if S3 upload fails
+                        screenshot_urls = []
 
                 # --- MORE DETAILED LOGGING FOR PARSER ---
                 logger.info(
@@ -1975,6 +2068,9 @@ async def execute_mcp_workflow(
 
                     # Execution type
                     "execution_type": "real_browser_automation",
+
+                    # NEW: Screenshots captured during execution
+                    "screenshots": screenshots if screenshots else [],
                 }
 
                 # Workflow-agnostic logging
@@ -2427,6 +2523,9 @@ def execute_workflow(
         workflow_result = results.get("workflow_result")
         quotes_found = len(results.get("quotes", []))
 
+        # NEW: Extract screenshots from results
+        screenshots = results.get("screenshots", [])
+
         # Calculate traditional success rate for backward compatibility
         performance_metrics = results.get("performance_metrics", {})
         successful_steps_count = performance_metrics.get("successful_steps", 0)
@@ -2630,7 +2729,7 @@ def execute_workflow(
             SET status = %s, completed_at = %s, execution_duration_seconds = %s,
                 results = %s, progress_percentage = %s, current_step_index = %s,
                 raw_logs = %s, execution_logs = %s,
-                formatted_output = %s, error_message = %s
+                formatted_output = %s, error_message = %s, screenshots = %s
             WHERE id = %s
         """,
             (
@@ -2644,6 +2743,7 @@ def execute_workflow(
                 json.dumps(execution_logs),
                 formatted_output,
                 error_message_for_db,
+                json.dumps(screenshot_urls) if screenshot_urls else (json.dumps(screenshots) if screenshots else None),  # Store S3 URLs if available, fallback to base64
                 execution_id,
             ),
         )

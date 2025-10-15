@@ -32,6 +32,7 @@ pub enum ExecutionStatus {
     Failed,
     Cancelled,
     Paused,
+    Exception,  // NEW: Critical system errors, timeouts, etc.
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,6 +98,7 @@ pub enum WorkflowState {
     Failure,
     Skipped,
     Cancelled,
+    Exception,  // NEW: Critical/exceptional failures (system errors, not business logic)
 }
 
 impl WorkflowResult {
@@ -141,6 +143,21 @@ impl WorkflowResult {
             execution_time_ms: 0,
         }
     }
+
+    /// Create an exception result for critical system errors
+    pub fn exception(message: String, error: String) -> Self {
+        Self {
+            success: false,
+            message,
+            state: WorkflowState::Exception,
+            data: None,
+            error: Some(error),
+            steps_completed: 0,
+            total_steps: 0,
+            step_results: Vec::new(),
+            execution_time_ms: 0,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -179,5 +196,38 @@ mod tests {
 
         let deserialized: ExecutionStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, ExecutionStatus::Running);
+    }
+
+    #[test]
+    fn test_workflow_result_exception() {
+        let result = WorkflowResult::exception(
+            "Critical system error".to_string(),
+            "Database connection timeout after 3 retries".to_string(),
+        );
+
+        assert!(!result.success);
+        assert_eq!(result.state, WorkflowState::Exception);
+        assert_eq!(result.error, Some("Database connection timeout after 3 retries".to_string()));
+        assert_eq!(result.message, "Critical system error");
+    }
+
+    #[test]
+    fn test_execution_status_exception() {
+        let status = ExecutionStatus::Exception;
+        let json = serde_json::to_string(&status).unwrap();
+        assert_eq!(json, "\"exception\"");
+
+        let deserialized: ExecutionStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ExecutionStatus::Exception);
+    }
+
+    #[test]
+    fn test_workflow_state_exception() {
+        let state = WorkflowState::Exception;
+        let json = serde_json::to_string(&state).unwrap();
+        assert_eq!(json, "\"exception\"");
+
+        let deserialized: WorkflowState = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, WorkflowState::Exception);
     }
 }
