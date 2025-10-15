@@ -52,11 +52,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Enrich alerts with workflow and execution details
+    // Enrich alerts with workflow, execution, and recipient details
     const enrichedAlerts = await Promise.all(
       alerts.map(async (alert) => {
         let workflowName = null;
         let workflowOrgId = null;
+        let executionStatus = null;
+        const recipients: string[] = [];
 
         if (alert.workflow_id) {
           const { data: workflow } = await supabase
@@ -71,10 +73,66 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        if (alert.execution_id) {
+          const { data: execution } = await supabase
+            .from('workflow_executions')
+            .select('status')
+            .eq('id', alert.execution_id)
+            .single();
+
+          if (execution) {
+            executionStatus = execution.status;
+          }
+        }
+
+        // Get recipients from config
+        if (alert.config_id) {
+          const { data: config } = await supabase
+            .from('notification_configs')
+            .select('email_recipients, organization_id')
+            .eq('id', alert.config_id)
+            .single();
+
+          if (config) {
+            // Add configured recipients
+            if (config.email_recipients && Array.isArray(config.email_recipients)) {
+              recipients.push(...config.email_recipients);
+            }
+
+            // Determine which org to fetch members from
+            let targetOrgId = config.organization_id;
+            if (!targetOrgId && workflowOrgId) {
+              targetOrgId = workflowOrgId;
+            }
+
+            // Fetch org members if we have a target org
+            if (targetOrgId) {
+              try {
+                const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
+                  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.mediar.ai');
+
+                const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${targetOrgId}`);
+                if (orgMembersResponse.ok) {
+                  const orgMembersData = await orgMembersResponse.json();
+                  const orgEmails = orgMembersData.members?.map((m: any) => m.email).filter(Boolean) || [];
+                  recipients.push(...orgEmails);
+                }
+              } catch (err) {
+                console.error(`Error fetching organization members for alert ${alert.id}:`, err);
+              }
+            }
+          }
+        }
+
+        // Remove duplicates
+        const uniqueRecipients = [...new Set(recipients)];
+
         return {
           ...alert,
           workflow_name: workflowName,
           workflow_organization_id: workflowOrgId,
+          execution_status: executionStatus,
+          recipients: uniqueRecipients,
         };
       })
     );

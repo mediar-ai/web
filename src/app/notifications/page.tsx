@@ -7,10 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle, Clock, ExternalLink } from 'lucide-react';
+import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useAuth, useUser } from '@clerk/nextjs';
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
-import Link from 'next/link';
+import { AlertsDataTable } from '@/components/notifications/AlertsDataTable';
 
 interface NotificationConfig {
   id?: number;
@@ -25,7 +25,7 @@ interface NotificationConfig {
   organization_id?: string | null;
 }
 
-interface NotificationAlert {
+interface NotificationAlertAPI {
   id: number;
   config_id: number;
   alert_type: string;
@@ -36,6 +36,26 @@ interface NotificationAlert {
   workflow_name?: string;
   workflow_organization_id?: string;
   execution_id?: number;
+  execution_status?: string;
+  email_sent: boolean;
+  email_sent_at?: string;
+  scheduled_for?: string;
+  created_at: string;
+  recipients?: string[]; // Added by API
+}
+
+// Flattened alert for table display (one row per recipient)
+interface AlertTableRow {
+  id: number;
+  alert_id: number;
+  config_id: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  title: string;
+  workflow_id?: number;
+  workflow_name?: string;
+  execution_id?: number;
+  execution_status?: string;
+  recipient_email: string;
   email_sent: boolean;
   email_sent_at?: string;
   scheduled_for?: string;
@@ -84,7 +104,7 @@ export default function NotificationsPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
   const [emailError, setEmailError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [alerts, setAlerts] = useState<NotificationAlert[]>([]);
+  const [alertTableRows, setAlertTableRows] = useState<AlertTableRow[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
 
   // All authenticated users can access alerts for their organization
@@ -115,10 +135,58 @@ export default function NotificationsPage() {
   const fetchAlerts = async () => {
     setAlertsLoading(true);
     try {
-      const response = await fetch('/api/internal/notifications/alerts?limit=50');
+      const response = await fetch('/api/internal/notifications/alerts?limit=100');
       const data = await response.json();
       if (data.success) {
-        setAlerts(data.alerts);
+        // Flatten alerts into table rows (one row per recipient)
+        const flattened: AlertTableRow[] = [];
+        let rowId = 0;
+
+        data.alerts.forEach((alert: NotificationAlertAPI) => {
+          const recipients = alert.recipients || [];
+
+          if (recipients.length === 0) {
+            // No recipients - create one row with empty email
+            flattened.push({
+              id: rowId++,
+              alert_id: alert.id,
+              config_id: alert.config_id,
+              severity: alert.severity,
+              title: alert.title,
+              workflow_id: alert.workflow_id,
+              workflow_name: alert.workflow_name,
+              execution_id: alert.execution_id,
+              execution_status: alert.execution_status,
+              recipient_email: '-',
+              email_sent: alert.email_sent,
+              email_sent_at: alert.email_sent_at,
+              scheduled_for: alert.scheduled_for,
+              created_at: alert.created_at,
+            });
+          } else {
+            // Create one row per recipient
+            recipients.forEach((email) => {
+              flattened.push({
+                id: rowId++,
+                alert_id: alert.id,
+                config_id: alert.config_id,
+                severity: alert.severity,
+                title: alert.title,
+                workflow_id: alert.workflow_id,
+                workflow_name: alert.workflow_name,
+                execution_id: alert.execution_id,
+                execution_status: alert.execution_status,
+                recipient_email: email,
+                email_sent: alert.email_sent,
+                email_sent_at: alert.email_sent_at,
+                scheduled_for: alert.scheduled_for,
+                created_at: alert.created_at,
+              });
+            });
+          }
+        });
+
+        setAlertTableRows(flattened);
       }
     } catch (error) {
       console.error('Failed to fetch alerts:', error);
@@ -580,146 +648,17 @@ export default function NotificationsPage() {
 
           {/* Alert History Section */}
           <div className="mt-8">
-            <Card className="border-2 border-black">
-              <CardHeader className="border-b-2 border-black bg-gray-50 py-5 px-6">
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-2xl font-mono uppercase tracking-wider flex items-center gap-2">
-                    <Clock className="w-6 h-6" />
-                    Alert History
-                  </CardTitle>
-                  <Button
-                    onClick={fetchAlerts}
-                    variant="outline"
-                    className="border-2 border-black hover:bg-gray-100 font-mono"
-                    disabled={alertsLoading}
-                  >
-                    {alertsLoading ? 'LOADING...' : 'REFRESH'}
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                {alertsLoading ? (
-                  <div className="p-8">
-                    <Skeleton className="h-20 mb-4" />
-                    <Skeleton className="h-20 mb-4" />
-                    <Skeleton className="h-20" />
-                  </div>
-                ) : alerts.length === 0 ? (
-                  <div className="p-12 flex flex-col items-center justify-center text-center">
-                    <AlertCircle className="w-20 h-20 mb-6 text-gray-300" />
-                    <p className="font-mono font-bold text-xl text-black mb-3 uppercase tracking-wide">No Alerts Yet</p>
-                    <p className="text-base text-gray-500 max-w-xs">Alerts will appear here when workflows fail</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50 border-b-2 border-black">
-                        <tr>
-                          <th className="px-4 py-3 text-left font-mono font-bold text-xs uppercase">Severity</th>
-                          <th className="px-4 py-3 text-left font-mono font-bold text-xs uppercase">Workflow</th>
-                          <th className="px-4 py-3 text-left font-mono font-bold text-xs uppercase">Email Status</th>
-                          <th className="px-4 py-3 text-left font-mono font-bold text-xs uppercase">Time</th>
-                          <th className="px-4 py-3 text-left font-mono font-bold text-xs uppercase">Execution</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {alerts.map((alert) => {
-                          const getSeverityBadge = (severity: string) => {
-                            const badges = {
-                              low: 'bg-gray-200 text-gray-800',
-                              medium: 'bg-yellow-100 text-yellow-800 border border-yellow-300',
-                              high: 'bg-black text-white',
-                              critical: 'bg-black text-white font-bold border-2 border-black'
-                            };
-                            return badges[severity as keyof typeof badges] || badges.medium;
-                          };
-
-                          const getEmailStatusBadge = () => {
-                            if (alert.email_sent) {
-                              return (
-                                <span className="px-2 py-1 bg-white text-black border-2 border-black font-mono text-xs">
-                                  SENT
-                                </span>
-                              );
-                            } else if (alert.scheduled_for) {
-                              return (
-                                <span className="px-2 py-1 bg-yellow-100 text-yellow-800 border border-yellow-300 font-mono text-xs flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  QUEUED
-                                </span>
-                              );
-                            } else {
-                              return (
-                                <span className="px-2 py-1 bg-gray-200 text-gray-800 font-mono text-xs">
-                                  SKIPPED
-                                </span>
-                              );
-                            }
-                          };
-
-                          const formatTime = (dateStr: string) => {
-                            const date = new Date(dateStr);
-                            const now = new Date();
-                            const diffMs = now.getTime() - date.getTime();
-                            const diffMins = Math.floor(diffMs / 60000);
-                            const diffHours = Math.floor(diffMins / 60);
-                            const diffDays = Math.floor(diffHours / 24);
-
-                            if (diffMins < 1) return 'Just now';
-                            if (diffMins < 60) return `${diffMins}m ago`;
-                            if (diffHours < 24) return `${diffHours}h ago`;
-                            if (diffDays < 7) return `${diffDays}d ago`;
-                            return date.toLocaleDateString();
-                          };
-
-                          return (
-                            <tr key={alert.id} className="hover:bg-gray-50">
-                              <td className="px-4 py-3">
-                                <span className={`px-2 py-1 ${getSeverityBadge(alert.severity)} font-mono text-xs uppercase`}>
-                                  {alert.severity}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="font-mono text-sm">
-                                  {alert.workflow_name || `Workflow ${alert.workflow_id}`}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                {getEmailStatusBadge()}
-                                {alert.scheduled_for && (
-                                  <div className="text-xs text-gray-500 font-mono mt-1">
-                                    {formatTime(alert.scheduled_for)}
-                                  </div>
-                                )}
-                                {alert.email_sent_at && (
-                                  <div className="text-xs text-gray-500 font-mono mt-1">
-                                    {formatTime(alert.email_sent_at)}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 font-mono text-sm text-gray-600">
-                                {formatTime(alert.created_at)}
-                              </td>
-                              <td className="px-4 py-3">
-                                {alert.execution_id && (
-                                  <Link
-                                    href={`/deployments?execution=${alert.execution_id}`}
-                                    className="font-mono text-sm text-black hover:underline flex items-center gap-1"
-                                  >
-                                    #{alert.execution_id}
-                                    <ExternalLink className="w-3 h-3" />
-                                  </Link>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <div className="mb-4">
+              <h2 className="font-mono font-bold text-2xl mb-2 flex items-center gap-2">
+                Alert History
+              </h2>
+              <p className="font-mono text-gray-600 text-sm">View all notification alerts and email delivery status</p>
+            </div>
+            <AlertsDataTable
+              alerts={alertTableRows}
+              loading={alertsLoading}
+              onRefresh={fetchAlerts}
+            />
           </div>
         </div>
       </div>
