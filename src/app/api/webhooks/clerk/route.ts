@@ -261,6 +261,50 @@ export async function POST(req: Request) {
     // Check if this is a personal workspace (name ends with "'s Workspace" or "-workspace")
     const isPersonalWorkspace = name.endsWith("'s Workspace") || name.endsWith('-workspace');
 
+    // Insert organization into database (as fallback in case user.created handler didn't do it)
+    try {
+      const { error: orgInsertError } = await supabase
+        .from('organization_data_access')
+        .upsert({
+          clerk_organization_id: orgId,
+          organization_name: name,
+          data_access_scope: 'organization'
+        }, { onConflict: 'clerk_organization_id' });
+
+      if (orgInsertError) {
+        console.error(`[Clerk Webhook] ✗ Failed to insert org into organization_data_access:`, orgInsertError);
+      } else {
+        console.log(`[Clerk Webhook] ✓ Inserted organization into organization_data_access table`);
+      }
+
+      // If this is a personal workspace and has a creator, ensure user is in mediar_users
+      if (isPersonalWorkspace && created_by) {
+        try {
+          const creator = await client.users.getUser(created_by);
+          const creatorEmail = creator.emailAddresses?.[0]?.emailAddress || 'unknown';
+          const creatorName = [creator.firstName, creator.lastName].filter(Boolean).join(' ') || creatorEmail;
+
+          const { error: userInsertError } = await supabase
+            .from('mediar_users')
+            .upsert({
+              user_id: created_by,
+              name: creatorName,
+              organization_id: orgId
+            }, { onConflict: 'user_id' });
+
+          if (userInsertError) {
+            console.error(`[Clerk Webhook] ✗ Failed to insert user into mediar_users:`, userInsertError);
+          } else {
+            console.log(`[Clerk Webhook] ✓ Inserted user into mediar_users table (from organization.created handler)`);
+          }
+        } catch (err) {
+          console.error(`[Clerk Webhook] ✗ Failed to fetch/insert creator:`, err);
+        }
+      }
+    } catch (err) {
+      console.error(`[Clerk Webhook] ✗ Failed to insert organization:`, err);
+    }
+
     // Get creator info for PostHog tracking
     let creatorEmail = 'unknown';
     try {
