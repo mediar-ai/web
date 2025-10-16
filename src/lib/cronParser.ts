@@ -138,7 +138,7 @@ function isValidCronField(field: string, min: number, max: number): boolean {
  */
 export function getNextExecutionTime(
   cronExpression: string,
-  _timezone: string = 'UTC',
+  timezone: string = 'UTC',
   fromTime?: Date
 ): Date | null {
   const parsed = parseCronExpression(cronExpression);
@@ -147,14 +147,28 @@ export function getNextExecutionTime(
     return null;
   }
 
-  // For now, we'll use a simplified calculation
-  // In production, you might want to use a library like node-cron or cron-parser
-  const now = fromTime || new Date();
-  const next = new Date(now.getTime() + 1000); // Add 1 second as a simple approximation
-  
-  // This is a simplified implementation
-  // For production use, consider using a proper cron library
-  return next;
+  try {
+    // Convert 6-field format (SEC MIN HOUR DAY MONTH DOW) to 5-field format (MIN HOUR DAY MONTH DOW)
+    // cron-parser expects standard 5-field cron format
+    const fields = cronExpression.trim().split(/\s+/);
+    let parsedExpression = cronExpression;
+
+    if (fields.length === 6) {
+      // Remove the seconds field (first field) for cron-parser
+      parsedExpression = fields.slice(1).join(' ');
+    }
+
+    const interval = CronParser.parse(parsedExpression, {
+      currentDate: fromTime || new Date(),
+      tz: timezone
+    });
+
+    const next = interval.next();
+    return next.toDate();
+  } catch (error) {
+    console.error('Error calculating next execution time:', error);
+    return null;
+  }
 }
 
 /**
