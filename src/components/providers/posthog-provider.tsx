@@ -74,15 +74,6 @@ function PostHogPageViewInner() {
       // Get the current anonymous ID for this domain
       const currentAnonymousId = posthog.get_distinct_id();
 
-      console.log('[PostHog] User signed in, identifying:', {
-        userId: user.id,
-        email: user.primaryEmailAddress?.emailAddress,
-        currentAnonymousId,
-        websiteDistinctId,
-        submissionId,
-        fromSurvey
-      });
-
       // IMPORTANT: We need to handle multiple alias scenarios
       // 1. If we have the website's distinct ID (from survey), alias it to the user ID
       // 2. Also alias the current session's anonymous ID to the user ID
