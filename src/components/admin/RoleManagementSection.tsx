@@ -12,13 +12,23 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useOrganization } from '@clerk/nextjs';
+import {
     AlertCircle,
     Crown,
     RefreshCw,
     Shield,
     Trash2,
     User,
-    Users
+    Users,
+    UserPlus
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -33,37 +43,98 @@ interface OrganizationUser {
 
 interface RoleManagementSectionProps {
   isOwner: boolean;
+  isAdmin: boolean;
   currentUserId?: string;
 }
 
-export default function RoleManagementSection({ isOwner, currentUserId }: RoleManagementSectionProps) {
+export default function RoleManagementSection({ isOwner, isAdmin, currentUserId }: RoleManagementSectionProps) {
   const [orgUsers, setOrgUsers] = useState<OrganizationUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processingUsers, setProcessingUsers] = useState<Set<string>>(new Set());
 
-  // Fetch organization users from the existing admin API
+  // Invite state
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('org:member');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const { organization } = useOrganization();
+
+  // Fetch organization users from the organization-members API
   const fetchOrganizationUsers = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // We'll need to enhance this to get org users - for now using a placeholder
-      // This would typically call an API that lists all users in the organization
-      const response = await fetch('/api/organization-users');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch organization users: ${response.statusText}`);
+
+      if (!organization?.id) {
+        throw new Error('No organization selected');
       }
-      
+
+      const response = await fetch(`/api/organization-members?orgId=${organization.id}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch organization members: ${response.statusText}`);
+      }
+
       const data = await response.json();
-      setOrgUsers(data.users || []);
+
+      // Map the API response to our interface
+      const users = (data.members || []).map((member: any) => ({
+        userId: member.userId,
+        email: member.email,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        role: member.role,
+        joinedAt: new Date().toISOString(), // API doesn't return this, use current time as fallback
+      }));
+
+      setOrgUsers(users);
     } catch (err) {
-      console.error('Error fetching organization users:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch organization users');
-      // For now, set empty array if API doesn't exist yet
+      console.error('Error fetching organization members:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch organization members');
       setOrgUsers([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle invite submission
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInviteLoading(true);
+    setInviteMessage(null);
+
+    try {
+      const response = await fetch('/api/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send invitation');
+      }
+
+      setInviteMessage({ type: 'success', text: `✓ Invitation sent to ${inviteEmail}` });
+      setInviteEmail('');
+      setInviteRole('org:member');
+
+      // Refresh the members list after a short delay
+      setTimeout(() => {
+        setIsInviteOpen(false);
+        setInviteMessage(null);
+        fetchOrganizationUsers();
+      }, 2000);
+    } catch (err) {
+      setInviteMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to send invitation'
+      });
+    } finally {
+      setInviteLoading(false);
     }
   };
 
@@ -159,15 +230,15 @@ export default function RoleManagementSection({ isOwner, currentUserId }: RoleMa
     }
   };
 
-  // Load data on mount
+  // Load data on mount and when organization changes
   useEffect(() => {
-    if (isOwner) {
+    if (isAdmin && organization?.id) {
       fetchOrganizationUsers();
     }
-  }, [isOwner]);
+  }, [isAdmin, organization?.id]);
 
-  // Don't render if not owner
-  if (!isOwner) {
+  // Don't render if not admin or owner
+  if (!isAdmin) {
     return null;
   }
 
@@ -179,19 +250,30 @@ export default function RoleManagementSection({ isOwner, currentUserId }: RoleMa
             <Users className="w-5 h-5" />
             Organization Members
           </CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchOrganizationUsers}
-            disabled={loading}
-            className="border-black-outline hover:bg-black hover:text-white"
-          >
-            {loading ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsInviteOpen(true)}
+              className="border-black-outline hover:bg-black hover:text-white"
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              INVITE
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchOrganizationUsers}
+              disabled={loading}
+              className="border-black-outline hover:bg-black hover:text-white"
+            >
+              {loading ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -249,38 +331,38 @@ export default function RoleManagementSection({ isOwner, currentUserId }: RoleMa
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  {/* Role Change Dropdown */}
-                  {user.userId !== currentUserId && (
-                    <>
-                      <Select
-                        value={user.role}
-                        onValueChange={(newRole) => changeUserRole(user.userId, newRole)}
-                        disabled={processingUsers.has(user.userId)}
-                      >
-                        <SelectTrigger className="w-32 border-black-outline">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="org:member">Member</SelectItem>
-                          <SelectItem value="org:admin">Admin</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  {/* Role Change Dropdown - Only owners can change roles */}
+                  {user.userId !== currentUserId && isOwner && (
+                    <Select
+                      value={user.role}
+                      onValueChange={(newRole) => changeUserRole(user.userId, newRole)}
+                      disabled={processingUsers.has(user.userId)}
+                    >
+                      <SelectTrigger className="w-32 border-black-outline">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="org:member">Member</SelectItem>
+                        <SelectItem value="org:admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
 
-                      {/* Remove User Button */}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => removeUser(user.userId)}
-                        disabled={processingUsers.has(user.userId)}
-                        className="border-red-200 text-red-700 hover:bg-red-50"
-                      >
-                        {processingUsers.has(user.userId) ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
-                      </Button>
-                    </>
+                  {/* Remove User Button - Only owners can remove users */}
+                  {user.userId !== currentUserId && isOwner && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => removeUser(user.userId)}
+                      disabled={processingUsers.has(user.userId)}
+                      className="border-red-200 text-red-700 hover:bg-red-50"
+                    >
+                      {processingUsers.has(user.userId) ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </Button>
                   )}
                 </div>
               </div>
@@ -288,6 +370,87 @@ export default function RoleManagementSection({ isOwner, currentUserId }: RoleMa
           </div>
         )}
       </CardContent>
+
+      {/* Invite Dialog */}
+      <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+        <DialogContent className="border-2 border-black">
+          <DialogHeader>
+            <DialogTitle className="font-mono font-bold text-xl">INVITE TEAM MEMBER</DialogTitle>
+            <DialogDescription className="font-mono text-sm">
+              Send an invitation to join {organization?.name || 'your organization'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleInvite} className="space-y-4">
+            <div>
+              <label htmlFor="invite-email" className="font-mono text-xs text-gray-600 uppercase block mb-2">
+                Email Address
+              </label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="email@example.com"
+                className="border-2 border-black focus:outline-none focus:ring-2 focus:ring-black font-mono"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="invite-role" className="font-mono text-xs text-gray-600 uppercase block mb-2">
+                Role
+              </label>
+              <Select value={inviteRole} onValueChange={setInviteRole}>
+                <SelectTrigger id="invite-role" className="border-2 border-black font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="org:member" className="font-mono">Member</SelectItem>
+                  <SelectItem value="org:admin" className="font-mono">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {inviteMessage && (
+              <div className={`p-3 border-2 font-mono ${
+                inviteMessage.type === 'success'
+                  ? 'border-black bg-white'
+                  : 'border-black bg-black text-white font-bold'
+              }`}>
+                {inviteMessage.text}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsInviteOpen(false);
+                  setInviteEmail('');
+                  setInviteRole('org:member');
+                  setInviteMessage(null);
+                }}
+                className="border-2 border-black hover:bg-black hover:text-white font-mono font-bold"
+              >
+                CANCEL
+              </Button>
+              <Button
+                type="submit"
+                disabled={inviteLoading}
+                className={`font-mono font-bold ${
+                  inviteLoading
+                    ? 'bg-gray-200 text-gray-500 border-2 border-gray-400'
+                    : 'bg-black text-white hover:bg-gray-800'
+                }`}
+              >
+                {inviteLoading ? 'SENDING...' : 'SEND INVITATION'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

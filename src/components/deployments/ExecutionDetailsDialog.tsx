@@ -17,8 +17,9 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { Loader2, Terminal, XCircle, Sparkles, Download } from 'lucide-react';
+import { Loader2, Terminal, XCircle, Sparkles, Download, FolderOpen, FileText } from 'lucide-react';
 import { useEffect, useState, Suspense, useCallback } from 'react';
+import { toast } from 'sonner';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
 import { ExecutionAIChat } from './ExecutionAIChat';
 import { Button } from '@/components/ui/button';
@@ -67,6 +68,120 @@ export function ExecutionDetailsDialog({
   });
   const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
   const [isDownloadingResults, setIsDownloadingResults] = useState(false);
+
+  // Helper function to open file in Windows Explorer or with default app
+  const openFileInExplorer = async (filePath: string, action: 'select' | 'open' = 'select') => {
+    try {
+      const response = await fetch('/api/files/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath, action }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        const message = action === 'open' ? 'Opening file...' : 'Opening in Explorer...';
+        toast.success(message, {
+          description: data.path,
+        });
+      } else {
+        // Show detailed error message with suggestions if available
+        const errorDescription = data.suggestions
+          ? `${data.details}\n\nSuggestions:\n${data.suggestions.map((s: string) => `• ${s}`).join('\n')}`
+          : data.details || data.error || 'Unknown error';
+
+        toast.error(data.error || 'Failed to open file', {
+          description: errorDescription,
+          duration: 8000, // Longer duration for error messages with suggestions
+        });
+      }
+    } catch (error) {
+      console.error('Error opening file:', error);
+      toast.error('Failed to open file', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  };
+
+  // Helper function to render formatted output with clickable file paths
+  const renderFormattedOutputWithFileLinks = () => {
+    if (!execution || !execution.formatted_output) return null;
+
+    try {
+      const output = typeof execution.formatted_output === 'string'
+        ? JSON.parse(execution.formatted_output)
+        : execution.formatted_output;
+
+      // Check if file_info exists at root or nested in data
+      const fileInfo = output.file_info || output.data?.file_info;
+
+      if (fileInfo && fileInfo.file_path && fileInfo.original_file) {
+        const filePath = fileInfo.file_path;
+        const fileName = fileInfo.original_file;
+
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-2 border-black bg-gray-50 p-3 rounded">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="w-4 h-4" />
+                <span className="text-sm font-mono font-semibold">{fileName}</span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="black-outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => openFileInExplorer(filePath, 'open')}
+                >
+                  <FileText className="w-3 h-3 mr-1" />
+                  Open File
+                </Button>
+                <Button
+                  variant="black-outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => openFileInExplorer(filePath, 'select')}
+                >
+                  <FolderOpen className="w-3 h-3 mr-1" />
+                  Show in Folder
+                </Button>
+              </div>
+            </div>
+            <CodeBlock
+              title="Formatted Output"
+              language="json"
+              size="sm"
+            >
+              {execution.formatted_output}
+            </CodeBlock>
+          </div>
+        );
+      }
+
+      // No file path found, render normal CodeBlock
+      return (
+        <CodeBlock
+          title="Formatted Output"
+          language="json"
+          size="sm"
+        >
+          {execution.formatted_output}
+        </CodeBlock>
+      );
+    } catch (error) {
+      // If parsing fails, render normal CodeBlock
+      return (
+        <CodeBlock
+          title="Formatted Output"
+          language="json"
+          size="sm"
+        >
+          {execution.formatted_output}
+        </CodeBlock>
+      );
+    }
+  };
 
   // Fetch logs on demand using dedicated endpoint
   const fetchExecutionLogs = useCallback(async () => {
@@ -582,13 +697,7 @@ export function ExecutionDetailsDialog({
 
                   {execution.formatted_output && (
                     <div>
-                      <CodeBlock
-                        title="Formatted Output"
-                        language="json"
-                        size="sm"
-                      >
-                        {execution.formatted_output}
-                      </CodeBlock>
+                      {renderFormattedOutputWithFileLinks()}
                     </div>
                   )}
                 </div>

@@ -797,7 +797,7 @@ function AuthenticatedAdminPage({
       {isOwner && (
         <div className="space-y-6 mb-6">
 
-          <RoleManagementSection isOwner={isOwner} currentUserId={userId || undefined} />
+          <RoleManagementSection isOwner={isOwner} isAdmin={isAdmin} currentUserId={userId || undefined} />
         </div>
       )}
 
