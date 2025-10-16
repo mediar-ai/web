@@ -49,6 +49,11 @@ octocrab = "0.41"
 # Base64 encoding/decoding
 base64 = "0.22"
 
+# Storage (Supabase compatible)
+object_store = { version = "0.11", features = ["http"] }
+url = "2.5"
+bytes = "1.8"
+
 # Environment
 dotenvy = "0.15"
 

@@ -76,7 +76,8 @@ impl WorkflowService {
         let mcp_client = McpClient::from_url(request.mcp_endpoint.clone());
 
         // Execute workflow
-        let executor = WorkflowExecutor::new(mcp_client, sequence, execution_id);
+        // TODO: Get organization_id from workflow or request when available
+        let executor = WorkflowExecutor::new(mcp_client, sequence, execution_id, None);
         let result = executor.execute().await;
 
         // Update execution status

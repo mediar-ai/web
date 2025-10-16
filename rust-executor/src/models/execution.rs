@@ -89,6 +89,7 @@ pub struct WorkflowResult {
     pub total_steps: u32,
     pub step_results: Vec<StepResult>,
     pub execution_time_ms: u64,
+    pub screenshot_urls: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -113,6 +114,7 @@ impl WorkflowResult {
             total_steps: 0,
             step_results: Vec::new(),
             execution_time_ms: 0,
+            screenshot_urls: Vec::new(),
         }
     }
 
@@ -127,6 +129,7 @@ impl WorkflowResult {
             total_steps: 0,
             step_results: Vec::new(),
             execution_time_ms: 0,
+            screenshot_urls: Vec::new(),
         }
     }
 
@@ -141,6 +144,7 @@ impl WorkflowResult {
             total_steps: 0,
             step_results: Vec::new(),
             execution_time_ms: 0,
+            screenshot_urls: Vec::new(),
         }
     }
 
@@ -156,6 +160,7 @@ impl WorkflowResult {
             total_steps: 0,
             step_results: Vec::new(),
             execution_time_ms: 0,
+            screenshot_urls: Vec::new(),
         }
     }
 }

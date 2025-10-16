@@ -214,6 +214,29 @@ impl WorkflowQueries {
         Ok(())
     }
 
+    /// Update execution with screenshot URLs
+    pub async fn update_execution_screenshots(
+        pool: &Pool<Postgres>,
+        execution_id: Uuid,
+        screenshot_urls: Vec<String>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE workflow_executions
+            SET
+                screenshot_urls = $1,
+                updated_at = NOW()
+            WHERE id = $2
+            "#,
+        )
+        .bind(screenshot_urls)
+        .bind(execution_id)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn update_execution_progress(
         pool: &Pool<Postgres>,
         execution_id: Uuid,
