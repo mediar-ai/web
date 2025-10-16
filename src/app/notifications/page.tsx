@@ -248,7 +248,7 @@ export default function NotificationsPage() {
   };
 
   const handleCreateConfig = () => {
-    const newConfig = {
+    const newConfig: NotificationConfig = {
       name: 'Workflow Error Alerts',
       enabled: true,
       email_enabled: true,
@@ -704,7 +704,7 @@ export default function NotificationsPage() {
                     className="flex-1 bg-black text-white hover:bg-gray-800 font-mono"
                     disabled={
                       isSaving ||
-                      (!isCreating && originalConfig &&
+                      (!isCreating && !!originalConfig &&
                         JSON.stringify(selectedConfig.email_recipients.sort()) ===
                         JSON.stringify(originalConfig.email_recipients.sort()))
                     }
