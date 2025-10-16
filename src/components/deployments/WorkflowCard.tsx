@@ -398,7 +398,12 @@ export function WorkflowCard({
   const handleCronToggle = async () => {
     setCronToggling(true);
     try {
-      console.log(`🔄 Toggling cron for workflow ${workflow.id}, current state: ${workflow.cron_enabled}`);
+      // Determine the target state:
+      // - If auto-paused, we want to ENABLE (clear auto-pause flags)
+      // - Otherwise, toggle normally
+      const targetEnabled = workflow.cron_auto_paused ? true : !workflow.cron_enabled;
+
+      console.log(`🔄 Toggling cron for workflow ${workflow.id}, current state: cron_enabled=${workflow.cron_enabled}, auto_paused=${workflow.cron_auto_paused}, target: ${targetEnabled}`);
 
       const response = await fetch(
         `/api/remote-workflows/${workflow.id}/cron`,
@@ -407,7 +412,7 @@ export function WorkflowCard({
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ enabled: !workflow.cron_enabled }),
+          body: JSON.stringify({ enabled: targetEnabled }),
         }
       );
 
@@ -425,7 +430,7 @@ export function WorkflowCard({
           if (errorText) errorMessage = errorText;
         }
 
-        toast.error(`Failed to ${!workflow.cron_enabled ? 'enable' : 'disable'} schedule: ${errorMessage}`);
+        toast.error(`Failed to ${targetEnabled ? 'enable' : 'disable'} schedule: ${errorMessage}`);
         return;
       }
 
@@ -441,14 +446,15 @@ export function WorkflowCard({
       } else {
         console.error('Failed to toggle cron schedule:', result.error);
         toast.error(
-          `Failed to ${!workflow.cron_enabled ? 'enable' : 'disable'} schedule: ${result.error}`
+          `Failed to ${targetEnabled ? 'enable' : 'disable'} schedule: ${result.error}`
         );
       }
     } catch (error) {
       console.error('Error toggling cron schedule:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const targetEnabled = workflow.cron_auto_paused ? true : !workflow.cron_enabled;
       toast.error(
-        `Error ${!workflow.cron_enabled ? 'enabling' : 'disabling'} schedule: ${errorMessage}`
+        `Error ${targetEnabled ? 'enabling' : 'disabling'} schedule: ${errorMessage}`
       );
     } finally {
       setCronToggling(false);
@@ -935,21 +941,23 @@ export function WorkflowCard({
                       className={`px-2 py-1 border-2 border-black rounded font-mono text-xs font-bold transition-colors ${
                         cronToggling
                           ? 'bg-gray-100 cursor-not-allowed'
-                          : workflow.cron_enabled
+                          : workflow.cron_enabled && !workflow.cron_auto_paused
                             ? 'bg-black text-white hover:bg-gray-700 cursor-pointer'
                             : 'bg-white text-black hover:bg-gray-100 cursor-pointer'
                       }`}
                       title={
                         cronToggling
                           ? 'Processing...'
-                          : workflow.cron_enabled
-                            ? 'Pause schedule'
-                            : 'Resume schedule'
+                          : workflow.cron_auto_paused
+                            ? 'Resume auto-paused schedule'
+                            : workflow.cron_enabled
+                              ? 'Pause schedule'
+                              : 'Resume schedule'
                       }
                     >
                       {cronToggling ? (
                         <Loader2 className="w-4 h-4 animate-spin inline" />
-                      ) : workflow.cron_enabled ? (
+                      ) : workflow.cron_enabled && !workflow.cron_auto_paused ? (
                         <>
                           <Pause className="w-4 h-4 inline mr-1" />
                           PAUSE
@@ -957,7 +965,7 @@ export function WorkflowCard({
                       ) : (
                         <>
                           <Play className="w-4 h-4 inline mr-1" />
-                          START
+                          {workflow.cron_auto_paused ? 'RESUME' : 'START'}
                         </>
                       )}
                     </button>
