@@ -10,8 +10,13 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState('ml-64');
-  const { orgId } = useAuth();
-  const { userMemberships, setActive, isLoaded } = useOrganizationList();
+  const { orgId, userId } = useAuth();
+  const { userMemberships, setActive, isLoaded } = useOrganizationList({
+    userMemberships: {
+      infinite: true,
+    },
+  });
+  const [hasAttemptedFallback, setHasAttemptedFallback] = useState(false);
 
   // Auto-set the first organization if user has no active org
   useEffect(() => {
@@ -19,7 +24,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       isLoaded,
       orgId,
       membershipCount: userMemberships?.data?.length,
-      hasSetActive: !!setActive
+      hasSetActive: !!setActive,
+      userId
     });
 
     if (isLoaded && !orgId && userMemberships?.data && userMemberships.data.length > 0) {
@@ -33,10 +39,34 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         .catch((error) => {
           console.error('[DashboardLayout] Failed to set organization:', error);
         });
-    } else if (isLoaded && !orgId) {
-      console.warn('[DashboardLayout] No organization to auto-select - user may have no memberships');
+    } else if (isLoaded && !orgId && !hasAttemptedFallback) {
+      console.warn('[DashboardLayout] No organization memberships from Clerk hook - checking Clerk API directly');
+      setHasAttemptedFallback(true);
+
+      // Fallback: Check Clerk API directly for memberships
+      if (userId) {
+        fetch(`https://api.clerk.com/v1/users/${userId}/organization_memberships`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}`,
+          }
+        })
+        .then(res => res.json())
+        .then(data => {
+          const memberships = Array.isArray(data) ? data : data.data || [];
+          console.log('[DashboardLayout] Clerk API returned memberships:', memberships.length);
+
+          if (memberships.length > 0 && !orgId) {
+            const firstOrg = memberships[0].organization;
+            console.log(`[DashboardLayout] Setting org from API: ${firstOrg.name} (${firstOrg.id})`);
+            setActive?.({ organization: firstOrg.id });
+          }
+        })
+        .catch(error => {
+          console.error('[DashboardLayout] Failed to fetch memberships from Clerk API:', error);
+        });
+      }
     }
-  }, [isLoaded, orgId, userMemberships, setActive]);
+  }, [isLoaded, orgId, userMemberships, setActive, userId, hasAttemptedFallback]);
 
   // Listen for sidebar state changes (we'll use localStorage for persistence)
   useEffect(() => {
