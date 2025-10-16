@@ -2,6 +2,7 @@ import {
   describeCronExpression,
   parseCronExpression,
   shouldExecuteAt,
+  getNextExecutionTime,
 } from '@/lib/cronParser';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
@@ -166,13 +167,14 @@ export async function POST(_request: NextRequest) {
           );
         }
 
-        // Calculate next execution time (simplified - just add 1 minute for now)
-        // In production, use a proper cron library for accurate next execution calculation
-        const nextExecution = new Date(currentTime.getTime() + 60000);
-        workflowUpdates.push({
-          id: workflow.id,
-          next_scheduled_execution: nextExecution.toISOString(),
-        });
+        // Calculate next execution time using proper cron parser for each workflow's specific schedule
+        const nextExecution = getNextExecutionTime(cronExpression, timezone, currentTime);
+        if (nextExecution) {
+          workflowUpdates.push({
+            id: workflow.id,
+            next_scheduled_execution: nextExecution.toISOString(),
+          });
+        }
       } catch (error) {
         console.error(
           `❌ Error processing workflow ${workflow.id} (${workflow.name}):`,
@@ -368,13 +370,43 @@ export async function POST(_request: NextRequest) {
     // 4. Modal will process queued executions automatically
     console.log('✅ Queued executions will be processed by Modal scheduler');
 
-    // 5. Update next execution times for all workflows
+    // 5. Update next execution times for enabled workflows that were processed
     if (workflowUpdates.length > 0) {
       for (const update of workflowUpdates) {
         await supabase
           .from('deployed_workflows')
           .update({ next_scheduled_execution: update.next_scheduled_execution })
           .eq('id', update.id);
+      }
+    }
+
+    // 6. Also update next_scheduled_execution for ALL paused/disabled workflows
+    // This ensures timers show correct values even for paused workflows
+    const { data: pausedWorkflows } = await supabase
+      .from('deployed_workflows')
+      .select('id, cron_expression, cron_timezone')
+      .eq('status', 'deployed')
+      .not('cron_expression', 'is', null)
+      .or(`cron_enabled.eq.false,cron_auto_paused.eq.true`);
+
+    if (pausedWorkflows && pausedWorkflows.length > 0) {
+      console.log(`📅 Updating next_scheduled_execution for ${pausedWorkflows.length} paused workflows`);
+      for (const workflow of pausedWorkflows) {
+        try {
+          const nextExecution = getNextExecutionTime(
+            workflow.cron_expression,
+            workflow.cron_timezone || 'UTC',
+            currentTime
+          );
+          if (nextExecution) {
+            await supabase
+              .from('deployed_workflows')
+              .update({ next_scheduled_execution: nextExecution.toISOString() })
+              .eq('id', workflow.id);
+          }
+        } catch (error) {
+          console.error(`Error updating next execution for paused workflow ${workflow.id}:`, error);
+        }
       }
     }
 
