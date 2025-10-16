@@ -17,6 +17,7 @@ interface ScheduledWorkflow {
   cron_expression: string;
   cron_timezone: string;
   cron_enabled: boolean;
+  cron_auto_paused: boolean;
   last_scheduled_execution: string | null;
   next_scheduled_execution: string | null;
   cron_max_concurrent: number;
@@ -46,6 +47,7 @@ export async function POST(_request: NextRequest) {
   try {
     // 1. Get all active cron jobs from deployed_workflows_with_sequence view
     // Database is the single source of truth for cron configuration
+    // IMPORTANT: Filter out auto-paused workflows to prevent execution after auto-pause
     const { data: workflows, error: fetchError } = await supabase
       .from('deployed_workflows_with_sequence')
       .select(
@@ -55,6 +57,7 @@ export async function POST(_request: NextRequest) {
         cron_expression,
         cron_timezone,
         cron_enabled,
+        cron_auto_paused,
         last_scheduled_execution,
         next_scheduled_execution,
         cron_max_concurrent,
@@ -63,6 +66,7 @@ export async function POST(_request: NextRequest) {
       `
       )
       .eq('cron_enabled', true)
+      .eq('cron_auto_paused', false)
       .eq('status', 'deployed')
       .not('cron_expression', 'is', null);
 
@@ -95,6 +99,14 @@ export async function POST(_request: NextRequest) {
 
     for (const workflow of workflows as ScheduledWorkflow[]) {
       try {
+        // Safety check: Skip if workflow is auto-paused (defense in depth)
+        if (workflow.cron_auto_paused) {
+          console.log(
+            `⏸️  Skipping auto-paused workflow ${workflow.id} (${workflow.name})`
+          );
+          continue;
+        }
+
         const cronExpression = workflow.cron_expression;
         const timezone = workflow.cron_timezone || 'UTC';
 

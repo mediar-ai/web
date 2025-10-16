@@ -58,10 +58,10 @@ export async function PATCH(
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info and verify ownership
+    // STEP 2: Get workflow info and verify ownership (including auto-pause status)
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, created_by, organization_id')
+      .select('id, name, created_by, organization_id, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures')
       .eq('id', workflowIdNum)
       .single();
 
@@ -109,13 +109,50 @@ export async function PATCH(
       );
     }
 
+    // STEP 4: Check if workflow is auto-paused
+    if (enabled && workflow.cron_auto_paused) {
+      console.warn(
+        `⚠️  User ${authenticatedUserId} attempted to enable auto-paused workflow ${workflowIdNum} (${workflow.name})`
+      );
+      console.warn(`   Auto-paused at: ${workflow.auto_paused_at}`);
+      console.warn(`   Reason: ${workflow.auto_pause_reason}`);
+      console.warn(`   Consecutive failures: ${workflow.consecutive_failures}`);
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Cannot enable cron schedule - workflow is auto-paused due to repeated failures',
+          details: {
+            auto_paused: true,
+            auto_paused_at: workflow.auto_paused_at,
+            auto_pause_reason: workflow.auto_pause_reason,
+            consecutive_failures: workflow.consecutive_failures,
+            message: 'Please fix the underlying issue first, then clear the auto-pause flag before re-enabling the cron schedule.'
+          }
+        },
+        { status: 400 }
+      );
+    }
+
     // Update the cron_enabled status
+    const updateData: any = {
+      cron_enabled: enabled,
+      updated_at: new Date().toISOString()
+    };
+
+    // If disabling manually, clear auto-pause flag to allow re-enabling later
+    if (!enabled) {
+      updateData.cron_auto_paused = false;
+      updateData.consecutive_failures = 0;
+      updateData.last_failure_message = null;
+      updateData.auto_paused_at = null;
+      updateData.auto_pause_reason = null;
+      console.log(`🔄 Manually disabling cron and clearing auto-pause flag for workflow ${workflowIdNum}`);
+    }
+
     const { data: updatedWorkflow, error } = await supabase
       .from('deployed_workflows')
-      .update({ 
-        cron_enabled: enabled,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', workflowIdNum)
       .select('id, name, cron_expression, cron_enabled, cron_timezone')
       .single();
