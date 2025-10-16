@@ -15,7 +15,7 @@ interface ExecutionAIChatProps {
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
 }
 
@@ -34,7 +34,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
 
   // Sample questions
   const sampleQuestions = [
-    'What did this workflow accomplish?',
+    'Review details of execution logs, call relevant tools. What happened in the workflow execution? Which was the first step that failed and what were the steps before it?',
     'Were there any errors in this execution?',
     'Explain the results in simple terms',
     'What took the most time in this run?',
@@ -72,6 +72,15 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
     setIsLoading(true);
     setError(null);
 
+    // Add system message showing data loading
+    const loadingMessageId = `loading-${Date.now()}`;
+    const loadingMessage: Message = {
+      id: loadingMessageId,
+      role: 'system',
+      content: '⏳ Loading execution data and Terminator documentation...',
+    };
+    setMessages(prev => [...prev, loadingMessage]);
+
     try {
       console.log('[Q&A Client] Sending request:', { executionId: execution.execution_id, messageCount: messages.length + 1 });
 
@@ -101,6 +110,9 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
       let buffer = '';
 
       if (reader) {
+        // Remove loading message and add assistant message
+        setMessages(prev => prev.filter(m => m.id !== loadingMessageId));
+
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
@@ -145,10 +157,10 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
               const parsed = JSON.parse(data);
               console.log('[Q&A Client] Parsed:', { type: parsed.type, keys: Object.keys(parsed) });
 
-              // Handle text delta chunks
-              if (parsed.type === 'text-delta' && parsed.textDelta) {
-                assistantContent += parsed.textDelta;
-                console.log('[Q&A Client] Text delta received:', parsed.textDelta.substring(0, 50));
+              // Handle text delta chunks - UI Message Stream uses 'delta' field
+              if (parsed.type === 'text-delta' && parsed.delta) {
+                assistantContent += parsed.delta;
+                console.log('[Q&A Client] Text delta received:', parsed.delta.substring(0, 50));
 
                 // Update the message in real-time
                 setMessages(prev => {
@@ -182,6 +194,8 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
     } catch (err) {
       console.error('Chat error:', err);
       setError(err instanceof Error ? err : new Error('Failed to send message'));
+      // Remove loading message on error
+      setMessages(prev => prev.filter(m => m.id !== loadingMessageId));
     } finally {
       setIsLoading(false);
     }
@@ -229,7 +243,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
               <div
                 key={message.id}
                 className={`flex gap-3 ${
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
+                  message.role === 'user' ? 'justify-end' : message.role === 'system' ? 'justify-center' : 'justify-start'
                 }`}
               >
                 {message.role === 'assistant' && (
@@ -243,6 +257,8 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                   className={`max-w-[80%] ${
                     message.role === 'user'
                       ? 'bg-black text-white'
+                      : message.role === 'system'
+                      ? 'bg-gray-100 border border-gray-300 text-gray-700 text-xs italic'
                       : 'bg-gray-50 border-2 border-black'
                   } rounded-lg p-3`}
                 >
@@ -253,6 +269,10 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                           {line}
                         </p>
                       ))}
+                    </div>
+                  ) : message.role === 'system' ? (
+                    <div className="text-xs">
+                      {message.content}
                     </div>
                   ) : (
                     <>
