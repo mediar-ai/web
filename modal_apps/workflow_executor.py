@@ -3126,7 +3126,7 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                                we.status, we.error_message, we.started_at,
                                we.completed_at, we.execution_duration_seconds
                         FROM workflow_executions we
-                        JOIN workflows w ON w.id = we.workflow_id
+                        JOIN deployed_workflows w ON w.id = we.workflow_id
                         WHERE we.id = %s
                         """,
                         (execution_id,)
@@ -3249,7 +3249,7 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                                    we.status, we.error_message, we.started_at,
                                    we.completed_at, we.execution_duration_seconds
                             FROM workflow_executions we
-                            JOIN workflows w ON w.id = we.workflow_id
+                            JOIN deployed_workflows w ON w.id = we.workflow_id
                             WHERE we.id = %s
                             """,
                             (execution_id,)
