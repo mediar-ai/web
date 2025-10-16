@@ -152,7 +152,7 @@ export async function POST(req: Request) {
           .upsert({
             clerk_organization_id: personalOrg.id,
             organization_name: workspaceName,
-            data_access_scope: 'personal'
+            data_access_scope: 'organization'  // Valid values: 'global', 'organization', 'custom'
           }, { onConflict: 'clerk_organization_id' });
 
         if (orgInsertError) {
