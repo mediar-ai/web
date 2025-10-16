@@ -134,8 +134,27 @@ export async function GET(request: NextRequest) {
               targetOrgId = workflowOrgId;
             }
 
-            // Fetch org members if we have a target org
-            if (targetOrgId) {
+            // If workflow has no owner (NULL organization_id), it's a shared workflow
+            // Fetch members from ALL organizations with access
+            if (!targetOrgId && alert.workflow_id) {
+              try {
+                const { data: sharedOrgs } = await supabase
+                  .from('workflow_organization_access')
+                  .select('organization_id')
+                  .eq('workflow_id', alert.workflow_id);
+
+                if (sharedOrgs && sharedOrgs.length > 0) {
+                  // Fetch members from each organization using Clerk SDK
+                  for (const org of sharedOrgs) {
+                    const orgEmails = await getOrganizationMembers(org.organization_id);
+                    recipients.push(...orgEmails);
+                  }
+                }
+              } catch (err) {
+                console.error(`Error fetching shared organizations for alert ${alert.id}:`, err);
+              }
+            } else if (targetOrgId) {
+              // Fetch org members if we have a single target org
               try {
                 const orgEmails = await getOrganizationMembers(targetOrgId);
                 recipients.push(...orgEmails);
