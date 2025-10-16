@@ -2,6 +2,7 @@
 
 import { Sidebar } from '@/components/navigation/Sidebar';
 import { ReactNode, useState, useEffect } from 'react';
+import { useAuth, useOrganizationList } from '@clerk/nextjs';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -9,6 +10,17 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState('ml-64');
+  const { orgId } = useAuth();
+  const { userMemberships, setActive, isLoaded } = useOrganizationList();
+
+  // Auto-set the first organization if user has no active org
+  useEffect(() => {
+    if (isLoaded && !orgId && userMemberships?.data && userMemberships.data.length > 0) {
+      const firstOrg = userMemberships.data[0];
+      console.log(`[DashboardLayout] Auto-setting first organization: ${firstOrg.organization.name} (${firstOrg.organization.id})`);
+      setActive?.({ organization: firstOrg.organization.id });
+    }
+  }, [isLoaded, orgId, userMemberships, setActive]);
 
   // Listen for sidebar state changes (we'll use localStorage for persistence)
   useEffect(() => {
