@@ -1,8 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { NotificationService } from '@/lib/notification-service';
 import { supabase } from '@/lib/supabase';
+import { clerkClient } from '@clerk/nextjs/server';
 
 const notificationService = NotificationService.getInstance();
+
+// Helper function to fetch organization members using Clerk SDK
+async function getOrganizationMembers(orgId: string): Promise<string[]> {
+  try {
+    // Handle legacy Imperial Treasure org
+    if (orgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+      return ['louis@mediar.ai', 'matt@mediar.ai'];
+    }
+
+    const clerk = await clerkClient();
+    const memberships = await clerk.organizations.getOrganizationMembershipList({
+      organizationId: orgId,
+      limit: 100,
+    });
+
+    const emails = memberships?.data?.map(membership =>
+      membership.publicUserData?.identifier
+    ).filter(Boolean) as string[] || [];
+
+    console.log(`  Fetched ${emails.length} members from org ${orgId}`);
+    return emails;
+  } catch (error: any) {
+    console.error(`  Error fetching members for org ${orgId}:`, error);
+    if (error?.status === 404) {
+      console.warn(`  Organization ${orgId} not found in Clerk`);
+    }
+    return [];
+  }
+}
 
 /**
  * Process Pending Notifications Cron Job
@@ -99,22 +129,20 @@ export async function POST(_request: NextRequest) {
           }
         }
 
-        // Fetch recipients
-        let recipients = config.email_recipients || [];
+        // Start with configured recipients as baseline (never lose these)
+        const recipients = [...(config.email_recipients || [])];
 
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
           (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.mediar.ai');
 
-        // Fetch org members based on workflow ownership
+        // Fetch org members based on workflow ownership using Clerk SDK directly
         if (targetOrgId) {
           // Single organization owner
           try {
-            const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${targetOrgId}`);
-            if (orgMembersResponse.ok) {
-              const orgMembersData = await orgMembersResponse.json();
-              const orgEmails = orgMembersData.members?.map((m: any) => m.email).filter(Boolean) || [];
-              recipients = [...new Set([...recipients, ...orgEmails])];
-            }
+            const orgEmails = await getOrganizationMembers(targetOrgId);
+            const uniqueRecipients = [...new Set([...recipients, ...orgEmails])];
+            recipients.length = 0;
+            recipients.push(...uniqueRecipients);
           } catch (err) {
             console.error(`Error fetching organization members for alert ${alert.id}:`, err);
           }
@@ -127,20 +155,19 @@ export async function POST(_request: NextRequest) {
               .eq('workflow_id', alert.workflow_id);
 
             if (sharedOrgs && sharedOrgs.length > 0) {
+              console.log(`[Alert ${alert.id}] Fetching members from ${sharedOrgs.length} shared organizations`);
+
               for (const org of sharedOrgs) {
-                try {
-                  const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${org.organization_id}`);
-                  if (orgMembersResponse.ok) {
-                    const orgMembersData = await orgMembersResponse.json();
-                    const orgEmails = orgMembersData.members?.map((m: any) => m.email).filter(Boolean) || [];
-                    recipients.push(...orgEmails);
-                  }
-                } catch (err) {
-                  console.error(`Error fetching members for org ${org.organization_id}:`, err);
-                }
+                const orgEmails = await getOrganizationMembers(org.organization_id);
+                recipients.push(...orgEmails);
               }
+
               // Deduplicate emails
-              recipients = [...new Set(recipients)];
+              const uniqueRecipients = [...new Set(recipients)];
+              recipients.length = 0;
+              recipients.push(...uniqueRecipients);
+
+              console.log(`[Alert ${alert.id}] Total unique recipients: ${recipients.length}`);
             }
           } catch (err) {
             console.error(`Error fetching shared organizations for alert ${alert.id}:`, err);
