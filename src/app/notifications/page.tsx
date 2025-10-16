@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Mail, X, Zap, Bell, CheckCircle, AlertTriangle } from 'lucide-react';
-import { useAuth, useUser } from '@clerk/nextjs';
+import { useAuth, useUser, useOrganizationList } from '@clerk/nextjs';
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { AlertsDataTable } from '@/components/notifications/AlertsDataTable';
 
@@ -95,6 +95,7 @@ const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 
 export default function NotificationsPage() {
   const { userId, orgId } = useAuth();
   const { user } = useUser();
+  const { userMemberships, setActive, isLoaded: orgListLoaded } = useOrganizationList();
   const [configs, setConfigs] = useState<NotificationConfig[]>([]);
   const [selectedConfig, setSelectedConfig] = useState<NotificationConfig | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -114,6 +115,15 @@ export default function NotificationsPage() {
   const isMediarAdmin = user?.emailAddresses?.some(
     email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
   ) || false;
+
+  // Auto-set the first organization if user has no active org
+  useEffect(() => {
+    if (orgListLoaded && !orgId && userMemberships?.data && userMemberships.data.length > 0) {
+      const firstOrg = userMemberships.data[0];
+      console.log(`[Notifications] Auto-setting first organization: ${firstOrg.organization.name} (${firstOrg.organization.id})`);
+      setActive?.({ organization: firstOrg.organization.id });
+    }
+  }, [orgListLoaded, orgId, userMemberships, setActive]);
 
   useEffect(() => {
     if (userId && orgId) {
@@ -436,13 +446,51 @@ export default function NotificationsPage() {
     }
   };
 
-  if (!userId || !orgId) {
+  if (!userId) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
-        <Card className="max-w-md border-black">
+        <Card className="max-w-md border-2 border-black">
           <CardHeader>
-            <CardTitle>Please sign in to access alerts</CardTitle>
+            <CardTitle className="font-mono">Please sign in to access alerts</CardTitle>
           </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  // If user is authenticated but no orgId, show loading while we try to set it
+  if (!orgId) {
+    // Check if user has organizations
+    if (orgListLoaded && userMemberships?.data && userMemberships.data.length === 0) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-white">
+          <Card className="max-w-md border-2 border-black">
+            <CardHeader>
+              <CardTitle className="font-mono">No Organization Found</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                You need to be part of an organization to access alerts.
+                Contact your administrator to get added to an organization.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    // Still loading or trying to set active org
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <Card className="max-w-md border-2 border-black">
+          <CardHeader>
+            <CardTitle className="font-mono">Loading...</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+            </div>
+          </CardContent>
         </Card>
       </div>
     );
