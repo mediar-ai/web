@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { clerkClient } from '@clerk/nextjs/server';
 
 export interface NotificationConfig {
   id: number;
@@ -187,8 +188,8 @@ export class NotificationService {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
         (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.mediar.ai');
 
-      // Determine final recipient list
-      let recipients = config.email_recipients || [];
+      // Start with configured recipients as baseline (never lose these)
+      const recipients = [...(config.email_recipients || [])];
 
       // Determine which organization's members to fetch
       let targetOrgId = config.organization_id; // For org-specific configs
@@ -218,27 +219,17 @@ export class NotificationService {
               if (sharedOrgs && sharedOrgs.length > 0) {
                 console.log(`Found ${sharedOrgs.length} organizations with access to workflow ${alert.workflow_id}`);
 
-                // Fetch members from each organization
+                // Fetch members from each organization using Clerk SDK directly
                 for (const org of sharedOrgs) {
-                  try {
-                    const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${org.organization_id}`, {
-                      headers: { 'Content-Type': 'application/json' },
-                    });
-
-                    if (orgMembersResponse.ok) {
-                      const orgMembersData = await orgMembersResponse.json();
-                      const orgEmails = orgMembersData.members?.map((m: any) => m.email).filter(Boolean) || [];
-                      console.log(`Found ${orgEmails.length} members in org ${org.organization_id}: ${orgEmails.join(', ')}`);
-                      recipients.push(...orgEmails);
-                    }
-                  } catch (err) {
-                    console.error(`Error fetching members for org ${org.organization_id}:`, err);
-                  }
+                  const orgEmails = await this.getOrganizationMembers(org.organization_id);
+                  recipients.push(...orgEmails);
                 }
 
                 // Deduplicate emails (important for shared workflows)
-                recipients = [...new Set(recipients)];
-                console.log(`Total unique recipients after deduplication: ${recipients.length}`);
+                const uniqueRecipients = [...new Set(recipients)];
+                console.log(`Total unique recipients after deduplication: ${uniqueRecipients.length}`);
+                recipients.length = 0;
+                recipients.push(...uniqueRecipients);
               }
             } catch (err) {
               console.error('Error fetching shared organizations:', err);
@@ -253,22 +244,12 @@ export class NotificationService {
       if (targetOrgId) {
         try {
           console.log(`Fetching organization members for ${targetOrgId}`);
-          const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${targetOrgId}`, {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          });
+          const orgEmails = await this.getOrganizationMembers(targetOrgId);
 
-          if (orgMembersResponse.ok) {
-            const orgMembersData = await orgMembersResponse.json();
-            const orgEmails = orgMembersData.members?.map((m: any) => m.email).filter(Boolean) || [];
-            console.log(`Found ${orgEmails.length} organization members: ${orgEmails.join(', ')}`);
-
-            // Combine configured recipients with org members (remove duplicates)
-            recipients = [...new Set([...recipients, ...orgEmails])];
-          } else {
-            console.error(`Failed to fetch organization members: ${orgMembersResponse.status}`);
-          }
+          // Combine configured recipients with org members (remove duplicates)
+          const uniqueRecipients = [...new Set([...recipients, ...orgEmails])];
+          recipients.length = 0;
+          recipients.push(...uniqueRecipients);
         } catch (err) {
           console.error('Error fetching organization members:', err);
           // Fall back to configured recipients only
@@ -277,6 +258,14 @@ export class NotificationService {
 
       if (recipients.length === 0) {
         console.warn('No email recipients found for alert, skipping email');
+        // Mark as skipped in database so we know it was processed
+        await supabase
+          .from('notification_alerts')
+          .update({
+            email_sent: false,
+            scheduled_for: null,
+          })
+          .eq('id', alert.id);
         return;
       }
 
@@ -354,6 +343,38 @@ export class NotificationService {
       .eq('id', alertId);
 
     if (error) throw error;
+  }
+
+  // Fetch organization members using Clerk SDK directly
+  private async getOrganizationMembers(orgId: string): Promise<string[]> {
+    try {
+      // Handle legacy ExampleClient org
+      if (orgId === 'org_REDACTED') {
+        return ['louis@mediar.ai', 'matt@mediar.ai'];
+      }
+
+      const clerk = await clerkClient();
+
+      const memberships = await clerk.organizations.getOrganizationMembershipList({
+        organizationId: orgId,
+        limit: 100,
+      });
+
+      const emails = memberships?.data?.map(membership =>
+        membership.publicUserData?.identifier
+      ).filter(Boolean) as string[] || [];
+
+      console.log(`Fetched ${emails.length} members from org ${orgId}: ${emails.join(', ')}`);
+      return emails;
+    } catch (error: any) {
+      console.error(`Error fetching members for org ${orgId}:`, error);
+      if (error?.status === 404) {
+        console.warn(`Organization ${orgId} not found in Clerk`);
+        return [];
+      }
+      // Return empty array on error to continue with other orgs
+      return [];
+    }
   }
 
   // Check conditions and trigger alerts if needed

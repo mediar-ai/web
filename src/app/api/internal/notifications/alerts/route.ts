@@ -2,8 +2,37 @@ import { NextRequest, NextResponse } from 'next/server';
 import { NotificationService } from '@/lib/notification-service';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
+import { clerkClient } from '@clerk/nextjs/server';
 
 const notificationService = NotificationService.getInstance();
+
+// Helper function to fetch organization members using Clerk SDK
+async function getOrganizationMembers(orgId: string): Promise<string[]> {
+  try {
+    // Handle legacy ExampleClient org
+    if (orgId === 'org_REDACTED') {
+      return ['louis@mediar.ai', 'matt@mediar.ai'];
+    }
+
+    const clerk = await clerkClient();
+    const memberships = await clerk.organizations.getOrganizationMembershipList({
+      organizationId: orgId,
+      limit: 100,
+    });
+
+    const emails = memberships?.data?.map(membership =>
+      membership.publicUserData?.identifier
+    ).filter(Boolean) as string[] || [];
+
+    return emails;
+  } catch (error: any) {
+    console.error(`Error fetching members for org ${orgId}:`, error);
+    if (error?.status === 404) {
+      console.warn(`Organization ${orgId} not found in Clerk`);
+    }
+    return [];
+  }
+}
 
 // GET alerts with optional filters and org-based access control
 // - @mediar.ai admins: returns ALL alerts
@@ -108,15 +137,8 @@ export async function GET(request: NextRequest) {
             // Fetch org members if we have a target org
             if (targetOrgId) {
               try {
-                const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
-                  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.mediar.ai');
-
-                const orgMembersResponse = await fetch(`${baseUrl}/api/organization-members?orgId=${targetOrgId}`);
-                if (orgMembersResponse.ok) {
-                  const orgMembersData = await orgMembersResponse.json();
-                  const orgEmails = orgMembersData.members?.map((m: any) => m.email).filter(Boolean) || [];
-                  recipients.push(...orgEmails);
-                }
+                const orgEmails = await getOrganizationMembers(targetOrgId);
+                recipients.push(...orgEmails);
               } catch (err) {
                 console.error(`Error fetching organization members for alert ${alert.id}:`, err);
               }
