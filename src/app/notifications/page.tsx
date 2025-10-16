@@ -108,6 +108,7 @@ export default function NotificationsPage() {
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [orgMembers, setOrgMembers] = useState<string[]>([]);
   const [loadingOrgMembers, setLoadingOrgMembers] = useState(false);
+  const [originalConfig, setOriginalConfig] = useState<NotificationConfig | null>(null);
 
   // Check if user is Mediar admin
   const isMediarAdmin = user?.emailAddresses?.some(
@@ -247,7 +248,7 @@ export default function NotificationsPage() {
   };
 
   const handleCreateConfig = () => {
-    setSelectedConfig({
+    const newConfig = {
       name: 'Workflow Error Alerts',
       enabled: true,
       email_enabled: true,
@@ -256,17 +257,14 @@ export default function NotificationsPage() {
       condition_value: {},
       cooldown_minutes: 5,
       max_alerts_per_hour: 20,
-    });
+    };
+    setSelectedConfig(newConfig);
+    setOriginalConfig(JSON.parse(JSON.stringify(newConfig)));
     setIsCreating(true);
   };
 
   const handleSaveConfig = async () => {
     if (!selectedConfig) return;
-
-    if (selectedConfig.email_recipients.length === 0) {
-      setEmailError('Add at least one email address');
-      return;
-    }
 
     setIsSaving(true);
     try {
@@ -295,7 +293,11 @@ export default function NotificationsPage() {
         if (isCreating) {
           const data = await response.json();
           setSelectedConfig(data.config);
+          setOriginalConfig(JSON.parse(JSON.stringify(data.config)));
           setIsCreating(false);
+        } else {
+          // Update original config after successful save
+          setOriginalConfig(JSON.parse(JSON.stringify(selectedConfig)));
         }
       } else {
         setToast({ message: 'Failed to save alert rule', type: 'error' });
@@ -526,6 +528,7 @@ export default function NotificationsPage() {
                         }`}
                         onClick={() => {
                           setSelectedConfig(config);
+                          setOriginalConfig(JSON.parse(JSON.stringify(config)));
                           setIsCreating(false);
                           setEmailError('');
                         }}
@@ -699,7 +702,12 @@ export default function NotificationsPage() {
                   <Button
                     onClick={handleSaveConfig}
                     className="flex-1 bg-black text-white hover:bg-gray-800 font-mono"
-                    disabled={selectedConfig.email_recipients.length === 0 || isSaving}
+                    disabled={
+                      isSaving ||
+                      (!isCreating && originalConfig &&
+                        JSON.stringify(selectedConfig.email_recipients.sort()) ===
+                        JSON.stringify(originalConfig.email_recipients.sort()))
+                    }
                   >
                     {isSaving ? 'SAVING...' : 'SAVE'}
                   </Button>
@@ -708,7 +716,7 @@ export default function NotificationsPage() {
                     onClick={sendTestEmail}
                     variant="outline"
                     className="border-2 border-black hover:bg-gray-100 font-mono"
-                    disabled={selectedConfig.email_recipients.length === 0 || testLoading}
+                    disabled={(selectedConfig.email_recipients.length === 0 && orgMembers.length === 0) || testLoading}
                   >
                     {testLoading ? '...' : 'TEST'}
                   </Button>
