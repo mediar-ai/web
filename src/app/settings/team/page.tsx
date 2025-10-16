@@ -11,6 +11,7 @@ export default function TeamPage() {
   const { userId } = useAuth();
   const { organization: _organization, membership } = useOrganization();
   const isOwner = membership?.role === 'org:owner';
+  const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
 
   return (
     <DashboardLayout>
@@ -28,11 +29,11 @@ export default function TeamPage() {
         />
 
         {/* Team Management Section */}
-        {isOwner ? (
-          <RoleManagementSection isOwner={isOwner} currentUserId={userId || undefined} />
+        {isAdmin ? (
+          <RoleManagementSection isOwner={isOwner} isAdmin={isAdmin} currentUserId={userId || undefined} />
         ) : (
           <div className="border-2 border-black bg-gray-50 p-6">
-            <p className="font-mono">You need owner permissions to manage team members.</p>
+            <p className="font-mono">You need admin or owner permissions to manage team members.</p>
           </div>
         )}
       </div>
