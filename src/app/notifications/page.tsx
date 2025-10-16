@@ -496,7 +496,7 @@ export default function NotificationsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Configurations List */}
             <div>
-            <Card className="border-2 border-black h-[500px] flex flex-col">
+            <Card className="border-2 border-black">
               <CardHeader className="border-b-2 border-black bg-gray-50 py-5 px-6">
                 <div className="flex justify-between items-center">
                   <CardTitle className="text-2xl font-mono uppercase tracking-wider">Rules</CardTitle>
@@ -509,9 +509,9 @@ export default function NotificationsPage() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="p-0 flex-1 overflow-y-auto">
+              <CardContent className="p-0">
                 {configs.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center px-8">
+                  <div className="flex flex-col items-center justify-center text-center px-8 py-12">
                     <AlertCircle className="w-20 h-20 mb-6 text-gray-300" />
                     <p className="font-mono font-bold text-xl text-black mb-3 uppercase tracking-wide">No Rules</p>
                     <p className="text-base text-gray-500 max-w-xs">Create one to get started</p>
@@ -565,13 +565,13 @@ export default function NotificationsPage() {
 
           {/* Configuration Editor */}
           {selectedConfig && (
-            <Card className="border-2 border-black h-[500px] flex flex-col">
+            <Card className="border-2 border-black">
               <CardHeader className="border-b-2 border-black bg-gray-50 py-5 px-6">
                 <CardTitle className="text-2xl font-mono uppercase tracking-wider">
                   {isCreating ? 'Create Rule' : 'Edit Rule'}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-6 space-y-6 flex-1 overflow-y-auto">
+              <CardContent className="p-6 space-y-6">
                 {/* Name */}
                 <div>
                   <Label className="text-black font-mono font-bold">NAME</Label>

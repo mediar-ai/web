@@ -3,12 +3,31 @@ import { NotificationService } from '@/lib/notification-service';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
 import { clerkClient } from '@clerk/nextjs/server';
+import { createClient } from '@supabase/supabase-js';
 
 const notificationService = NotificationService.getInstance();
+
+// Create service role client to bypass RLS for workflow_executions queries
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error('Missing Supabase URL or Service Role Key');
+}
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+// Cache for non-existent orgs to avoid repeated 404 errors
+const nonExistentOrgs = new Set<string>();
 
 // Helper function to fetch organization members using Clerk SDK
 async function getOrganizationMembers(orgId: string): Promise<string[]> {
   try {
+    // Skip if we know this org doesn't exist
+    if (nonExistentOrgs.has(orgId)) {
+      return [];
+    }
+
     // Handle legacy ExampleClient org
     if (orgId === 'org_REDACTED') {
       return ['louis@mediar.ai', 'matt@mediar.ai'];
@@ -26,10 +45,11 @@ async function getOrganizationMembers(orgId: string): Promise<string[]> {
 
     return emails;
   } catch (error: any) {
-    console.error(`Error fetching members for org ${orgId}:`, error);
     if (error?.status === 404) {
-      console.warn(`Organization ${orgId} not found in Clerk`);
+      // Cache this org ID to prevent future lookups
+      nonExistentOrgs.add(orgId);
     }
+    // Silently return empty array - no need to log these errors
     return [];
   }
 }
@@ -103,7 +123,8 @@ export async function GET(request: NextRequest) {
         }
 
         if (alert.execution_id) {
-          const { data: execution } = await supabase
+          // Use service role client to bypass RLS for workflow_executions
+          const { data: execution } = await supabaseAdmin
             .from('workflow_executions')
             .select('status')
             .eq('id', alert.execution_id)
