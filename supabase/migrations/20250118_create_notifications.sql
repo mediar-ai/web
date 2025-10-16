@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS notification_configs (
   condition_value JSONB, -- Stores condition-specific configuration
 
   -- Notification settings
-  cooldown_minutes INTEGER DEFAULT 15, -- Minimum time between notifications
-  max_alerts_per_hour INTEGER DEFAULT 10,
+  cooldown_minutes INTEGER DEFAULT 1, -- Minimum time between notifications
+  max_alerts_per_hour INTEGER DEFAULT 60,
 
   -- Metadata
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

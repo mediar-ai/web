@@ -267,7 +267,16 @@ export function ExecutionDetailsDialog({
       }
 
       if (!resultsToDownload) {
-        alert('No execution data available for download. The execution may not have completed or results were not stored.');
+        console.error('No execution data available for download', {
+          execution_id: execution.execution_id,
+          status: execution.status,
+          has_results: !!execution.results,
+          has_rawMcpResponse: !!rawMcpResponse,
+          has_executionResults: !!executionResults
+        });
+        toast.error('No execution data available for download', {
+          description: 'The execution may not have completed or results were not stored.'
+        });
         return;
       }
 
@@ -308,6 +317,18 @@ export function ExecutionDetailsDialog({
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+
+      toast.success('Download started', {
+        description: `Downloading ${filename}`
+      });
+    } catch (error) {
+      console.error('Error downloading execution logs:', error, {
+        execution_id: execution?.execution_id,
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      });
+      toast.error('Failed to download execution logs', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred'
+      });
     } finally {
       setIsDownloadingLogs(false);
     }
@@ -326,6 +347,15 @@ export function ExecutionDetailsDialog({
 
       const resultsToDownload = executionResults || execution.results;
       if (!resultsToDownload) {
+        console.error('No results data available for download', {
+          execution_id: execution.execution_id,
+          status: execution.status,
+          has_results: !!execution.results,
+          has_executionResults: !!executionResults
+        });
+        toast.error('No results data available for download', {
+          description: 'The execution may not have completed or results were not stored.'
+        });
         return;
       }
 
@@ -365,6 +395,18 @@ export function ExecutionDetailsDialog({
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+
+      toast.success('Download started', {
+        description: `Downloading ${filename}`
+      });
+    } catch (error) {
+      console.error('Error downloading results:', error, {
+        execution_id: execution?.execution_id,
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      });
+      toast.error('Failed to download results', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred'
+      });
     } finally {
       setIsDownloadingResults(false);
     }

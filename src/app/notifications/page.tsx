@@ -265,8 +265,8 @@ export default function NotificationsPage() {
       email_recipients: [],
       condition_type: 'error',
       condition_value: {},
-      cooldown_minutes: 5,
-      max_alerts_per_hour: 20,
+      cooldown_minutes: 1,
+      max_alerts_per_hour: 60,
     };
     setSelectedConfig(newConfig);
     setOriginalConfig(JSON.parse(JSON.stringify(newConfig)));
@@ -286,8 +286,8 @@ export default function NotificationsPage() {
         ...selectedConfig,
         condition_type: 'error',
         email_enabled: true,
-        cooldown_minutes: 5,
-        max_alerts_per_hour: 20,
+        cooldown_minutes: 1,
+        max_alerts_per_hour: 60,
       };
 
       const response = await fetch(url, {
