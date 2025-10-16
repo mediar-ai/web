@@ -109,27 +109,58 @@ export default function NotificationsPage() {
   const [orgMembers, setOrgMembers] = useState<string[]>([]);
   const [loadingOrgMembers, setLoadingOrgMembers] = useState(false);
 
-  // All authenticated users can access alerts for their organization
-  const _userEmail = user?.emailAddresses?.[0]?.emailAddress ||
-                   user?.primaryEmailAddress?.emailAddress || '';
+  // Check if user is Mediar admin
+  const isMediarAdmin = user?.emailAddresses?.some(
+    email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+  ) || false;
 
   useEffect(() => {
     if (userId && orgId) {
       fetchConfigs();
       fetchAlerts();
-      fetchOrgMembers();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, orgId]);
 
-  const fetchOrgMembers = async () => {
+  // Fetch org members when selected config changes
+  useEffect(() => {
+    if (selectedConfig) {
+      fetchOrgMembersForConfig(selectedConfig);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConfig?.id, selectedConfig?.organization_id]);
+
+  const fetchOrgMembersForConfig = async (config: NotificationConfig) => {
     if (!orgId) return;
     setLoadingOrgMembers(true);
     try {
-      const response = await fetch(`/api/organization-members?orgId=${orgId}`);
+      let url = '';
+
+      // Determine which endpoint to use based on config and user
+      if (config.organization_id === null) {
+        // Global rule
+        if (isMediarAdmin) {
+          // Mediar admin viewing global rule: fetch from ALL orgs
+          url = '/api/organization-members?allOrgs=true';
+          console.log('[UI] Fetching members from ALL organizations for global rule (Mediar admin)');
+        } else {
+          // Regular user viewing global rule: fetch from their org only
+          url = `/api/organization-members?orgId=${orgId}`;
+          console.log('[UI] Fetching members from current org for global rule (regular user)');
+        }
+      } else {
+        // Org-specific rule: fetch from that org
+        url = `/api/organization-members?orgId=${config.organization_id}`;
+        console.log(`[UI] Fetching members from specific org: ${config.organization_id}`);
+      }
+
+      const response = await fetch(url);
       const data = await response.json();
+
       if (data.success && data.members) {
-        setOrgMembers(data.members);
+        // Extract just the emails for display
+        const emails = data.members.map((m: any) => m.email).filter(Boolean);
+        setOrgMembers(emails);
+        console.log(`[UI] Loaded ${emails.length} organization members`);
       }
     } catch (error) {
       console.error('Failed to fetch org members:', error);
@@ -631,13 +662,20 @@ export default function NotificationsPage() {
                   </div>
 
                   {/* Organization Members (auto-included) */}
-                  {orgMembers.length > 0 && (
+                  {(orgMembers.length > 0 || loadingOrgMembers) && (
                     <div className="mt-4 p-3 bg-gray-50 border-2 border-gray-200">
                       <p className="text-xs text-gray-600 font-mono uppercase mb-2">
                         + Organization Members (Auto-included)
+                        {selectedConfig.organization_id === null && isMediarAdmin && (
+                          <span className="ml-2 text-xs font-normal normal-case text-gray-500">
+                            • From all organizations
+                          </span>
+                        )}
                       </p>
                       {loadingOrgMembers ? (
                         <p className="text-sm text-gray-500 font-mono">Loading...</p>
+                      ) : orgMembers.length === 0 ? (
+                        <p className="text-sm text-gray-500 font-mono">No organization members found</p>
                       ) : (
                         <div className="space-y-1">
                           {orgMembers.map((email, index) => (
@@ -647,9 +685,11 @@ export default function NotificationsPage() {
                           ))}
                         </div>
                       )}
-                      <p className="text-xs text-gray-500 font-mono mt-2">
-                        Total recipients: {selectedConfig.email_recipients.length + orgMembers.length}
-                      </p>
+                      {orgMembers.length > 0 && (
+                        <p className="text-xs text-gray-500 font-mono mt-2">
+                          Total recipients: {selectedConfig.email_recipients.length + orgMembers.length}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
