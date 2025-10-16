@@ -28,7 +28,9 @@ import {
     Trash2,
     User,
     Users,
-    UserPlus
+    UserPlus,
+    Mail,
+    XCircle
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -41,6 +43,14 @@ interface OrganizationUser {
   joinedAt: string;
 }
 
+interface OrganizationInvitation {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  createdAt: number;
+}
+
 interface RoleManagementSectionProps {
   isOwner: boolean;
   isAdmin: boolean;
@@ -49,9 +59,11 @@ interface RoleManagementSectionProps {
 
 export default function RoleManagementSection({ isOwner, isAdmin, currentUserId }: RoleManagementSectionProps) {
   const [orgUsers, setOrgUsers] = useState<OrganizationUser[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<OrganizationInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processingUsers, setProcessingUsers] = useState<Set<string>>(new Set());
+  const [processingInvitations, setProcessingInvitations] = useState<Set<string>>(new Set());
 
   // Invite state
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -72,15 +84,20 @@ export default function RoleManagementSection({ isOwner, isAdmin, currentUserId 
         throw new Error('No organization selected');
       }
 
-      const response = await fetch(`/api/organization-members?orgId=${organization.id}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch organization members: ${response.statusText}`);
+      // Fetch both members and invitations in parallel
+      const [membersResponse, invitationsResponse] = await Promise.all([
+        fetch(`/api/organization-members?orgId=${organization.id}`),
+        fetch(`/api/organization-invitations?orgId=${organization.id}`)
+      ]);
+
+      if (!membersResponse.ok) {
+        throw new Error(`Failed to fetch organization members: ${membersResponse.statusText}`);
       }
 
-      const data = await response.json();
+      const membersData = await membersResponse.json();
 
       // Map the API response to our interface
-      const users = (data.members || []).map((member: any) => ({
+      const users = (membersData.members || []).map((member: any) => ({
         userId: member.userId,
         email: member.email,
         firstName: member.firstName,
@@ -90,10 +107,20 @@ export default function RoleManagementSection({ isOwner, isAdmin, currentUserId 
       }));
 
       setOrgUsers(users);
+
+      // Fetch invitations (don't fail if this errors)
+      if (invitationsResponse.ok) {
+        const invitationsData = await invitationsResponse.json();
+        setPendingInvitations(invitationsData.invitations || []);
+      } else {
+        console.warn('Failed to fetch invitations, continuing without them');
+        setPendingInvitations([]);
+      }
     } catch (err) {
       console.error('Error fetching organization members:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch organization members');
       setOrgUsers([]);
+      setPendingInvitations([]);
     } finally {
       setLoading(false);
     }
@@ -176,18 +203,18 @@ export default function RoleManagementSection({ isOwner, isAdmin, currentUserId 
     if (!confirm('Are you sure you want to remove this user from the organization?')) {
       return;
     }
-    
+
     setProcessingUsers(prev => new Set(prev).add(userId));
-    
+
     try {
       const response = await fetch(`/api/users/${userId}/organization`, {
         method: 'DELETE'
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to remove user: ${response.statusText}`);
       }
-      
+
       // Remove from local state
       setOrgUsers(prev => prev.filter(user => user.userId !== userId));
     } catch (err) {
@@ -197,6 +224,39 @@ export default function RoleManagementSection({ isOwner, isAdmin, currentUserId 
       setProcessingUsers(prev => {
         const newSet = new Set(prev);
         newSet.delete(userId);
+        return newSet;
+      });
+    }
+  };
+
+  // Revoke invitation
+  const revokeInvitation = async (invitationId: string, email: string) => {
+    if (!confirm(`Are you sure you want to revoke the invitation for ${email}?`)) {
+      return;
+    }
+
+    setProcessingInvitations(prev => new Set(prev).add(invitationId));
+
+    try {
+      const response = await fetch('/api/organization-invitations', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invitationId })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to revoke invitation: ${response.statusText}`);
+      }
+
+      // Remove from local state
+      setPendingInvitations(prev => prev.filter(invite => invite.id !== invitationId));
+    } catch (err) {
+      console.error('Error revoking invitation:', err);
+      setError(err instanceof Error ? err.message : 'Failed to revoke invitation');
+    } finally {
+      setProcessingInvitations(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(invitationId);
         return newSet;
       });
     }
@@ -367,6 +427,64 @@ export default function RoleManagementSection({ isOwner, isAdmin, currentUserId 
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Pending Invitations Section */}
+        {!loading && pendingInvitations.length > 0 && (
+          <div className="mt-8 pt-6 border-t-2 border-black">
+            <h3 className="font-mono font-bold text-sm uppercase mb-4 flex items-center gap-2">
+              <Mail className="w-4 h-4" />
+              Pending Invitations ({pendingInvitations.length})
+            </h3>
+            <div className="space-y-3">
+              {pendingInvitations.map((invitation) => (
+                <div
+                  key={invitation.id}
+                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                      <Mail className="w-4 h-4 text-yellow-800" />
+                    </div>
+                    <div>
+                      <div className="font-medium text-black">{invitation.email}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border border-yellow-300">
+                          PENDING
+                        </Badge>
+                        <Badge variant="outline" className={getRoleBadgeColor(invitation.role)}>
+                          {invitation.role.replace('org:', '').toUpperCase()}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {new Date(invitation.createdAt).toLocaleDateString()}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Revoke Button - Only owners can revoke */}
+                  {isOwner && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => revokeInvitation(invitation.id, invitation.email)}
+                      disabled={processingInvitations.has(invitation.id)}
+                      className="border-red-200 text-red-700 hover:bg-red-50"
+                    >
+                      {processingInvitations.has(invitation.id) ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <XCircle className="w-4 h-4 mr-1" />
+                          REVOKE
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </CardContent>
