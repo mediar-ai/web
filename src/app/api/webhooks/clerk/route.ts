@@ -130,6 +130,37 @@ export async function POST(req: Request) {
 
         console.log(`[Clerk Webhook] ✓ Added ${primaryEmail} as owner of personal workspace`);
 
+        // Insert user into mediar_users table
+        const userName = [first_name, last_name].filter(Boolean).join(' ') || primaryEmail;
+        const { error: userInsertError } = await supabase
+          .from('mediar_users')
+          .upsert({
+            user_id: userId,
+            name: userName,
+            organization_id: personalOrg.id
+          }, { onConflict: 'user_id' });
+
+        if (userInsertError) {
+          console.error(`[Clerk Webhook] ✗ Failed to insert user into mediar_users:`, userInsertError);
+        } else {
+          console.log(`[Clerk Webhook] ✓ Inserted user into mediar_users table`);
+        }
+
+        // Insert organization into organization_data_access table
+        const { error: orgInsertError } = await supabase
+          .from('organization_data_access')
+          .upsert({
+            clerk_organization_id: personalOrg.id,
+            organization_name: workspaceName,
+            data_access_scope: 'personal'
+          }, { onConflict: 'clerk_organization_id' });
+
+        if (orgInsertError) {
+          console.error(`[Clerk Webhook] ✗ Failed to insert org into organization_data_access:`, orgInsertError);
+        } else {
+          console.log(`[Clerk Webhook] ✓ Inserted organization into organization_data_access table`);
+        }
+
         // Track personal workspace creation in PostHog
         posthog.capture({
           distinctId: userId,
