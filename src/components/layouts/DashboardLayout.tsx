@@ -15,10 +15,26 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   // Auto-set the first organization if user has no active org
   useEffect(() => {
+    console.log('[DashboardLayout] Auto-selection check:', {
+      isLoaded,
+      orgId,
+      membershipCount: userMemberships?.data?.length,
+      hasSetActive: !!setActive
+    });
+
     if (isLoaded && !orgId && userMemberships?.data && userMemberships.data.length > 0) {
       const firstOrg = userMemberships.data[0];
       console.log(`[DashboardLayout] Auto-setting first organization: ${firstOrg.organization.name} (${firstOrg.organization.id})`);
-      setActive?.({ organization: firstOrg.organization.id });
+
+      setActive?.({ organization: firstOrg.organization.id })
+        .then(() => {
+          console.log('[DashboardLayout] Organization set successfully');
+        })
+        .catch((error) => {
+          console.error('[DashboardLayout] Failed to set organization:', error);
+        });
+    } else if (isLoaded && !orgId) {
+      console.warn('[DashboardLayout] No organization to auto-select - user may have no memberships');
     }
   }, [isLoaded, orgId, userMemberships, setActive]);
 
