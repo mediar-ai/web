@@ -1407,6 +1407,10 @@ async def execute_mcp_workflow(
     import httpx
     # File manager removed - files are now accessed via rclone mount
 
+    # Initialize screenshot variables at function top to prevent NameError
+    screenshots = []  # Base64 screenshots from MCP response
+    screenshot_urls = []  # URLs from Supabase Storage (populated during upload)
+
     logger.info(" Attempting to connect to MCP endpoint: %s", mcp_endpoint)
 
     # Check if workflow requires external files
@@ -1539,21 +1543,21 @@ async def execute_mcp_workflow(
             arguments["execute_jumps_at_end"] = execute_jumps_at_end
             logger.info(f" Partial execution: execute_jumps_at_end={execute_jumps_at_end}")
 
-        # NEW: Enable screenshot capture for all MCP tool calls
-        # This will add include_monitor_screenshots: true to every step's arguments
-        logger.info(" Enabling screenshot capture for workflow execution")
+        # Screenshot capture disabled for all MCP tool calls
+        # This will add include_monitor_screenshots: false to every step's arguments
+        logger.info(" Disabling screenshot capture for workflow execution")
         if "steps" in arguments:
             for step in arguments["steps"]:
                 if "arguments" not in step:
                     step["arguments"] = {}
-                step["arguments"]["include_monitor_screenshots"] = True
+                step["arguments"]["include_monitor_screenshots"] = False
 
-        # Also enable for troubleshooting steps if they exist
+        # Also disable for troubleshooting steps if they exist
         if "troubleshooting" in arguments:
             for step in arguments["troubleshooting"]:
                 if "arguments" not in step:
                     step["arguments"] = {}
-                step["arguments"]["include_monitor_screenshots"] = True
+                step["arguments"]["include_monitor_screenshots"] = False
 
         # The entire `arguments` object, containing the `variables` schema, the final `inputs`,
         # and the `items`, is sent to MCP. The template engine inside MCP will know
@@ -1870,7 +1874,7 @@ async def execute_mcp_workflow(
 
                 # Extract the actual content from the MCP response
                 mcp_content = None
-                screenshots = []  # NEW: Collect base64 screenshots from MCP response
+                # NOTE: screenshots and screenshot_urls initialized at function top
                 if isinstance(result_data, dict) and "result" in result_data:
                     result_content = result_data.get("result", {}).get("content", [])
                     if result_content and isinstance(result_content, list):
@@ -1897,7 +1901,6 @@ async def execute_mcp_workflow(
                                     logger.info(f" Captured screenshot {len(screenshots)} from MCP response")
 
                 # Log screenshot collection summary and upload to S3
-                screenshot_urls = []
                 if screenshots:
                     logger.info(f" Total screenshots captured: {len(screenshots)}")
 
@@ -2193,6 +2196,10 @@ def execute_workflow(
     start_time = time.time()
     conn = None
     cur = None
+
+    # Initialize screenshot variables at function top to prevent NameError
+    screenshot_urls = []  # URLs from Supabase Storage
+    screenshots = []      # Base64 screenshots from MCP response (fallback)
 
     try:
         # Initialize database connection
