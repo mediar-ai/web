@@ -106,6 +106,8 @@ export default function NotificationsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [alertTableRows, setAlertTableRows] = useState<AlertTableRow[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
+  const [orgMembers, setOrgMembers] = useState<string[]>([]);
+  const [loadingOrgMembers, setLoadingOrgMembers] = useState(false);
 
   // All authenticated users can access alerts for their organization
   const _userEmail = user?.emailAddresses?.[0]?.emailAddress ||
@@ -115,8 +117,26 @@ export default function NotificationsPage() {
     if (userId && orgId) {
       fetchConfigs();
       fetchAlerts();
+      fetchOrgMembers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, orgId]);
+
+  const fetchOrgMembers = async () => {
+    if (!orgId) return;
+    setLoadingOrgMembers(true);
+    try {
+      const response = await fetch(`/api/organization-members?orgId=${orgId}`);
+      const data = await response.json();
+      if (data.success && data.members) {
+        setOrgMembers(data.members);
+      }
+    } catch (error) {
+      console.error('Failed to fetch org members:', error);
+    } finally {
+      setLoadingOrgMembers(false);
+    }
+  };
 
   const fetchConfigs = async () => {
     try {
@@ -588,8 +608,9 @@ export default function NotificationsPage() {
                     <p className="text-red-500 text-sm mt-1 font-mono">{emailError}</p>
                   )}
 
-                  {/* Email List */}
+                  {/* Configured Email List */}
                   <div className="mt-3 space-y-2">
+                    <p className="text-xs text-gray-600 font-mono uppercase mb-2">Configured Recipients</p>
                     {selectedConfig.email_recipients.length === 0 ? (
                       <p className="text-sm text-gray-500 py-3 font-mono">NO EMAILS ADDED</p>
                     ) : (
@@ -608,6 +629,29 @@ export default function NotificationsPage() {
                       ))
                     )}
                   </div>
+
+                  {/* Organization Members (auto-included) */}
+                  {orgMembers.length > 0 && (
+                    <div className="mt-4 p-3 bg-gray-50 border-2 border-gray-200">
+                      <p className="text-xs text-gray-600 font-mono uppercase mb-2">
+                        + Organization Members (Auto-included)
+                      </p>
+                      {loadingOrgMembers ? (
+                        <p className="text-sm text-gray-500 font-mono">Loading...</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {orgMembers.map((email, index) => (
+                            <div key={index} className="flex items-center gap-2 p-1">
+                              <span className="font-mono text-xs text-gray-700">{email}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-500 font-mono mt-2">
+                        Total recipients: {selectedConfig.email_recipients.length + orgMembers.length}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Action Buttons */}
