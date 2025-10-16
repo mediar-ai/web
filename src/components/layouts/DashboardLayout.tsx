@@ -20,14 +20,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   // Auto-set the first organization if user has no active org
   useEffect(() => {
-    console.log('[DashboardLayout] Auto-selection check:', {
-      isLoaded,
-      orgId,
-      membershipCount: userMemberships?.data?.length,
-      hasSetActive: !!setActive,
-      userId
-    });
-
     if (isLoaded && !orgId && userMemberships?.data && userMemberships.data.length > 0) {
       const firstOrg = userMemberships.data[0];
       console.log(`[DashboardLayout] Auto-setting first organization: ${firstOrg.organization.name} (${firstOrg.organization.id})`);
