@@ -16,6 +16,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { messages, executionId } = body;
 
+    console.log('[Q&A API] Loading context for execution:', executionId);
+
     // Use existing environment variables
     const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_VERTEX_PROJECT || process.env.GOOGLE_PROJECT_ID || 'mediar-394022';
     const location = process.env.VERTEX_AI_LOCATION || process.env.GOOGLE_VERTEX_LOCATION || 'us-central1';
@@ -53,12 +55,27 @@ export async function POST(request: Request) {
       } : undefined
     });
 
-    // Fetch execution data from database
-    const { data: execution, error } = await supabase
-      .from('workflow_executions')
-      .select('*')
-      .eq('id', executionId)
-      .single();
+    // Fetch execution data and Terminator docs in parallel
+    console.log('[Q&A API] ⏳ Fetching execution data and Terminator documentation...');
+    const fetchStartTime = Date.now();
+
+    const [executionResult, terminatorDocsResult] = await Promise.all([
+      supabase
+        .from('workflow_executions')
+        .select('*')
+        .eq('id', executionId)
+        .single(),
+      fetch('https://raw.githubusercontent.com/mediar-ai/terminator/main/terminator-mcp-agent/src/prompt.rs')
+        .then(res => res.ok ? res.text() : null)
+        .catch(() => null)
+    ]);
+
+    const fetchDuration = Date.now() - fetchStartTime;
+    const { data: execution, error } = executionResult;
+    const terminatorDocs = terminatorDocsResult;
+
+    console.log(`[Q&A API] ✓ Fetched execution data in ${fetchDuration}ms`);
+    console.log(`[Q&A API] ${terminatorDocs ? '✓' : '✗'} Terminator documentation ${terminatorDocs ? 'loaded' : 'failed to load'}`);
 
     if (error || !execution) {
       return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
@@ -70,6 +87,14 @@ export async function POST(request: Request) {
     // Get basic summary
     const stepCount = executionData?.results?.length || 0;
     const summary = executionData ? queryTools.getExecutionSummary(executionData) : 'No detailed execution data available';
+
+    console.log(`[Q&A API] 📊 Parsed execution data: ${stepCount} steps, ${execution.status} status`);
+    if (execution.execution_logs) {
+      console.log(`[Q&A API] 📋 Orchestrator logs: ${execution.execution_logs.length} entries`);
+    }
+    if (execution.screenshots) {
+      console.log(`[Q&A API] 📸 Screenshots: ${execution.screenshots.length} available`);
+    }
 
     // Build context with tool usage instructions
     const context = `You are an AI assistant analyzing workflow execution #${execution.id}.
@@ -83,7 +108,7 @@ ${execution.error_message ? `- Error: ${execution.error_message}` : ''}
 
 ${summary}
 
-IMPORTANT: You have access to tools to query the complete execution data:
+You have access to tools to query the complete execution data:
 
 1. searchLogs - Search for patterns in all execution logs
 2. getStepDetails - Get complete details for a specific step
@@ -92,17 +117,17 @@ IMPORTANT: You have access to tools to query the complete execution data:
 5. searchInResults - Search in step outputs/results
 6. getTimeline - Get execution timeline
 7. getPerformanceMetrics - Analyze performance
+8. searchTerminatorDocs - Search Terminator desktop automation documentation for tool usage and best practices
+
+${terminatorDocs ? 'TERMINATOR DOCUMENTATION: Available - use searchTerminatorDocs to query desktop automation patterns, error handling, browser scripts, validation, and workflow best practices.' : ''}
 
 When answering questions:
-- Use listSteps() first to understand the workflow structure
-- Use searchLogs() to find specific information
-- Use getStepDetails() to drill into specific steps
-- Use getErrors() when asked about failures
-- Always query the actual data rather than guessing
+- Use tools to query the actual execution data rather than guessing
+- If the user asks about how Terminator tools work or workflow patterns, use searchTerminatorDocs
+- After using tools, provide a clear natural language response explaining what you found
+- Be specific and detailed in your answers based on the data
 
-CRITICAL: After using ANY tool, you MUST provide a natural language response explaining what you found. Never end with just a tool call - always summarize the results in a clear, helpful answer to the user's question.
-
-Be specific and detailed in your answers. If you need more information, use the tools to get it.`;
+Answer the user's question helpfully and thoroughly.`;
 
     // Define tools for the AI
     const tools = {
@@ -230,32 +255,106 @@ Be specific and detailed in your answers. If you need more information, use the 
           if (section === null) return { error: `Path '${path}' not found` };
           return { path, data: section };
         }
+      },
+
+      searchTerminatorDocs: {
+        description: 'Search Terminator desktop automation documentation for tool usage, patterns, best practices, and troubleshooting',
+        inputSchema: z.object({
+          pattern: z.string().describe('Search pattern or topic (e.g., "click_element", "browser script", "validation", "error handling")'),
+          limit: z.number().optional().default(5).describe('Maximum number of matching sections to return')
+        }),
+        execute: async ({ pattern, limit }: { pattern: string; limit: number }) => {
+          if (!terminatorDocs) return { error: 'Terminator documentation not available' };
+
+          const searchPattern = pattern.toLowerCase();
+          const lines = terminatorDocs.split('\n');
+          const matches: { section: string; content: string; lineNumber: number }[] = [];
+
+          let currentSection = 'Introduction';
+          let sectionContent: string[] = [];
+          let sectionStartLine = 0;
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Detect section headers (markdown ## or ###)
+            if (line.startsWith('##')) {
+              // Save previous section if it matches
+              if (sectionContent.join('\n').toLowerCase().includes(searchPattern)) {
+                matches.push({
+                  section: currentSection,
+                  content: sectionContent.join('\n').substring(0, 500), // Limit content length
+                  lineNumber: sectionStartLine
+                });
+                if (matches.length >= limit) break;
+              }
+
+              // Start new section
+              currentSection = line.replace(/^#+\s*/, '');
+              sectionContent = [line];
+              sectionStartLine = i + 1;
+            } else {
+              sectionContent.push(line);
+            }
+          }
+
+          // Check last section
+          if (matches.length < limit && sectionContent.join('\n').toLowerCase().includes(searchPattern)) {
+            matches.push({
+              section: currentSection,
+              content: sectionContent.join('\n').substring(0, 500),
+              lineNumber: sectionStartLine
+            });
+          }
+
+          return {
+            found: matches.length,
+            query: pattern,
+            matches: matches
+          };
+        }
       }
     };
 
-    // Stream the response using Vercel AI SDK with tools
+    // Provide comprehensive execution data in the context
+    const stepsData = executionData ? queryTools.listSteps(executionData) : [];
+    const errorsData = executionData ? queryTools.getErrors(executionData) : [];
+
+    // Parse formatted output if available
+    let formattedOutput = null;
+    if (execution.formatted_output) {
+      try {
+        formattedOutput = typeof execution.formatted_output === 'string'
+          ? JSON.parse(execution.formatted_output)
+          : execution.formatted_output;
+      } catch (e) {
+        formattedOutput = execution.formatted_output;
+      }
+    }
+
+    const enrichedContext = context + `\n\n=== EXECUTION DATA ===\n` +
+      `Steps (${stepsData.length} total):\n${JSON.stringify(stepsData, null, 2)}\n\n` +
+      (errorsData.length > 0 ? `Errors:\n${JSON.stringify(errorsData, null, 2)}\n\n` : '') +
+      (formattedOutput ? `Formatted Output:\n${JSON.stringify(formattedOutput, null, 2)}\n\n` : '') +
+      (execution.error_analysis ? `AI Error Analysis:\n${execution.error_analysis}\n\n` : '') +
+      (execution.execution_params ? `Execution Parameters:\n${JSON.stringify(execution.execution_params, null, 2)}\n\n` : '') +
+      (execution.screenshots && execution.screenshots.length > 0 ? `Screenshots: ${execution.screenshots.length} monitor screenshots available\n\n` : '') +
+      (execution.execution_logs && execution.execution_logs.length > 0 ?
+        `Orchestrator Server Logs (${execution.execution_logs.length} entries):\n${JSON.stringify(execution.execution_logs, null, 2)}\n\n` : '') +
+      `Answer the user's question based on this data. Be specific and helpful.`;
+
     const result = await streamText({
       model: vertex('gemini-2.5-pro'),
       messages: [
-        { role: 'system', content: context },
+        { role: 'system', content: enrichedContext },
         ...messages
       ],
-      tools: tools,
-      toolChoice: 'auto', // Let the model decide when to use tools
-      // @ts-expect-error - maxSteps exists in runtime but not in types for this SDK version
-      maxSteps: 5, // Allow multiple tool calls followed by text response
       temperature: 0.7,
       maxRetries: 3,
-      onChunk: async ({ chunk }) => {
-        // Log when tools are being called
-        if (chunk.type === 'tool-call') {
-          console.log(`[AI Tool Call] ${chunk.toolName}`);
-        }
-      }
     });
 
-    // Return the stream with data stream protocol (supports tool calls)
-    return result.toTextStreamResponse();
+    // Return the stream
+    return result.toUIMessageStreamResponse();
   } catch (error) {
     console.error('Error in execution Q&A:', error);
     return NextResponse.json(
