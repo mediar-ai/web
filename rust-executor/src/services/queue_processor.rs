@@ -107,7 +107,8 @@ impl QueueProcessor {
 
             // Execute workflow
             let mcp_client = McpClient::from_url(mcp_endpoint);
-            let executor = WorkflowExecutor::new(mcp_client, sequence, execution.id);
+            // TODO: Get organization_id from workflow when available
+            let executor = WorkflowExecutor::new(mcp_client, sequence, execution.id, None);
             let result = executor.execute().await;
 
             // Update execution status based on result

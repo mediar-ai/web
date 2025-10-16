@@ -129,8 +129,14 @@ fi
 DATABASE_URL="${DATABASE_URL:-postgresql://localhost/workflow_executor}"
 MCP_ENDPOINT="${MCP_ENDPOINT:-http://localhost:3000}"
 RUST_LOG="${RUST_LOG:-workflow_executor=info,tower_http=info}"
+SUPABASE_URL="${SUPABASE_URL:-}"
+SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-}"
 
 echo "✅ Environment configured"
+echo "   DATABASE_URL: ${DATABASE_URL%%@*}@***"
+echo "   MCP_ENDPOINT: $MCP_ENDPOINT"
+echo "   SUPABASE_URL: ${SUPABASE_URL:-not set}"
+echo "   SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:+***set***}"
 echo ""
 
 # ==============================================================================
@@ -154,6 +160,26 @@ if az container show --name "$CONTAINER_NAME" --resource-group "$RESOURCE_GROUP"
 fi
 
 echo "🚢 Deploying new container..."
+
+# Build environment variables array
+ENV_VARS=(
+    "PORT=$PORT"
+    "RUST_LOG=$RUST_LOG"
+    "DATABASE_URL=$DATABASE_URL"
+    "MCP_ENDPOINT=$MCP_ENDPOINT"
+)
+
+# Add Supabase credentials if available
+if [ -n "$SUPABASE_URL" ]; then
+    ENV_VARS+=("SUPABASE_URL=$SUPABASE_URL")
+    echo "   ✅ Including SUPABASE_URL in deployment"
+fi
+
+if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+    ENV_VARS+=("SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY")
+    echo "   ✅ Including SUPABASE_SERVICE_ROLE_KEY in deployment"
+fi
+
 az container create \
     --resource-group "$RESOURCE_GROUP" \
     --name "$CONTAINER_NAME" \
@@ -166,11 +192,7 @@ az container create \
     --registry-password "$ACR_PASSWORD" \
     --dns-name-label "${CONTAINER_NAME}" \
     --ports "$PORT" \
-    --environment-variables \
-        PORT="$PORT" \
-        RUST_LOG="$RUST_LOG" \
-        DATABASE_URL="$DATABASE_URL" \
-        MCP_ENDPOINT="$MCP_ENDPOINT" \
+    --environment-variables "${ENV_VARS[@]}" \
     --output none
 
 echo "✅ Container deployed"

@@ -22,7 +22,7 @@ import {
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { SignIn, useAuth, useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
 
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { Eye, StopCircle, Trash2, Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -48,6 +48,7 @@ function DeploymentsPageContent() {
   const { organization } = useOrganization();
   const { userMemberships } = useOrganizationList();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const viewOrgId = searchParams.get('viewOrgId');
 
   // State
@@ -756,7 +757,12 @@ function DeploymentsPageContent() {
         <ExecutionDetailsDialog
           execution={selectedExecution}
           open={executionDetailsOpen}
-          onOpenChange={setExecutionDetailsOpen}
+          onOpenChange={(open) => {
+            setExecutionDetailsOpen(open);
+            if (!open) {
+              router.push('/deployments');
+            }
+          }}
         />
 
         {selectedWorkflowForAction && (

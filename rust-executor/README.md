@@ -5,6 +5,7 @@ A high-performance workflow execution engine built in Rust, designed to replace 
 ## Features
 
 - **Workflow Execution**: Execute complex multi-step workflows with MCP tools
+- **Screenshot Upload**: Automatic upload of workflow screenshots to Supabase Storage
 - **GitHub Integration**: Load workflows directly from GitHub repositories
 - **Queue Processing**: Background job processing with machine-specific locking
 - **RMCP Integration**: Full MCP client support via RMCP library
@@ -152,6 +153,8 @@ Each workflow step can define an error handling strategy:
 
 ## Testing
 
+### Unit Tests
+
 Run unit tests:
 ```bash
 cargo test
@@ -162,6 +165,35 @@ Run integration tests (requires database):
 cargo test --all --features integration
 ```
 
+### Local Integration Test with Terminator MCP
+
+Test the full stack locally (Rust executor + Terminator MCP + screenshot upload):
+
+```bash
+./scripts/run_integration_test.sh
+```
+
+This will:
+1. Build the Terminator MCP agent if needed (from `../terminator`)
+2. Load environment variables from `.env`
+3. Start the MCP server via stdio transport
+4. Execute a test workflow with browser automation and screenshot capture
+5. Verify screenshots are captured and uploaded (if Supabase is configured)
+
+**Prerequisites:**
+- Terminator repository cloned alongside rust-executor: `../terminator`
+- Rust toolchain installed
+- Chrome browser (for browser automation tests)
+- Optional: Supabase credentials in `.env` for upload testing
+
+**What it tests:**
+- ✓ MCP client connection via stdio transport
+- ✓ Workflow validation and execution
+- ✓ Browser automation (navigate, wait, screenshot)
+- ✓ Screenshot capture through MCP tools
+- ✓ Screenshot upload to Supabase (if configured)
+- ✓ Error handling and workflow completion
+
 ## Environment Variables
 
 | Variable | Description | Default |
@@ -170,8 +202,19 @@ cargo test --all --features integration
 | `MCP_ENDPOINT` | MCP server URL | http://localhost:3000 |
 | `GITHUB_TOKEN` | GitHub personal access token | Optional |
 | `GITHUB_REPO` | GitHub repository for workflows | mediar-ai/workflows |
+| `SUPABASE_URL` | Supabase project URL for screenshot uploads | Optional |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key for storage access | Optional |
 | `PORT` | API server port | 8080 |
 | `RUST_LOG` | Log level | info |
+
+### Screenshot Upload Configuration
+
+Screenshots captured during workflow execution are automatically uploaded to Supabase Storage when `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured:
+
+- **Storage Path**: `screenshots/{organization_id}/{execution_id}/{filename}`
+- **Access**: Signed URLs with 1-hour expiration
+- **Fallback**: Public URLs if signed URL generation fails
+- **Organization Scoping**: Uses organization_id for multi-tenant security (defaults to system UUID if not available)
 
 ## Database Schema
 

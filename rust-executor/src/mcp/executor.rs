@@ -9,19 +9,52 @@ use crate::models::{
     StepResult, StepStatus, ErrorStrategy,
 };
 use crate::mcp::McpClient;
+use crate::storage::SupabaseStorage;
 
 pub struct WorkflowExecutor {
     client: McpClient,
     sequence: WorkflowSequence,
     execution_id: Uuid,
+    organization_id: Option<Uuid>,
+    storage: Option<SupabaseStorage>,
 }
 
 impl WorkflowExecutor {
-    pub fn new(client: McpClient, sequence: WorkflowSequence, execution_id: Uuid) -> Self {
+    pub fn new(
+        client: McpClient,
+        sequence: WorkflowSequence,
+        execution_id: Uuid,
+        organization_id: Option<Uuid>,
+    ) -> Self {
+        // Initialize storage if environment variables are available
+        let storage = match (
+            std::env::var("SUPABASE_URL"),
+            std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+        ) {
+            (Ok(url), Ok(key)) => {
+                match SupabaseStorage::new(url, key) {
+                    Ok(s) => {
+                        debug!("Supabase Storage initialized successfully");
+                        Some(s)
+                    }
+                    Err(e) => {
+                        warn!("Failed to initialize Supabase Storage: {}", e);
+                        None
+                    }
+                }
+            }
+            _ => {
+                warn!("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set, screenshot upload disabled");
+                None
+            }
+        };
+
         Self {
             client,
             sequence,
             execution_id,
+            organization_id,
+            storage,
         }
     }
 
@@ -32,6 +65,7 @@ impl WorkflowExecutor {
         let mut step_results = Vec::new();
         let mut completed_steps = 0u32;
         let mut workflow_data = None;
+        let mut all_screenshot_urls: Vec<String> = Vec::new();
 
         info!("Starting workflow execution {} with {} steps",
               self.execution_id, total_steps);
@@ -59,6 +93,13 @@ impl WorkflowExecutor {
 
                     if result.status == StepStatus::Success {
                         workflow_data = result.result.clone();
+
+                        // Extract and upload screenshots if present
+                        if let Some(ref result_data) = result.result {
+                            if let Some(screenshot_urls) = self.process_screenshots(result_data).await {
+                                all_screenshot_urls.extend(screenshot_urls);
+                            }
+                        }
                     }
 
                     info!("Step {} completed successfully", step_id);
@@ -101,6 +142,7 @@ impl WorkflowExecutor {
                                 total_steps,
                                 step_results,
                                 execution_time_ms: start_time.elapsed().as_millis() as u64,
+                                screenshot_urls: all_screenshot_urls,
                             });
                         }
                         ErrorStrategy::Continue => {
@@ -127,6 +169,8 @@ impl WorkflowExecutor {
 
         let execution_time_ms = start_time.elapsed().as_millis() as u64;
 
+        info!("Workflow execution completed with {} screenshot URLs", all_screenshot_urls.len());
+
         Ok(WorkflowResult {
             success: true,
             message: format!("Workflow completed successfully in {}ms", execution_time_ms),
@@ -137,6 +181,7 @@ impl WorkflowExecutor {
             total_steps,
             step_results,
             execution_time_ms,
+            screenshot_urls: all_screenshot_urls,
         })
     }
 
@@ -296,6 +341,63 @@ impl WorkflowExecutor {
             _ => Ok(value.clone()),
         }
     }
+
+    /// Extract screenshots from step result and upload to storage
+    async fn process_screenshots(&self, result_data: &Value) -> Option<Vec<String>> {
+        // Extract screenshots array from result
+        let screenshots = if let Some(screenshots_array) = result_data.get("screenshots") {
+            screenshots_array.as_array()?
+        } else {
+            return None;
+        };
+
+        if screenshots.is_empty() {
+            return None;
+        }
+
+        info!("Found {} screenshots in step result", screenshots.len());
+
+        // Extract base64 data from screenshot objects
+        let mut base64_screenshots = Vec::new();
+        for screenshot in screenshots {
+            if let Some(data) = screenshot.get("data").and_then(|v| v.as_str()) {
+                base64_screenshots.push(data.to_string());
+            }
+        }
+
+        if base64_screenshots.is_empty() {
+            warn!("No valid screenshot data found");
+            return None;
+        }
+
+        // Get organization_id, use a default if not set
+        let org_id = self.organization_id.unwrap_or_else(|| {
+            warn!("No organization_id set, using default system organization");
+            // Use a well-known UUID for system/admin workflows
+            Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap()
+        });
+
+        // Upload to storage if available
+        if let Some(ref storage) = self.storage {
+            match storage.upload_screenshots(
+                self.execution_id,
+                org_id,
+                base64_screenshots
+            ).await {
+                Ok(urls) => {
+                    info!("Successfully uploaded {} screenshots", urls.len());
+                    Some(urls)
+                }
+                Err(e) => {
+                    error!("Failed to upload screenshots: {}", e);
+                    None
+                }
+            }
+        } else {
+            warn!("Storage not configured, cannot upload screenshots");
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -334,9 +436,11 @@ mod tests {
         };
 
         let execution_id = Uuid::new_v4();
-        let executor = WorkflowExecutor::new(client, sequence, execution_id);
+        let organization_id = Some(Uuid::new_v4());
+        let executor = WorkflowExecutor::new(client, sequence, execution_id, organization_id);
 
         assert_eq!(executor.execution_id, execution_id);
+        assert_eq!(executor.organization_id, organization_id);
         assert_eq!(executor.sequence.steps.len(), 1);
     }
 
@@ -358,7 +462,7 @@ mod tests {
             scripts_base_path: None,
         };
 
-        let executor = WorkflowExecutor::new(client, sequence, Uuid::new_v4());
+        let executor = WorkflowExecutor::new(client, sequence, Uuid::new_v4(), None);
 
         let mut variables = Map::new();
         variables.insert("test_var".to_string(), Value::String("test_value".to_string()));

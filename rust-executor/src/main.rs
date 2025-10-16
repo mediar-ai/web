@@ -18,6 +18,7 @@ mod mcp;
 mod api;
 mod services;
 mod utils;
+mod storage;
 
 use crate::db::{DatabasePool, create_pool};
 

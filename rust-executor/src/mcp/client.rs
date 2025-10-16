@@ -1,6 +1,6 @@
 use anyhow::{Result, Context};
 use rmcp::{
-    model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation, Tool, CallToolResult},
+    model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation, Tool},
     transport::{StreamableHttpClientTransport, TokioChildProcess},
     ServiceExt,
 };
@@ -150,24 +150,65 @@ impl McpClient {
             }
         };
 
-        // Parse result content
+        // Parse result content - collect ALL items (text AND images)
+        let mut text_result: Option<Value> = None;
+        let mut screenshots: Vec<Value> = Vec::new();
+
         if !result.content.is_empty() {
             for content in &result.content {
-                if let rmcp::model::RawContent::Text(text) = &content.raw {
-                    // Try to parse as JSON
-                    if let Ok(json_result) = serde_json::from_str::<Value>(&text.text) {
-                        return Ok(json_result);
-                    } else {
-                        // Return as plain text wrapped in JSON
-                        return Ok(serde_json::json!({
-                            "type": "text",
-                            "content": text.text
+                match &content.raw {
+                    rmcp::model::RawContent::Text(text) => {
+                        // Try to parse as JSON, fallback to plain text
+                        if let Ok(json_result) = serde_json::from_str::<Value>(&text.text) {
+                            text_result = Some(json_result);
+                        } else {
+                            text_result = Some(serde_json::json!({
+                                "type": "text",
+                                "content": text.text
+                            }));
+                        }
+                    }
+                    rmcp::model::RawContent::Image(image) => {
+                        // Collect screenshot as base64
+                        screenshots.push(serde_json::json!({
+                            "type": "image",
+                            "data": image.data,
+                            "mimeType": image.mime_type
                         }));
+                    }
+                    _ => {
+                        // Handle other content types if needed
+                        debug!("Skipping unsupported content type in tool result");
                     }
                 }
             }
         }
 
+        // Return combined result with both text and screenshots
+        if let Some(mut text) = text_result {
+            // Add screenshots array to the result if any were captured
+            if !screenshots.is_empty() {
+                if let Some(obj) = text.as_object_mut() {
+                    obj.insert("screenshots".to_string(), serde_json::json!(screenshots));
+                } else {
+                    // If text result isn't an object, wrap everything
+                    return Ok(serde_json::json!({
+                        "result": text,
+                        "screenshots": screenshots
+                    }));
+                }
+            }
+            return Ok(text);
+        }
+
+        // If no text result but we have screenshots, return just screenshots
+        if !screenshots.is_empty() {
+            return Ok(serde_json::json!({
+                "screenshots": screenshots
+            }));
+        }
+
+        // Empty result
         Ok(serde_json::json!({
             "status": "success",
             "message": format!("Tool {} executed successfully", tool_name)
