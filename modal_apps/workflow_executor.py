@@ -3637,6 +3637,7 @@ def check_and_process_queued_jobs():
               AND we.assigned_machine_id IS NOT NULL
               AND we.mcp_endpoint IS NOT NULL
               AND rm.status = 'active'
+              AND (we.executor_type = 'python' OR we.executor_type IS NULL)
               AND (
                   -- Machine has available capacity based on max_concurrent_executions
                   SELECT COUNT(*)
@@ -3647,7 +3648,7 @@ def check_and_process_queued_jobs():
               ) < rm.max_concurrent_executions
               AND (
                   -- Allow concurrent claiming by checking coordinator lock count vs capacity
-                  SELECT COUNT(*) 
+                  SELECT COUNT(*)
                   FROM processing_locks pl
                   WHERE pl.user_id = CONCAT('machine-', we.assigned_machine_id, '-coordinator')
                     AND pl.status = 'in_progress'

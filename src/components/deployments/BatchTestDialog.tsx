@@ -73,6 +73,7 @@ interface BatchTestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit?: () => void;
+  isMediarTeam?: boolean; // Show executor selection for Mediar team
 }
 
 export function BatchTestDialog({
@@ -80,6 +81,7 @@ export function BatchTestDialog({
   open,
   onOpenChange,
   onSubmit,
+  isMediarTeam = false,
 }: BatchTestDialogProps) {
   const [batchSpec, setBatchSpec] = useState<BatchSpec>({
     static_parameters: {},
@@ -122,6 +124,9 @@ export function BatchTestDialog({
     useState(false); // Default to active version
   const [loadingVersions, setLoadingVersions] = useState(false);
 
+  // Executor selection state
+  const [executorType, setExecutorType] = useState<'python' | 'rust'>('python');
+
   // Partial execution state
   const [showPartialExecution, setShowPartialExecution] = useState(false);
   const [startFromStep, setStartFromStep] = useState<string>('');
@@ -155,6 +160,7 @@ export function BatchTestDialog({
       setVersionValidation(null);
       setSelectedMachineId('');
       setAvailableMachines([]);
+      setExecutorType('python'); // Reset to Python executor
       setShowPartialExecution(false);
       setStartFromStep('');
       setEndAtStep('');
@@ -180,6 +186,7 @@ export function BatchTestDialog({
         setVersionValidation(null);
         setSelectedMachineId('');
         setAvailableMachines([]);
+        setExecutorType('python'); // Reset to Python executor
         setShowPartialExecution(false);
         setStartFromStep('');
         setEndAtStep('');
@@ -493,12 +500,13 @@ export function BatchTestDialog({
       const effectiveBatchSpec = totalCombinations === 0 ?
         { static_parameters: {}, dynamic_parameters: {} } : batchSpec;
 
-      // Include machine_id, version_number, and partial execution parameters in the request body
+      // Include machine_id, version_number, executor_type, and partial execution parameters in the request body
       const requestBody = {
         ...effectiveBatchSpec,
         machine_id: parseInt(selectedMachineId),
         version_number: selectedVersionNumber || undefined, // Send version or undefined for active
-        // NEW: Partial execution parameters
+        executor_type: executorType, // 'python' or 'rust'
+        // Partial execution parameters
         start_from_step: showPartialExecution && startFromStep ? startFromStep : undefined,
         end_at_step: showPartialExecution && endAtStep ? endAtStep : undefined,
         follow_fallback: showPartialExecution ? followFallback : undefined,
@@ -744,6 +752,27 @@ export function BatchTestDialog({
                   </div>
                 )}
               </div>
+
+              {/* Executor Type Selection (Mediar Team Only) */}
+              {isMediarTeam && (
+                <div className="col-span-2 space-y-2 mt-4 pt-4 border-t border-gray-200">
+                  <Label htmlFor="executor-select" className="font-mono text-xs uppercase">Executor Type</Label>
+                  <Select value={executorType} onValueChange={(value) => setExecutorType(value as 'python' | 'rust')}>
+                    <SelectTrigger id="executor-select">
+                      <SelectValue placeholder="Select executor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="python">Python Executor (Default)</SelectItem>
+                      <SelectItem value="rust">Rust Executor (Experimental)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="text-xs text-muted-foreground">
+                    {executorType === 'python'
+                      ? 'Using stable Python-based workflow executor (Modal)'
+                      : 'Using experimental Rust-based executor (Azure Container Instances - faster, limited features)'}
+                  </div>
+                </div>
+              )}
 
               {/* Partial Execution (Debug Mode) */}
               <div className="col-span-2 space-y-3 mt-4 pt-4 border-t border-gray-200">
