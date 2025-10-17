@@ -200,8 +200,9 @@ export async function GET(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
+    // Allow ANY member of an organization with access (not just admins)
     let hasOrgAccess = false;
-    if (orgId && isOrgAdmin) {
+    if (orgId) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('organization_id')
@@ -216,7 +217,7 @@ export async function GET(
     // - User is in Mediar org or is a Mediar admin (can view any execution)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table
+    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
     if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of execution ${executionIdNum} (workflow ${typedExecution.workflow_id})`
@@ -606,8 +607,9 @@ export async function DELETE(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
+    // Allow ANY member of an organization with access (not just admins)
     let hasOrgAccess = false;
-    if (orgId && isOrgAdmin) {
+    if (orgId) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('organization_id')
@@ -622,7 +624,7 @@ export async function DELETE(
     // - User is in Mediar org or is a Mediar admin (can delete any execution)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table
+    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
     if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized delete for execution ${executionIdNum} (workflow ${(execution as any).workflow_id})`
