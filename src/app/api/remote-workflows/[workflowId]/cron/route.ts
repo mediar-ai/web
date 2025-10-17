@@ -258,10 +258,10 @@ export async function PUT(
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info and verify ownership
+    // STEP 2: Get workflow info and verify ownership (including auto-pause status)
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, created_by, organization_id')
+      .select('id, name, created_by, organization_id, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures')
       .eq('id', workflowIdNum)
       .single();
 
@@ -327,6 +327,20 @@ export async function PUT(
     }
     if (cron_retry_count !== undefined) {
       updateData.cron_retry_count = cron_retry_count;
+    }
+
+    // STEP 4: Clear auto-pause flags when re-enabling (matching PATCH behavior)
+    // This ensures that when users re-enable a schedule via the UI, any auto-pause state is cleared
+    if (cron_enabled && workflow.cron_auto_paused) {
+      console.log(`✅ User ${authenticatedUserId} re-enabling auto-paused workflow ${workflowIdNum} (${workflow.name})`);
+      console.log(`   Previous auto-pause reason: ${workflow.auto_pause_reason}`);
+      console.log(`   Clearing auto-pause flags to allow fresh start`);
+
+      updateData.cron_auto_paused = false;
+      updateData.consecutive_failures = 0;
+      updateData.last_failure_message = null;
+      updateData.auto_paused_at = null;
+      updateData.auto_pause_reason = null;
     }
 
     const { data: updatedWorkflow, error } = await supabase
