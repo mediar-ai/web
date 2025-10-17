@@ -1114,6 +1114,7 @@ function DashboardContent() {
             workflow={selectedWorkflowForAction}
             open={batchTestOpen}
             onOpenChange={setBatchTestOpen}
+            isMediarTeam={isGlobalAdmin}
             onSubmit={() => {
               // Immediately fetch new executions after submission
               setTimeout(() => {
