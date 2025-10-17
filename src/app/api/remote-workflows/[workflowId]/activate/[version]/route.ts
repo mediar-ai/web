@@ -51,9 +51,9 @@ export async function POST(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
-    // Allow ANY member of an organization with access (not just admins)
+    // Allow organization admins only for write operations
     let hasOrgAccess = false;
-    if (orgId) {
+    if (orgId && isOrgAdmin) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('organization_id')
@@ -67,7 +67,7 @@ export async function POST(
     // Allow modification if:
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
+    // - User's organization has access via workflow_organization_access table (org admins only)
     if (!isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized version activation for workflow ${workflowIdNum}`

@@ -82,9 +82,9 @@ export async function PATCH(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
-    // Allow ANY member of an organization with access (not just admins)
+    // Allow organization admins only for write operations
     let hasOrgAccess = false;
-    if (orgId) {
+    if (orgId && isOrgAdmin) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('organization_id')
@@ -99,7 +99,7 @@ export async function PATCH(
     // - User is in Mediar org or is a Mediar admin (can modify any workflow's cron)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
+    // - User's organization has access via workflow_organization_access table (org admins only)
     if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized cron toggle for workflow ${workflowIdNum}`
@@ -282,7 +282,7 @@ export async function PUT(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
-    // Allow ANY member of an organization with access (not just admins)
+    // Allow organization admins only for write operations
     let hasOrgAccess = false;
     if (orgId) {
       const { data: orgAccess } = await supabase
@@ -299,7 +299,7 @@ export async function PUT(
     // - User is in Mediar org or is a Mediar admin (can modify any workflow's cron)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
+    // - User's organization has access via workflow_organization_access table (org admins only)
     if (!isMediarOrgPut && !isMediarAdminPut && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized cron update for workflow ${workflowIdNum}`
@@ -451,7 +451,7 @@ export async function GET(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
-    // Allow ANY member of an organization with access (not just admins)
+    // Allow organization admins only for write operations
     let hasOrgAccess = false;
     if (orgId) {
       const { data: orgAccess } = await supabase
@@ -468,7 +468,7 @@ export async function GET(
     // - User is in Mediar org or is a Mediar admin (can view any workflow's cron)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
+    // - User's organization has access via workflow_organization_access table (org admins only)
     if (!isMediarOrgGet && !isMediarAdminGet && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of cron config for workflow ${workflowIdNum}`
