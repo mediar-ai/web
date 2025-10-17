@@ -62,8 +62,9 @@ export async function POST(
     const isSameOrg = workflowOwnership.organization_id && workflowOwnership.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
+    // Allow ANY member of an organization with access (not just admins)
     let hasOrgAccess = false;
-    if (orgId && isOrgAdmin) {
+    if (orgId) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('organization_id')
@@ -78,7 +79,7 @@ export async function POST(
     // - User is in Mediar org or is a Mediar admin (can get optimal machine for any workflow)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table
+    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
     if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized optimal machine check for workflow ${workflowIdNum}`

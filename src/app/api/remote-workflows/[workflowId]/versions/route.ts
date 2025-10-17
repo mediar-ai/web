@@ -140,8 +140,9 @@ export async function GET(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
+    // Allow ANY member of an organization with access (not just admins)
     let hasOrgAccess = false;
-    if (orgId && isOrgAdmin) {
+    if (orgId) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('organization_id')
@@ -156,7 +157,7 @@ export async function GET(
     // - User is in Mediar org or is a Mediar admin (can see all workflows)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table
+    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
     if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized access to workflow ${workflowIdNum}`
@@ -439,8 +440,9 @@ export async function POST(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
+    // Allow ANY member of an organization with access (not just admins)
     let hasOrgAccess = false;
-    if (orgId && isOrgAdmin) {
+    if (orgId) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('organization_id')
@@ -455,7 +457,7 @@ export async function POST(
     // - User is in Mediar org or is a Mediar admin (can modify all workflows)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table
+    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
     if (!isMediarOrgPost && !isMediarAdminPost && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized version creation for workflow ${workflowIdNum}`
