@@ -148,12 +148,39 @@ ORDER BY created_at DESC
 LIMIT 10;
 ```
 
-## Monitoring
+## Deployment & Updates
 
-### Rust Executor Logs
+### Rust Executor Deployment
+
+**Automatic Deployment (Recommended):**
+- Push changes to `rust-executor/**` on main branch
+- GitHub Actions automatically builds and deploys
+- Takes ~3-5 minutes
+- View progress: https://github.com/mediar-ai/mediar-web-app/actions
+
+**Manual Deployment:**
+```bash
+# From project root
+npm run deploy:rust              # Deploy to dev
+npm run deploy:rust:prod         # Deploy to production
+
+# From rust-executor directory
+cd rust-executor
+./deploy.sh                      # Deploy to dev
+./deploy.sh prod                # Deploy to production
+```
+
+**First Time Setup (One Time):**
+1. Create Azure Service Principal (see `rust-executor/QUICK_DEPLOY.md`)
+2. Add `AZURE_CREDENTIALS` secret to GitHub repository
+3. Done! All future pushes auto-deploy
+
+### Monitoring
+
+**Rust Executor Logs:**
 ```bash
 # View container logs
-az container logs -n workflow-executor-dev -g mediar-workflow-executor-rg
+az container logs -n workflow-executor-dev -g mediar-workflow-executor-rg --follow
 
 # Restart container if needed
 az container restart -n workflow-executor-dev -g mediar-workflow-executor-rg
@@ -163,9 +190,14 @@ az container show -n workflow-executor-dev -g mediar-workflow-executor-rg \
   --query "{Status:instanceView.state,IP:ipAddress.ip,FQDN:ipAddress.fqdn}"
 ```
 
-### Python Executor Logs
+**Python Executor Logs:**
 - Check Modal dashboard for function logs
 - Monitor via existing production monitoring
+
+**Deployment Status:**
+- GitHub Actions: https://github.com/mediar-ai/mediar-web-app/actions
+- Container health: http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/health
+- Queue status: http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/queue/status
 
 ## Known Limitations
 
@@ -206,15 +238,25 @@ If issues arise with executor selection:
 ## Files Modified
 
 ### Frontend
-- `src/components/deployments/BatchTestDialog.tsx`
-- `src/app/deployments/page.tsx`
+- `src/components/deployments/BatchTestDialog.tsx` - Added executor selection UI component
+- `src/app/dashboard/page.tsx` - Added `isMediarTeam` prop to enable executor selection (primary location) ✅
+- `src/app/deployments/page.tsx` - Added `isMediarTeam` prop to enable executor selection (secondary location)
 
 ### Backend
-- `src/app/api/remote-workflows/[workflowId]/batch-execute/route.ts`
+- `src/app/api/remote-workflows/[workflowId]/batch-execute/route.ts` - Extract and store executor_type
 
 ### Executors
-- `rust-executor/src/db/queries.rs`
-- `modal_apps/workflow_executor.py`
+- `rust-executor/src/db/queries.rs` - Filter to claim only 'rust' or NULL jobs
+- `modal_apps/workflow_executor.py` - Filter to claim only 'python' or NULL jobs
+
+## Implementation Status
+
+✅ **Feature Complete** (2025-10-15)
+- All code changes committed and pushed to main
+- Rust executor verified healthy and processing jobs
+- Dashboard integration complete
+- Documentation complete
+- Ready for testing
 
 ## Contact
 

@@ -1,0 +1,63 @@
+name: Deploy Rust Executor to Azure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'rust-executor/**'
+      - '.github/workflows/deploy-rust-executor.yml'
+  workflow_dispatch:  # Allow manual triggers from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Container Instances
+        run: |
+          cd rust-executor
+          chmod +x deploy.sh
+          ./deploy.sh dev
+
+      - name: Test Health Endpoint
+        run: |
+          # Wait for container to be ready
+          sleep 30
+
+          # Test health endpoint
+          HEALTH_URL="http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/health"
+          echo "Testing health endpoint: $HEALTH_URL"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" "$HEALTH_URL")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "Response: $BODY"
+          echo "HTTP Code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Health check failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "✅ Health check passed!"
+
+      - name: Deployment Summary
+        run: |
+          echo "🚀 Rust Executor Deployment Complete!"
+          echo ""
+          echo "📍 Endpoints:"
+          echo "   Health: http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/health"
+          echo "   Queue:  http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/queue/status"
+          echo ""
+          echo "🔍 View logs:"
+          echo "   az container logs -n workflow-executor-dev -g mediar-workflow-executor-rg"
