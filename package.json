@@ -14,7 +14,10 @@
     "test": "tsx src/tests/run-tests.ts",
     "test:mcp": "tsx src/tests/run-tests.ts",
     "test:watch": "tsx --watch src/tests/run-tests.ts",
-    "test:ai-api": "tsx scripts/test-ai-api.ts"
+    "test:ai-api": "tsx scripts/test-ai-api.ts",
+    "deploy:rust": "cd rust-executor && ./deploy.sh dev",
+    "deploy:rust:prod": "cd rust-executor && ./deploy.sh prod",
+    "deploy:rust:staging": "cd rust-executor && ./deploy.sh staging"
   },
   "dependencies": {
     "@ai-sdk/google-vertex": "^3.0.34",
