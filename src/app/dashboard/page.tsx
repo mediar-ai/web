@@ -717,9 +717,16 @@ function DashboardContent() {
         fetchWorkflows(false);
       } else {
         console.error('Failed to delete workflow:', result.error);
+        // Show user-friendly error notification
+        if (response.status === 403) {
+          toast.error('This action requires organization admin privileges');
+        } else {
+          toast.error(`Failed to delete workflow: ${result.error || 'Unknown error'}`);
+        }
       }
     } catch (error) {
       console.error('Error deleting workflow:', error);
+      toast.error('Error deleting workflow');
     }
   }, [workflows, fetchWorkflows, posthog]);
 
@@ -746,9 +753,16 @@ function DashboardContent() {
         fetchWorkflows(false);
       } else {
         console.error('Failed to toggle cron:', result.error);
+        // Show user-friendly error notification
+        if (response.status === 403) {
+          toast.error('This action requires organization admin privileges');
+        } else {
+          toast.error(`Failed to toggle cron: ${result.error || 'Unknown error'}`);
+        }
       }
     } catch (error) {
       console.error('Error toggling cron:', error);
+      toast.error('Error toggling cron');
     }
   }, [workflows, fetchWorkflows, posthog]);
 
