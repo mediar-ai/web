@@ -788,6 +788,7 @@ function DeploymentsPageContent() {
             onSubmit={() => {
               fetchExecutions(false);
             }}
+            isMediarTeam={isGlobalAdmin}
           />
         )}
 

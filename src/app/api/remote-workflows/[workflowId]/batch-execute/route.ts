@@ -363,7 +363,8 @@ export async function POST(
       dynamic_parameters = {},
       machine_id,
       version_number,
-      // NEW: Partial execution parameters
+      executor_type = 'python', // Default to Python executor
+      // Partial execution parameters
       start_from_step,
       end_at_step,
       follow_fallback,
@@ -655,7 +656,9 @@ export async function POST(
         mcp_endpoint,
         // Version selection field
         version_number,
-        // NEW: Partial execution fields
+        // Executor selection field
+        executor_type,
+        // Partial execution fields
         start_from_step,
         end_at_step,
         follow_fallback,
