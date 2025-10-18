@@ -30,26 +30,39 @@ jobs:
 
       - name: Test Health Endpoint
         run: |
-          # Wait for container to be ready
-          sleep 30
+          # Wait for container to be ready (longer timeout for first startup)
+          echo "Waiting for container to fully start (90 seconds)..."
+          sleep 90
 
-          # Test health endpoint
+          # Test health endpoint with retries
           HEALTH_URL="http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/health"
           echo "Testing health endpoint: $HEALTH_URL"
 
-          RESPONSE=$(curl -s -w "\n%{http_code}" "$HEALTH_URL")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | head -n-1)
+          MAX_RETRIES=5
+          RETRY_COUNT=0
 
-          echo "Response: $BODY"
-          echo "HTTP Code: $HTTP_CODE"
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            RESPONSE=$(curl -s -w "\n%{http_code}" "$HEALTH_URL" || echo "000")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            BODY=$(echo "$RESPONSE" | head -n-1)
 
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "❌ Health check failed with HTTP $HTTP_CODE"
-            exit 1
-          fi
+            echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES - Response: $BODY"
+            echo "HTTP Code: $HTTP_CODE"
 
-          echo "✅ Health check passed!"
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "⏳ Waiting 15 seconds before retry..."
+              sleep 15
+            fi
+          done
+
+          echo "❌ Health check failed after $MAX_RETRIES attempts"
+          exit 1
 
       - name: Deployment Summary
         run: |
