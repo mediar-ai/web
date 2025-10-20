@@ -28,6 +28,41 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [contextData, setContextData] = useState<any | null>(null);
+  const [isLoadingContext, setIsLoadingContext] = useState(true);
+
+  // Load context data once when component mounts
+  useEffect(() => {
+    const loadContext = async () => {
+      if (!execution.execution_id) {
+        setIsLoadingContext(false);
+        return;
+      }
+
+      try {
+        setIsLoadingContext(true);
+        console.log('[QA] Loading context for execution:', execution.execution_id);
+
+        const response = await fetch(
+          `/api/ai/execution-qa/context?executionId=${execution.execution_id}`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setContextData(data);
+          console.log(`[QA] Context loaded - ${data.metadata.jsFileCount} JS files, ${data.metadata.workflowSteps} steps`);
+        } else {
+          console.error('[QA] Failed to load context:', response.status);
+        }
+      } catch (error) {
+        console.error('[QA] Failed to load context:', error);
+      } finally {
+        setIsLoadingContext(false);
+      }
+    };
+
+    loadContext();
+  }, [execution.execution_id]);
 
   // Load conversation history on mount
   useEffect(() => {
@@ -128,7 +163,9 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
         },
         body: JSON.stringify({
           messages: [...messages, userMessageObj],
-          executionId: execution.execution_id, // Only send the ID, server will fetch the full context
+          executionId: execution.execution_id,
+          // Pass pre-loaded context to avoid re-fetching on every message
+          contextData: contextData,
         }),
       });
 
@@ -328,6 +365,17 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
           <Badge className="bg-black text-white text-xs">
             GEMINI 2.5 PRO
           </Badge>
+          {isLoadingContext && (
+            <Badge className="bg-white text-black border border-black text-xs animate-pulse">
+              <Loader2 className="w-3 h-3 mr-1 animate-spin inline" />
+              Loading context...
+            </Badge>
+          )}
+          {!isLoadingContext && contextData && (
+            <Badge className="bg-gray-100 text-black text-xs">
+              {contextData.metadata.jsFileCount} JS files loaded
+            </Badge>
+          )}
         </div>
         <p className="text-sm text-gray-600 mt-1">
           Ask questions about this execution to understand what happened
