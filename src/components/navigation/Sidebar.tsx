@@ -100,20 +100,22 @@ export function Sidebar() {
       </div>
 
       {/* Organization Switcher */}
-      {!isCollapsed && (
-        <div className="px-6 py-4 border-b border-gray-200">
-          <Suspense fallback={
-            organization ? (
-              <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4" />
-                <span className="font-mono text-sm truncate">{organization.name}</span>
-              </div>
-            ) : null
-          }>
-            <MediarOrgSwitcher inSidebar={true} />
-          </Suspense>
-        </div>
-      )}
+      <div className={`${isCollapsed ? 'px-2' : 'px-6'} py-4 border-b border-gray-200`}>
+        <Suspense fallback={
+          organization && !isCollapsed ? (
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4" />
+              <span className="font-mono text-sm truncate">{organization.name}</span>
+            </div>
+          ) : isCollapsed && organization ? (
+            <div className="flex items-center justify-center">
+              <Building2 className="w-4 h-4" />
+            </div>
+          ) : null
+        }>
+          <MediarOrgSwitcher inSidebar={true} isCollapsed={isCollapsed} />
+        </Suspense>
+      </div>
 
       {/* Navigation */}
       <nav className="flex-1 p-4">
@@ -168,7 +170,7 @@ export function Sidebar() {
 
       {/* User Section */}
       <div className="p-4 border-t-2 border-black space-y-2">
-        <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : 'px-3'} py-2`}>
+        <div className={`flex items-center gap-3 py-2 ${isCollapsed ? 'justify-center' : 'px-3'}`}>
           <div className="w-8 h-8 bg-black text-white flex items-center justify-center font-mono text-xs flex-shrink-0">
             {user?.firstName?.[0] || user?.username?.[0] || 'U'}
           </div>
@@ -188,14 +190,14 @@ export function Sidebar() {
         <button
           onClick={() => signOut()}
           className={`
-            w-full flex items-center gap-3 px-3 py-2 font-mono text-sm
+            w-full flex items-center gap-3 py-2 font-mono text-sm
             text-black hover:bg-black hover:text-white
             border-2 border-black transition-colors
-            ${isCollapsed ? 'justify-center' : ''}
+            ${isCollapsed ? 'justify-center px-0' : 'px-3'}
           `}
           title={isCollapsed ? 'Sign Out' : undefined}
         >
-          <LogOut className="w-4 h-4" />
+          <LogOut className="w-4 h-4 flex-shrink-0" />
           {!isCollapsed && <span>Sign Out</span>}
         </button>
       </div>

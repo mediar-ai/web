@@ -14,9 +14,10 @@ interface Organization {
 
 interface MediarOrgSwitcherProps {
   inSidebar?: boolean;
+  isCollapsed?: boolean;
 }
 
-export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps) {
+export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: MediarOrgSwitcherProps) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -86,13 +87,20 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
       <div className="relative">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center gap-2 hover:bg-gray-100 transition-colors rounded p-1"
+          className={`w-full flex items-center gap-2 hover:bg-gray-100 transition-colors rounded p-1 ${
+            isCollapsed ? 'justify-center' : ''
+          }`}
+          title={isCollapsed ? organization.name : undefined}
         >
           <Building2 className="w-4 h-4 flex-shrink-0" />
-          <span className="font-mono text-sm truncate flex-1 text-left">
-            {organization.name}
-          </span>
-          <ChevronDown className="w-4 h-4 flex-shrink-0" />
+          {!isCollapsed && (
+            <>
+              <span className="font-mono text-sm truncate flex-1 text-left">
+                {organization.name}
+              </span>
+              <ChevronDown className="w-4 h-4 flex-shrink-0" />
+            </>
+          )}
         </button>
 
         {isOpen && (
@@ -101,7 +109,9 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
               className="fixed inset-0 z-40"
               onClick={() => setIsOpen(false)}
             />
-            <div className="absolute top-full mt-1 left-0 right-0 bg-white border-2 border-black shadow-lg z-50 max-h-96 overflow-y-auto">
+            <div className={`absolute top-full mt-1 ${isCollapsed ? 'left-12' : 'left-0 right-0'} bg-white border-2 border-black shadow-lg z-50 max-h-96 overflow-y-auto ${
+              isCollapsed ? 'min-w-[240px]' : ''
+            }`}>
               <div className="p-2 bg-black text-white font-mono text-xs uppercase">
                 Switch Organization
               </div>
@@ -115,10 +125,18 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
                   <button
                     key={org.id}
                     onClick={async () => {
-                      if (setActive) {
+                      if (setActive && !isActive) {
                         await setActive({ organization: org.id });
                         setIsOpen(false);
-                        router.push('/dashboard');
+                        // Only redirect if not already on dashboard
+                        if (!window.location.pathname.includes('/dashboard')) {
+                          router.push('/dashboard');
+                        } else {
+                          // Just refresh the current page data without reload
+                          router.refresh();
+                        }
+                      } else {
+                        setIsOpen(false);
                       }
                     }}
                     className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
@@ -155,13 +173,20 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
       <div className="relative">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center gap-2 hover:bg-gray-100 transition-colors rounded p-1"
+          className={`w-full flex items-center gap-2 hover:bg-gray-100 transition-colors rounded p-1 ${
+            isCollapsed ? 'justify-center' : ''
+          }`}
+          title={isCollapsed ? (organization?.name || 'Select Org') : undefined}
         >
           <Building className="w-4 h-4 flex-shrink-0" />
-          <span className="font-mono text-sm truncate flex-1 text-left">
-            {organization?.name || 'Select Org'}
-          </span>
-          <ChevronDown className="w-4 h-4 flex-shrink-0" />
+          {!isCollapsed && (
+            <>
+              <span className="font-mono text-sm truncate flex-1 text-left">
+                {organization?.name || 'Select Org'}
+              </span>
+              <ChevronDown className="w-4 h-4 flex-shrink-0" />
+            </>
+          )}
         </button>
 
         {isOpen && (
@@ -170,7 +195,9 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
               className="fixed inset-0 z-40"
               onClick={() => setIsOpen(false)}
             />
-            <div className="absolute top-full mt-1 left-0 right-0 bg-white border-2 border-black shadow-lg z-50 max-h-96 overflow-y-auto">
+            <div className={`absolute top-full mt-1 ${isCollapsed ? 'left-12' : 'left-0 right-0'} bg-white border-2 border-black shadow-lg z-50 max-h-96 overflow-y-auto ${
+              isCollapsed ? 'min-w-[240px]' : ''
+            }`}>
               <div className="p-2 bg-black text-white font-mono text-xs uppercase">
                 Switch Organization
               </div>
@@ -184,10 +211,18 @@ export function MediarOrgSwitcher({ inSidebar = false }: MediarOrgSwitcherProps)
                   <button
                     key={org.id}
                     onClick={async () => {
-                      if (setActive) {
+                      if (setActive && !isActive) {
                         await setActive({ organization: org.id });
                         setIsOpen(false);
-                        router.push('/dashboard');
+                        // Only redirect if not already on dashboard
+                        if (!window.location.pathname.includes('/dashboard')) {
+                          router.push('/dashboard');
+                        } else {
+                          // Just refresh the current page data without reload
+                          router.refresh();
+                        }
+                      } else {
+                        setIsOpen(false);
                       }
                     }}
                     className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
