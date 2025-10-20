@@ -34,7 +34,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
 
   // Sample questions
   const sampleQuestions = [
-    'Review details of execution logs, call relevant tools. What happened in the workflow execution? Which was the first step that failed and what were the steps before it?',
+    'Review execution logs in detail and call relevant tools. What happened in this workflow? Identify the first failed step, then analyze all steps that succeeded before it - review their logs for timing issues, unexpected UI states, or warnings that might indicate the root cause. In UI automation workflows, the failed step is often a symptom; the actual issue may be in earlier steps that appeared to succeed.',
     'Were there any errors in this execution?',
     'Explain the results in simple terms',
     'What took the most time in this run?',
