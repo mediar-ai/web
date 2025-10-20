@@ -178,14 +178,33 @@ export function shouldExecuteAt(cronExpression: string, time: Date, _timezone: s
   const parsed = parseCronExpression(cronExpression);
   if (!parsed.isValid) return false;
 
-  // Convert time to specified timezone
+  // Convert time to specified timezone properly
+  // Get the time components in the target timezone without broken string conversion
   const timeInTz = new Date(time.toLocaleString('en-US', { timeZone: _timezone }));
 
+  // Extract components directly from the original UTC time and format in target timezone
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: _timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(time);
+  const getValue = (type: string) => {
+    const part = parts.find(p => p.type === type);
+    return part ? parseInt(part.value, 10) : 0;
+  };
+
   // Seconds are not checked - Vercel triggers at random seconds
-  const minute = timeInTz.getMinutes();
-  const hour = timeInTz.getHours();
-  const day = timeInTz.getDate();
-  const month = timeInTz.getMonth() + 1; // JS months are 0-based
+  const minute = getValue('minute');
+  const hour = getValue('hour');
+  const day = getValue('day');
+  const month = getValue('month'); // Already 1-based from Intl
   const dayOfWeek = timeInTz.getDay(); // 0 = Sunday
 
   const minuteMatch = matchesCronField(parsed.minute, minute);
