@@ -98,10 +98,10 @@ export function DeploymentSidebar({
       items: [
         {
           icon: Rocket,
-          label: 'Deployments',
-          value: 'page-deployments',
-          href: '/deployments',
-          isActive: activePage === 'deployments',
+          label: 'Dashboard',
+          value: 'page-dashboard',
+          href: '/dashboard',
+          isActive: activePage === 'dashboard',
         },
         {
           icon: Bell,

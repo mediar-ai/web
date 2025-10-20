@@ -14,7 +14,7 @@ import { OrganizationAssignmentDialog } from '@/components/deployments/Organizat
 import { ExecutionsDataTable } from '@/components/dashboard/ExecutionsDataTable';
 import { Button } from '@/components/ui/button';
 import { useOrganization, useOrganizationList, useUser, useAuth } from '@clerk/nextjs';
-import { Activity, Workflow, TrendingUp, Zap, Plus, Search } from 'lucide-react';
+import { Activity, Workflow, TrendingUp, Zap, Plus, Search, Eye, EyeOff } from 'lucide-react';
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
@@ -97,6 +97,15 @@ function DashboardContent() {
       return localStorage.getItem('executions-filter-search-field') || 'all';
     }
     return 'all';
+  });
+
+  // Show/hide queued executions toggle (persisted in localStorage)
+  const [showQueuedExecutions, setShowQueuedExecutions] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('showQueuedExecutions');
+      return saved !== null ? JSON.parse(saved) : false; // Default: hide queued
+    }
+    return false;
   });
   const [activeSearchMode, setActiveSearchMode] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -1011,10 +1020,37 @@ function DashboardContent() {
             {/* Recent Executions */}
             {initialExecutionsFetchDone && (executions.length > 0 || executionsLoading || activeWorkflowFilter || activeStatusFilter || activeMachineFilter || activeSearchFilter) && (
               <div className="space-y-3 mt-4">
-                <h2 className="text-sm font-bold font-mono uppercase">Recent Executions</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold font-mono uppercase">Recent Executions</h2>
+                  <button
+                    onClick={() => {
+                      const newValue = !showQueuedExecutions;
+                      setShowQueuedExecutions(newValue);
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem('showQueuedExecutions', JSON.stringify(newValue));
+                      }
+                      // Trigger fresh API fetch with current filters
+                      handleRefreshExecutions();
+                    }}
+                    className="px-3 py-1 border border-black rounded text-xs font-mono font-bold hover:bg-black hover:text-white transition-colors"
+                    title={showQueuedExecutions ? "Hide queued executions" : "Show queued executions"}
+                  >
+                    {showQueuedExecutions ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5 inline mr-1" />
+                        HIDE QUEUED
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5 inline mr-1" />
+                        SHOW QUEUED
+                      </>
+                    )}
+                  </button>
+                </div>
 
                 <ExecutionsDataTable
-                  executions={executions}
+                  executions={showQueuedExecutions ? executions : executions.filter(e => e.status !== 'queued')}
                   workflows={workflows}
                   liveExecutions={liveExecutions}
                   loading={executionsLoading}
