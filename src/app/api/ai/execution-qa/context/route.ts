@@ -78,10 +78,10 @@ export async function GET(request: Request) {
     const workflow = workflowVersionData.workflow || execution.automation_sequence || null;
 
     // Load JS files from GitHub
-    let jsFiles: Record<string, string> = {};
+    const jsFiles: Record<string, string> = {};
     let jsFilesError: string | null = null;
 
-    if (workflow?.automation_sequence && workflowVersionData.github_folder) {
+    if (workflow && workflowVersionData.github_folder) {
       console.log(`[Q&A Context API] Loading JS files from GitHub folder: ${workflowVersionData.github_folder}`);
 
       const fileNames = new Set<string>();
