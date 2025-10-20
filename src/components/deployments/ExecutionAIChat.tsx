@@ -26,6 +26,43 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+
+  // Load conversation history on mount
+  useEffect(() => {
+    const loadConversation = async () => {
+      if (!execution.execution_id) {
+        setIsLoadingHistory(false);
+        return;
+      }
+
+      try {
+        setIsLoadingHistory(true);
+
+        const response = await fetch(
+          `/api/ai/execution-qa/conversations?executionId=${execution.execution_id}`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+
+          if (data.conversation && data.conversation.messages) {
+            setConversationId(data.conversation.id);
+            setMessages(data.conversation.messages);
+            console.log(`[QA] Loaded ${data.conversation.messages.length} messages from history`);
+          }
+        }
+      } catch (error) {
+        console.error('[QA] Failed to load conversation:', error);
+        // Don't show error to user, just start fresh
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+
+    loadConversation();
+  }, [execution.execution_id]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -189,6 +226,41 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
         if (chunkCount === 0) {
           console.error('[Q&A Client] WARNING: No chunks received!');
           setError(new Error('No response received from AI'));
+        } else {
+          // Save conversation after successful streaming
+          try {
+            const updatedMessages = [
+              ...messages,
+              userMessageObj,
+              {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant' as const,
+                content: assistantContent,
+              }
+            ];
+
+            const saveResponse = await fetch('/api/ai/execution-qa/conversations', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                executionId: execution.execution_id,
+                messages: updatedMessages,
+              }),
+            });
+
+            if (saveResponse.ok) {
+              const saveData = await saveResponse.json();
+              if (saveData.conversationId && !conversationId) {
+                setConversationId(saveData.conversationId);
+              }
+              console.log('[QA] Conversation saved successfully');
+            } else {
+              console.warn('[QA] Failed to save conversation:', await saveResponse.text());
+            }
+          } catch (saveError) {
+            console.error('[QA] Error saving conversation:', saveError);
+            // Don't show error to user, conversation still works
+          }
         }
       }
     } catch (err) {
