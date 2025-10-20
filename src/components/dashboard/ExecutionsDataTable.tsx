@@ -258,7 +258,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     }
     // Default column visibility
     return {
-      execution_id: false,  // Hide execution ID by default
+      execution_id: true,  // Show execution ID by default
       workflow_id: false,  // Hide workflow ID by default
       workflow_name: true, // Show workflow name by default
       error_message: false,
