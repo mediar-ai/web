@@ -819,87 +819,59 @@ Answer the user's question helpfully and thoroughly by using the available tools
           stepIdentifier: z.string().describe('Step index (0-based) or step ID/name')
         }),
         execute: async ({ stepIdentifier }: { stepIdentifier: string }) => {
-          // First, get the step definition
-          if (!workflowContext.yaml) {
-            return { error: 'Workflow YAML not available' };
+          // Check if workflow is available
+          if (!workflowContext.workflow) {
+            return { error: 'Workflow not available' };
           }
 
-          const lines = workflowContext.yaml.split('\n');
-          const stepStarts: Array<{index: number; line: number; tool: string; id?: string; name?: string}> = [];
-
-          // Find all step starts and extract their properties
-          let currentStepInfo: any = null;
-          lines.forEach((line, idx) => {
-            const toolMatch = line.match(/^\s*-?\s*tool:\s*(.+)/);
-            if (toolMatch) {
-              if (currentStepInfo) {
-                stepStarts.push(currentStepInfo);
-              }
-              currentStepInfo = {
-                index: stepStarts.length,
-                line: idx,
-                tool: toolMatch[1].trim()
-              };
-            } else if (currentStepInfo) {
-              // Extract id and name for current step
-              if (line.match(/^\s*id:\s*(.+)/)) {
-                const idMatch = line.match(/id:\s*(.+)/);
-                if (idMatch) currentStepInfo.id = idMatch[1].trim();
-              } else if (line.match(/^\s*name:\s*(.+)/)) {
-                const nameMatch = line.match(/name:\s*(.+)/);
-                if (nameMatch) currentStepInfo.name = nameMatch[1].trim();
-              }
-            }
-          });
-          if (currentStepInfo) {
-            stepStarts.push(currentStepInfo);
+          // Get steps array from JSON workflow
+          const steps = workflowContext.workflow.steps || [];
+          if (!Array.isArray(steps)) {
+            return { error: 'No steps found in workflow' };
           }
 
           // Find the requested step
-          let targetStep: typeof stepStarts[0] | undefined;
+          let targetStep: any = null;
+          let targetIndex = -1;
+
           if (/^\d+$/.test(stepIdentifier)) {
-            const index = parseInt(stepIdentifier);
-            targetStep = stepStarts[index];
+            // Numeric identifier - treat as index
+            targetIndex = parseInt(stepIdentifier);
+            targetStep = steps[targetIndex];
           } else {
             // Search by id or name
-            targetStep = stepStarts.find(s =>
-              s.id?.toLowerCase() === stepIdentifier.toLowerCase() ||
-              s.name?.toLowerCase().includes(stepIdentifier.toLowerCase())
-            );
+            steps.forEach((step, idx) => {
+              if (step.id?.toLowerCase() === stepIdentifier.toLowerCase() ||
+                  step.name?.toLowerCase().includes(stepIdentifier.toLowerCase())) {
+                targetStep = step;
+                targetIndex = idx;
+              }
+            });
           }
 
           if (!targetStep) {
             return {
               error: `Step '${stepIdentifier}' not found`,
-              availableSteps: stepStarts.map(s => ({
-                index: s.index,
+              availableSteps: steps.map((s, idx) => ({
+                index: idx,
                 id: s.id,
-                name: s.name
+                name: s.name || s.id
               }))
             };
           }
 
-          // Extract step YAML
-          const startLine = targetStep.line;
-          const nextStep = stepStarts.find(s => s.line > startLine);
-          const endLine = nextStep ? nextStep.line : lines.length;
-          const stepYaml = lines.slice(startLine, endLine).join('\n');
-
-          // Extract script file reference
-          const scriptFileMatch = stepYaml.match(/script_file:\s*["']?([^"'\n]+)["']?/);
-
+          // Build result with step details from JSON
           const result: any = {
-            stepIndex: targetStep.index,
+            stepIndex: targetIndex,
             stepId: targetStep.id,
-            stepName: targetStep.name,
+            stepName: targetStep.name || targetStep.id,
             tool: targetStep.tool,
-            yaml: stepYaml,
-            lineRange: `${startLine + 1}-${endLine}`
+            stepDefinition: targetStep
           };
 
-          // If step has a script file, include its content
-          if (scriptFileMatch) {
-            const scriptFile = scriptFileMatch[1].trim();
+          // Check for script file reference in the JSON step
+          const scriptFile = targetStep.script_file || targetStep.scriptFile;
+          if (scriptFile) {
             result.scriptFile = scriptFile;
 
             if (scriptFile in workflowContext.jsFiles) {
@@ -955,7 +927,6 @@ Answer the user's question helpfully and thoroughly by using the available tools
         ...messages
       ],
       tools,  // Add the tools we defined so AI can execute them
-      maxSteps: 5,  // Allow up to 5 tool calls in sequence
       temperature: 0.7,
       maxRetries: 3,
     });

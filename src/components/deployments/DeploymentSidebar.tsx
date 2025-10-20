@@ -45,7 +45,7 @@ interface DeploymentSidebarProps {
   selectedFilter?: string;
   onFilterChange?: (filter: string) => void;
   onCreateWorkflow?: () => void;
-  currentPage?: 'deployments' | 'alerts' | 'settings';
+  currentPage?: 'deployments' | 'alerts' | 'settings' | 'dashboard';
 }
 
 export function DeploymentSidebar({
@@ -87,6 +87,7 @@ export function DeploymentSidebar({
 
   // Determine current page from pathname if not explicitly provided
   const activePage = currentPage || (
+    pathname?.includes('/dashboard') ? 'dashboard' :
     pathname?.includes('/notifications') ? 'alerts' :
     pathname?.includes('/settings') ? 'settings' :
     'deployments'
