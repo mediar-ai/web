@@ -169,13 +169,25 @@ export async function GET(
 - `[userId]/[sessionId]` → `params: Promise<{ userId: string; sessionId: string }>`
 - Any nested dynamic segments must use Promise type and await
 
-### Modal Deployment (Windows Encoding Fix)
-- If you encounter encoding errors when deploying Modal apps on Windows:
+### Modal Deployment (Python Executor)
+- **Windows encoding fix**: If you encounter encoding errors when deploying Modal apps on Windows:
   ```bash
   export PYTHONIOENCODING=utf-8 && modal deploy modal_apps/workflow_executor.py
   ```
 - This fixes the "'charmap' codec can't encode character" error
 - The issue occurs when Modal CLI tries to display Unicode characters (✓) on Windows
+
+### Rust Executor Deployment (Azure Container Instances)
+- **Automatic deployment**: Push changes to `rust-executor/**` on main branch → GitHub Actions auto-deploys
+- **Manual deployment**: Run `npm run deploy:rust` (dev) or `npm run deploy:rust:prod` (production)
+- **From rust-executor directory**: Run `./deploy.sh` (dev) or `./deploy.sh prod` (production)
+- **Deployment time**: ~3-5 minutes (automatic), ~2-3 minutes (manual)
+- **First-time setup**: Add `AZURE_CREDENTIALS` secret to GitHub (see `rust-executor/QUICK_DEPLOY.md`)
+- **Monitoring**:
+  - Health: `http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/health`
+  - Queue: `http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/queue/status`
+  - Logs: `az container logs -n workflow-executor-dev -g mediar-workflow-executor-rg --follow`
+- **Executor selection**: Mediar team can choose Python or Rust executor in batch test dialog (default: Python)
 
 ### Environment Variables
 - Use Vercel CLI for production deployments: `npx vercel env add`
