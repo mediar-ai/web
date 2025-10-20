@@ -209,6 +209,51 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                   return newMessages;
                 });
               }
+              // Handle tool outputs - convert to readable text
+              else if (parsed.type === 'tool-output-available' && parsed.output) {
+                console.log('[Tool Output]:', parsed.toolCallId, parsed.output);
+
+                // Format tool output as readable text
+                let formattedOutput = '';
+
+                // Check if it's the listWorkflowSteps output
+                if (parsed.output.totalSteps && parsed.output.steps) {
+                  formattedOutput = `I found ${parsed.output.totalSteps} workflow steps:\n\n`;
+                  parsed.output.steps.forEach((step: any, idx: number) => {
+                    if (idx < 10) { // Show first 10 steps
+                      formattedOutput += `${idx + 1}. **${step.name || step.id}**\n`;
+                      formattedOutput += `   - Tool: ${step.tool}\n`;
+                      if (step.scriptFile) {
+                        formattedOutput += `   - Script: ${step.scriptFile}\n`;
+                      }
+                      formattedOutput += '\n';
+                    }
+                  });
+                  if (parsed.output.totalSteps > 10) {
+                    formattedOutput += `... and ${parsed.output.totalSteps - 10} more steps.\n`;
+                  }
+                }
+                // Handle error outputs
+                else if (parsed.output.error) {
+                  formattedOutput = `Error: ${parsed.output.error}\n`;
+                }
+                // Handle other outputs
+                else {
+                  formattedOutput = JSON.stringify(parsed.output, null, 2);
+                }
+
+                assistantContent += formattedOutput;
+
+                // Update the message
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  const lastMessage = newMessages[newMessages.length - 1];
+                  if (lastMessage && lastMessage.role === 'assistant') {
+                    lastMessage.content = assistantContent;
+                  }
+                  return newMessages;
+                });
+              }
               // Log tool calls for debugging
               else if (parsed.type === 'tool-input-start') {
                 console.log('[Tool Call]:', parsed.toolName);

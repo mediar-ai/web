@@ -7,8 +7,8 @@ import * as queryTools from '@/lib/execution-query-tools';
 
 // Interface for workflow context
 interface WorkflowContext {
-  yaml: string | null;
-  yamlError: string | null;
+  workflow: any | null;  // The JSON workflow object from JSONB column
+  workflowError: string | null;
   version: string;
   workflowId: number;
   jsFiles: Record<string, string>;
@@ -81,14 +81,14 @@ export async function POST(request: Request) {
 
     console.log(`[Q&A API] ✓ Execution loaded - workflow_id: ${execution.workflow_id}, version: ${execution.version_number}`);
 
-    // Now fetch YAML and Terminator docs in parallel
-    console.log('[Q&A API] ⏳ Fetching workflow YAML and Terminator documentation...');
+    // Now fetch workflow and Terminator docs in parallel
+    console.log('[Q&A API] ⏳ Fetching workflow and Terminator documentation...');
 
-    const [workflowYamlResult, terminatorDocsResult] = await Promise.all([
-      // Fetch workflow for the specific version (can be YAML or JSONB)
+    const [workflowResult, terminatorDocsResult] = await Promise.all([
+      // Fetch workflow from JSONB column
       supabase
         .from('deployed_workflow_versions')
-        .select('automation_sequence_yaml, automation_sequence, version_number, preferred_format')
+        .select('automation_sequence, version_number')
         .eq('workflow_id', execution.workflow_id)
         .eq('version_number', execution.version_number)
         .single(),
@@ -101,13 +101,13 @@ export async function POST(request: Request) {
     const fetchDuration = Date.now() - fetchStartTime;
     const terminatorDocs = terminatorDocsResult;
 
-    // Handle workflow YAML loading with error handling
-    let workflowYaml: string | null = null;
-    let yamlLoadError: string | null = null;
+    // Handle workflow loading with error handling
+    let workflowData: any | null = null;
+    let workflowLoadError: string | null = null;
 
-    if (workflowYamlResult.error) {
-      console.error(`[Q&A API] Failed to fetch workflow for version ${execution.version_number}:`, workflowYamlResult.error);
-      yamlLoadError = `Failed to load workflow: ${workflowYamlResult.error.message}`;
+    if (workflowResult.error) {
+      console.error(`[Q&A API] Failed to fetch workflow for version ${execution.version_number}:`, workflowResult.error);
+      workflowLoadError = `Failed to load workflow: ${workflowResult.error.message}`;
 
       // FALLBACK: Try to get the current version
       console.log('[Q&A API] Attempting to fetch current version as fallback...');
@@ -120,39 +120,23 @@ export async function POST(request: Request) {
       if (currentWorkflow?.current_version_id) {
         const { data: fallbackVersion } = await supabase
           .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence, version_number, preferred_format')
+          .select('automation_sequence, version_number')
           .eq('id', currentWorkflow.current_version_id)
           .single();
 
-        if (fallbackVersion) {
-          // Check which format to use
-          if (fallbackVersion.preferred_format === 'jsonb' && fallbackVersion.automation_sequence) {
-            // Convert JSON to YAML-like string representation
-            workflowYaml = JSON.stringify(fallbackVersion.automation_sequence, null, 2);
-            yamlLoadError = `Version ${execution.version_number} not found, using current version ${fallbackVersion.version_number} (JSONB format)`;
-          } else if (fallbackVersion.automation_sequence_yaml) {
-            workflowYaml = fallbackVersion.automation_sequence_yaml;
-            yamlLoadError = `Version ${execution.version_number} not found, using current version ${fallbackVersion.version_number} (YAML format)`;
-          }
-          console.warn(`[Q&A API] ${yamlLoadError}`);
+        if (fallbackVersion?.automation_sequence) {
+          workflowData = fallbackVersion.automation_sequence;
+          workflowLoadError = `Version ${execution.version_number} not found, using current version ${fallbackVersion.version_number}`;
+          console.warn(`[Q&A API] ${workflowLoadError}`);
         }
       }
-    } else if (workflowYamlResult.data) {
-      // Check which format to use based on preferred_format
-      const versionData = workflowYamlResult.data;
-
-      if (versionData.preferred_format === 'jsonb' && versionData.automation_sequence) {
-        // Handle JSONB format
-        workflowYaml = JSON.stringify(versionData.automation_sequence, null, 2);
-        console.log(`[Q&A API] ✓ Loaded workflow from JSONB v${execution.version_number} (${workflowYaml.length} chars)`);
-      } else if (versionData.automation_sequence_yaml) {
-        // Handle YAML format
-        workflowYaml = versionData.automation_sequence_yaml;
-        console.log(`[Q&A API] ✓ Loaded workflow from YAML v${execution.version_number} (${workflowYaml!.length} chars)`);
-      } else {
-        yamlLoadError = 'No workflow content found in either YAML or JSONB format';
-        console.warn(`[Q&A API] ${yamlLoadError} for version ${execution.version_number}`);
-      }
+    } else if (workflowResult.data?.automation_sequence) {
+      // Load workflow from JSONB
+      workflowData = workflowResult.data.automation_sequence;
+      console.log(`[Q&A API] ✓ Loaded workflow v${execution.version_number} (${workflowData.steps?.length || 0} steps)`);
+    } else {
+      workflowLoadError = 'No workflow content found in database';
+      console.warn(`[Q&A API] ${workflowLoadError} for version ${execution.version_number}`);
     }
 
     // Load JS files for the workflow
@@ -227,8 +211,8 @@ export async function POST(request: Request) {
 
     // Create workflow context with JS files
     const workflowContext: WorkflowContext = {
-      yaml: workflowYaml,
-      yamlError: yamlLoadError,
+      workflow: workflowData,
+      workflowError: workflowLoadError,
       version: execution.version_number || 'unknown',
       workflowId: execution.workflow_id,
       jsFiles: workflowJsFiles,
@@ -237,7 +221,7 @@ export async function POST(request: Request) {
 
     const totalFetchDuration = Date.now() - fetchStartTime;
     console.log(`[Q&A API] ✓ All data fetched in ${totalFetchDuration}ms`);
-    console.log(`[Q&A API] ${workflowYaml ? '✓' : '✗'} Workflow YAML ${workflowYaml ? `loaded (${workflowYaml.length} chars)` : `not loaded: ${yamlLoadError}`}`);
+    console.log(`[Q&A API] ${workflowData ? '✓' : '✗'} Workflow ${workflowData ? `loaded (${workflowData.steps?.length || 0} steps)` : `not loaded: ${workflowLoadError}`}`);
     console.log(`[Q&A API] ${Object.keys(workflowJsFiles).length > 0 ? '✓' : '✗'} JS Files ${Object.keys(workflowJsFiles).length > 0 ? `loaded (${Object.keys(workflowJsFiles).length} files)` : `not loaded: ${jsFilesError || 'No files'}`}`);
     console.log(`[Q&A API] ${terminatorDocs ? '✓' : '✗'} Terminator documentation ${terminatorDocs ? 'loaded' : 'failed to load'}`);
 
@@ -268,9 +252,9 @@ EXECUTION OVERVIEW:
 ${execution.error_message ? `- Error: ${execution.error_message}` : ''}
 
 WORKFLOW DEFINITION:
-${workflowContext.yaml ?
-  `✓ YAML loaded successfully (${workflowContext.yaml.length} chars, v${workflowContext.version})` :
-  `✗ YAML not available: ${workflowContext.yamlError || 'Unknown error'}`}
+${workflowContext.workflow ?
+  `✓ Workflow loaded successfully (${workflowContext.workflow.steps?.length || 0} steps, v${workflowContext.version})` :
+  `✗ Workflow not available: ${workflowContext.workflowError || 'Unknown error'}`}
 ${Object.keys(workflowContext.jsFiles).length > 0 ?
   `✓ JavaScript files loaded (${Object.keys(workflowContext.jsFiles).length} files): ${Object.keys(workflowContext.jsFiles).join(', ')}` :
   `✗ JavaScript files not available: ${workflowContext.jsFilesError || 'No files found'}`}
@@ -509,70 +493,92 @@ Answer the user's question helpfully and thoroughly by using the available tools
       },
 
       getWorkflowYaml: {
-        description: 'Get the complete workflow YAML definition that was used for this execution',
+        description: 'Get the complete workflow definition that was used for this execution',
         inputSchema: z.object({}),
         execute: async () => {
-          if (!workflowContext.yaml) {
+          if (!workflowContext.workflow) {
             return {
-              error: workflowContext.yamlError || 'Workflow YAML not available',
+              error: workflowContext.workflowError || 'Workflow not available',
               version: workflowContext.version,
               workflowId: workflowContext.workflowId
             };
           }
 
-          // Parse to count steps
-          const stepCount = (workflowContext.yaml.match(/^\s*-?\s*tool:/gm) || []).length;
-
           return {
             version: workflowContext.version,
             workflowId: workflowContext.workflowId,
-            yaml: workflowContext.yaml,
-            length: workflowContext.yaml.length,
-            estimatedSteps: stepCount
+            workflow: workflowContext.workflow,
+            stepCount: workflowContext.workflow.steps?.length || 0,
+            hasVariables: !!workflowContext.workflow.variables,
+            hasSelectors: !!workflowContext.workflow.selectors
           };
         }
       },
 
       searchWorkflowYaml: {
-        description: 'Search for specific patterns or keywords in the workflow YAML',
+        description: 'Search for specific patterns or keywords in the workflow definition',
         inputSchema: z.object({
           pattern: z.string().describe('Pattern to search for (case-insensitive)'),
-          includeContext: z.boolean().optional().default(true).describe('Include surrounding lines'),
-          contextLines: z.number().optional().default(3).describe('Number of context lines before/after match')
+          searchIn: z.enum(['steps', 'variables', 'selectors', 'all']).optional().default('all').describe('Where to search')
         }),
-        execute: async ({ pattern, includeContext, contextLines }: { pattern: string; includeContext: boolean; contextLines: number }) => {
-          if (!workflowContext.yaml) {
-            return { error: 'Workflow YAML not available' };
+        execute: async ({ pattern, searchIn }: { pattern: string; searchIn: string }) => {
+          if (!workflowContext.workflow) {
+            return { error: 'Workflow not available' };
           }
 
-          const lines = workflowContext.yaml.split('\n');
-          const matches: Array<{
-            lineNumber: number;
-            line: string;
-            context?: string;
-          }> = [];
+          const matches: Array<any> = [];
+          const searchPattern = pattern.toLowerCase();
 
-          lines.forEach((line, idx) => {
-            if (line.toLowerCase().includes(pattern.toLowerCase())) {
-              const match: any = {
-                lineNumber: idx + 1,
-                line: line
-              };
-
-              if (includeContext) {
-                const start = Math.max(0, idx - contextLines);
-                const end = Math.min(lines.length - 1, idx + contextLines);
-                match.context = lines.slice(start, end + 1)
-                  .map((l, i) => `${start + i + 1}: ${l}`)
-                  .join('\n');
+          // Search in steps
+          if (searchIn === 'all' || searchIn === 'steps') {
+            workflowContext.workflow.steps?.forEach((step: any, idx: number) => {
+              const stepStr = JSON.stringify(step).toLowerCase();
+              if (stepStr.includes(searchPattern)) {
+                matches.push({
+                  type: 'step',
+                  index: idx,
+                  id: step.id,
+                  name: step.name,
+                  tool: step.tool_name || step.tool,
+                  match: step
+                });
               }
+            });
+          }
 
-              matches.push(match);
-            }
-          });
+          // Search in variables
+          if (searchIn === 'all' || searchIn === 'variables') {
+            const vars = workflowContext.workflow.variables || {};
+            Object.entries(vars).forEach(([key, value]) => {
+              const varStr = JSON.stringify({ key, value }).toLowerCase();
+              if (varStr.includes(searchPattern)) {
+                matches.push({
+                  type: 'variable',
+                  key,
+                  value
+                });
+              }
+            });
+          }
+
+          // Search in selectors
+          if (searchIn === 'all' || searchIn === 'selectors') {
+            const selectors = workflowContext.workflow.selectors || {};
+            Object.entries(selectors).forEach(([key, value]) => {
+              const selStr = JSON.stringify({ key, value }).toLowerCase();
+              if (selStr.includes(searchPattern)) {
+                matches.push({
+                  type: 'selector',
+                  key,
+                  value
+                });
+              }
+            });
+          }
 
           return {
             pattern,
+            searchIn,
             found: matches.length,
             matches: matches.slice(0, 20) // Limit to 20 matches
           };
@@ -580,73 +586,58 @@ Answer the user's question helpfully and thoroughly by using the available tools
       },
 
       getWorkflowStepDefinition: {
-        description: 'Get the YAML definition for a specific step in the workflow',
+        description: 'Get the definition for a specific step in the workflow',
         inputSchema: z.object({
-          stepIdentifier: z.string().describe('Step index (0-based) or step name/tool name')
+          stepIdentifier: z.string().describe('Step index (0-based), step ID, or step name')
         }),
         execute: async ({ stepIdentifier }: { stepIdentifier: string }) => {
-          if (!workflowContext.yaml) {
-            return { error: 'Workflow YAML not available' };
+          if (!workflowContext.workflow?.steps) {
+            return { error: 'Workflow steps not available' };
           }
 
-          const lines = workflowContext.yaml.split('\n');
-          const stepStarts: Array<{index: number; line: number; tool: string}> = [];
-
-          // Find all step starts
-          lines.forEach((line, idx) => {
-            const toolMatch = line.match(/^\s*-?\s*tool:\s*(.+)/);
-            if (toolMatch) {
-              stepStarts.push({
-                index: stepStarts.length,
-                line: idx,
-                tool: toolMatch[1].trim()
-              });
-            }
-          });
-
-          // Find the requested step
-          let targetStep: typeof stepStarts[0] | undefined;
+          const steps = workflowContext.workflow.steps;
+          let targetStep: any = null;
+          let stepIndex = -1;
 
           // Check if it's a number (index)
           if (/^\d+$/.test(stepIdentifier)) {
-            const index = parseInt(stepIdentifier);
-            targetStep = stepStarts[index];
+            stepIndex = parseInt(stepIdentifier);
+            if (stepIndex >= 0 && stepIndex < steps.length) {
+              targetStep = steps[stepIndex];
+            }
           } else {
-            // Search by tool name
-            targetStep = stepStarts.find(s =>
-              s.tool.toLowerCase().includes(stepIdentifier.toLowerCase())
-            );
+            // Search by ID or name
+            steps.forEach((step: any, idx: number) => {
+              if (step.id === stepIdentifier ||
+                  step.name?.toLowerCase().includes(stepIdentifier.toLowerCase()) ||
+                  step.tool_name?.toLowerCase().includes(stepIdentifier.toLowerCase())) {
+                targetStep = step;
+                stepIndex = idx;
+              }
+            });
           }
 
           if (!targetStep) {
             return {
               error: `Step '${stepIdentifier}' not found`,
-              availableSteps: stepStarts.map(s => ({
-                index: s.index,
-                tool: s.tool
+              availableSteps: steps.map((s: any, idx: number) => ({
+                index: idx,
+                id: s.id,
+                name: s.name,
+                tool: s.tool_name || s.tool
               }))
             };
           }
 
-          // Extract step definition
-          const startLine = targetStep.line;
-          const nextStep = stepStarts.find(s => s.line > startLine);
-          const endLine = nextStep ? nextStep.line : lines.length;
-
-          const stepYaml = lines.slice(startLine, endLine).join('\n');
-
-          // Extract key information
-          const scriptFileMatch = stepYaml.match(/script_file:\s*["']?([^"'\n]+)["']?/);
-          const descriptionMatch = stepYaml.match(/description:\s*["']?([^"'\n]+)["']?/);
-
           return {
-            stepIndex: targetStep.index,
-            tool: targetStep.tool,
-            yaml: stepYaml,
-            scriptFile: scriptFileMatch ? scriptFileMatch[1] : null,
-            description: descriptionMatch ? descriptionMatch[1] : null,
-            lineNumber: startLine + 1,
-            lineRange: `${startLine + 1}-${endLine}`
+            stepIndex,
+            step: targetStep,
+            id: targetStep.id,
+            name: targetStep.name,
+            tool: targetStep.tool_name || targetStep.tool,
+            scriptFile: targetStep.arguments?.script_file,
+            delay: targetStep.delay,
+            fallbackId: targetStep.fallback_id
           };
         }
       },
@@ -654,172 +645,47 @@ Answer the user's question helpfully and thoroughly by using the available tools
       listWorkflowSteps: {
         description: 'List all workflow steps with their IDs, names, and tools',
         inputSchema: z.object({
-          includeJumps: z.boolean().optional().default(false).describe('Include jump conditions for each step')
+          includeDetails: z.boolean().optional().default(false).describe('Include full step details')
         }),
-        execute: async ({ includeJumps }: { includeJumps: boolean }) => {
-          if (!workflowContext.yaml) {
-            return { error: 'Workflow YAML not available' };
+        execute: async ({ includeDetails }: { includeDetails: boolean }) => {
+          console.log('[Q&A API Tool] listWorkflowSteps called');
+          console.log('[Q&A API Tool] workflowContext.workflow exists:', !!workflowContext.workflow);
+          console.log('[Q&A API Tool] workflowContext.workflow?.steps exists:', !!workflowContext.workflow?.steps);
+          if (workflowContext.workflow?.steps) {
+            console.log('[Q&A API Tool] Steps count:', workflowContext.workflow.steps.length);
           }
 
-          const lines = workflowContext.yaml.split('\n');
-          const steps: Array<{
-            index: number;
-            id?: string;
-            name?: string;
-            tool?: string;
-            scriptFile?: string;
-            fallbackId?: string;
-            jumps?: Array<{ condition: string; target: string; reason?: string }>;
-            lineNumber: number;
-          }> = [];
+          if (!workflowContext.workflow?.steps) {
+            console.log('[Q&A API Tool] Returning error: Workflow steps not available');
+            return { error: 'Workflow steps not available' };
+          }
 
-          let currentStep: any = null;
-          let inJumpsSection = false;
-          let currentJumps: Array<{ condition: string; target: string; reason?: string }> = [];
+          const steps = workflowContext.workflow.steps.map((step: any, index: number) => {
+            const summary = {
+              index,
+              id: step.id,
+              name: step.name,
+              tool: step.tool_name || step.tool,
+              scriptFile: step.arguments?.script_file,
+              fallbackId: step.fallback_id,
+              delay: step.delay
+            };
 
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmedLine = line.trim();
-
-            // Check for step start (- tool: or - name:)
-            if (line.match(/^\s*-\s+(tool:|name:|tool_name:)/)) {
-              // Save previous step if exists
-              if (currentStep) {
-                if (currentJumps.length > 0) {
-                  currentStep.jumps = currentJumps;
-                }
-                steps.push(currentStep);
-              }
-
-              // Start new step
-              currentStep = {
-                index: steps.length,
-                lineNumber: i + 1
+            if (includeDetails) {
+              return {
+                ...summary,
+                arguments: step.arguments,
+                jumps: step.jumps,
+                fullStep: step
               };
-              currentJumps = [];
-              inJumpsSection = false;
-
-              // Check if this line has tool
-              const toolMatch = line.match(/tool(?:_name)?:\s*(.+)/);
-              if (toolMatch) {
-                currentStep.tool = toolMatch[1].trim();
-              }
-
-              // Check if this line has name
-              const nameMatch = line.match(/name:\s*(.+)/);
-              if (nameMatch) {
-                currentStep.name = nameMatch[1].trim();
-              }
             }
-            // Parse step properties (when we're in a step)
-            else if (currentStep && !line.match(/^\s*-\s+/) && line.includes(':')) {
-              // Extract id
-              if (trimmedLine.startsWith('id:')) {
-                const idMatch = line.match(/id:\s*(.+)/);
-                if (idMatch) {
-                  currentStep.id = idMatch[1].trim();
-                }
-              }
-              // Extract name (if not already found)
-              else if (trimmedLine.startsWith('name:') && !currentStep.name) {
-                const nameMatch = line.match(/name:\s*(.+)/);
-                if (nameMatch) {
-                  currentStep.name = nameMatch[1].trim();
-                }
-              }
-              // Extract tool (if not already found)
-              else if ((trimmedLine.startsWith('tool:') || trimmedLine.startsWith('tool_name:')) && !currentStep.tool) {
-                const toolMatch = line.match(/tool(?:_name)?:\s*(.+)/);
-                if (toolMatch) {
-                  currentStep.tool = toolMatch[1].trim();
-                }
-              }
-              // Extract script_file
-              else if (trimmedLine.startsWith('script_file:')) {
-                const scriptMatch = line.match(/script_file:\s*["']?([^"'\n]+)["']?/);
-                if (scriptMatch) {
-                  currentStep.scriptFile = scriptMatch[1].trim();
-                }
-              }
-              // Extract fallback_id
-              else if (trimmedLine.startsWith('fallback_id:')) {
-                const fallbackMatch = line.match(/fallback_id:\s*(.+)/);
-                if (fallbackMatch) {
-                  currentStep.fallbackId = fallbackMatch[1].trim();
-                }
-              }
-              // Start of jumps section
-              else if (trimmedLine === 'jumps:') {
-                inJumpsSection = true;
-              }
-              // Parse jump conditions (if includeJumps is true)
-              else if (includeJumps && inJumpsSection && trimmedLine.startsWith('- if:')) {
-                const jumpCondition = { condition: '', target: '', reason: '' };
 
-                // Get condition
-                const condMatch = line.match(/if:\s*["']?(.+?)["']?\s*$/);
-                if (condMatch) {
-                  jumpCondition.condition = condMatch[1].trim();
-                }
-
-                // Look for to_id and reason in next lines
-                for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-                  const nextLine = lines[j].trim();
-                  if (nextLine.startsWith('to_id:')) {
-                    const toMatch = nextLine.match(/to_id:\s*(.+)/);
-                    if (toMatch) {
-                      jumpCondition.target = toMatch[1].trim();
-                    }
-                  } else if (nextLine.startsWith('reason:')) {
-                    const reasonMatch = nextLine.match(/reason:\s*["']?(.+?)["']?\s*$/);
-                    if (reasonMatch) {
-                      jumpCondition.reason = reasonMatch[1].trim();
-                    }
-                  } else if (nextLine.startsWith('- ') || !nextLine.startsWith(' ')) {
-                    break;
-                  }
-                }
-
-                if (jumpCondition.condition && jumpCondition.target) {
-                  currentJumps.push(jumpCondition);
-                }
-              }
-            }
-            // Check if we've left the jumps section
-            else if (inJumpsSection && !trimmedLine.startsWith('-') && !trimmedLine.startsWith('to_id:') && !trimmedLine.startsWith('reason:') && trimmedLine !== '') {
-              inJumpsSection = false;
-            }
-          }
-
-          // Don't forget the last step
-          if (currentStep) {
-            if (currentJumps.length > 0) {
-              currentStep.jumps = currentJumps;
-            }
-            steps.push(currentStep);
-          }
-
-          // Generate summary
-          const summary = {
-            totalSteps: steps.length,
-            stepsWithIds: steps.filter(s => s.id).length,
-            stepsWithNames: steps.filter(s => s.name).length,
-            stepsWithScripts: steps.filter(s => s.scriptFile).length,
-            stepsWithJumps: steps.filter(s => s.jumps && s.jumps.length > 0).length
-          };
+            return summary;
+          });
 
           return {
-            summary,
-            steps: steps.map(s => ({
-              index: s.index,
-              id: s.id || '(no id)',
-              name: s.name || '(no name)',
-              tool: s.tool || '(no tool)',
-              scriptFile: s.scriptFile,
-              fallbackId: s.fallbackId,
-              jumps: includeJumps ? s.jumps : undefined,
-              lineNumber: s.lineNumber
-            }))
+            totalSteps: steps.length,
+            steps
           };
         }
       },
