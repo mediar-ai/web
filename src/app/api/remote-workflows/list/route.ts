@@ -399,15 +399,6 @@ export async function GET(request: NextRequest) {
     // Get effective organization context
     const { orgId, isMediarOrg, isMediarAdmin, actualOrgId } = await getEffectiveOrgId(viewOrgId);
 
-    console.log('[API] Organization context check:', {
-      viewOrgId,
-      orgId,
-      actualOrgId,
-      isMediarOrg,
-      isMediarAdmin,
-      willSeeAllWorkflows: isMediarOrg || (isMediarAdmin && !viewOrgId)
-    });
-
     if (!orgId) {
       return NextResponse.json(
         {
@@ -428,39 +419,20 @@ export async function GET(request: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log('[API] Workflows list request:', {
-      effectiveOrg: orgId,
-      actualOrg: actualOrgId,
-      isMediar: isMediarOrg,
-      isMediarAdmin,
-      viewingAsOrg: viewOrgId
-    });
-
     // First, get workflow IDs this organization has access to
     let accessibleWorkflowIds: number[] = [];
 
     // Mediar org sees all workflows, OR Mediar admin not viewing a specific org
     if (isMediarOrg || (isMediarAdmin && !viewOrgId)) {
       // Mediar sees all workflows
-      console.log('[API] Branch: Showing ALL workflows (Mediar org or admin in main context)');
       const { data: allWorkflows, error: allError } = await supabase
         .from('deployed_workflows')
         .select('id')
         .is('parent_workflow_id', null);
 
-      console.log('[API] Mediar org/admin - fetched all workflows:', {
-        count: allWorkflows?.length,
-        error: allError?.message,
-        isMediarOrg,
-        isMediarAdmin,
-        viewOrgId
-      });
-
       accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
     } else {
       // Regular org sees only their workflows and shared workflows
-      console.log('[API] Branch: Filtering workflows for specific org:', orgId);
-
       // Get workflows owned by this org
       const { data: ownedWorkflows, error: ownedError } = await supabase
         .from('deployed_workflows')
@@ -468,31 +440,11 @@ export async function GET(request: NextRequest) {
         .eq('organization_id', orgId)
         .is('parent_workflow_id', null);
 
-      console.log('[API] Regular org - owned workflows query:', {
-        filteringByOrgId: orgId,
-        resultCount: ownedWorkflows?.length,
-        firstFewResults: ownedWorkflows?.slice(0, 3),
-        error: ownedError?.message,
-        // Add specific check for ExampleClient
-        isExampleClient: orgId === 'org_REDACTED',
-        rawResults: ownedWorkflows
-      });
-
       // Get workflows shared with this org
       const { data: sharedAccess, error: sharedError } = await supabase
         .from('workflow_organization_access')
         .select('workflow_id')
         .eq('organization_id', orgId);
-
-      console.log('[API] Regular org - shared workflows:', {
-        filteringByOrgId: orgId,
-        count: sharedAccess?.length,
-        workflowIds: sharedAccess?.map(a => a.workflow_id),
-        error: sharedError?.message,
-        // Add specific check for ExampleClient
-        isExampleClient: orgId === 'org_REDACTED',
-        rawSharedAccess: sharedAccess
-      });
 
       const ownedIds = (ownedWorkflows || []).map(w => w.id);
       const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
@@ -500,11 +452,6 @@ export async function GET(request: NextRequest) {
       // Combine and deduplicate
       accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds])];
     }
-
-    console.log('[API] Accessible workflow IDs:', {
-      count: accessibleWorkflowIds.length,
-      ids: accessibleWorkflowIds.slice(0, 5)
-    });
 
     if (accessibleWorkflowIds.length === 0 && !(isMediarOrg || (isMediarAdmin && !viewOrgId))) {
       // No workflows accessible to non-Mediar org (unless Mediar admin in their main context)
