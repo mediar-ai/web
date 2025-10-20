@@ -1,6 +1,7 @@
 import type { FunctionDeclaration } from '@google-cloud/vertexai';
 import { VertexAI } from '@google-cloud/vertexai';
 import { NextRequest, NextResponse } from 'next/server';
+import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 
 // =================================================================
 // Native Vertex AI (non-streaming) endpoint with optional tools
@@ -25,16 +26,40 @@ type AllowedModel = (typeof ALLOWED_MODELS)[number];
 type JSONSchema = Record<string, unknown>;
 
 // Helpers ------------------------------------------------------------
-function authenticate(request: NextRequest): boolean {
+async function authenticate(request: NextRequest): Promise<boolean> {
   const authHeader = request.headers.get('authorization');
   if (!authHeader) return false;
-  if (authHeader.startsWith('Bearer '))
-    return authHeader.substring(7) === API_PASSWORD;
+
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+
+    // First, check if it's the API password
+    if (token === API_PASSWORD) {
+      console.log('[AI API] Authenticated with API password');
+      return true;
+    }
+
+    // Otherwise, try to validate as desktop token
+    try {
+      const validation = await validateDesktopToken(token);
+      if (validation.valid) {
+        console.log(`[AI API] Authenticated with desktop token for user: ${validation.email}`);
+        return true;
+      }
+    } catch (error) {
+      console.error('[AI API] Desktop token validation error:', error);
+    }
+
+    // Token didn't match password or desktop validation failed
+    return false;
+  }
+
   if (authHeader.startsWith('Basic ')) {
     const decoded = Buffer.from(authHeader.substring(6), 'base64').toString();
     const [, password] = decoded.split(':');
     return password === API_PASSWORD;
   }
+
   return false;
 }
 
@@ -168,7 +193,7 @@ export async function OPTIONS() {
 // POST (native, non-streaming)
 export async function POST(request: NextRequest) {
   try {
-    if (!authenticate(request)) {
+    if (!(await authenticate(request))) {
       return NextResponse.json(
         { error: 'Unauthorized. Please provide valid credentials.' },
         { status: 401, headers: corsHeaders }
@@ -290,7 +315,7 @@ export async function POST(request: NextRequest) {
 // GET (health)
 export async function GET(request: NextRequest) {
   try {
-    if (!authenticate(request)) {
+    if (!(await authenticate(request))) {
       return NextResponse.json(
         { error: 'Unauthorized. Please provide valid credentials.' },
         { status: 401, headers: corsHeaders }

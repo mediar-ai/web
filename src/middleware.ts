@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 
 const isAdminRoute = createRouteMatcher([
   '/admin(.*)'
@@ -47,6 +48,26 @@ export default clerkMiddleware(async (auth, req) => {
 
   // Handle protected API routes - require authentication but allow any authenticated user
   if (isProtectedApiRoute(req)) {
+    // First, check for desktop token in Authorization header
+    const authHeader = req.headers.get('authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+
+      try {
+        const validation = await validateDesktopToken(token);
+        if (validation.valid) {
+          console.log(
+            `[Middleware] Protected API route accessed with desktop token for user: ${validation.email}`
+          );
+          return; // Allow access for valid desktop tokens
+        }
+      } catch (error) {
+        // Desktop token validation failed, fall through to Clerk auth
+        console.log('[Middleware] Desktop token validation failed, trying Clerk auth');
+      }
+    }
+
+    // Fall back to Clerk authentication
     const { userId } = await auth();
 
     if (!userId) {
