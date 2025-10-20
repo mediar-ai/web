@@ -17,7 +17,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { Loader2, Terminal, XCircle, Sparkles, Download, FolderOpen, FileText } from 'lucide-react';
+import { Loader2, Terminal, XCircle, Sparkles, Download, FolderOpen, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useState, Suspense, useCallback } from 'react';
 import { toast } from 'sonner';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
@@ -46,6 +46,37 @@ const LoadingSkeleton = () => (
     </div>
   </div>
 );
+
+interface CollapsibleSectionProps {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}
+
+const CollapsibleSection = ({ title, children, defaultOpen = true }: CollapsibleSectionProps) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div className="border-2 border-black rounded">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-3 bg-white hover:bg-gray-50 transition-colors"
+      >
+        <h3 className="font-mono font-bold text-sm uppercase">{title}</h3>
+        {isOpen ? (
+          <ChevronDown className="w-4 h-4" />
+        ) : (
+          <ChevronRight className="w-4 h-4" />
+        )}
+      </button>
+      {isOpen && (
+        <div className="p-4 border-t-2 border-black">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export function ExecutionDetailsDialog({
   execution,
@@ -507,140 +538,140 @@ export function ExecutionDetailsDialog({
                 <LoadingSkeleton />
               ) : (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="font-semibold mb-2">Execution Info</h4>
-                      <dl className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">
-                            Workflow ID:
-                          </dt>
-                          <dd className="font-mono">{execution.workflow_id}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Client ID:</dt>
-                          <dd className="font-mono text-xs">
-                            {execution.client_id || '—'}
-                          </dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">
-                            Modal Call ID:
-                          </dt>
-                          <dd
-                            className="font-mono text-xs truncate max-w-[400px]"
-                            title={execution.modal_call_id}
-                          >
-                            {execution.modal_call_id}
-                          </dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">
-                            Workflow Version:
-                          </dt>
-                          <dd className="font-mono text-sm font-semibold">
-                            {execution.version_number
-                              ? `v${execution.version_number}`
-                              : '—'}
-                          </dd>
-                        </div>
-                        {execution.assigned_machine_name && (
+                  <CollapsibleSection title="Execution Info & Timing" defaultOpen={true}>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="font-semibold mb-2">Execution Info</h4>
+                        <dl className="space-y-1 text-sm">
                           <div className="flex justify-between">
                             <dt className="text-muted-foreground">
-                              Executed On:
+                              Workflow ID:
                             </dt>
-                            <dd className="font-mono text-sm">
-                              {execution.assigned_machine_name}
+                            <dd className="font-mono">{execution.workflow_id}</dd>
+                          </div>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">Client ID:</dt>
+                            <dd className="font-mono text-xs">
+                              {execution.client_id || '—'}
                             </dd>
                           </div>
-                        )}
-                      </dl>
-                    </div>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">
+                              Modal Call ID:
+                            </dt>
+                            <dd
+                              className="font-mono text-xs truncate max-w-[400px]"
+                              title={execution.modal_call_id}
+                            >
+                              {execution.modal_call_id}
+                            </dd>
+                          </div>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">
+                              Workflow Version:
+                            </dt>
+                            <dd className="font-mono text-sm font-semibold">
+                              {execution.version_number
+                                ? `v${execution.version_number}`
+                                : '—'}
+                            </dd>
+                          </div>
+                          {execution.assigned_machine_name && (
+                            <div className="flex justify-between">
+                              <dt className="text-muted-foreground">
+                                Executed On:
+                              </dt>
+                              <dd className="font-mono text-sm">
+                                {execution.assigned_machine_name}
+                              </dd>
+                            </div>
+                          )}
+                        </dl>
+                      </div>
 
-                    <div>
-                      <h4 className="font-semibold mb-2">Timing</h4>
-                      <dl className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Created:</dt>
-                          <dd className="text-xs">
-                            {execution.created_at
-                              ? new Date(execution.created_at).toLocaleString()
-                              : '—'}
-                          </dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Started:</dt>
-                          <dd className="text-xs">
-                            {execution.started_at
-                              ? new Date(execution.started_at).toLocaleString()
-                              : '—'}
-                          </dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Completed:</dt>
-                          <dd className="text-xs">
-                            {execution.completed_at
-                              ? new Date(
-                                  execution.completed_at
-                                ).toLocaleString()
-                              : '—'}
-                          </dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Duration:</dt>
-                          <dd className="font-mono">
-                            {formatDuration(
-                              execution.execution_duration_seconds
-                            )}
-                          </dd>
-                        </div>
-                      </dl>
+                      <div>
+                        <h4 className="font-semibold mb-2">Timing</h4>
+                        <dl className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">Created:</dt>
+                            <dd className="text-xs">
+                              {execution.created_at
+                                ? new Date(execution.created_at).toLocaleString()
+                                : '—'}
+                            </dd>
+                          </div>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">Started:</dt>
+                            <dd className="text-xs">
+                              {execution.started_at
+                                ? new Date(execution.started_at).toLocaleString()
+                                : '—'}
+                            </dd>
+                          </div>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">Completed:</dt>
+                            <dd className="text-xs">
+                              {execution.completed_at
+                                ? new Date(
+                                    execution.completed_at
+                                  ).toLocaleString()
+                                : '—'}
+                            </dd>
+                          </div>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">Duration:</dt>
+                            <dd className="font-mono">
+                              {formatDuration(
+                                execution.execution_duration_seconds
+                              )}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
                     </div>
-                  </div>
+                  </CollapsibleSection>
 
                   {execution.error_message && (
-                    <Alert
-                      variant="default"
-                      className="border-black bg-gray-100"
-                    >
-                      <XCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        {execution.error_message}
-                      </AlertDescription>
-                    </Alert>
+                    <CollapsibleSection title="Error Message" defaultOpen={true}>
+                      <Alert
+                        variant="default"
+                        className="border-black bg-gray-100"
+                      >
+                        <XCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          {execution.error_message}
+                        </AlertDescription>
+                      </Alert>
+                    </CollapsibleSection>
                   )}
 
                   {execution.error_analysis && (
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-medium flex items-center gap-2">
-                        <span className="text-lg">🤖</span> AI Error Analysis
-                      </h3>
-                      <div className="prose prose-sm max-w-none bg-blue-50 p-4 rounded-lg border border-blue-200">
-                        <div
-                          dangerouslySetInnerHTML={{
-                            __html: execution.error_analysis
-                              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                              .replace(/^- (.*?)$/gm, '<li>$1</li>')
-                              .replace(/(<li>[\s\S]*<\/li>)/, '<ul>$1</ul>')
-                              .replace(/\n\n/g, '</p><p>')
-                              .replace(/^/, '<p>')
-                              .replace(/$/, '</p>')
-                          }}
-                        />
+                    <CollapsibleSection title="🤖 AI Error Analysis" defaultOpen={true}>
+                      <div className="space-y-2">
+                        <div className="prose prose-sm max-w-none bg-blue-50 p-4 rounded-lg border border-blue-200">
+                          <div
+                            dangerouslySetInnerHTML={{
+                              __html: execution.error_analysis
+                                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                .replace(/^- (.*?)$/gm, '<li>$1</li>')
+                                .replace(/(<li>[\s\S]*<\/li>)/, '<ul>$1</ul>')
+                                .replace(/\n\n/g, '</p><p>')
+                                .replace(/^/, '<p>')
+                                .replace(/$/, '</p>')
+                            }}
+                          />
+                        </div>
+                        {execution.error_analyzed_at && (
+                          <p className="text-xs text-muted-foreground">
+                            Analyzed at: {new Date(execution.error_analyzed_at).toLocaleString()}
+                          </p>
+                        )}
                       </div>
-                      {execution.error_analyzed_at && (
-                        <p className="text-xs text-muted-foreground">
-                          Analyzed at: {new Date(execution.error_analyzed_at).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
+                    </CollapsibleSection>
                   )}
 
                   {execution.screenshots && execution.screenshots.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-medium flex items-center gap-2">
-                        <span className="text-lg">📸</span> Monitor Screenshots
-                      </h3>
+                    <CollapsibleSection title="📸 Monitor Screenshots" defaultOpen={true}>
                       <div className="grid grid-cols-2 gap-4">
                         {execution.screenshots.map((screenshot, idx) => {
                           const isUrl = screenshot.startsWith('http://') || screenshot.startsWith('https://');
@@ -680,10 +711,10 @@ export function ExecutionDetailsDialog({
                           );
                         })}
                       </div>
-                    </div>
+                    </CollapsibleSection>
                   )}
 
-                  <div>
+                  <CollapsibleSection title="API Request" defaultOpen={false}>
                     <ApiRequestBlock
                       method="POST"
                       url={`/api/remote-workflows/${execution.workflow_id}/execute`}
@@ -697,11 +728,10 @@ export function ExecutionDetailsDialog({
                       title="API Request"
                       size="sm"
                     />
-                  </div>
+                  </CollapsibleSection>
 
                   {(execution.results || execution.execution_logs) && (
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-sm font-medium">Full Execution Data</h3>
+                    <CollapsibleSection title="Full Execution Data" defaultOpen={true}>
                       <div className="flex gap-2">
                         {execution.results && (
                           <Button
@@ -734,13 +764,13 @@ export function ExecutionDetailsDialog({
                           Download Complete Logs (JSON)
                         </Button>
                       </div>
-                    </div>
+                    </CollapsibleSection>
                   )}
 
                   {execution.formatted_output && (
-                    <div>
+                    <CollapsibleSection title="Formatted Output" defaultOpen={true}>
                       {renderFormattedOutputWithFileLinks()}
-                    </div>
+                    </CollapsibleSection>
                   )}
                 </div>
               )}
