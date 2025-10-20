@@ -24,9 +24,15 @@ const supabase = createClient(
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { messages, executionId } = body;
+    const { messages, executionId, contextData } = body;
 
-    console.log('[Q&A API] Loading context for execution:', executionId);
+    // Check if context was provided by the frontend
+    if (contextData) {
+      console.log('[Q&A API] Using pre-loaded context for execution:', executionId);
+      console.log(`[Q&A API] Context has ${contextData.metadata?.jsFileCount || 0} JS files, ${contextData.metadata?.workflowSteps || 0} steps`);
+    } else {
+      console.log('[Q&A API] Loading context for execution:', executionId);
+    }
 
     // Use existing environment variables
     const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_VERTEX_PROJECT || process.env.GOOGLE_PROJECT_ID || 'mediar-394022';
@@ -65,21 +71,41 @@ export async function POST(request: Request) {
       } : undefined
     });
 
-    // First fetch execution data to get workflow_id and version
-    console.log('[Q&A API] ⏳ Fetching execution data...');
-    const fetchStartTime = Date.now();
+    let execution: any;
+    let workflowContext: WorkflowContext;
+    let terminatorDocs: string | null = null;
 
-    const { data: execution, error } = await supabase
-      .from('workflow_executions')
-      .select('*')
-      .eq('id', executionId)
-      .single();
+    // Use pre-loaded context if available, otherwise fetch it
+    if (contextData) {
+      // Use pre-loaded context from frontend
+      execution = contextData.execution;
+      workflowContext = {
+        workflow: contextData.workflow,
+        workflowError: null,
+        version: execution.version || execution.version_number,
+        workflowId: execution.workflow_id,
+        jsFiles: contextData.jsFiles || {},
+        jsFilesError: contextData.jsFilesError || null
+      };
+      terminatorDocs = contextData.documentation || null;
+      console.log('[Q&A API] ✓ Using pre-loaded context');
+    } else {
+      // Fetch execution data to get workflow_id and version
+      console.log('[Q&A API] ⏳ Fetching execution data...');
+      const fetchStartTime = Date.now();
 
-    if (error || !execution) {
-      return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
-    }
+      const { data: executionData, error } = await supabase
+        .from('workflow_executions')
+        .select('*')
+        .eq('id', executionId)
+        .single();
 
-    console.log(`[Q&A API] ✓ Execution loaded - workflow_id: ${execution.workflow_id}, version: ${execution.version_number}`);
+      if (error || !executionData) {
+        return NextResponse.json({ error: 'Execution not found' }, { status: 404 });
+      }
+
+      execution = executionData;
+      console.log(`[Q&A API] ✓ Execution loaded - workflow_id: ${execution.workflow_id}, version: ${execution.version_number}`);
 
     // Now fetch workflow, GitHub folder, and Terminator docs in parallel
     console.log('[Q&A API] ⏳ Fetching workflow data and documentation...');
@@ -105,7 +131,7 @@ export async function POST(request: Request) {
     ]);
 
     const fetchDuration = Date.now() - fetchStartTime;
-    const terminatorDocs = terminatorDocsResult;
+    terminatorDocs = terminatorDocsResult;
 
     // Handle workflow loading with error handling
     let workflowData: any | null = null;
@@ -230,21 +256,22 @@ export async function POST(request: Request) {
       // Continue without JS files - don't fail the entire request
     }
 
-    // Create workflow context with JS files
-    const workflowContext: WorkflowContext = {
-      workflow: workflowData,
-      workflowError: workflowLoadError,
-      version: execution.version_number || 'unknown',
-      workflowId: execution.workflow_id,
-      jsFiles: workflowJsFiles,
-      jsFilesError: jsFilesError
-    };
+      // Create workflow context with JS files
+      workflowContext = {
+        workflow: workflowData,
+        workflowError: workflowLoadError,
+        version: execution.version_number || 'unknown',
+        workflowId: execution.workflow_id,
+        jsFiles: workflowJsFiles,
+        jsFilesError: jsFilesError
+      };
 
-    const totalFetchDuration = Date.now() - fetchStartTime;
-    console.log(`[Q&A API] ✓ All data fetched in ${totalFetchDuration}ms`);
-    console.log(`[Q&A API] ${workflowData ? '✓' : '✗'} Workflow ${workflowData ? `loaded (${workflowData.steps?.length || 0} steps)` : `not loaded: ${workflowLoadError}`}`);
-    console.log(`[Q&A API] ${Object.keys(workflowJsFiles).length > 0 ? '✓' : '✗'} JS Files ${Object.keys(workflowJsFiles).length > 0 ? `loaded (${Object.keys(workflowJsFiles).length} files)` : `not loaded: ${jsFilesError || 'No files'}`}`);
-    console.log(`[Q&A API] ${terminatorDocs ? '✓' : '✗'} Terminator documentation ${terminatorDocs ? 'loaded' : 'failed to load'}`);
+      const totalFetchDuration = Date.now() - fetchStartTime;
+      console.log(`[Q&A API] ✓ All data fetched in ${totalFetchDuration}ms`);
+      console.log(`[Q&A API] ${workflowData ? '✓' : '✗'} Workflow ${workflowData ? `loaded (${workflowData.steps?.length || 0} steps)` : `not loaded: ${workflowLoadError}`}`);
+      console.log(`[Q&A API] ${Object.keys(workflowJsFiles).length > 0 ? '✓' : '✗'} JS Files ${Object.keys(workflowJsFiles).length > 0 ? `loaded (${Object.keys(workflowJsFiles).length} files)` : `not loaded: ${jsFilesError || 'No files'}`}`);
+      console.log(`[Q&A API] ${terminatorDocs ? '✓' : '✗'} Terminator documentation ${terminatorDocs ? 'loaded' : 'failed to load'}`);
+    }
 
     // Extract execution data from the results field
     const executionData = execution.results ? queryTools.extractExecutionData(execution.results) : null;
