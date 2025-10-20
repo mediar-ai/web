@@ -81,16 +81,22 @@ export async function POST(request: Request) {
 
     console.log(`[Q&A API] ✓ Execution loaded - workflow_id: ${execution.workflow_id}, version: ${execution.version_number}`);
 
-    // Now fetch workflow and Terminator docs in parallel
-    console.log('[Q&A API] ⏳ Fetching workflow and Terminator documentation...');
+    // Now fetch workflow, GitHub folder, and Terminator docs in parallel
+    console.log('[Q&A API] ⏳ Fetching workflow data and documentation...');
 
-    const [workflowResult, terminatorDocsResult] = await Promise.all([
+    const [workflowResult, workflowInfoResult, terminatorDocsResult] = await Promise.all([
       // Fetch workflow from JSONB column
       supabase
         .from('deployed_workflow_versions')
         .select('automation_sequence, version_number')
         .eq('workflow_id', execution.workflow_id)
         .eq('version_number', execution.version_number)
+        .single(),
+      // Fetch GitHub folder for the workflow
+      supabase
+        .from('deployed_workflows')
+        .select('github_folder')
+        .eq('id', execution.workflow_id)
         .single(),
       // Fetch Terminator documentation
       fetch('https://raw.githubusercontent.com/mediar-ai/terminator/main/terminator-mcp-agent/src/prompt.rs')
@@ -139,73 +145,88 @@ export async function POST(request: Request) {
       console.warn(`[Q&A API] ${workflowLoadError} for version ${execution.version_number}`);
     }
 
-    // Load JS files for the workflow
+    // Load JS files from GitHub (single source of truth)
     const workflowJsFiles: Record<string, string> = {};
     let jsFilesError: string | null = null;
 
     try {
-      console.log('[Q&A API] ⏳ Loading workflow JavaScript files...');
+      console.log('[Q&A API] ⏳ Loading workflow JavaScript files from GitHub...');
 
-      // Fetch JS files metadata from database
-      const { data: files, error: filesError } = await supabase
-        .from('workflow_files')
-        .select('file_path, storage_path, file_size')
-        .eq('workflow_id', execution.workflow_id)
-        .eq('version_number', execution.version_number);
+      const githubFolder = workflowInfoResult.data?.github_folder;
 
-      if (filesError) {
-        jsFilesError = `Failed to fetch file metadata: ${filesError.message}`;
-        console.error(`[Q&A API] ${jsFilesError}`);
-      } else if (files && files.length > 0) {
-        console.log(`[Q&A API] Found ${files.length} JS files to load`);
-
-        // Generate signed URLs for each file
-        const signedUrls: Record<string, string> = {};
-        for (const file of files) {
-          const { data } = await supabase.storage
-            .from('workflow-files')
-            .createSignedUrl(file.storage_path, 3600); // 1 hour expiry
-
-          if (data?.signedUrl) {
-            signedUrls[file.file_path] = data.signedUrl;
-          } else {
-            console.warn(`[Q&A API] Failed to get signed URL for ${file.file_path}`);
-          }
-        }
-
-        // Download file contents in parallel
-        const downloadPromises = Object.entries(signedUrls).map(async ([filePath, url]) => {
-          try {
-            const response = await fetch(url);
-            if (response.ok) {
-              const content = await response.text();
-              workflowJsFiles[filePath] = content;
-              console.log(`[Q&A API] ✓ Loaded ${filePath} (${content.length} chars)`);
-              return { filePath, success: true };
-            } else {
-              console.error(`[Q&A API] Failed to download ${filePath}: HTTP ${response.status}`);
-              return { filePath, success: false };
-            }
-          } catch (err) {
-            console.error(`[Q&A API] Error downloading ${filePath}:`, err);
-            return { filePath, success: false };
-          }
-        });
-
-        const results = await Promise.all(downloadPromises);
-        const failedFiles = results.filter(r => !r.success);
-
-        if (failedFiles.length > 0) {
-          jsFilesError = `Failed to download ${failedFiles.length} files: ${failedFiles.map(f => f.filePath).join(', ')}`;
-        }
-
-        console.log(`[Q&A API] ✓ Loaded ${Object.keys(workflowJsFiles).length}/${files.length} JS files`);
+      if (!githubFolder) {
+        jsFilesError = 'No GitHub folder configured for this workflow';
+        console.warn(`[Q&A API] ${jsFilesError}`);
       } else {
-        console.log(`[Q&A API] No JS files found for version ${execution.version_number}`);
+        // Extract script file references from workflow
+        const scriptFiles = new Set<string>();
+
+        if (workflowData && workflowData.steps) {
+          for (const step of workflowData.steps) {
+            if (step.arguments) {
+              if (step.arguments.script_file) {
+                scriptFiles.add(step.arguments.script_file);
+              }
+              if (step.arguments.scriptFile) {
+                scriptFiles.add(step.arguments.scriptFile);
+              }
+            }
+          }
+        }
+
+        console.log(`[Q&A API] Found ${scriptFiles.size} JS files referenced in workflow`);
+
+        // Fetch files from GitHub
+        const githubToken = process.env.GITHUB_TOKEN;
+        if (!githubToken) {
+          jsFilesError = 'GitHub token not configured';
+          console.error(`[Q&A API] ${jsFilesError}`);
+        } else {
+          // Fetch each file from GitHub
+          const filePromises = Array.from(scriptFiles).map(async (fileName) => {
+            try {
+              const url = `https://api.github.com/repos/mediar-ai/workflows/contents/${githubFolder}/${fileName}`;
+              const response = await fetch(url, {
+                headers: {
+                  'Authorization': `Bearer ${githubToken}`,
+                  'Accept': 'application/vnd.github.v3+json'
+                }
+              });
+
+              if (response.ok) {
+                const data = await response.json();
+                // Decode base64 content
+                const content = Buffer.from(data.content, 'base64').toString('utf-8');
+                workflowJsFiles[fileName] = content;
+                console.log(`[Q&A API] ✓ Loaded ${fileName} from GitHub (${content.length} chars)`);
+                return { fileName, success: true };
+              } else if (response.status === 404) {
+                console.warn(`[Q&A API] File not found in GitHub: ${fileName}`);
+                return { fileName, success: false, error: 'Not found' };
+              } else {
+                console.error(`[Q&A API] Failed to fetch ${fileName} from GitHub: ${response.status}`);
+                return { fileName, success: false, error: `HTTP ${response.status}` };
+              }
+            } catch (err) {
+              console.error(`[Q&A API] Error fetching ${fileName} from GitHub:`, err);
+              return { fileName, success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+            }
+          });
+
+          const results = await Promise.all(filePromises);
+          const failedFiles = results.filter(r => !r.success);
+
+          if (failedFiles.length > 0) {
+            jsFilesError = `Failed to load ${failedFiles.length} files from GitHub: ${failedFiles.map(f => `${f.fileName} (${f.error})`).join(', ')}`;
+            console.warn(`[Q&A API] ${jsFilesError}`);
+          }
+
+          console.log(`[Q&A API] ✓ Loaded ${Object.keys(workflowJsFiles).length}/${scriptFiles.size} JS files from GitHub`);
+        }
       }
     } catch (err) {
       jsFilesError = err instanceof Error ? err.message : 'Unknown error loading JS files';
-      console.error('[Q&A API] Error loading workflow JS files:', err);
+      console.error('[Q&A API] Error loading workflow JS files from GitHub:', err);
       // Continue without JS files - don't fail the entire request
     }
 
@@ -931,7 +952,7 @@ Answer the user's question helpfully and thoroughly by using the available tools
       maxRetries: 3,
     });
 
-    // Return the stream
+    // Return the stream using the UI message stream response
     return result.toUIMessageStreamResponse();
   } catch (error) {
     console.error('Error in execution Q&A:', error);
