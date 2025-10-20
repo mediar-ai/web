@@ -314,7 +314,13 @@ When analyzing failures, use this systematic approach:
 5. Search for patterns: Use searchJsFiles() to find similar code patterns or error handling
 6. Cross-reference with documentation: Use searchTerminatorDocs() for tool-specific guidance
 
-Answer the user's question helpfully and thoroughly.`;
+IMPORTANT: When users ask about workflow steps, YAML content, or workflow structure, ALWAYS use the appropriate tools:
+- If asked for workflow steps: Use listWorkflowSteps()
+- If asked for the YAML: Use getWorkflowYaml()
+- If asked about a specific step: Use getWorkflowStepDefinition()
+- If asked about JS files: Use listJsFiles() and getJsFile()
+
+Answer the user's question helpfully and thoroughly by using the available tools.`;
 
     // Define tools for the AI
     const tools = {
@@ -1083,6 +1089,7 @@ Answer the user's question helpfully and thoroughly.`;
         ...messages
       ],
       tools,  // Add the tools we defined so AI can execute them
+      maxSteps: 5,  // Allow up to 5 tool calls in sequence
       temperature: 0.7,
       maxRetries: 3,
     });
