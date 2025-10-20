@@ -421,11 +421,11 @@ function generateEmailHTML(alert: any, config: any): string {
           </div>
 
           <div style="text-align: center; margin: 32px 0;">
-            <a href="${baseUrl}/deployments?execution=${executionId}" class="action-button">
+            <a href="${baseUrl}/dashboard?execution=${executionId}" class="action-button">
               View Execution Details →
             </a>
             <br/>
-            <a href="${baseUrl}/deployments?workflow=${workflowId}" class="secondary-button">
+            <a href="${baseUrl}/dashboard?workflow=${workflowId}" class="secondary-button">
               View Workflow
             </a>
           </div>
@@ -473,7 +473,7 @@ function generateEmailHTML(alert: any, config: any): string {
 
         <div class="footer">
           <p style="margin: 0 0 12px 0;">
-            <a href="${baseUrl}/deployments" style="font-weight: 500;">Deployment Dashboard</a> •
+            <a href="${baseUrl}/dashboard" style="font-weight: 500;">Dashboard</a> •
             <a href="${baseUrl}/internal/notifications">Notification Settings</a>
           </p>
           <p style="margin: 0; color: #999;">

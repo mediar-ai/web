@@ -256,7 +256,7 @@ export const AlertsDataTable = memo(function AlertsDataTable({
           if (!executionId) return <span className="font-mono text-[10px]">-</span>;
           return (
             <Link
-              href={`/deployments?execution=${executionId}`}
+              href={`/dashboard?execution=${executionId}`}
               className="font-mono text-[10px] text-black hover:underline inline-flex items-center gap-1"
             >
               #{executionId}

@@ -46,6 +46,8 @@ import {
   Clock,
   Copy,
   Edit,
+  Eye,
+  EyeOff,
   Loader2,
   MoreVertical,
   Pause,
@@ -159,6 +161,15 @@ export function WorkflowCard({
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
   const [uploadVersionDialogOpen, setUploadVersionDialogOpen] = useState(false);
+
+  // Filter state - show/hide skipped executions (persisted in localStorage)
+  const [showSkippedExecutions, setShowSkippedExecutions] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('showSkippedExecutions');
+      return saved !== null ? JSON.parse(saved) : true; // Default: show skipped
+    }
+    return true;
+  });
 
   // Inline editing state
   const [editingName, setEditingName] = useState(false);
@@ -649,6 +660,15 @@ export function WorkflowCard({
     setTempDescription(workflow.description || '');
   };
 
+  const handleToggleSkippedExecutions = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent collapse/expand of execution history
+    const newValue = !showSkippedExecutions;
+    setShowSkippedExecutions(newValue);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('showSkippedExecutions', JSON.stringify(newValue));
+    }
+  };
+
   const handleDeleteWorkflow = async (workflowId: number) => {
     setDeletingWorkflow(true);
     try {
@@ -880,6 +900,8 @@ export function WorkflowCard({
       (exec, index, self) =>
         index === self.findIndex(e => e.execution_id === exec.execution_id)
     )
+    // Filter out skipped executions if toggle is off
+    .filter(exec => showSkippedExecutions || exec.status !== 'skipped')
     // Sort by execution ID descending (newest first)
     .sort((a, b) => b.execution_id - a.execution_id);
 
@@ -1215,50 +1237,65 @@ export function WorkflowCard({
 
         {shouldShowExecutionHistory && (
           <Collapsible open={expanded} onOpenChange={setExpanded}>
-            <CollapsibleTrigger className="w-full cursor-pointer">
-              <div className="flex items-center justify-between p-3 bg-gray-50 border border-black rounded hover:bg-gray-100 transition-colors cursor-pointer">
-                <div className="flex items-center gap-2">
-                  {expanded ? (
-                    <ChevronDown className="w-4 h-4" />
+            <div className="flex items-center justify-between p-3 bg-gray-50 border border-black rounded hover:bg-gray-100 transition-colors">
+              <CollapsibleTrigger className="flex items-center gap-2 flex-1 cursor-pointer">
+                {expanded ? (
+                  <ChevronDown className="w-4 h-4" />
+                ) : (
+                  <ChevronRight className="w-4 h-4" />
+                )}
+                <span className="text-base font-bold font-mono text-black">
+                  EXECUTION HISTORY
+                </span>
+                <div className="flex gap-2">
+                  {loadingExecutions ? (
+                    <Badge
+                      variant="black-outline"
+                      className="text-sm h-7 px-3"
+                    >
+                      <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                      LOADING
+                    </Badge>
                   ) : (
-                    <ChevronRight className="w-4 h-4" />
+                    <>
+                      {workflowLiveExecutions.length > 0 && (
+                        <Badge
+                          variant="black-outline"
+                          className="text-sm h-7 px-3"
+                        >
+                          {workflowLiveExecutions.length} LIVE
+                        </Badge>
+                      )}
+                      {recentExecutions.length > 0 && (
+                        <Badge
+                          variant="black-outline"
+                          className="text-sm h-7 px-3"
+                        >
+                          {recentExecutions.length} RECENT
+                        </Badge>
+                      )}
+                    </>
                   )}
-                  <span className="text-base font-bold font-mono text-black">
-                    EXECUTION HISTORY
-                  </span>
-                  <div className="flex gap-2">
-                    {loadingExecutions ? (
-                      <Badge
-                        variant="black-outline"
-                        className="text-sm h-7 px-3"
-                      >
-                        <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                        LOADING
-                      </Badge>
-                    ) : (
-                      <>
-                        {workflowLiveExecutions.length > 0 && (
-                          <Badge
-                            variant="black-outline"
-                            className="text-sm h-7 px-3"
-                          >
-                            {workflowLiveExecutions.length} LIVE
-                          </Badge>
-                        )}
-                        {recentExecutions.length > 0 && (
-                          <Badge
-                            variant="black-outline"
-                            className="text-sm h-7 px-3"
-                          >
-                            {recentExecutions.length} RECENT
-                          </Badge>
-                        )}
-                      </>
-                    )}
-                  </div>
                 </div>
-              </div>
-            </CollapsibleTrigger>
+              </CollapsibleTrigger>
+              <button
+                onClick={handleToggleSkippedExecutions}
+                className="px-3 py-1 border border-black rounded text-xs font-mono font-bold hover:bg-black hover:text-white transition-colors flex-shrink-0"
+                title={showSkippedExecutions ? "Hide skipped executions" : "Show skipped executions"}
+              >
+                {showSkippedExecutions ? (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5 inline mr-1" />
+                    HIDE SKIPPED
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3.5 h-3.5 inline mr-1" />
+                    SHOW SKIPPED
+                  </>
+                )}
+              </button>
+            </div>
 
             <CollapsibleContent>
               <div className="mt-2 max-h-[400px] overflow-y-auto border border-black rounded-lg bg-white">

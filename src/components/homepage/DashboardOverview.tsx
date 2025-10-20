@@ -139,11 +139,11 @@ export default function DashboardOverview({ organizationName, userRole, userId, 
               </Link>
             )}
 
-            {/* Deployments - Available to all */}
-            <Link href="/deployments">
+            {/* Dashboard - Available to all */}
+            <Link href="/dashboard">
               <Button variant="outline" className="border-black text-black hover:bg-black hover:text-white">
                 <Settings className="w-4 h-4 mr-2" />
-                Deployments
+                Dashboard
               </Button>
             </Link>
           </div>
