@@ -1193,18 +1193,17 @@ Answer the user's question helpfully and thoroughly by using the available tools
         );
 
         // Send function responses back to model
-        // Vertex AI expects an array of parts, each with functionResponse (singular)
-        const functionResponseParts = functionResponses.map(fr => ({
-          functionResponse: {
+        const functionResponseMessage = {
+          functionResponses: functionResponses.map(fr => ({
             name: fr.name,
             response: fr.response
-          }
-        }));
+          }))
+        };
 
         console.log(`[Q&A API] Sending ${functionResponses.length} tool result(s) back to model`);
 
         // Continue the conversation with tool results
-        const nextResult = await chat.sendMessage(functionResponseParts);
+        const nextResult = await chat.sendMessage([functionResponseMessage as any]);
         const nextResponse = nextResult.response;
         const nextCandidate = nextResponse.candidates?.[0];
 
