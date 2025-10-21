@@ -86,15 +86,20 @@ export async function GET(request: Request) {
 
       const fileNames = new Set<string>();
 
-      // Extract JS file names from automation_sequence
-      workflow.automation_sequence.forEach((step: any) => {
-        if (step.script_file?.endsWith('.js')) {
-          fileNames.add(step.script_file);
-        }
-      });
-
-      // Also check steps array
-      if (workflow.steps) {
+      // Extract JS file names - workflow IS the automation_sequence array
+      if (Array.isArray(workflow)) {
+        workflow.forEach((step: any) => {
+          if (step.script_file?.endsWith('.js')) {
+            fileNames.add(step.script_file);
+          }
+        });
+      } else if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence)) {
+        workflow.automation_sequence.forEach((step: any) => {
+          if (step.script_file?.endsWith('.js')) {
+            fileNames.add(step.script_file);
+          }
+        });
+      } else if (workflow.steps && Array.isArray(workflow.steps)) {
         workflow.steps.forEach((step: any) => {
           if (step.script_file?.endsWith('.js')) {
             fileNames.add(step.script_file);
@@ -160,6 +165,10 @@ export async function GET(request: Request) {
     }
 
     // Return all context data
+    const workflowStepCount = Array.isArray(workflow)
+      ? workflow.length
+      : (workflow?.steps?.length || workflow?.automation_sequence?.length || 0);
+
     return NextResponse.json({
       execution,
       workflow,
@@ -170,7 +179,7 @@ export async function GET(request: Request) {
         workflowId,
         version,
         jsFileCount: Object.keys(jsFiles).length,
-        workflowSteps: workflow?.steps?.length || 0
+        workflowSteps: workflowStepCount
       }
     });
 

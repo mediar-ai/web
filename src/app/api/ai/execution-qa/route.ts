@@ -997,8 +997,7 @@ Answer the user's question helpfully and thoroughly by using the available tools
       tools,  // Add the tools we defined so AI can execute them
       temperature: 0.7,
       maxRetries: 3,
-      maxSteps: 10,  // Allow multiple turns: tool calls + final response
-      maxToolRoundtrips: 5,  // Explicitly allow tool roundtrips
+      maxSteps: 5,  // Allow tool execution
     });
 
     // Return the stream using the UI message stream response
