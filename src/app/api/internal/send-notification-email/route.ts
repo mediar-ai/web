@@ -10,7 +10,7 @@ const emailQueue: any[] = [];
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { to, subject, alert, config } = body;
+    const { to, alert, config } = body;
 
     const emailHtml = generateEmailHTML(alert, config);
 
@@ -238,7 +238,7 @@ function getExecutionStatus(alert: any, formattedResult: any): { badge: string; 
   }
 }
 
-function generateEmailHTML(alert: any, config: any): string {
+function generateEmailHTML(alert: any, _config: any): string {
 
   const baseUrl = process.env.NEXT_PUBLIC_URL || 'https://app.mediar.ai';
 
@@ -246,7 +246,6 @@ function generateEmailHTML(alert: any, config: any): string {
   const executionDetails = alert.details || {};
   const workflowName = executionDetails.workflow_name || alert.workflow_name || `Workflow ${alert.workflow_id}`;
   const executionId = alert.execution_id || executionDetails.execution_id || executionDetails.id;
-  const workflowId = alert.workflow_id || executionDetails.workflow_id;
   const triggerSource = executionDetails.trigger_source || 'unknown';
   const duration = executionDetails.duration || executionDetails.execution_time_seconds || '0';
 
@@ -263,25 +262,8 @@ function generateEmailHTML(alert: any, config: any): string {
   }
 
   // Get status badge and message using dashboard logic
-  const { badge, badgeColor } = getExecutionStatus(alert, formattedResult);
+  const { badge } = getExecutionStatus(alert, formattedResult);
   const message = getParserMessage(formattedResult, alert);
-
-  // Convert Tailwind classes to inline styles for email compatibility
-  const getBadgeStyles = (classes: string): string => {
-    let styles = 'padding: 4px 12px; font-family: monospace; font-size: 11px; display: inline-block; border-radius: 4px; font-weight: 700; letter-spacing: 0.5px;';
-
-    if (classes.includes('bg-black')) styles += ' background-color: #000;';
-    if (classes.includes('bg-white')) styles += ' background-color: #fff;';
-    if (classes.includes('bg-gray-200')) styles += ' background-color: #e5e5e5;';
-    if (classes.includes('text-white')) styles += ' color: #fff;';
-    if (classes.includes('text-black')) styles += ' color: #000;';
-    if (classes.includes('text-gray-800')) styles += ' color: #1f2937;';
-    if (classes.includes('border-2 border-black')) styles += ' border: 2px solid #000;';
-
-    return styles;
-  };
-
-  const badgeStyles = getBadgeStyles(badgeColor);
 
   return `
     <!DOCTYPE html>
