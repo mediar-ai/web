@@ -281,26 +281,6 @@ function generateEmailHTML(alert: any, _config: any): string {
           max-width: 600px;
           margin: 0 auto;
         }
-        .header {
-          background: #000;
-          color: white;
-          padding: 32px 24px;
-          text-align: center;
-          border-radius: 8px 8px 0 0;
-        }
-        .alert-badge {
-          display: inline-block;
-          background: white;
-          color: #000;
-          padding: 6px 16px;
-          border-radius: 4px;
-          font-size: 11px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-top: 16px;
-          border: 2px solid white;
-        }
         .content {
           background: white;
           padding: 32px 24px;
@@ -410,12 +390,6 @@ function generateEmailHTML(alert: any, _config: any): string {
     </head>
     <body>
       <div class="container">
-        <div class="header">
-          <h2 style="margin-bottom: 8px;">⚠️ Workflow Alert</h2>
-          <div class="workflow-name">${workflowName}</div>
-          <div class="alert-badge">${badge}</div>
-        </div>
-
         <div class="content">
           <p style="font-size: 16px; margin-top: 0; line-height: 1.5;">
             Hi there,
