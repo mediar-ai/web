@@ -3545,7 +3545,11 @@ if __name__ == "__main__":
     timeout=300,  # 5 minutes max per check
     max_containers=1,  # ENSURE ONLY ONE INSTANCE (prevents race conditions)
     min_containers=0,  # Do not keep warm, prevent queueing
-    retries=0,  # Do not retry on failure/skip
+    retries=modal.Retries(
+        max_retries=2,
+        backoff_coefficient=1.0,
+        initial_delay=1.0,
+    ),  # Retry on transient failures (e.g., SSL connection drops)
 )
 def check_and_process_queued_jobs():
     """
