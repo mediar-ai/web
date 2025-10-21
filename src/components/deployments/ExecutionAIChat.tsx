@@ -253,30 +253,75 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
                 // Format tool output as readable text
                 let formattedOutput = '';
 
-                // Check if it's the listWorkflowSteps output
+                // listWorkflowSteps output
                 if (parsed.output.totalSteps && parsed.output.steps) {
-                  formattedOutput = `I found ${parsed.output.totalSteps} workflow steps:\n\n`;
+                  formattedOutput = `**Found ${parsed.output.totalSteps} workflow steps:**\n\n`;
                   parsed.output.steps.forEach((step: any, idx: number) => {
-                    if (idx < 10) { // Show first 10 steps
+                    if (idx < 10) {
                       formattedOutput += `${idx + 1}. **${step.name || step.id}**\n`;
-                      formattedOutput += `   - Tool: ${step.tool}\n`;
+                      formattedOutput += `   - Tool: \`${step.tool}\`\n`;
                       if (step.scriptFile) {
-                        formattedOutput += `   - Script: ${step.scriptFile}\n`;
+                        formattedOutput += `   - Script: \`${step.scriptFile}\`\n`;
                       }
                       formattedOutput += '\n';
                     }
                   });
                   if (parsed.output.totalSteps > 10) {
-                    formattedOutput += `... and ${parsed.output.totalSteps - 10} more steps.\n`;
+                    formattedOutput += `_... and ${parsed.output.totalSteps - 10} more steps_\n`;
                   }
                 }
-                // Handle error outputs
-                else if (parsed.output.error) {
-                  formattedOutput = `Error: ${parsed.output.error}\n`;
+                // listJsFiles output
+                else if (Array.isArray(parsed.output) && parsed.output.length > 0 && parsed.output[0].fileName) {
+                  formattedOutput = `**Found ${parsed.output.length} JavaScript files:**\n\n`;
+                  parsed.output.slice(0, 15).forEach((file: any, idx: number) => {
+                    formattedOutput += `${idx + 1}. \`${file.fileName}\` (${file.size} bytes, ${file.lines} lines)\n`;
+                  });
+                  if (parsed.output.length > 15) {
+                    formattedOutput += `\n_... and ${parsed.output.length - 15} more files_\n`;
+                  }
                 }
-                // Handle other outputs
+                // getJsFile output
+                else if (parsed.output.fileName && parsed.output.content) {
+                  const previewLines = parsed.output.firstLines || parsed.output.content.split('\n').slice(0, 10).join('\n');
+                  formattedOutput = `**File: \`${parsed.output.fileName}\`**\n`;
+                  formattedOutput += `- Size: ${parsed.output.size} bytes\n`;
+                  formattedOutput += `- Lines: ${parsed.output.lines}\n\n`;
+                  formattedOutput += '**Preview:**\n```javascript\n' + previewLines + '\n```\n';
+                  if (parsed.output.lines > 10) {
+                    formattedOutput += `\n_... ${parsed.output.lines - 10} more lines_\n`;
+                  }
+                }
+                // searchJsFiles output
+                else if (parsed.output.matches && Array.isArray(parsed.output.matches)) {
+                  formattedOutput = `**Found ${parsed.output.totalMatches || parsed.output.matches.length} matches` +
+                    ` in ${parsed.output.filesSearched || parsed.output.matches.length} files:**\n\n`;
+                  parsed.output.matches.slice(0, 10).forEach((match: any, idx: number) => {
+                    formattedOutput += `${idx + 1}. \`${match.fileName}\`: ${match.matchCount} match(es)\n`;
+                    if (match.preview) {
+                      formattedOutput += `   \`\`\`\n   ${match.preview.substring(0, 100)}...\n   \`\`\`\n`;
+                    }
+                  });
+                  if ((parsed.output.matches.length > 10)) {
+                    formattedOutput += `\n_... and ${parsed.output.matches.length - 10} more files with matches_\n`;
+                  }
+                }
+                // getWorkflowYaml output
+                else if (parsed.output.yaml || (parsed.output.workflow && typeof parsed.output.workflow === 'object')) {
+                  const workflow = parsed.output.workflow || parsed.output;
+                  formattedOutput = `**Workflow Structure:**\n`;
+                  formattedOutput += `- Steps: ${workflow.steps?.length || 'N/A'}\n`;
+                  formattedOutput += `- Version: ${workflow.version || workflow.version_number || 'N/A'}\n\n`;
+                  if (parsed.output.yaml) {
+                    formattedOutput += '```yaml\n' + parsed.output.yaml.substring(0, 500) + '\n...\n```\n';
+                  }
+                }
+                // Error outputs
+                else if (parsed.output.error) {
+                  formattedOutput = `❌ **Error:** ${parsed.output.error}\n`;
+                }
+                // Generic object/array output
                 else {
-                  formattedOutput = JSON.stringify(parsed.output, null, 2);
+                  formattedOutput = '```json\n' + JSON.stringify(parsed.output, null, 2) + '\n```\n';
                 }
 
                 assistantContent += formattedOutput;

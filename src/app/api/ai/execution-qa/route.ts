@@ -985,7 +985,8 @@ Answer the user's question helpfully and thoroughly by using the available tools
       (execution.screenshots && execution.screenshots.length > 0 ? `Screenshots: ${execution.screenshots.length} monitor screenshots available\n\n` : '') +
       (execution.execution_logs && execution.execution_logs.length > 0 ?
         `Orchestrator Server Logs (${execution.execution_logs.length} entries):\n${JSON.stringify(execution.execution_logs, null, 2)}\n\n` : '') +
-      `Answer the user's question based on this data. Be specific and helpful.`;
+      `Answer the user's question based on this data. Be specific and helpful.\n\n` +
+      `IMPORTANT: When you use tools, ALWAYS provide a text response after getting the tool results to explain or summarize them for the user. Never end without a final text response.`;
 
     const result = await streamText({
       model: vertex('gemini-2.5-pro'),
@@ -996,6 +997,8 @@ Answer the user's question helpfully and thoroughly by using the available tools
       tools,  // Add the tools we defined so AI can execute them
       temperature: 0.7,
       maxRetries: 3,
+      maxSteps: 10,  // Allow multiple turns: tool calls + final response
+      maxToolRoundtrips: 5,  // Explicitly allow tool roundtrips
     });
 
     // Return the stream using the UI message stream response
