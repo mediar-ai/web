@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createVertex } from '@ai-sdk/google-vertex';
-import { streamText, stepCountIs } from 'ai';
+import { streamText } from 'ai';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import * as queryTools from '@/lib/execution-query-tools';
@@ -995,7 +995,7 @@ Answer the user's question helpfully and thoroughly by using the available tools
         ...messages
       ],
       tools,  // Add the tools we defined so AI can execute them
-      stopWhen: stepCountIs(5),  // Allow up to 5 steps (tool calls + text generation)
+      maxToolRoundtrips: 5,  // Allow tool execution and continue with text
       temperature: 0.7,
       maxRetries: 3,
     });
