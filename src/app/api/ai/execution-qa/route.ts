@@ -21,6 +21,15 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Simple in-memory cache for execution context (avoids re-fetching workflow + JS files)
+const contextCache = new Map<string, {
+  execution: any;
+  workflowContext: WorkflowContext;
+  terminatorDocs: string | null;
+  timestamp: number;
+}>();
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -75,21 +84,22 @@ export async function POST(request: Request) {
     let workflowContext: WorkflowContext;
     let terminatorDocs: string | null = null;
 
-    // Use pre-loaded context if available, otherwise fetch it
-    if (contextData) {
-      // Use pre-loaded context from frontend
-      execution = contextData.execution;
-      workflowContext = {
-        workflow: contextData.workflow,
-        workflowError: null,
-        version: execution.version || execution.version_number,
-        workflowId: execution.workflow_id,
-        jsFiles: contextData.jsFiles || {},
-        jsFilesError: contextData.jsFilesError || null
-      };
-      terminatorDocs = contextData.documentation || null;
-      console.log('[Q&A API] ✓ Using pre-loaded context');
+    // Check cache first (avoids re-fetching workflow + 33 JS files on every message)
+    const cached = contextCache.get(executionId);
+    const now = Date.now();
+
+    if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+      // Use cached context
+      execution = cached.execution;
+      workflowContext = cached.workflowContext;
+      terminatorDocs = cached.terminatorDocs;
+      console.log('[Q&A API] ✓ Using cached context (skipped GitHub API calls)');
     } else {
+      // Cache miss or expired - load fresh context
+      if (cached) {
+        console.log('[Q&A API] Cache expired, reloading context');
+        contextCache.delete(executionId);
+      }
       // Fetch execution data to get workflow_id and version
       console.log('[Q&A API] ⏳ Fetching execution data...');
       const fetchStartTime = Date.now();
@@ -271,6 +281,15 @@ export async function POST(request: Request) {
       console.log(`[Q&A API] ${workflowData ? '✓' : '✗'} Workflow ${workflowData ? `loaded (${workflowData.steps?.length || 0} steps)` : `not loaded: ${workflowLoadError}`}`);
       console.log(`[Q&A API] ${Object.keys(workflowJsFiles).length > 0 ? '✓' : '✗'} JS Files ${Object.keys(workflowJsFiles).length > 0 ? `loaded (${Object.keys(workflowJsFiles).length} files)` : `not loaded: ${jsFilesError || 'No files'}`}`);
       console.log(`[Q&A API] ${terminatorDocs ? '✓' : '✗'} Terminator documentation ${terminatorDocs ? 'loaded' : 'failed to load'}`);
+
+      // Store in cache for subsequent messages
+      contextCache.set(executionId, {
+        execution,
+        workflowContext,
+        terminatorDocs,
+        timestamp: Date.now()
+      });
+      console.log(`[Q&A API] ✓ Cached context for execution ${executionId}`);
     }
 
     // Extract execution data from the results field
