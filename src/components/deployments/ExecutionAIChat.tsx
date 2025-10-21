@@ -178,217 +178,51 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
         throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let assistantContent = '';
-      let buffer = '';
+      // Remove loading message
+      setMessages(prev => prev.filter(m => m.id !== loadingMessageId));
 
-      if (reader) {
-        // Remove loading message and add assistant message
-        setMessages(prev => prev.filter(m => m.id !== loadingMessageId));
+      // Get JSON response (non-streaming)
+      const data = await response.json();
+      console.log('[Q&A Client] Received response:', { textLength: data.text?.length, turns: data.turns });
 
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: '',
-        };
+      // Add assistant message with response
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.text || 'No response generated',
+      };
 
-        // Add empty assistant message
-        setMessages(prev => [...prev, assistantMessage]);
+      setMessages(prev => [...prev, assistantMessage]);
 
-        let chunkCount = 0;
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            console.log('[Q&A Client] Stream done, received', chunkCount, 'chunks');
-            break;
+      // Save conversation
+      try {
+        const updatedMessages = [
+          ...messages,
+          userMessageObj,
+          assistantMessage
+        ];
+
+        const saveResponse = await fetch('/api/ai/execution-qa/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            executionId: execution.execution_id,
+            messages: updatedMessages,
+          }),
+        });
+
+        if (saveResponse.ok) {
+          const saveData = await saveResponse.json();
+          if (saveData.conversationId && !conversationId) {
+            setConversationId(saveData.conversationId);
           }
-
-          chunkCount++;
-          const chunk = decoder.decode(value, { stream: true });
-          console.log(`[Q&A Client] Raw chunk ${chunkCount}:`, chunk.substring(0, 100));
-
-          buffer += chunk;
-          const lines = buffer.split('\n');
-
-          // Keep the last incomplete line in the buffer
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-
-            console.log('[Q&A Client] Processing line:', line.substring(0, 50));
-
-            if (!line.startsWith('data: ')) {
-              console.warn('[Q&A Client] Line does not start with "data: ":', line.substring(0, 50));
-              continue;
-            }
-
-            const data = line.slice(6).trim();
-            if (!data || data === '[DONE]') continue;
-
-            try {
-              const parsed = JSON.parse(data);
-              console.log('[Q&A Client] Parsed:', { type: parsed.type, keys: Object.keys(parsed) });
-
-              // Handle text delta chunks - UI Message Stream uses 'delta' field
-              if (parsed.type === 'text-delta' && parsed.delta) {
-                assistantContent += parsed.delta;
-                console.log('[Q&A Client] Text delta received:', parsed.delta.substring(0, 50));
-
-                // Update the message in real-time
-                setMessages(prev => {
-                  const newMessages = [...prev];
-                  const lastMessage = newMessages[newMessages.length - 1];
-                  if (lastMessage && lastMessage.role === 'assistant') {
-                    lastMessage.content = assistantContent;
-                  }
-                  return newMessages;
-                });
-              }
-              // Handle tool outputs - convert to readable text
-              else if (parsed.type === 'tool-output-available' && parsed.output) {
-                console.log('[Tool Output]:', parsed.toolCallId, parsed.output);
-
-                // Format tool output as readable text
-                let formattedOutput = '';
-
-                // listWorkflowSteps output
-                if (parsed.output.totalSteps && parsed.output.steps) {
-                  formattedOutput = `**Found ${parsed.output.totalSteps} workflow steps:**\n\n`;
-                  parsed.output.steps.forEach((step: any, idx: number) => {
-                    if (idx < 10) {
-                      formattedOutput += `${idx + 1}. **${step.name || step.id}**\n`;
-                      formattedOutput += `   - Tool: \`${step.tool}\`\n`;
-                      if (step.scriptFile) {
-                        formattedOutput += `   - Script: \`${step.scriptFile}\`\n`;
-                      }
-                      formattedOutput += '\n';
-                    }
-                  });
-                  if (parsed.output.totalSteps > 10) {
-                    formattedOutput += `_... and ${parsed.output.totalSteps - 10} more steps_\n`;
-                  }
-                }
-                // listJsFiles output
-                else if (Array.isArray(parsed.output) && parsed.output.length > 0 && parsed.output[0].fileName) {
-                  formattedOutput = `**Found ${parsed.output.length} JavaScript files:**\n\n`;
-                  parsed.output.slice(0, 15).forEach((file: any, idx: number) => {
-                    formattedOutput += `${idx + 1}. \`${file.fileName}\` (${file.size} bytes, ${file.lines} lines)\n`;
-                  });
-                  if (parsed.output.length > 15) {
-                    formattedOutput += `\n_... and ${parsed.output.length - 15} more files_\n`;
-                  }
-                }
-                // getJsFile output
-                else if (parsed.output.fileName && parsed.output.content) {
-                  const previewLines = parsed.output.firstLines || parsed.output.content.split('\n').slice(0, 10).join('\n');
-                  formattedOutput = `**File: \`${parsed.output.fileName}\`**\n`;
-                  formattedOutput += `- Size: ${parsed.output.size} bytes\n`;
-                  formattedOutput += `- Lines: ${parsed.output.lines}\n\n`;
-                  formattedOutput += '**Preview:**\n```javascript\n' + previewLines + '\n```\n';
-                  if (parsed.output.lines > 10) {
-                    formattedOutput += `\n_... ${parsed.output.lines - 10} more lines_\n`;
-                  }
-                }
-                // searchJsFiles output
-                else if (parsed.output.matches && Array.isArray(parsed.output.matches)) {
-                  formattedOutput = `**Found ${parsed.output.totalMatches || parsed.output.matches.length} matches` +
-                    ` in ${parsed.output.filesSearched || parsed.output.matches.length} files:**\n\n`;
-                  parsed.output.matches.slice(0, 10).forEach((match: any, idx: number) => {
-                    formattedOutput += `${idx + 1}. \`${match.fileName}\`: ${match.matchCount} match(es)\n`;
-                    if (match.preview) {
-                      formattedOutput += `   \`\`\`\n   ${match.preview.substring(0, 100)}...\n   \`\`\`\n`;
-                    }
-                  });
-                  if ((parsed.output.matches.length > 10)) {
-                    formattedOutput += `\n_... and ${parsed.output.matches.length - 10} more files with matches_\n`;
-                  }
-                }
-                // getWorkflowYaml output
-                else if (parsed.output.yaml || (parsed.output.workflow && typeof parsed.output.workflow === 'object')) {
-                  const workflow = parsed.output.workflow || parsed.output;
-                  formattedOutput = `**Workflow Structure:**\n`;
-                  formattedOutput += `- Steps: ${workflow.steps?.length || 'N/A'}\n`;
-                  formattedOutput += `- Version: ${workflow.version || workflow.version_number || 'N/A'}\n\n`;
-                  if (parsed.output.yaml) {
-                    formattedOutput += '```yaml\n' + parsed.output.yaml.substring(0, 500) + '\n...\n```\n';
-                  }
-                }
-                // Error outputs
-                else if (parsed.output.error) {
-                  formattedOutput = `❌ **Error:** ${parsed.output.error}\n`;
-                }
-                // Generic object/array output
-                else {
-                  formattedOutput = '```json\n' + JSON.stringify(parsed.output, null, 2) + '\n```\n';
-                }
-
-                assistantContent += formattedOutput;
-
-                // Update the message
-                setMessages(prev => {
-                  const newMessages = [...prev];
-                  const lastMessage = newMessages[newMessages.length - 1];
-                  if (lastMessage && lastMessage.role === 'assistant') {
-                    lastMessage.content = assistantContent;
-                  }
-                  return newMessages;
-                });
-              }
-              // Log tool calls for debugging
-              else if (parsed.type === 'tool-input-start') {
-                console.log('[Tool Call]:', parsed.toolName);
-              }
-              else if (parsed.type === 'tool-result') {
-                console.log('[Tool Result]:', parsed.toolName);
-              }
-            } catch (e) {
-              // Ignore parse errors for malformed chunks
-              console.error('[Q&A Client] Failed to parse chunk:', data.substring(0, 100), e);
-            }
-          }
-        }
-
-        if (chunkCount === 0) {
-          console.error('[Q&A Client] WARNING: No chunks received!');
-          setError(new Error('No response received from AI'));
+          console.log('[QA] Conversation saved successfully');
         } else {
-          // Save conversation after successful streaming
-          try {
-            const updatedMessages = [
-              ...messages,
-              userMessageObj,
-              {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant' as const,
-                content: assistantContent,
-              }
-            ];
-
-            const saveResponse = await fetch('/api/ai/execution-qa/conversations', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                executionId: execution.execution_id,
-                messages: updatedMessages,
-              }),
-            });
-
-            if (saveResponse.ok) {
-              const saveData = await saveResponse.json();
-              if (saveData.conversationId && !conversationId) {
-                setConversationId(saveData.conversationId);
-              }
-              console.log('[QA] Conversation saved successfully');
-            } else {
-              console.warn('[QA] Failed to save conversation:', await saveResponse.text());
-            }
-          } catch (saveError) {
-            console.error('[QA] Error saving conversation:', saveError);
-            // Don't show error to user, conversation still works
-          }
+          console.warn('[QA] Failed to save conversation:', await saveResponse.text());
         }
+      } catch (saveError) {
+        console.error('[QA] Error saving conversation:', saveError);
+        // Don't show error to user, conversation still works
       }
     } catch (err) {
       console.error('Chat error:', err);
