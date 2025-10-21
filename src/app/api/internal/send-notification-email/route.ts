@@ -494,7 +494,7 @@ function generateEmailHTML(alert: any, _config: any): string {
 
         <div class="footer">
           <p style="margin: 0 0 16px 0; font-size: 14px; color: #666;">
-            Need help? Contact us at <a href="mailto:support@mediar.ai" style="color: #000;">support@mediar.ai</a>
+            Need help? Contact us at <a href="mailto:matt@mediar.ai" style="color: #000;">matt@mediar.ai</a> or <a href="mailto:louis@mediar.ai" style="color: #000;">louis@mediar.ai</a>
           </p>
           <p style="margin: 0 0 8px 0; font-size: 12px;">
             <a href="${baseUrl}/dashboard" style="color: #666; text-decoration: none;">View Dashboard</a> •
