@@ -308,6 +308,7 @@ export async function POST(request: Request) {
     }
 
     // Build context with tool usage instructions
+    const hasExecutionData = !!executionData;
     const context = `You are an AI assistant analyzing workflow execution #${execution.id}.
 
 EXECUTION OVERVIEW:
@@ -315,8 +316,14 @@ EXECUTION OVERVIEW:
 - Duration: ${execution.execution_duration_seconds || 0} seconds
 - Workflow ID: ${execution.workflow_id}
 - Version: ${execution.version_number || 'unknown'}
-- Total Steps: ${stepCount}
+- Total Steps Executed: ${stepCount}
 ${execution.error_message ? `- Error: ${execution.error_message}` : ''}
+${!hasExecutionData ? `\n⚠️ IMPORTANT: This execution has NO runtime data (results field is empty).
+This typically means the execution failed before it could start running steps, due to:
+- Connectivity issues reaching the executor
+- Executor service unavailable
+- Invalid execution parameters
+- Workflow loading failures` : ''}
 
 WORKFLOW DEFINITION:
 ${workflowContext.workflow ?
@@ -328,16 +335,19 @@ ${Object.keys(workflowContext.jsFiles).length > 0 ?
 
 ${summary}
 
-You have access to tools to query the complete execution data:
+You have access to tools to query the execution data:
 
-EXECUTION ANALYSIS:
+${hasExecutionData ? `EXECUTION ANALYSIS (Runtime Data Available):
 1. searchLogs - Search for patterns in all execution logs
 2. getStepDetails - Get complete details for a specific step
 3. listSteps - List all steps with their status
 4. getErrors - Get all error details
 5. searchInResults - Search in step outputs/results
 6. getTimeline - Get execution timeline
-7. getPerformanceMetrics - Analyze performance
+7. getPerformanceMetrics - Analyze performance` : `EXECUTION ANALYSIS (No Runtime Data):
+⚠️ Tools 1-7 are UNAVAILABLE (searchLogs, getStepDetails, listSteps, getErrors, etc.)
+Use getExecutionFailureReason() to understand why the execution failed before starting.
+Check execution.error_message, execution.execution_logs, and execution_params for clues.`}
 
 WORKFLOW DEFINITION:
 8. getWorkflowYaml - Get the complete YAML definition
@@ -354,16 +364,25 @@ JAVASCRIPT FILES:
 DOCUMENTATION:
 16. searchTerminatorDocs - Search Terminator desktop automation documentation
 
+PRE-EXECUTION FAILURE ANALYSIS:
+17. getExecutionFailureReason - Get detailed information about why execution failed before starting
+
 ${terminatorDocs ? 'TERMINATOR DOCUMENTATION: Available - use searchTerminatorDocs to query desktop automation patterns, error handling, browser scripts, validation, and workflow best practices.' : ''}
 
 DEBUGGING APPROACH:
-When analyzing failures, use this systematic approach:
+${hasExecutionData ? `When analyzing failures, use this systematic approach:
 1. Check what failed: Use getErrors() and getStepDetails() to understand the error
 2. Check what it was supposed to do: Use getWorkflowStepDefinition() to see the step's YAML configuration
 3. If the step uses a script: Use getStepWithJsFile() or getJsFile() to examine the JavaScript code
 4. Check what actually happened: Use searchLogs() to find relevant log entries
 5. Search for patterns: Use searchJsFiles() to find similar code patterns or error handling
-6. Cross-reference with documentation: Use searchTerminatorDocs() for tool-specific guidance
+6. Cross-reference with documentation: Use searchTerminatorDocs() for tool-specific guidance` : `When analyzing pre-execution failures:
+1. Use getExecutionFailureReason() to get a summary of what went wrong
+2. Check execution.error_message for the specific error
+3. Review execution.execution_logs (orchestrator server logs) for connection/startup issues
+4. Check execution_params to see if invalid parameters were sent
+5. Use getWorkflowYaml() to see what SHOULD have run
+6. If the workflow definition is missing, that may be the root cause`}
 
 IMPORTANT: When users ask about workflow steps, YAML content, or workflow structure, ALWAYS use the appropriate tools:
 - If asked for workflow steps: Use listWorkflowSteps()
@@ -382,7 +401,13 @@ Answer the user's question helpfully and thoroughly by using the available tools
           limit: z.number().optional().default(50).describe('Maximum number of results')
         }),
         execute: async ({ pattern, limit }: { pattern: string; limit: number }) => {
-          if (!executionData) return { error: 'No execution data available' };
+          if (!executionData) {
+            return {
+              error: 'No execution data available',
+              reason: 'This execution failed before any steps could run. No logs were generated.',
+              suggestion: 'Use getExecutionFailureReason() to understand why the execution failed before starting. Check execution.execution_logs for orchestrator server logs instead.'
+            };
+          }
           const results = queryTools.searchLogs(executionData, pattern, limit);
           return {
             found: results.length,
@@ -423,7 +448,13 @@ Answer the user's question helpfully and thoroughly by using the available tools
           limit: z.number().optional().default(20).describe('Maximum number of errors to return')
         }),
         execute: async ({ limit }: { limit: number }) => {
-          if (!executionData) return { error: 'No execution data available' };
+          if (!executionData) {
+            return {
+              error: 'No execution data available',
+              reason: 'This execution failed before any steps could run. No step errors were generated.',
+              suggestion: 'Use getExecutionFailureReason() instead. Check execution.error_message for the pre-execution failure reason.'
+            };
+          }
           const errors = queryTools.getErrors(executionData, limit);
           return {
             errorCount: errors.length,
@@ -957,6 +988,28 @@ Answer the user's question helpfully and thoroughly by using the available tools
 
           return result;
         }
+      },
+
+      getExecutionFailureReason: {
+        description: 'Get detailed information about why the execution failed before starting (use when no runtime data is available)',
+        inputSchema: z.object({}),
+        execute: async () => {
+          return {
+            status: execution.status,
+            errorMessage: execution.error_message || 'No error message provided',
+            hasRuntimeData: !!executionData,
+            duration: execution.execution_duration_seconds || 0,
+            executionParams: execution.execution_params || null,
+            orchestratorLogsCount: execution.execution_logs?.length || 0,
+            orchestratorLogs: execution.execution_logs?.slice(0, 20) || [],
+            screenshotsCount: execution.screenshots?.length || 0,
+            workflowAvailable: !!workflowContext.workflow,
+            workflowError: workflowContext.workflowError,
+            analysis: !executionData
+              ? 'This execution failed before any steps could run. This is a pre-execution failure - the workflow never started. Check error_message and orchestrator logs for connectivity/startup issues.'
+              : `Execution ran and completed ${stepsData.length} steps. This is NOT a pre-execution failure.`
+          };
+        }
       }
     };
 
@@ -977,7 +1030,11 @@ Answer the user's question helpfully and thoroughly by using the available tools
     }
 
     const enrichedContext = context + `\n\n=== EXECUTION DATA ===\n` +
-      `Steps (${stepsData.length} total):\n${JSON.stringify(stepsData, null, 2)}\n\n` +
+      (executionData
+        ? `Steps (${stepsData.length} total):\n${JSON.stringify(stepsData, null, 2)}\n\n`
+        : `⚠️ NO RUNTIME DATA: The execution did not produce any step results.\n` +
+          `This means the workflow never started running. Check error_message and execution_logs below.\n\n`
+      ) +
       (errorsData.length > 0 ? `Errors:\n${JSON.stringify(errorsData, null, 2)}\n\n` : '') +
       (formattedOutput ? `Formatted Output:\n${JSON.stringify(formattedOutput, null, 2)}\n\n` : '') +
       (execution.error_analysis ? `AI Error Analysis:\n${execution.error_analysis}\n\n` : '') +
@@ -994,8 +1051,7 @@ Answer the user's question helpfully and thoroughly by using the available tools
         { role: 'system', content: enrichedContext },
         ...messages
       ],
-      tools,  // Add the tools we defined so AI can execute them
-      maxToolRoundtrips: 5,  // Allow tool execution and continue with text
+      tools,  // Provide tools for execution analysis
       temperature: 0.7,
       maxRetries: 3,
     });
