@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createVertex } from '@ai-sdk/google-vertex';
-import { streamText } from 'ai';
+import { VertexAI } from '@google-cloud/vertexai';
+import type { FunctionDeclaration } from '@google-cloud/vertexai';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import * as queryTools from '@/lib/execution-query-tools';
@@ -42,44 +42,6 @@ export async function POST(request: Request) {
     } else {
       console.log('[Q&A API] Loading context for execution:', executionId);
     }
-
-    // Use existing environment variables
-    const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_VERTEX_PROJECT || process.env.GOOGLE_PROJECT_ID || 'mediar-394022';
-    const location = process.env.VERTEX_AI_LOCATION || process.env.GOOGLE_VERTEX_LOCATION || 'us-central1';
-
-    // Handle base64 credentials
-    let credentialsJson: string | undefined;
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-      try {
-        credentialsJson = Buffer.from(
-          process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
-          'base64'
-        ).toString('utf-8');
-      } catch (error) {
-        console.error('Failed to decode base64 credentials:', error);
-      }
-    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
-      // Fallback to JSON if available
-      credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    }
-
-    if (!project) {
-      return NextResponse.json(
-        { error: 'Google Cloud project not configured' },
-        { status: 500 }
-      );
-    }
-
-    // Initialize Vertex AI client with proper credentials
-    const vertex = createVertex({
-      project,
-      location,
-      googleAuthOptions: credentialsJson ? {
-        credentials: JSON.parse(credentialsJson),
-        scopes: ['https://www.googleapis.com/auth/cloud-platform']
-      } : undefined
-    });
-
     let execution: any;
     let workflowContext: WorkflowContext;
     let terminatorDocs: string | null = null;
@@ -1045,19 +1007,276 @@ Answer the user's question helpfully and thoroughly by using the available tools
       `Answer the user's question based on this data. Be specific and helpful.\n\n` +
       `IMPORTANT: When you use tools, ALWAYS provide a text response after getting the tool results to explain or summarize them for the user. Never end without a final text response.`;
 
-    const result = await streamText({
-      model: vertex('gemini-2.5-pro'),
-      messages: [
-        { role: 'system', content: enrichedContext },
-        ...messages
-      ],
-      tools,  // Provide tools for execution analysis
-      temperature: 0.7,
-      maxRetries: 3,
+    // Helper: Convert Zod schema to Vertex FunctionDeclaration parameters
+    function zodToVertexSchema(schema: z.ZodObject<any>): any {
+      const shape = schema.shape;
+      const properties: any = {};
+      const required: string[] = [];
+
+      for (const [key, value] of Object.entries(shape)) {
+        const zodType = value as z.ZodTypeAny;
+
+        // Extract description
+        const description = (zodType as any)._def?.description || '';
+
+        // Determine type
+        let type = 'string';
+        let items = undefined;
+        let enumValues = undefined;
+
+        if (zodType instanceof z.ZodString) {
+          type = 'string';
+          const enumDef = (zodType as any)._def?.checks?.find((c: any) => c.kind === 'enum');
+          if (enumDef) {
+            enumValues = enumDef.values;
+          }
+        } else if (zodType instanceof z.ZodNumber) {
+          type = 'number';
+        } else if (zodType instanceof z.ZodBoolean) {
+          type = 'boolean';
+        } else if (zodType instanceof z.ZodArray) {
+          type = 'array';
+          items = { type: 'string' }; // Simplified
+        } else if (zodType instanceof z.ZodEnum) {
+          type = 'string';
+          enumValues = (zodType as any)._def.values;
+        }
+
+        properties[key] = {
+          type,
+          description,
+          ...(items && { items }),
+          ...(enumValues && { enum: enumValues })
+        };
+
+        // Check if required (not optional)
+        if (!(zodType instanceof z.ZodOptional) && !(zodType instanceof z.ZodDefault)) {
+          required.push(key);
+        }
+      }
+
+      return {
+        type: 'object',
+        properties,
+        required
+      };
+    }
+
+    // Convert tools to Vertex FunctionDeclarations
+    const functionDeclarations: FunctionDeclaration[] = Object.entries(tools).map(([name, tool]) => ({
+      name,
+      description: tool.description,
+      parameters: zodToVertexSchema(tool.inputSchema as z.ZodObject<any>)
+    }));
+
+    console.log(`[Q&A API] Converted ${functionDeclarations.length} tools to FunctionDeclarations`);
+
+    // Initialize Vertex AI
+    const project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_VERTEX_PROJECT || process.env.GOOGLE_PROJECT_ID || 'mediar-394022';
+    const location = process.env.VERTEX_AI_LOCATION || process.env.GOOGLE_VERTEX_LOCATION || 'us-central1';
+
+    let credentialsJson: string | undefined;
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
+      try {
+        credentialsJson = Buffer.from(
+          process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
+          'base64'
+        ).toString('utf-8');
+      } catch (error) {
+        console.error('Failed to decode base64 credentials:', error);
+      }
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+      credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    }
+
+    const credentials = credentialsJson ? JSON.parse(credentialsJson) : undefined;
+
+    const vertexAI = new VertexAI({
+      project,
+      location,
+      googleAuthOptions: credentials ? {
+        credentials: {
+          client_email: credentials.client_email,
+          private_key: credentials.private_key,
+        },
+        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+      } : undefined
     });
 
-    // Return the stream using the UI message stream response
-    return result.toUIMessageStreamResponse();
+    // Get the model with tools
+    const model = vertexAI.getGenerativeModel({
+      model: 'gemini-2.5-pro',
+      tools: functionDeclarations.length > 0 ? [{ functionDeclarations }] : undefined,
+      systemInstruction: {
+        parts: [{ text: enrichedContext }]
+      } as any,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 8192,
+      }
+    });
+
+    // Convert message history to Vertex format
+    const history = messages.slice(0, -1).map((msg: any) => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }]
+    }));
+
+    const userMessage = messages[messages.length - 1].content;
+
+    console.log(`[Q&A API] Starting conversation with ${history.length} previous messages`);
+
+    // Start chat
+    const chat = model.startChat({ history: history as any });
+
+    // Multi-turn conversation loop
+    let finalText = '';
+    let turnCount = 0;
+    const maxTurns = 10; // Prevent infinite loops
+
+    while (turnCount < maxTurns) {
+      turnCount++;
+      console.log(`[Q&A API] Turn ${turnCount}: Sending message to model`);
+
+      const result = await chat.sendMessage(userMessage);
+      const response = result.response;
+      const candidate = response.candidates?.[0];
+
+      if (!candidate) {
+        throw new Error('No candidate in response');
+      }
+
+      const parts = candidate.content?.parts || [];
+
+      // Extract text parts
+      const textParts = parts.filter((p: any) => p.text).map((p: any) => p.text);
+
+      // Extract function calls
+      const functionCalls = parts.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
+
+      console.log(`[Q&A API] Turn ${turnCount}: Received ${textParts.length} text parts, ${functionCalls.length} function calls`);
+
+      if (functionCalls.length > 0) {
+        // Execute tools
+        console.log(`[Q&A API] Executing ${functionCalls.length} tool(s): ${functionCalls.map((fc: any) => fc.name).join(', ')}`);
+
+        const functionResponses = await Promise.all(
+          functionCalls.map(async (fc: any) => {
+            const toolName = fc.name as string;
+            const toolArgs = fc.args || {};
+
+            console.log(`[Q&A API] Executing tool: ${toolName}`);
+
+            if (!tools[toolName as keyof typeof tools]) {
+              console.error(`[Q&A API] Tool not found: ${toolName}`);
+              return {
+                name: toolName,
+                response: { error: `Tool ${toolName} not found` }
+              };
+            }
+
+            try {
+              const result = await tools[toolName as keyof typeof tools].execute(toolArgs);
+              console.log(`[Q&A API] Tool ${toolName} executed successfully`);
+              return {
+                name: toolName,
+                response: result
+              };
+            } catch (error) {
+              console.error(`[Q&A API] Tool ${toolName} execution failed:`, error);
+              return {
+                name: toolName,
+                response: { error: error instanceof Error ? error.message : 'Tool execution failed' }
+              };
+            }
+          })
+        );
+
+        // Send function responses back to model
+        const functionResponseMessage = {
+          functionResponses: functionResponses.map(fr => ({
+            name: fr.name,
+            response: fr.response
+          }))
+        };
+
+        console.log(`[Q&A API] Sending ${functionResponses.length} tool result(s) back to model`);
+
+        // Continue the conversation with tool results
+        const nextResult = await chat.sendMessage([functionResponseMessage as any]);
+        const nextResponse = nextResult.response;
+        const nextCandidate = nextResponse.candidates?.[0];
+
+        if (nextCandidate) {
+          const nextParts = nextCandidate.content?.parts || [];
+          const nextTextParts = nextParts.filter((p: any) => p.text).map((p: any) => p.text);
+
+          if (nextTextParts.length > 0) {
+            finalText = nextTextParts.join('');
+            console.log(`[Q&A API] Got final text response after tool execution (${finalText.length} chars)`);
+            break;
+          }
+        }
+
+        turnCount++;
+        continue;
+      }
+
+      // No function calls, we have the final response
+      if (textParts.length > 0) {
+        finalText = textParts.join('');
+        console.log(`[Q&A API] Got direct text response (${finalText.length} chars)`);
+        break;
+      }
+
+      // No text and no function calls - unexpected
+      console.warn('[Q&A API] No text or function calls in response, ending conversation');
+      break;
+    }
+
+    if (turnCount >= maxTurns) {
+      console.warn('[Q&A API] Reached maximum turn count');
+    }
+
+    console.log(`[Q&A API] Conversation completed in ${turnCount} turns`);
+
+    // Save conversation
+    try {
+      const updatedMessages = [
+        ...messages,
+        {
+          id: Date.now().toString(),
+          role: 'assistant' as const,
+          content: finalText,
+        }
+      ];
+
+      const saveResponse = await supabase
+        .from('execution_qa_conversations')
+        .upsert({
+          execution_id: executionId,
+          messages: updatedMessages,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'execution_id'
+        })
+        .select('id')
+        .single();
+
+      if (saveResponse.error) {
+        console.error('[Q&A API] Failed to save conversation:', saveResponse.error);
+      } else {
+        console.log('[Q&A API] Conversation saved successfully');
+      }
+    } catch (saveError) {
+      console.error('[Q&A API] Error saving conversation:', saveError);
+    }
+
+    // Return response
+    return NextResponse.json({
+      text: finalText,
+      turns: turnCount
+    });
   } catch (error) {
     console.error('Error in execution Q&A:', error);
     return NextResponse.json(
