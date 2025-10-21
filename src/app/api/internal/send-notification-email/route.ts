@@ -14,6 +14,36 @@ export async function POST(request: NextRequest) {
 
     const emailHtml = generateEmailHTML(alert, config);
 
+    // Build enhanced subject line: [STATUS] workflow_name - execution_id - message
+    const executionDetails = alert.details || {};
+    const workflowName = executionDetails.workflow_name || alert.workflow_name || `Workflow ${alert.workflow_id}`;
+    const executionId = alert.execution_id || executionDetails.execution_id || executionDetails.id;
+    const status = executionDetails.execution_status || alert.status || 'unknown';
+
+    // Parse formatted_output to get detailed message
+    let formattedResult = null;
+    if (executionDetails.formatted_output) {
+      try {
+        formattedResult = typeof executionDetails.formatted_output === 'string'
+          ? JSON.parse(executionDetails.formatted_output)
+          : executionDetails.formatted_output;
+      } catch (e) {
+        formattedResult = null;
+      }
+    }
+
+    // Get the full untruncated message using the same logic as email body
+    const detailedMessage = getParserMessage(formattedResult, alert);
+
+    // Limit message length for subject line (email clients typically limit to ~78 chars for subject preview)
+    // Format: [STATUS] workflow - exec_id - message
+    const maxMessageLength = 120;
+    const truncatedMessage = detailedMessage.length > maxMessageLength
+      ? detailedMessage.substring(0, maxMessageLength) + '...'
+      : detailedMessage;
+
+    const enhancedSubject = `[${status.toUpperCase()}] ${workflowName} - ${executionId} - ${truncatedMessage}`;
+
     // Check if Resend is configured
     if (process.env.RESEND_API_KEY && resend) {
       try {
@@ -26,7 +56,7 @@ export async function POST(request: NextRequest) {
           from: `Mediar.ai <${fromEmail}>`,
           replyTo: ['matt@mediar.ai', 'louis@mediar.ai'],
           to: Array.isArray(to) ? to : [to],
-          subject,
+          subject: enhancedSubject,
           html: emailHtml,
         });
 
@@ -35,7 +65,7 @@ export async function POST(request: NextRequest) {
           // Fall back to queue
           emailQueue.push({
             to,
-            subject,
+            subject: enhancedSubject,
             html: emailHtml,
             timestamp: new Date().toISOString(),
             error: error.message,
@@ -50,7 +80,7 @@ export async function POST(request: NextRequest) {
         // Fall back to queue
         emailQueue.push({
           to,
-          subject,
+          subject: enhancedSubject,
           html: emailHtml,
           timestamp: new Date().toISOString(),
           error: 'Resend service error',
@@ -60,13 +90,13 @@ export async function POST(request: NextRequest) {
       // Development mode - just queue the email
       emailQueue.push({
         to,
-        subject,
+        subject: enhancedSubject,
         html: emailHtml,
         timestamp: new Date().toISOString(),
       });
       console.log('📧 Email notification queued (no RESEND_API_KEY configured):', {
         to,
-        subject,
+        subject: enhancedSubject,
         timestamp: new Date().toISOString(),
       });
     }
@@ -399,70 +429,79 @@ function generateEmailHTML(alert: any, config: any): string {
     <body>
       <div class="container">
         <div class="header">
-          <h2 style="margin-bottom: 8px;">⚠️ Workflow Execution Failed</h2>
+          <h2 style="margin-bottom: 8px;">⚠️ Workflow Alert</h2>
           <div class="workflow-name">${workflowName}</div>
-          <div class="alert-badge">${alert.severity?.toUpperCase() || 'ERROR'}</div>
+          <div class="alert-badge">${badge}</div>
         </div>
 
         <div class="content">
-          <p style="font-size: 16px; margin-top: 0;">
-            <strong>${config.name}</strong> detected an issue in your workflow execution.
+          <p style="font-size: 16px; margin-top: 0; line-height: 1.5;">
+            Hi there,
           </p>
 
-          <div style="margin: 24px 0; padding: 20px; background: #fafafa; border-radius: 6px; border: 2px solid #000;">
-            <div style="margin-bottom: 16px;">
-              <strong style="font-size: 13px; color: #1a1a1a;">Status:</strong><br/>
-              <span style="${badgeStyles}">${badge}</span>
-            </div>
-            <div>
-              <strong style="font-size: 13px; color: #1a1a1a;">Message:</strong><br/>
-              <span style="font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 13px; color: #1a1a1a; line-height: 1.6; display: block; margin-top: 8px; padding: 12px; background: white; border-radius: 4px;">${message}</span>
-            </div>
+          <p style="font-size: 15px; line-height: 1.6; margin: 16px 0;">
+            Your workflow <strong>${workflowName}</strong> (execution #${executionId}) has ${badge === 'EXCEPTION' ? 'completed with an exception' : 'failed'}.
+          </p>
+
+          <div style="margin: 24px 0; padding: 20px; background: #f5f5f5; border-left: 4px solid #000; border-radius: 4px;">
+            <p style="margin: 0 0 8px 0; font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Error Details</p>
+            <p style="font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 14px; color: #1a1a1a; line-height: 1.6; margin: 0; word-wrap: break-word;">${message}</p>
           </div>
+
+          <p style="font-size: 15px; line-height: 1.6; margin: 20px 0 24px 0;">
+            You can view the full execution details and logs to troubleshoot this issue.
+          </p>
 
           <div style="text-align: center; margin: 32px 0;">
             <a href="${baseUrl}/dashboard?execution=${executionId}" class="action-button">
-              View Execution Details →
-            </a>
-            <br/>
-            <a href="${baseUrl}/dashboard?workflow=${workflowId}" class="secondary-button">
-              View Workflow
+              View Execution Details
             </a>
           </div>
 
-          <div class="metadata">
-            <div class="metadata-item">
-              <strong>Workflow ID:</strong> ${workflowId || 'N/A'}
-            </div>
-            <div class="metadata-item">
-              <strong>Execution ID:</strong> ${executionId || 'N/A'}
-            </div>
-            <div class="metadata-item">
-              <strong>Status:</strong> failed
-            </div>
-            <div class="metadata-item">
-              <strong>Time:</strong> ${new Date().toLocaleString('en-US', { timeZoneName: 'short' })}
-            </div>
-            <div class="metadata-item">
-              <strong>Duration:</strong> ${duration ? `${duration}s` : 'N/A'}
+          ${formattedResult ? `
+          <div style="margin: 24px 0;">
+            <p style="margin: 0 0 12px 0; font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Workflow Output</p>
+            <div style="background: #fafafa; border: 1px solid #ddd; border-radius: 4px; padding: 16px; max-height: 300px; overflow-y: auto;">
+              <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 12px; line-height: 1.5;">${JSON.stringify(formattedResult, null, 2)
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')}</pre>
             </div>
           </div>
+          ` : ''}
 
-          <div class="debug-section">
-            <div class="debug-title">🔍 Debug Information</div>
-            <div class="metadata-item">
-              <strong>Triggered By:</strong> ${triggerSource}
-            </div>
+          <div style="margin: 24px 0; padding: 16px; background: #fafafa; border-radius: 4px; font-size: 13px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 6px 0; color: #666;">Execution ID:</td>
+                <td style="padding: 6px 0; font-family: monospace; text-align: right;">${executionId || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666;">Status:</td>
+                <td style="padding: 6px 0; font-family: monospace; text-align: right;">${badge}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666;">Time:</td>
+                <td style="padding: 6px 0; text-align: right;">${new Date().toLocaleString('en-US', { timeZoneName: 'short' })}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666;">Duration:</td>
+                <td style="padding: 6px 0; font-family: monospace; text-align: right;">${duration ? `${duration}s` : 'N/A'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666;">Triggered by:</td>
+                <td style="padding: 6px 0; font-family: monospace; text-align: right;">${triggerSource}</td>
+              </tr>
+            </table>
           </div>
-
-
 
           <details style="margin-top: 20px;">
-            <summary style="cursor: pointer; color: #000; font-size: 13px; padding: 10px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-weight: 600;">
-              📊 View Full Details
+            <summary style="cursor: pointer; color: #666; font-size: 12px; padding: 10px; background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px; font-weight: 500;">
+              View Technical Details
             </summary>
-            <div class="error-box" style="margin-top: 8px; font-size: 12px; background: #fafafa; border-color: #ddd; max-height: 400px; overflow-y: auto;">
-              <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;">${JSON.stringify(alert.details || alert, null, 2)
+            <div style="margin-top: 8px; font-size: 11px; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px; max-height: 300px; overflow-y: auto;">
+              <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; color: #666;">${JSON.stringify(alert.details || alert, null, 2)
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
@@ -472,14 +511,17 @@ function generateEmailHTML(alert: any, config: any): string {
         </div>
 
         <div class="footer">
-          <p style="margin: 0 0 12px 0;">
-            <a href="${baseUrl}/dashboard" style="font-weight: 500;">Dashboard</a> •
-            <a href="${baseUrl}/internal/notifications">Notification Settings</a>
+          <p style="margin: 0 0 16px 0; font-size: 14px; color: #666;">
+            Need help? Contact us at <a href="mailto:support@mediar.ai" style="color: #000;">support@mediar.ai</a>
           </p>
-          <p style="margin: 0; color: #999;">
+          <p style="margin: 0 0 8px 0; font-size: 12px;">
+            <a href="${baseUrl}/dashboard" style="color: #666; text-decoration: none;">View Dashboard</a> •
+            <a href="${baseUrl}/internal/notifications" style="color: #666; text-decoration: none;">Manage Alerts</a>
+          </p>
+          <p style="margin: 0; color: #999; font-size: 12px;">
             Mediar • Workflow Automation
           </p>
-          <p style="margin: 8px 0 0 0; font-size: 11px; color: #bbb;">
+          <p style="margin: 8px 0 0 0; font-size: 10px; color: #ccc; font-family: monospace;">
             Alert ID: ${Date.now()}-${alert.execution_id || 'unknown'}
           </p>
         </div>
