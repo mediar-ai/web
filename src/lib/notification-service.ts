@@ -272,14 +272,6 @@ export class NotificationService {
       console.log(`Sending email notification to ${baseUrl}/api/internal/send-notification-email`);
       console.log(`Recipients: ${recipients.join(', ')}`);
 
-      // Build subject line: [STATUS] workflow_name - execution_id - message
-      const workflowName = alert.details?.workflow_name || alert.workflow_name || `Workflow ${alert.workflow_id}`;
-      const executionId = alert.execution_id || alert.details?.execution_id || 'unknown';
-      const status = alert.details?.execution_status || alert.status || 'unknown';
-
-      // The subject will use the full message (email template will extract detailed message using getParserMessage)
-      const subject = `[${status.toUpperCase()}] ${workflowName} - ${executionId} - Alert`;
-
       const response = await fetch(`${baseUrl}/api/internal/send-notification-email`, {
         method: 'POST',
         headers: {
@@ -287,7 +279,6 @@ export class NotificationService {
         },
         body: JSON.stringify({
           to: recipients,
-          subject,
           alert,
           config,
         }),
