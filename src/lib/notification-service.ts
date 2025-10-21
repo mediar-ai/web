@@ -272,6 +272,14 @@ export class NotificationService {
       console.log(`Sending email notification to ${baseUrl}/api/internal/send-notification-email`);
       console.log(`Recipients: ${recipients.join(', ')}`);
 
+      // Build subject line: [STATUS] workflow_name - execution_id - message
+      const workflowName = alert.details?.workflow_name || alert.workflow_name || `Workflow ${alert.workflow_id}`;
+      const executionId = alert.execution_id || alert.details?.execution_id || 'unknown';
+      const status = alert.details?.execution_status || alert.status || 'unknown';
+
+      // The subject will use the full message (email template will extract detailed message using getParserMessage)
+      const subject = `[${status.toUpperCase()}] ${workflowName} - ${executionId} - Alert`;
+
       const response = await fetch(`${baseUrl}/api/internal/send-notification-email`, {
         method: 'POST',
         headers: {
@@ -279,7 +287,7 @@ export class NotificationService {
         },
         body: JSON.stringify({
           to: recipients,
-          subject: `[${alert.severity.toUpperCase()}] ${alert.title}`,
+          subject,
           alert,
           config,
         }),
@@ -430,6 +438,9 @@ export class NotificationService {
                 failed_step: execution.failed_step || execution.last_step,
                 stack_trace: execution.stack_trace,
 
+                // Formatted output (for detailed message extraction)
+                formatted_output: execution.formatted_output,
+
                 // Request context (for debugging)
                 request_info: {
                   ip: execution.request_ip || execution.ip_address,
@@ -487,6 +498,9 @@ export class NotificationService {
                 exception_message: formattedResult.message,
                 exception_data: formattedResult.data,
                 validation_results: formattedResult.validation_results,
+
+                // Formatted output (for detailed message extraction)
+                formatted_output: execution.formatted_output,
 
                 // Standard error context
                 error_message: execution.error_message,
