@@ -1,5 +1,4 @@
 use sqlx::{Pool, Postgres, Row};
-use uuid::Uuid;
 use chrono::Utc;
 use anyhow::Result;
 use crate::models::{Workflow, WorkflowExecution, ExecutionStatus, WorkflowStatus};
@@ -10,7 +9,7 @@ pub struct WorkflowQueries;
 impl WorkflowQueries {
     pub async fn get_workflow(
         pool: &Pool<Postgres>,
-        workflow_id: Uuid,
+        workflow_id: i64,
     ) -> Result<Option<Workflow>> {
         let workflow = sqlx::query(
             r#"
@@ -89,33 +88,32 @@ impl WorkflowQueries {
 
     pub async fn create_execution(
         pool: &Pool<Postgres>,
-        workflow_id: Uuid,
+        workflow_id: i64,
         client_id: Option<String>,
         execution_params: Option<Value>,
-    ) -> Result<Uuid> {
-        let execution_id = Uuid::new_v4();
+    ) -> Result<i64> {
         let now = Utc::now();
 
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             INSERT INTO workflow_executions (
-                id, workflow_id, status, client_id,
+                workflow_id, status, client_id,
                 execution_params, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
             "#,
         )
-        .bind(execution_id)
         .bind(workflow_id)
         .bind("queued")
         .bind(client_id)
         .bind(execution_params)
         .bind(now)
         .bind(now)
-        .execute(pool)
+        .fetch_one(pool)
         .await?;
 
-        Ok(execution_id)
+        Ok(result.get("id"))
     }
 
     pub async fn claim_execution(
@@ -179,7 +177,7 @@ impl WorkflowQueries {
 
     pub async fn update_execution_status(
         pool: &Pool<Postgres>,
-        execution_id: Uuid,
+        execution_id: i64,
         status: ExecutionStatus,
         error_message: Option<String>,
         result: Option<Value>,
@@ -218,7 +216,7 @@ impl WorkflowQueries {
     /// Update execution with screenshot URLs
     pub async fn update_execution_screenshots(
         pool: &Pool<Postgres>,
-        execution_id: Uuid,
+        execution_id: i64,
         screenshot_urls: Vec<String>,
     ) -> Result<()> {
         sqlx::query(
@@ -240,7 +238,7 @@ impl WorkflowQueries {
 
     pub async fn update_execution_progress(
         pool: &Pool<Postgres>,
-        execution_id: Uuid,
+        execution_id: i64,
         completed_steps: u32,
         total_steps: u32,
         current_step: Option<String>,
@@ -268,7 +266,7 @@ impl WorkflowQueries {
 
     pub async fn check_failure_patterns(
         pool: &Pool<Postgres>,
-        workflow_id: Uuid,
+        workflow_id: i64,
     ) -> Result<bool> {
         let result = sqlx::query(
             r#"

@@ -1,12 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowExecution {
-    pub id: Uuid,
-    pub workflow_id: Uuid,
+    pub id: i64,
+    pub workflow_id: i64,
     pub status: ExecutionStatus,
     pub client_id: Option<String>,
     pub execution_params: Option<Value>,
@@ -37,7 +36,7 @@ pub enum ExecutionStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionRequest {
-    pub workflow_id: Uuid,
+    pub workflow_id: i64,
     pub execution_params: Option<Value>,
     pub client_id: Option<String>,
     pub version_number: Option<String>,
@@ -46,7 +45,7 @@ pub struct ExecutionRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResponse {
-    pub execution_id: Uuid,
+    pub execution_id: i64,
     pub status: ExecutionStatus,
     pub message: String,
     pub result: Option<Value>,

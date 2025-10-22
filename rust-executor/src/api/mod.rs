@@ -6,7 +6,6 @@ use axum::{
     http::StatusCode,
 };
 use serde::Serialize;
-use uuid::Uuid;
 use sqlx::Row;
 
 use crate::db::DatabasePool;
@@ -57,7 +56,7 @@ async fn list_workflows(
 
 async fn get_workflow(
     State(db_pool): State<DatabasePool>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<i64>,
 ) -> Result<Json<Workflow>, (StatusCode, String)> {
     let workflow = crate::db::queries::WorkflowQueries::get_workflow(&db_pool, id)
         .await
@@ -83,7 +82,7 @@ async fn create_execution(
 
 async fn get_execution(
     State(db_pool): State<DatabasePool>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<i64>,
 ) -> Result<Json<WorkflowExecution>, (StatusCode, String)> {
     let service = WorkflowService::new(db_pool);
 
@@ -99,7 +98,7 @@ async fn get_execution(
 
 async fn cancel_execution(
     State(db_pool): State<DatabasePool>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<i64>,
 ) -> Result<Json<CancelResponse>, (StatusCode, String)> {
     use crate::db::queries::WorkflowQueries;
     use crate::models::ExecutionStatus;

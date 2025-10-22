@@ -2,7 +2,6 @@ use anyhow::{Result, Context};
 use serde_json::{Value, Map};
 use std::time::Instant;
 use tracing::{info, debug, warn, error};
-use uuid::Uuid;
 
 use crate::models::{
     WorkflowSequence, WorkflowStep, WorkflowResult, WorkflowState,
@@ -14,8 +13,8 @@ use crate::storage::SupabaseStorage;
 pub struct WorkflowExecutor {
     client: McpClient,
     sequence: WorkflowSequence,
-    execution_id: Uuid,
-    organization_id: Option<Uuid>,
+    execution_id: i64,
+    organization_id: Option<i64>,
     storage: Option<SupabaseStorage>,
 }
 
@@ -23,8 +22,8 @@ impl WorkflowExecutor {
     pub fn new(
         client: McpClient,
         sequence: WorkflowSequence,
-        execution_id: Uuid,
-        organization_id: Option<Uuid>,
+        execution_id: i64,
+        organization_id: Option<i64>,
     ) -> Self {
         // Initialize storage if environment variables are available
         let storage = match (
@@ -373,8 +372,8 @@ impl WorkflowExecutor {
         // Get organization_id, use a default if not set
         let org_id = self.organization_id.unwrap_or_else(|| {
             warn!("No organization_id set, using default system organization");
-            // Use a well-known UUID for system/admin workflows
-            Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap()
+            // Use 0 as default for system/admin workflows
+            0
         });
 
         // Upload to storage if available
@@ -435,8 +434,8 @@ mod tests {
             scripts_base_path: None,
         };
 
-        let execution_id = Uuid::new_v4();
-        let organization_id = Some(Uuid::new_v4());
+        let execution_id = 1;
+        let organization_id = Some(1);
         let executor = WorkflowExecutor::new(client, sequence, execution_id, organization_id);
 
         assert_eq!(executor.execution_id, execution_id);
@@ -462,7 +461,7 @@ mod tests {
             scripts_base_path: None,
         };
 
-        let executor = WorkflowExecutor::new(client, sequence, Uuid::new_v4(), None);
+        let executor = WorkflowExecutor::new(client, sequence, 1, None);
 
         let mut variables = Map::new();
         variables.insert("test_var".to_string(), Value::String("test_value".to_string()));
