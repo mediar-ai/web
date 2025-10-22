@@ -57,54 +57,58 @@ export async function GET(request: Request) {
       }
     }
 
+    // Get github_folder from deployed_workflows table (it's not in deployed_workflow_versions)
+    const { data: workflowInfo } = await supabase
+      .from('deployed_workflows')
+      .select('github_folder')
+      .eq('id', workflowId)
+      .single();
+
+    const githubFolder = workflowInfo?.github_folder || null;
+
     if (versionError || !workflowVersionData) {
       console.log(`[Q&A Context API] Workflow version ${version} not found, will use workflow from execution`);
 
-      // Get github_folder from deployed_workflows table
-      const { data: workflowInfo } = await supabase
-        .from('deployed_workflows')
-        .select('github_folder')
-        .eq('id', workflowId)
-        .single();
-
-      // Use the workflow from the execution's automation_sequence instead
+      // Use the workflow from the execution instead (though unlikely to exist)
       workflowVersionData = {
-        workflow: execution.automation_sequence,
-        github_folder: workflowInfo?.github_folder || null
+        automation_sequence: execution.automation_sequence || null
       };
     }
 
-    // Get the workflow structure (from JSONB column or automation_sequence)
-    const workflow = workflowVersionData.workflow || execution.automation_sequence || null;
+    // Get the workflow structure - use automation_sequence (the actual column name in DB)
+    const workflow = workflowVersionData.automation_sequence || null;
 
     // Load JS files from GitHub
     const jsFiles: Record<string, string> = {};
     let jsFilesError: string | null = null;
 
-    if (workflow && workflowVersionData.github_folder) {
-      console.log(`[Q&A Context API] Loading JS files from GitHub folder: ${workflowVersionData.github_folder}`);
+    if (workflow && githubFolder) {
+      console.log(`[Q&A Context API] Loading JS files from GitHub folder: ${githubFolder}`);
 
       const fileNames = new Set<string>();
 
-      // Extract JS file names - workflow IS the automation_sequence array
+      // Helper function to extract script_file from a step
+      const extractScriptFile = (step: any) => {
+        // Check step.script_file (old format)
+        if (step.script_file?.endsWith('.js')) {
+          fileNames.add(step.script_file);
+        }
+        // Check step.arguments.script_file (new format)
+        if (step.arguments?.script_file?.endsWith('.js')) {
+          fileNames.add(step.arguments.script_file);
+        }
+      };
+
+      // Extract JS file names from different workflow structures
       if (Array.isArray(workflow)) {
-        workflow.forEach((step: any) => {
-          if (step.script_file?.endsWith('.js')) {
-            fileNames.add(step.script_file);
-          }
-        });
+        // workflow is directly an array of steps
+        workflow.forEach(extractScriptFile);
       } else if (workflow.automation_sequence && Array.isArray(workflow.automation_sequence)) {
-        workflow.automation_sequence.forEach((step: any) => {
-          if (step.script_file?.endsWith('.js')) {
-            fileNames.add(step.script_file);
-          }
-        });
+        // workflow has automation_sequence array
+        workflow.automation_sequence.forEach(extractScriptFile);
       } else if (workflow.steps && Array.isArray(workflow.steps)) {
-        workflow.steps.forEach((step: any) => {
-          if (step.script_file?.endsWith('.js')) {
-            fileNames.add(step.script_file);
-          }
-        });
+        // workflow has steps array
+        workflow.steps.forEach(extractScriptFile);
       }
 
       console.log(`[Q&A Context API] Found ${fileNames.size} JS files referenced in workflow`);
@@ -114,7 +118,7 @@ export async function GET(request: Request) {
       if (githubToken && fileNames.size > 0) {
         const fetchPromises = Array.from(fileNames).map(async (fileName) => {
           try {
-            const url = `https://api.github.com/repos/mediar-ai/workflows/contents/${workflowVersionData.github_folder}/${fileName}`;
+            const url = `https://api.github.com/repos/mediar-ai/workflows/contents/${githubFolder}/${fileName}`;
             const response = await fetch(url, {
               headers: {
                 'Authorization': `token ${githubToken}`,

@@ -23,6 +23,7 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/process-workflow-step(.*)',
   '/api/remote-workflows(.*)',
   '/api/cron/scheduler(.*)',
+  '/api/ai/execution-qa/context(.*)', // Allow context loading without auth (data is org-scoped)
 ]);
 
 const isProtectedApiRoute = createRouteMatcher([
