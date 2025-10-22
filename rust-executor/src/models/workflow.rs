@@ -1,12 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Workflow {
-    pub id: Uuid,
+    pub id: i64,
     pub name: String,
     #[validate(length(min = 1))]
     pub version: String,

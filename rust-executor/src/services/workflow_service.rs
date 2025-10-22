@@ -1,5 +1,4 @@
 use anyhow::{Result, Context};
-use uuid::Uuid;
 use tracing::{info, error, warn};
 use sqlx::Row;
 
@@ -43,7 +42,7 @@ impl WorkflowService {
         // Check if workflow is deployed
         if workflow.status != crate::models::WorkflowStatus::Deployed {
             return Ok(ExecutionResponse {
-                execution_id: Uuid::new_v4(),
+                execution_id: 0, // Will not be used since this is an error response
                 status: ExecutionStatus::Failed,
                 message: "Workflow is not deployed".to_string(),
                 result: None,
@@ -172,7 +171,7 @@ impl WorkflowService {
     /// Get execution status
     pub async fn get_execution(
         &self,
-        execution_id: Uuid,
+        execution_id: i64,
     ) -> Result<Option<WorkflowExecution>> {
         let row = sqlx::query(
             r#"

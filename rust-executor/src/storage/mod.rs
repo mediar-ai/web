@@ -8,7 +8,6 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::{debug, info, warn, error};
-use uuid::Uuid;
 
 pub struct SupabaseStorage {
     storage_client: Arc<dyn ObjectStore>,
@@ -43,8 +42,8 @@ impl SupabaseStorage {
     /// Returns the signed URL for accessing the screenshot
     pub async fn upload_screenshot(
         &self,
-        execution_id: Uuid,
-        organization_id: Uuid,
+        execution_id: i64,
+        organization_id: i64,
         screenshot_data: &str,
         index: usize,
     ) -> Result<String> {
@@ -161,8 +160,8 @@ impl SupabaseStorage {
     /// Upload multiple screenshots and return their URLs
     pub async fn upload_screenshots(
         &self,
-        execution_id: Uuid,
-        organization_id: Uuid,
+        execution_id: i64,
+        organization_id: i64,
         screenshots: Vec<String>,
     ) -> Result<Vec<String>> {
         let mut screenshot_urls = Vec::new();
@@ -205,8 +204,8 @@ mod tests {
 
     #[test]
     fn test_storage_path_format() {
-        let org_id = Uuid::new_v4();
-        let execution_id = Uuid::new_v4();
+        let org_id = 123i64;
+        let execution_id = 456i64;
         let filename = "screenshot_20250115_123456_0.png";
 
         let expected_path = format!("screenshots/{}/{}/{}", org_id, execution_id, filename);
