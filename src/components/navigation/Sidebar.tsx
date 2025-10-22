@@ -60,6 +60,8 @@ export function Sidebar() {
     setIsCollapsed(newState);
     if (typeof window !== 'undefined') {
       localStorage.setItem('sidebarCollapsed', newState.toString());
+      // Dispatch custom event for same-tab updates
+      window.dispatchEvent(new Event('sidebarToggle'));
     }
   };
 
@@ -190,10 +192,10 @@ export function Sidebar() {
         <button
           onClick={() => signOut()}
           className={`
-            w-full flex items-center gap-3 py-2 font-mono text-sm
+            w-full flex items-center gap-3 px-3 py-2 font-mono text-sm
             text-black hover:bg-black hover:text-white
             border-2 border-black transition-colors
-            ${isCollapsed ? 'justify-center px-0' : 'px-3'}
+            ${isCollapsed ? 'justify-center' : ''}
           `}
           title={isCollapsed ? 'Sign Out' : undefined}
         >

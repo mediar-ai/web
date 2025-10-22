@@ -9,14 +9,19 @@ pub struct WorkflowExecution {
     pub status: ExecutionStatus,
     pub client_id: Option<String>,
     pub execution_params: Option<Value>,
-    pub machine_id: Option<String>,
+    #[serde(rename = "assigned_machine_id")]
+    pub machine_id: Option<i32>,  // Database uses integer, not string
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub error_message: Option<String>,
+    #[serde(rename = "results")]
     pub result: Option<Value>,
-    pub logs: Option<String>,
-    pub total_steps: Option<u32>,
+    #[serde(rename = "execution_logs")]
+    pub logs: Option<Value>,  // Database uses jsonb, not text
+    pub total_steps: Option<i32>,  // Database uses integer
+    #[serde(skip)]  // This column doesn't exist in database
     pub completed_steps: Option<u32>,
+    #[serde(rename = "current_step_description")]
     pub current_step: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

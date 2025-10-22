@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown, Shield, Building, TestTube, Building2 } from 'lucide-react';
 import { useOrganization, useOrganizationList } from '@clerk/nextjs';
@@ -28,17 +28,7 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
   const searchParams = useSearchParams();
   const { organization } = useOrganization();
 
-  useEffect(() => {
-    checkAdminStatus();
-  }, []);
-
-  useEffect(() => {
-    // Get current view org from URL
-    const viewOrgId = searchParams.get('viewOrgId');
-    setCurrentViewOrg(viewOrgId);
-  }, [searchParams]);
-
-  const checkAdminStatus = async () => {
+  const checkAdminStatus = useCallback(async () => {
     try {
       const response = await fetch('/api/admin/list-all-orgs');
       if (response.ok) {
@@ -51,7 +41,18 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    checkAdminStatus();
+  }, [checkAdminStatus]);
+
+  useEffect(() => {
+    // Get current view org from URL
+    const viewOrgId = searchParams.get('viewOrgId');
+    setCurrentViewOrg(viewOrgId);
+  }, [searchParams]);
+
 
   const handleOrgSwitch = (orgId: string | null) => {
     const current = new URLSearchParams(searchParams.toString());
@@ -126,15 +127,13 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
                     key={org.id}
                     onClick={async () => {
                       if (setActive && !isActive) {
-                        await setActive({ organization: org.id });
                         setIsOpen(false);
+                        await setActive({ organization: org.id });
                         // Only redirect if not already on dashboard
                         if (!window.location.pathname.includes('/dashboard')) {
                           router.push('/dashboard');
-                        } else {
-                          // Just refresh the current page data without reload
-                          router.refresh();
                         }
+                        // No need to call router.refresh() - the organization change will trigger re-render
                       } else {
                         setIsOpen(false);
                       }
@@ -212,15 +211,13 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
                     key={org.id}
                     onClick={async () => {
                       if (setActive && !isActive) {
-                        await setActive({ organization: org.id });
                         setIsOpen(false);
+                        await setActive({ organization: org.id });
                         // Only redirect if not already on dashboard
                         if (!window.location.pathname.includes('/dashboard')) {
                           router.push('/dashboard');
-                        } else {
-                          // Just refresh the current page data without reload
-                          router.refresh();
                         }
+                        // No need to call router.refresh() - the organization change will trigger re-render
                       } else {
                         setIsOpen(false);
                       }

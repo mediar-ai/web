@@ -120,18 +120,27 @@ impl WorkflowQueries {
         pool: &Pool<Postgres>,
         machine_id: &str,
     ) -> Result<Option<WorkflowExecution>> {
+        // Convert machine_id string to integer hash for assigned_machine_id column
+        let machine_id_hash = {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            machine_id.hash(&mut hasher);
+            (hasher.finish() as i64).abs() as i32
+        };
+
         let result = sqlx::query(
             r#"
             UPDATE workflow_executions
             SET
                 status = $1,
-                machine_id = $2,
+                assigned_machine_id = $2,
                 started_at = NOW(),
                 updated_at = NOW()
             WHERE id = (
                 SELECT id FROM workflow_executions
                 WHERE status = $3
-                AND machine_id IS NULL
+                AND assigned_machine_id IS NULL
                 AND (executor_type = 'rust' OR executor_type IS NULL)
                 ORDER BY created_at ASC
                 FOR UPDATE SKIP LOCKED
@@ -139,14 +148,14 @@ impl WorkflowQueries {
             )
             RETURNING
                 id, workflow_id, status,
-                client_id, execution_params, machine_id,
+                client_id, execution_params, assigned_machine_id,
                 started_at, completed_at, error_message,
-                result, logs, total_steps, completed_steps,
-                current_step, created_at, updated_at
+                results, execution_logs, total_steps,
+                current_step_description, created_at, updated_at
             "#,
         )
         .bind("running")
-        .bind(machine_id)
+        .bind(machine_id_hash)
         .bind("queued")
         .fetch_optional(pool)
         .await?;
@@ -158,15 +167,15 @@ impl WorkflowQueries {
                 status: Self::parse_execution_status(row.get("status")),
                 client_id: row.get("client_id"),
                 execution_params: row.get("execution_params"),
-                machine_id: row.get("machine_id"),
+                machine_id: row.get("assigned_machine_id"),
                 started_at: row.get("started_at"),
                 completed_at: row.get("completed_at"),
                 error_message: row.get("error_message"),
-                result: row.get("result"),
-                logs: row.get("logs"),
-                total_steps: row.get::<Option<i32>, _>("total_steps").map(|v| v as u32),
-                completed_steps: row.get::<Option<i32>, _>("completed_steps").map(|v| v as u32),
-                current_step: row.get("current_step"),
+                result: row.get("results"),
+                logs: row.get("execution_logs"),
+                total_steps: row.get("total_steps"),
+                completed_steps: None, // Column does not exist in schema
+                current_step: row.get("current_step_description"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
             }))
@@ -191,7 +200,7 @@ impl WorkflowQueries {
             SET
                 status = $1,
                 error_message = $2,
-                result = $3,
+                results = $3,
                 completed_at = $4,
                 updated_at = $5
             WHERE id = $6
@@ -247,14 +256,12 @@ impl WorkflowQueries {
             r#"
             UPDATE workflow_executions
             SET
-                completed_steps = $1,
-                total_steps = $2,
-                current_step = $3,
+                total_steps = $1,
+                current_step_description = $2,
                 updated_at = NOW()
-            WHERE id = $4
+            WHERE id = $3
             "#,
         )
-        .bind(completed_steps as i32)
         .bind(total_steps as i32)
         .bind(current_step)
         .bind(execution_id)
