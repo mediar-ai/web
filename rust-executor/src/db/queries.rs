@@ -140,8 +140,7 @@ impl WorkflowQueries {
             WHERE id = (
                 SELECT id FROM workflow_executions
                 WHERE status = $3
-                AND assigned_machine_id IS NULL
-                AND (executor_type = 'rust' OR executor_type IS NULL)
+                AND executor_type = 'rust'
                 ORDER BY created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
