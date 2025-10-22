@@ -21,6 +21,7 @@ mod utils;
 mod storage;
 
 use crate::db::{DatabasePool, create_pool};
+use crate::services::QueueProcessor;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -69,6 +70,17 @@ async fn main() -> Result<()> {
             return Err(anyhow::anyhow!("Database connection timeout. Network/DNS issue suspected."));
         }
     };
+
+    // Start queue processor in background
+    info!("Starting queue processor...");
+    let queue_processor = QueueProcessor::new(db_pool.clone());
+    tokio::spawn(async move {
+        info!("Queue processor task spawned, starting polling loop");
+        if let Err(e) = queue_processor.start().await {
+            error!("Queue processor error: {}", e);
+        }
+    });
+    info!("✓ Queue processor started");
 
     // Build API router
     let app = build_router(db_pool)?;
