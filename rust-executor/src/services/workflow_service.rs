@@ -177,10 +177,10 @@ impl WorkflowService {
             r#"
             SELECT
                 id, workflow_id, status,
-                client_id, execution_params, machine_id,
+                client_id, execution_params, assigned_machine_id,
                 started_at, completed_at, error_message,
-                result, logs, total_steps, completed_steps,
-                current_step, created_at, updated_at
+                results, execution_logs, total_steps,
+                current_step_description, created_at, updated_at
             FROM workflow_executions
             WHERE id = $1
             "#
@@ -196,15 +196,15 @@ impl WorkflowService {
                 status: WorkflowQueries::parse_execution_status(row.get("status")),
                 client_id: row.get("client_id"),
                 execution_params: row.get("execution_params"),
-                machine_id: row.get("machine_id"),
+                machine_id: row.get("assigned_machine_id"),
                 started_at: row.get("started_at"),
                 completed_at: row.get("completed_at"),
                 error_message: row.get("error_message"),
-                result: row.get("result"),
-                logs: row.get("logs"),
-                total_steps: row.get::<Option<i32>, _>("total_steps").map(|v| v as u32),
-                completed_steps: row.get::<Option<i32>, _>("completed_steps").map(|v| v as u32),
-                current_step: row.get("current_step"),
+                result: row.get("results"),
+                logs: row.get("execution_logs"),
+                total_steps: row.get("total_steps"),
+                completed_steps: None, // Column does not exist in schema
+                current_step: row.get("current_step_description"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
             }))

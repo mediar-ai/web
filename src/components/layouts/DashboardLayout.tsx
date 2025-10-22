@@ -67,15 +67,19 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       setSidebarWidth(isCollapsed ? 'ml-16' : 'ml-64');
     };
 
+    // Check initial state
     checkSidebarState();
+
+    // Listen for storage events from other tabs
     window.addEventListener('storage', checkSidebarState);
 
-    // Also check on click events to detect sidebar toggle
-    const interval = setInterval(checkSidebarState, 100);
+    // Custom event for same-tab updates
+    const handleSidebarToggle = () => checkSidebarState();
+    window.addEventListener('sidebarToggle', handleSidebarToggle);
 
     return () => {
       window.removeEventListener('storage', checkSidebarState);
-      clearInterval(interval);
+      window.removeEventListener('sidebarToggle', handleSidebarToggle);
     };
   }, []);
 
