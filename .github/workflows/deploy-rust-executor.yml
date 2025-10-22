@@ -29,44 +29,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           cd rust-executor
-          chmod +x deploy.sh deploy-azure.sh
-          ./deploy.sh dev
+          chmod +x scripts/*.sh
+          ./scripts/deploy.sh dev
 
       - name: Test Health Endpoint
         run: |
-          # Wait for container to be ready (longer timeout for first startup)
-          echo "Waiting for container to fully start (90 seconds)..."
-          sleep 90
-
-          # Test health endpoint with retries
-          HEALTH_URL="http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/health"
-          echo "Testing health endpoint: $HEALTH_URL"
-
-          MAX_RETRIES=5
-          RETRY_COUNT=0
-
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            RESPONSE=$(curl -s -w "\n%{http_code}" "$HEALTH_URL" || echo "000")
-            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-            BODY=$(echo "$RESPONSE" | head -n-1)
-
-            echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES - Response: $BODY"
-            echo "HTTP Code: $HTTP_CODE"
-
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ Health check passed!"
-              exit 0
-            fi
-
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-              echo "⏳ Waiting 15 seconds before retry..."
-              sleep 15
-            fi
-          done
-
-          echo "❌ Health check failed after $MAX_RETRIES attempts"
-          exit 1
+          cd rust-executor
+          ./scripts/health-check.sh
 
       - name: Deployment Summary
         run: |
