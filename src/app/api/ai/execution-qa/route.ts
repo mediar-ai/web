@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 import { VertexAI } from '@google-cloud/vertexai';
 import type { FunctionDeclaration } from '@google-cloud/vertexai';
 import { createClient } from '@supabase/supabase-js';
@@ -32,6 +33,12 @@ const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 export async function POST(request: Request) {
   try {
+    // Get authenticated user
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { messages, executionId, contextData } = body;
 
@@ -1255,11 +1262,11 @@ Answer the user's question helpfully and thoroughly by using the available tools
       const saveResponse = await supabase
         .from('execution_qa_conversations')
         .upsert({
-          execution_id: executionId,
+          execution_id: parseInt(executionId),
+          user_id: userId,
           messages: updatedMessages,
-          updated_at: new Date().toISOString()
         }, {
-          onConflict: 'execution_id'
+          onConflict: 'execution_id,user_id'
         })
         .select('id')
         .single();
