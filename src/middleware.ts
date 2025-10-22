@@ -24,6 +24,7 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/remote-workflows(.*)',
   '/api/cron/scheduler(.*)',
   '/api/ai/execution-qa/context(.*)', // Allow context loading without auth (data is org-scoped)
+  '/api/agents(.*)', // Allow agent streaming for desktop app (has own auth via Bearer token)
 ]);
 
 const isProtectedApiRoute = createRouteMatcher([

@@ -51,11 +51,10 @@ export async function POST(request: NextRequest) {
 
     const agent = mastra.getAgent('workflowAgent');
 
-    // Stream response
+    // Stream response with clientTools if provided
     const result = await agent.stream(messages, {
       format: 'aisdk', // Use AI SDK v5 compatible format
-      // Don't pass clientTools to backend - they should be executed client-side
-      // Just stream the text response
+      clientTools: clientTools || undefined, // Pass MCP tools from client
     });
 
     // Return Mastra's AI SDK v5 compatible stream
