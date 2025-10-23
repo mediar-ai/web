@@ -32,6 +32,11 @@ interface SchemaItem {
   validation_message?: string;
   options?: Array<{ value: string; label: string }>;
   controls?: Record<string, Record<string, SchemaItem>>;
+  value_type?: string; // For nested object values (e.g., 'select' if value_schema is enum)
+  value_options?: string[]; // For nested object value enum options
+  properties?: Record<string, SchemaItem>; // For objects with known structure
+  item_schema?: SchemaItem; // For arrays with typed items
+  value_schema?: SchemaItem; // For objects with uniform value types
 }
 
 interface BatchFormProps {
@@ -174,6 +179,172 @@ const CheckboxListField = ({
   );
 };
 
+// Helper function to check if an object is a flat key-value structure
+const isFlatKeyValue = (obj: any): boolean => {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+
+  return Object.values(obj).every(val =>
+    typeof val === 'string' ||
+    typeof val === 'number' ||
+    typeof val === 'boolean' ||
+    val === null
+  );
+};
+
+// Component for arrays with item_schema (typed array items)
+const ArrayField = ({
+  label,
+  path,
+  value,
+  onChange,
+  schema,
+  error,
+  disabled = false,
+}: {
+  label: string;
+  path: string;
+  value: JsonValue;
+  onChange: (path: string, value: JsonValue) => void;
+  schema: SchemaItem;
+  error?: string;
+  disabled?: boolean;
+}) => {
+  const currentValue = (value || schema.default || []) as JsonValue[];
+
+  const handleAddItem = () => {
+    const newItem = schema.item_schema?.default || {};
+    onChange(path, [...currentValue, newItem]);
+  };
+
+  const handleRemoveItem = (index: number) => {
+    const updated = currentValue.filter((_, i) => i !== index);
+    onChange(path, updated);
+  };
+
+  const handleItemChange = (index: number, newValue: JsonValue) => {
+    const updated = [...currentValue];
+    updated[index] = newValue;
+    onChange(path, updated);
+  };
+
+  return (
+    <div className="grid grid-cols-3 gap-3 items-start">
+      <Label className="text-sm font-medium text-gray-700 pt-0.5 col-span-1">
+        {label}:
+      </Label>
+      <div className="col-span-2 space-y-2">
+        {schema.description && (
+          <p className="text-xs text-gray-600 mb-2">{schema.description}</p>
+        )}
+
+        <div className="border-2 border-black bg-white rounded">
+          <div className="p-3 space-y-3 max-h-96 overflow-y-auto">
+            {currentValue.length === 0 ? (
+              <p className="text-xs text-gray-500 italic">No items yet</p>
+            ) : (
+              currentValue.map((item, index) => (
+                <div key={index} className="border border-gray-300 rounded p-2 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-mono font-bold">Item {index + 1}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleRemoveItem(index)}
+                      disabled={disabled}
+                      className="h-5 w-5 p-0 border-black hover:bg-red-600 hover:text-white hover:border-red-600"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  {schema.item_schema?.properties ? (
+                    <NestedObjectField
+                      value={item}
+                      onChange={(newVal) => handleItemChange(index, newVal)}
+                      schema={schema.item_schema}
+                      disabled={disabled}
+                    />
+                  ) : (
+                    <textarea
+                      className="w-full h-20 text-xs font-mono p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                      value={JSON.stringify(item, null, 2)}
+                      onChange={(e) => {
+                        try {
+                          const parsed = JSON.parse(e.target.value);
+                          handleItemChange(index, parsed);
+                        } catch {
+                          // Ignore parse errors while typing
+                        }
+                      }}
+                      disabled={disabled}
+                    />
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          <div className="border-t border-gray-300 p-2">
+            <Button
+              size="sm"
+              onClick={handleAddItem}
+              disabled={disabled}
+              className="h-6 px-3 text-xs bg-black text-white hover:bg-gray-800"
+            >
+              + Add Item
+            </Button>
+          </div>
+        </div>
+        {error && <p className="text-red-500 text-xs mt-1 font-mono">{error}</p>}
+      </div>
+    </div>
+  );
+};
+
+// Component for nested objects with properties schema
+const NestedObjectField = ({
+  value,
+  onChange,
+  schema,
+  disabled = false,
+}: {
+  value: JsonValue;
+  onChange: (value: JsonValue) => void;
+  schema: SchemaItem;
+  disabled?: boolean;
+}) => {
+  const currentValue = (value || {}) as JsonObject;
+
+  const handleFieldChange = (key: string, newValue: JsonValue) => {
+    onChange({ ...currentValue, [key]: newValue });
+  };
+
+  if (!schema.properties) return null;
+
+  return (
+    <div className="space-y-2">
+      {Object.entries(schema.properties).map(([key, fieldSchema]) => (
+        <div key={key} className="grid grid-cols-3 gap-2 items-start">
+          <label className="text-xs font-mono text-gray-700 col-span-1 pt-1">
+            {fieldSchema.label || key}:
+          </label>
+          <div className="col-span-2">
+            {fieldSchema.description && (
+              <p className="text-xs text-gray-500 mb-1">{fieldSchema.description}</p>
+            )}
+            <Input
+              type="text"
+              value={String(currentValue[key] || '')}
+              onChange={e => handleFieldChange(key, e.target.value)}
+              disabled={disabled}
+              placeholder={fieldSchema.default ? String(fieldSchema.default) : ''}
+              className="h-7 text-xs font-mono border-black focus:ring-2 focus:ring-black"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const ObjectField = ({
   label,
   path,
@@ -194,9 +365,16 @@ const ObjectField = ({
   const [isEditing, setIsEditing] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | undefined>();
+  const [showJsonEditor, setShowJsonEditor] = useState(false);
 
   const currentValue = value || schema.default || {};
   const prettyJson = JSON.stringify(currentValue, null, 2);
+
+  // Check if this object has a structured properties schema
+  const hasPropertiesSchema = schema.properties && Object.keys(schema.properties).length > 0;
+
+  // Check if this is a flat key-value object
+  const isFlat = isFlatKeyValue(currentValue);
 
   const handleEdit = () => {
     setJsonText(prettyJson);
@@ -226,6 +404,18 @@ const ObjectField = ({
     toast.success('Reset to default value');
   };
 
+  // Handle individual field changes for flat objects
+  const handleFieldChange = (key: string, newValue: string) => {
+    const updated = { ...(currentValue as JsonObject), [key]: newValue };
+    onChange(path, updated);
+  };
+
+  // Handle property changes for structured objects
+  const handlePropertyChange = (key: string, newValue: JsonValue) => {
+    const updated = { ...(currentValue as JsonObject), [key]: newValue };
+    onChange(path, updated);
+  };
+
   return (
     <div className="grid grid-cols-3 gap-3 items-start">
       <Label
@@ -239,7 +429,217 @@ const ObjectField = ({
           <p className="text-xs text-gray-600 mb-2">{schema.description}</p>
         )}
 
-        {!isEditing ? (
+        {/* Show structured fields for objects with properties schema */}
+        {hasPropertiesSchema && !showJsonEditor && !isEditing ? (
+          <div className="border-2 border-black bg-white rounded">
+            <div className="p-3 space-y-4 max-h-96 overflow-y-auto">
+              {Object.entries(schema.properties!).map(([key, propSchema]) => {
+                const propValue = (currentValue as JsonObject)[key];
+
+                // Render based on property type
+                if (propSchema.type === 'array' && propSchema.item_schema) {
+                  const currentArrayValue = (propValue || propSchema.default || []) as JsonValue[];
+
+                  const handleAddItem = () => {
+                    const newItem = propSchema.item_schema?.default || {};
+                    const updated = [...currentArrayValue, newItem];
+                    handlePropertyChange(key, updated);
+                  };
+
+                  const handleRemoveItem = (index: number) => {
+                    const updated = currentArrayValue.filter((_, i) => i !== index);
+                    handlePropertyChange(key, updated);
+                  };
+
+                  const handleItemChange = (index: number, newValue: JsonValue) => {
+                    const updated = [...currentArrayValue];
+                    updated[index] = newValue;
+                    handlePropertyChange(key, updated);
+                  };
+
+                  return (
+                    <div key={key} className="space-y-2">
+                      <label className="text-xs font-mono font-bold text-gray-700">
+                        {propSchema.label || key}:
+                      </label>
+                      {propSchema.description && (
+                        <p className="text-xs text-gray-500 mb-2">{propSchema.description}</p>
+                      )}
+                      <div className="border border-gray-300 rounded bg-gray-50 p-2">
+                        <div className="space-y-2 max-h-64 overflow-y-auto mb-2">
+                          {currentArrayValue.length === 0 ? (
+                            <p className="text-xs text-gray-500 italic">No items yet</p>
+                          ) : (
+                            currentArrayValue.map((item, index) => (
+                              <div key={index} className="border border-gray-300 rounded p-2 bg-white">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-mono font-bold">Item {index + 1}</span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleRemoveItem(index)}
+                                    disabled={disabled}
+                                    className="h-5 w-5 p-0 border-black hover:bg-red-600 hover:text-white hover:border-red-600"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                                {propSchema.item_schema?.properties ? (
+                                  <NestedObjectField
+                                    value={item}
+                                    onChange={(newVal) => handleItemChange(index, newVal)}
+                                    schema={propSchema.item_schema}
+                                    disabled={disabled}
+                                  />
+                                ) : (
+                                  <textarea
+                                    className="w-full h-20 text-xs font-mono p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                                    value={JSON.stringify(item, null, 2)}
+                                    onChange={(e) => {
+                                      try {
+                                        const parsed = JSON.parse(e.target.value);
+                                        handleItemChange(index, parsed);
+                                      } catch {
+                                        // Ignore parse errors while typing
+                                      }
+                                    }}
+                                    disabled={disabled}
+                                  />
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={handleAddItem}
+                          disabled={disabled}
+                          className="h-6 px-3 text-xs bg-black text-white hover:bg-gray-800"
+                        >
+                          + Add Item
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                } else if (propSchema.type === 'object' && propSchema.value_schema) {
+                  // Handle nested objects with value_schema (like business_to_company)
+                  const nestedObj = propValue as JsonObject || {};
+                  return (
+                    <div key={key} className="space-y-2">
+                      <label className="text-xs font-mono font-bold text-gray-700">
+                        {propSchema.label || key}:
+                      </label>
+                      {propSchema.description && (
+                        <p className="text-xs text-gray-500 mb-2">{propSchema.description}</p>
+                      )}
+                      <div className="border border-gray-300 rounded p-2 bg-gray-50 space-y-2">
+                        {Object.entries(nestedObj).map(([nestedKey, nestedVal]) => (
+                          <div key={nestedKey} className="grid grid-cols-2 gap-2 items-center">
+                            <label className="text-xs font-mono text-gray-700 truncate" title={nestedKey}>
+                              {nestedKey}:
+                            </label>
+                            <Input
+                              type="text"
+                              value={String(nestedVal || '')}
+                              onChange={e => {
+                                const updated = { ...nestedObj, [nestedKey]: e.target.value };
+                                handlePropertyChange(key, updated);
+                              }}
+                              disabled={disabled}
+                              className="h-7 text-xs font-mono border-black focus:ring-2 focus:ring-black"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })}
+            </div>
+            <div className="border-t border-gray-300 p-2 flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowJsonEditor(true)}
+                disabled={disabled}
+                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+              >
+                Edit as JSON
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReset}
+                disabled={disabled}
+                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+              >
+                Reset to Default
+              </Button>
+            </div>
+          </div>
+        ) : isFlat && !showJsonEditor && !isEditing ? (
+          /* Show individual fields for flat key-value objects */
+          <div className="border-2 border-black bg-white rounded">
+            <div className="p-3 space-y-3 max-h-96 overflow-y-auto">
+              {Object.entries(currentValue as JsonObject).map(([key, val]) => (
+                <div key={key} className="grid grid-cols-2 gap-2 items-center">
+                  <label className="text-xs font-mono text-gray-700 truncate" title={key}>
+                    {key}:
+                  </label>
+                  {/* Render dropdown if value_options are available (from value_schema) */}
+                  {schema.value_type === 'select' && schema.value_options ? (
+                    <Select
+                      value={String(val || '')}
+                      onValueChange={value => handleFieldChange(key, value)}
+                      disabled={disabled}
+                    >
+                      <SelectTrigger className="h-7 text-xs border-black focus:ring-2 focus:ring-black">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {schema.value_options.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      type="text"
+                      value={String(val || '')}
+                      onChange={e => handleFieldChange(key, e.target.value)}
+                      disabled={disabled}
+                      className="h-7 text-xs font-mono border-black focus:ring-2 focus:ring-black"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-gray-300 p-2 flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowJsonEditor(true)}
+                disabled={disabled}
+                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+              >
+                Edit as JSON
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReset}
+                disabled={disabled}
+                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+              >
+                Reset to Default
+              </Button>
+            </div>
+          </div>
+        ) : !isEditing ? (
+          /* JSON preview for complex objects or when explicitly requested */
           <div className="border-2 border-black bg-gray-50 rounded">
             <div className="p-2 max-h-40 overflow-y-auto">
               <pre className="text-xs font-mono whitespace-pre-wrap">
@@ -256,6 +656,17 @@ const ObjectField = ({
               >
                 Edit JSON
               </Button>
+              {isFlat && showJsonEditor && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowJsonEditor(false)}
+                  disabled={disabled}
+                  className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+                >
+                  Show Fields
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -268,6 +679,7 @@ const ObjectField = ({
             </div>
           </div>
         ) : (
+          /* JSON editor mode */
           <div className="border-2 border-black rounded">
             <textarea
               className="w-full h-48 font-mono text-xs p-2 border-0 focus:outline-none focus:ring-2 focus:ring-black"
@@ -295,7 +707,10 @@ const ObjectField = ({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={handleCancel}
+                onClick={() => {
+                  handleCancel();
+                  setShowJsonEditor(false);
+                }}
                 disabled={disabled}
                 className="h-6 px-3 text-xs border-black hover:bg-black hover:text-white"
               >
@@ -549,6 +964,22 @@ const ParameterRow = ({
   onRemoveDynamicValue: (path: string, index: number) => void;
   onSetObjectValue: (path: string, value: JsonValue) => void;
 }) => {
+  // Handle array-type variables with item_schema
+  if (schemaItem.type === 'array' && schemaItem.item_schema) {
+    const currentValue = dynamicValues[path]?.[0];
+    return (
+      <ArrayField
+        key={path}
+        path={path}
+        label={schemaItem.label || path}
+        value={currentValue}
+        onChange={onSetObjectValue}
+        schema={schemaItem}
+        error={errors[path]}
+      />
+    );
+  }
+
   // Handle object-type variables
   if (schemaItem.type === 'object') {
     const currentValue = dynamicValues[path]?.[0];

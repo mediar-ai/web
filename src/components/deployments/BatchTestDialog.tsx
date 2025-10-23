@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Loader2, Server, Bug } from 'lucide-react';
 import { useCallback, useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import { BatchForm } from '@/components/deployments/BatchForm';
 import { Workflow } from '@/lib/workflow-types';
@@ -83,6 +84,9 @@ export function BatchTestDialog({
   onSubmit,
   isMediarTeam = false,
 }: BatchTestDialogProps) {
+  const searchParams = useSearchParams();
+  const useLocalFile = searchParams.get('local') === 'true';
+
   const [batchSpec, setBatchSpec] = useState<BatchSpec>({
     static_parameters: {},
     dynamic_parameters: {},
@@ -377,8 +381,11 @@ export function BatchTestDialog({
         const versionParam = !selectedVersionNumber
           ? 'active'
           : selectedVersionNumber;
+
+        // Build URL with local parameter if enabled
+        const localParam = useLocalFile ? '&local=true' : '';
         const response = await fetch(
-          `/api/remote-workflows/${workflow.id}/schema?version=${versionParam}`
+          `/api/remote-workflows/${workflow.id}/schema?version=${versionParam}${localParam}`
         );
         const data = await response.json();
 
@@ -431,7 +438,7 @@ export function BatchTestDialog({
     };
 
     loadVersionSchema();
-  }, [workflow, selectedVersionNumber, resetBatchSpec]);
+  }, [workflow, selectedVersionNumber, resetBatchSpec, useLocalFile]);
 
   // Load workflow steps when version changes
   useEffect(() => {
