@@ -78,31 +78,112 @@ impl McpClient {
 
         let result = match &self.transport {
             McpTransport::Http(url) => {
-                info!("Connecting to MCP server via HTTP: {}", url);
-                let transport = StreamableHttpClientTransport::from_uri(url.as_str());
-                let client_info = ClientInfo {
-                    protocol_version: Default::default(),
-                    capabilities: ClientCapabilities::default(),
-                    client_info: Implementation {
-                        name: "workflow-executor".to_string(),
-                        version: env!("CARGO_PKG_VERSION").to_string(),
-                    },
-                };
+                info!("Calling MCP tool via HTTP: {} -> {}", url, tool_name);
 
-                let service = client_info.serve(transport).await
-                    .context("Failed to connect to MCP server")?;
+                // Use direct HTTP POST like Python does
+                let client = reqwest::Client::builder()
+                    .timeout(Duration::from_secs(300))
+                    .build()
+                    .context("Failed to build HTTP client")?;
 
-                if let Some(info) = service.peer_info() {
-                    info!("Connected to MCP server: {} v{}",
-                         info.server_info.name, info.server_info.version);
+                let payload = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": tool_name,
+                        "arguments": arguments.unwrap_or_default(),
+                    }
+                });
+
+                debug!("MCP request payload: {}", serde_json::to_string(&payload)?);
+
+                let response = client
+                    .post(url)
+                    .header("Content-Type", "application/json")
+                    .json(&payload)
+                    .send()
+                    .await
+                    .context("Failed to send HTTP request to MCP server")?;
+
+                let status = response.status();
+                let response_text = response.text().await
+                    .context("Failed to read MCP response")?;
+
+                debug!("MCP response status: {}, body: {}", status, response_text);
+
+                if !status.is_success() {
+                    anyhow::bail!("MCP server returned error: {} - {}", status, response_text);
                 }
 
-                service.call_tool(CallToolRequestParam {
-                    name: tool_name.clone().into(),
-                    arguments,
-                })
-                .await
-                .context(format!("Failed to execute tool: {}", tool_name))?
+                let json_response: serde_json::Value = serde_json::from_str(&response_text)
+                    .context("Failed to parse MCP JSON response")?;
+
+                // Extract result from JSON-RPC response
+                let result_data = json_response.get("result")
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("No result in MCP response"))?;
+
+                // For HTTP transport, parse the result directly and return early
+                // The result should contain a "content" array with text/image items
+                if let Some(content_array) = result_data.get("content").and_then(|c| c.as_array()) {
+                    let mut text_result: Option<Value> = None;
+                    let mut screenshots: Vec<Value> = Vec::new();
+
+                    for item in content_array {
+                        let item_type = item.get("type").and_then(|t| t.as_str());
+
+                        match item_type {
+                            Some("text") => {
+                                if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                                    // Try to parse as JSON, fallback to plain text
+                                    if let Ok(json_result) = serde_json::from_str::<Value>(text) {
+                                        text_result = Some(json_result);
+                                    } else {
+                                        text_result = Some(serde_json::json!({
+                                            "type": "text",
+                                            "content": text
+                                        }));
+                                    }
+                                }
+                            }
+                            Some("image") => {
+                                if let Some(data) = item.get("data") {
+                                    screenshots.push(serde_json::json!({
+                                        "type": "image",
+                                        "data": data,
+                                        "mimeType": item.get("mimeType")
+                                    }));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    // Return combined result
+                    if let Some(mut text) = text_result {
+                        if !screenshots.is_empty() {
+                            if let Some(obj) = text.as_object_mut() {
+                                obj.insert("screenshots".to_string(), serde_json::json!(screenshots));
+                            } else {
+                                return Ok(serde_json::json!({
+                                    "result": text,
+                                    "screenshots": screenshots
+                                }));
+                            }
+                        }
+                        return Ok(text);
+                    }
+
+                    if !screenshots.is_empty() {
+                        return Ok(serde_json::json!({
+                            "screenshots": screenshots
+                        }));
+                    }
+                }
+
+                // Fallback: return raw result
+                return Ok(result_data);
             }
             McpTransport::Stdio(command) => {
                 info!("Starting MCP server via stdio: {:?}", command);
