@@ -1872,10 +1872,59 @@ async def execute_mcp_workflow(
                 )
                 logger.info("--- END DETAILED LOGGING ---")
 
+                # =============================================================================
+                # CRITICAL: Handle MCP Error Responses (Pre-execution Failures)
+                # =============================================================================
+                # When MCP fails before executing any workflow steps (e.g., Chrome extension
+                # not connected), it returns: {"error": {"code": -32602, "message": "..."}}
+                # We must handle this BEFORE trying to extract workflow results, otherwise
+                # workflow_result will never be defined and cause UnboundLocalError.
+
+                if isinstance(result_data, dict) and "error" in result_data:
+                    error_info = result_data.get("error", {})
+                    error_message = error_info.get("message", "Unknown MCP error")
+                    error_code = error_info.get("code", "unknown")
+
+                    logger.error(f"❌ MCP Error ({error_code}): {error_message}")
+
+                    # Create workflow_result for MCP-level errors
+                    workflow_result = {
+                        "success": False,
+                        "exception": True,
+                        "state": "exception",
+                        "message": f"MCP Error ({error_code}): {error_message}",
+                        "error": error_message,
+                        "duration_ms": int(execution_time * 1000),
+                        "steps_executed": 0,
+                        "data": None,
+                        "validation": {
+                            "mcp_error": True,
+                            "error_code": error_code,
+                            "is_valid": False,
+                            "errors": [error_message]
+                        }
+                    }
+
+                    # Set empty values for other expected variables
+                    # IMPORTANT: Set mcp_content to None to skip normal processing
+                    mcp_content = None
+                    execution_log = []
+                    env_state = {}
+                    successful_steps = 0
+                    failed_steps = 0
+                    quotes = []
+                    executed_steps = []
+
+                    # Display the error using standardized system
+                    display_workflow_result(workflow_result)
+
+                # =============================================================================
+                # Normal Success Path: Extract workflow execution results
+                # =============================================================================
                 # Extract the actual content from the MCP response
-                mcp_content = None
-                # NOTE: screenshots and screenshot_urls initialized at function top
-                if isinstance(result_data, dict) and "result" in result_data:
+                elif isinstance(result_data, dict) and "result" in result_data:
+                    mcp_content = None
+                    # NOTE: screenshots and screenshot_urls initialized at function top
                     result_content = result_data.get("result", {}).get("content", [])
                     if result_content and isinstance(result_content, list):
                         # Process all content items (text + images)
@@ -1936,6 +1985,43 @@ async def execute_mcp_workflow(
                             logger.info(" MCP debug_info_on_failure: %s", debug_str)
                         else:
                             logger.info(" MCP debug_info_on_failure: None")
+
+                # =============================================================================
+                # Handle Unexpected Response Format
+                # =============================================================================
+                else:
+                    # result_data doesn't have "error" or "result" - unexpected format
+                    logger.error(f"❌ Unexpected MCP response format. Keys: {list(result_data.keys()) if isinstance(result_data, dict) else 'not a dict'}")
+
+                    # Create workflow_result for unexpected response format
+                    workflow_result = {
+                        "success": False,
+                        "exception": True,
+                        "state": "exception",
+                        "message": f"Unexpected MCP response format: {list(result_data.keys()) if isinstance(result_data, dict) else type(result_data).__name__}",
+                        "error": "Invalid response format from MCP server",
+                        "duration_ms": int(execution_time * 1000),
+                        "steps_executed": 0,
+                        "data": None,
+                        "validation": {
+                            "mcp_error": True,
+                            "is_valid": False,
+                            "errors": ["Unexpected response format from MCP server"]
+                        }
+                    }
+
+                    # Set empty values for other expected variables
+                    # IMPORTANT: Set mcp_content to None to skip normal processing
+                    mcp_content = None
+                    execution_log = []
+                    env_state = {}
+                    successful_steps = 0
+                    failed_steps = 0
+                    quotes = []
+                    executed_steps = []
+
+                    # Display the error using standardized system
+                    display_workflow_result(workflow_result)
 
                 # Extract quotes and metrics from the MCP response
                 quotes = []
