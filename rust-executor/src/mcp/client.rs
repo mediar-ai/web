@@ -83,6 +83,8 @@ impl McpClient {
                 // Use direct HTTP POST like Python does
                 let client = reqwest::Client::builder()
                     .timeout(Duration::from_secs(300))
+                    .connect_timeout(Duration::from_secs(10))
+                    .danger_accept_invalid_certs(true)  // Accept self-signed certs
                     .build()
                     .context("Failed to build HTTP client")?;
 
@@ -104,7 +106,7 @@ impl McpClient {
                     .json(&payload)
                     .send()
                     .await
-                    .context("Failed to send HTTP request to MCP server")?;
+                    .context(format!("Failed to connect to MCP server at {}. This may be a network/firewall issue if the endpoint is on a private network.", url))?;
 
                 let status = response.status();
                 let response_text = response.text().await
