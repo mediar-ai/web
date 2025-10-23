@@ -239,7 +239,7 @@ impl WorkflowQueries {
     pub async fn update_execution_progress(
         pool: &Pool<Postgres>,
         execution_id: i64,
-        completed_steps: u32,
+        _completed_steps: u32,
         total_steps: u32,
         current_step: Option<String>,
     ) -> Result<()> {
