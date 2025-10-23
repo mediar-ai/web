@@ -188,7 +188,7 @@ export interface LiveExecutionStatus {
   workflow_id: number;
   workflow_name: string;
   workflow_description: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'skipped';
   progress_percentage: number;
   current_step_index: number;
   total_steps: number;
