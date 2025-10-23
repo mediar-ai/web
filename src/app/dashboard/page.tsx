@@ -107,6 +107,15 @@ function DashboardContent() {
     }
     return false;
   });
+
+  // Show/hide skipped executions toggle (persisted in localStorage)
+  const [showSkippedExecutions, setShowSkippedExecutions] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('showSkippedExecutions');
+      return saved !== null ? JSON.parse(saved) : false; // Default: hide skipped
+    }
+    return false;
+  });
   const [activeSearchMode, setActiveSearchMode] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const savedField = localStorage.getItem('executions-filter-search-field') || 'all';
@@ -1022,35 +1031,66 @@ function DashboardContent() {
               <div className="space-y-3 mt-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-bold font-mono uppercase">Recent Executions</h2>
-                  <button
-                    onClick={() => {
-                      const newValue = !showQueuedExecutions;
-                      setShowQueuedExecutions(newValue);
-                      if (typeof window !== 'undefined') {
-                        localStorage.setItem('showQueuedExecutions', JSON.stringify(newValue));
-                      }
-                      // Trigger fresh API fetch with current filters
-                      handleRefreshExecutions();
-                    }}
-                    className="px-3 py-1 border border-black rounded text-xs font-mono font-bold hover:bg-black hover:text-white transition-colors"
-                    title={showQueuedExecutions ? "Hide queued executions" : "Show queued executions"}
-                  >
-                    {showQueuedExecutions ? (
-                      <>
-                        <EyeOff className="w-3.5 h-3.5 inline mr-1" />
-                        HIDE QUEUED
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="w-3.5 h-3.5 inline mr-1" />
-                        SHOW QUEUED
-                      </>
-                    )}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const newValue = !showQueuedExecutions;
+                        setShowQueuedExecutions(newValue);
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('showQueuedExecutions', JSON.stringify(newValue));
+                        }
+                        // Trigger fresh API fetch with current filters
+                        handleRefreshExecutions();
+                      }}
+                      className="px-3 py-1 border border-black rounded text-xs font-mono font-bold hover:bg-black hover:text-white transition-colors"
+                      title={showQueuedExecutions ? "Hide queued executions" : "Show queued executions"}
+                    >
+                      {showQueuedExecutions ? (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5 inline mr-1" />
+                          HIDE QUEUED
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3.5 h-3.5 inline mr-1" />
+                          SHOW QUEUED
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newValue = !showSkippedExecutions;
+                        setShowSkippedExecutions(newValue);
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('showSkippedExecutions', JSON.stringify(newValue));
+                        }
+                        // Trigger fresh API fetch with current filters
+                        handleRefreshExecutions();
+                      }}
+                      className="px-3 py-1 border border-black rounded text-xs font-mono font-bold hover:bg-black hover:text-white transition-colors"
+                      title={showSkippedExecutions ? "Hide skipped executions" : "Show skipped executions"}
+                    >
+                      {showSkippedExecutions ? (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5 inline mr-1" />
+                          HIDE SKIPPED
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3.5 h-3.5 inline mr-1" />
+                          SHOW SKIPPED
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <ExecutionsDataTable
-                  executions={showQueuedExecutions ? executions : executions.filter(e => e.status !== 'queued')}
+                  executions={executions.filter(e => {
+                    if (!showQueuedExecutions && e.status === 'queued') return false;
+                    if (!showSkippedExecutions && e.status === 'skipped') return false;
+                    return true;
+                  })}
                   workflows={workflows}
                   liveExecutions={liveExecutions}
                   loading={executionsLoading}
