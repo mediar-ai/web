@@ -207,8 +207,8 @@ const transformVariablesToSchema = (
           }));
         }
       }
-      // Simple fallback: if it's an array type, convert to checkbox-list
-      else if (variable.type === 'array') {
+      // Simple fallback: if it's an array type WITHOUT item_schema, convert to checkbox-list
+      else if (variable.type === 'array' && !variable.item_schema) {
         variable.type = 'checkbox-list';
 
         // Generate options from available sources
@@ -227,6 +227,31 @@ const transformVariablesToSchema = (
             label: item,
           }));
         }
+      }
+
+      // Handle nested schemas for object and array types
+      if (variable.type === 'object' && variable.value_schema) {
+        const valueSchema = variable.value_schema as JSONObject;
+
+        // If value_schema is enum, convert to select and pass through for UI
+        if (valueSchema.type === 'enum' && Array.isArray(valueSchema.options)) {
+          variable.value_type = 'select'; // Store for UI to detect
+          variable.value_options = valueSchema.options; // Pass through enum options
+        }
+
+        // Recursively transform value_schema
+        variable.value_schema = transformVariablesToSchema({ temp: valueSchema }, automationSequence).temp;
+      }
+
+      if (variable.type === 'object' && variable.properties) {
+        // Recursively transform nested properties
+        variable.properties = transformVariablesToSchema(variable.properties as JSONObject, automationSequence);
+      }
+
+      if (variable.type === 'array' && variable.item_schema) {
+        // Recursively transform item_schema
+        const itemSchema = variable.item_schema as JSONObject;
+        variable.item_schema = transformVariablesToSchema({ temp: itemSchema }, automationSequence).temp;
       }
 
       schema[key] = variable;
@@ -439,9 +464,10 @@ export async function GET(
     // Check for version parameter in query string
     const { searchParams } = new URL(request.url);
     const versionNumber = searchParams.get('version');
+    const useLocalFile = searchParams.get('local') === 'true';
 
     console.log(
-      `📋 Generating dynamic schema for workflow ${workflowIdNum}${versionNumber ? ` version ${versionNumber}` : ' (active version)'}...`
+      `📋 Generating dynamic schema for workflow ${workflowIdNum}${versionNumber ? ` version ${versionNumber}` : ' (active version)'}${useLocalFile ? ' (LOCAL FILE MODE)' : ''}...`
     );
 
     // Initialize Supabase client
@@ -456,7 +482,44 @@ export async function GET(
 
     let workflow;
 
-    if (versionNumber && versionNumber !== 'active') {
+    // LOCAL FILE MODE: Read from local YAML file for testing
+    if (useLocalFile) {
+      console.log('🔧 [LOCAL MODE] Reading workflow from local file system...');
+      const fs = await import('fs/promises');
+      const yaml = await import('js-yaml');
+
+      const localYamlPath = 'C:\\Users\\screenpipe-windows\\workflows\\ExampleClient_1\\terminator.yaml';
+
+      try {
+        const yamlContent = await fs.readFile(localYamlPath, 'utf-8');
+        const parsedYaml = yaml.load(yamlContent);
+
+        console.log('✅ [LOCAL MODE] Successfully read local YAML file');
+
+        // Create a mock workflow object with the YAML data
+        workflow = {
+          id: workflowIdNum,
+          name: 'Local Test Workflow (ExampleClient_1)',
+          description: 'Testing value_schema with local YAML file',
+          version: 999,
+          status: 'deployed',
+          estimated_duration_seconds: 0,
+          automation_sequence: [parsedYaml],
+          automation_sequence_yaml: yamlContent,
+        };
+      } catch (error) {
+        console.error('❌ [LOCAL MODE] Failed to read local file:', error);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to read local YAML file',
+            details: error instanceof Error ? error.message : String(error),
+            path: localYamlPath,
+          },
+          { status: 500 }
+        );
+      }
+    } else if (versionNumber && versionNumber !== 'active') {
       // Fetch specific version from deployed_workflow_versions
       const { data: versionData, error: versionError } = await supabase
         .from('deployed_workflow_versions')
