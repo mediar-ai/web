@@ -103,6 +103,7 @@ impl McpClient {
                 let response = client
                     .post(url)
                     .header("Content-Type", "application/json")
+                    .header("Accept", "application/json, text/event-stream")
                     .json(&payload)
                     .send()
                     .await
