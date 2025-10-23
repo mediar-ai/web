@@ -174,6 +174,142 @@ const CheckboxListField = ({
   );
 };
 
+const ObjectField = ({
+  label,
+  path,
+  value,
+  onChange,
+  schema,
+  error,
+  disabled = false,
+}: {
+  label: string;
+  path: string;
+  value: JsonValue;
+  onChange: (path: string, value: JsonValue) => void;
+  schema: SchemaItem;
+  error?: string;
+  disabled?: boolean;
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [jsonText, setJsonText] = useState('');
+  const [jsonError, setJsonError] = useState<string | undefined>();
+
+  const currentValue = value || schema.default || {};
+  const prettyJson = JSON.stringify(currentValue, null, 2);
+
+  const handleEdit = () => {
+    setJsonText(prettyJson);
+    setJsonError(undefined);
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    try {
+      const parsed = JSON.parse(jsonText);
+      onChange(path, parsed);
+      setIsEditing(false);
+      setJsonError(undefined);
+      toast.success('Object updated successfully');
+    } catch (e: any) {
+      setJsonError(e.message);
+    }
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setJsonError(undefined);
+  };
+
+  const handleReset = () => {
+    onChange(path, schema.default || {});
+    toast.success('Reset to default value');
+  };
+
+  return (
+    <div className="grid grid-cols-3 gap-3 items-start">
+      <Label
+        htmlFor={path}
+        className="text-sm font-medium text-gray-700 pt-0.5 col-span-1"
+      >
+        {label}:
+      </Label>
+      <div className="col-span-2">
+        {schema.description && (
+          <p className="text-xs text-gray-600 mb-2">{schema.description}</p>
+        )}
+
+        {!isEditing ? (
+          <div className="border-2 border-black bg-gray-50 rounded">
+            <div className="p-2 max-h-40 overflow-y-auto">
+              <pre className="text-xs font-mono whitespace-pre-wrap">
+                {prettyJson}
+              </pre>
+            </div>
+            <div className="border-t border-gray-300 p-2 flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleEdit}
+                disabled={disabled}
+                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+              >
+                Edit JSON
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReset}
+                disabled={disabled}
+                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+              >
+                Reset to Default
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="border-2 border-black rounded">
+            <textarea
+              className="w-full h-48 font-mono text-xs p-2 border-0 focus:outline-none focus:ring-2 focus:ring-black"
+              value={jsonText}
+              onChange={e => {
+                setJsonText(e.target.value);
+                setJsonError(undefined);
+              }}
+              disabled={disabled}
+            />
+            {jsonError && (
+              <div className="px-2 py-1 bg-red-50 border-t border-red-300">
+                <p className="text-xs text-red-600 font-mono">❌ {jsonError}</p>
+              </div>
+            )}
+            <div className="border-t border-gray-300 p-2 flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={disabled}
+                className="h-6 px-3 text-xs bg-black text-white hover:bg-gray-800"
+              >
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCancel}
+                disabled={disabled}
+                className="h-6 px-3 text-xs border-black hover:bg-black hover:text-white"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+        {error && <p className="text-red-500 text-xs mt-1 font-mono">{error}</p>}
+      </div>
+    </div>
+  );
+};
+
 const ParameterField = ({
   label,
   path,
@@ -403,6 +539,7 @@ const ParameterRow = ({
   errors,
   onAddDynamicValue,
   onRemoveDynamicValue,
+  onSetObjectValue,
 }: {
   path: string;
   schemaItem: SchemaItem;
@@ -410,7 +547,24 @@ const ParameterRow = ({
   errors: Record<string, string>;
   onAddDynamicValue: (path: string, value: string) => string | undefined;
   onRemoveDynamicValue: (path: string, index: number) => void;
+  onSetObjectValue: (path: string, value: JsonValue) => void;
 }) => {
+  // Handle object-type variables
+  if (schemaItem.type === 'object') {
+    const currentValue = dynamicValues[path]?.[0];
+    return (
+      <ObjectField
+        key={path}
+        path={path}
+        label={schemaItem.label || path}
+        value={currentValue}
+        onChange={onSetObjectValue}
+        schema={schemaItem}
+        error={errors[path]}
+      />
+    );
+  }
+
   if (schemaItem.controls && typeof schemaItem.controls === 'object') {
     const selectedValues = dynamicValues[path] || [];
     return (
@@ -447,6 +601,7 @@ const ParameterRow = ({
                             errors={errors}
                             onAddDynamicValue={onAddDynamicValue}
                             onRemoveDynamicValue={onRemoveDynamicValue}
+                            onSetObjectValue={onSetObjectValue}
                           />
                         )
                       )}
@@ -495,13 +650,20 @@ export function BatchForm({
 
     // Initialize all parameters with their defaults
     for (const path in schema) {
+      const schemaItem = schema[path] as SchemaItem;
       const initialValue =
-        flatInitialValues[path]?.default ??
-        (schema[path] as SchemaItem)?.default;
+        flatInitialValues[path]?.default ?? schemaItem?.default;
+
       if (initialValue !== undefined && initialValue !== null) {
-        initialDynamic[path] = Array.isArray(initialValue)
-          ? initialValue
-          : [initialValue];
+        // For object types, always store as single-element array (even if default is an object)
+        if (schemaItem?.type === 'object') {
+          initialDynamic[path] = [initialValue];
+          console.log(`🔧 Initialized object variable: ${path}`);
+        } else if (Array.isArray(initialValue)) {
+          initialDynamic[path] = initialValue;
+        } else {
+          initialDynamic[path] = [initialValue];
+        }
       }
     }
 
@@ -651,6 +813,13 @@ export function BatchForm({
     });
   };
 
+  const handleSetObjectValue = (path: string, value: JsonValue) => {
+    setDynamicValues(prev => ({
+      ...prev,
+      [path]: [value], // Store object as single-element array
+    }));
+  };
+
   useEffect(() => {
     const filtered_dynamic_parameters: Record<string, JsonValue[]> = {};
 
@@ -728,12 +897,12 @@ export function BatchForm({
             const values = params[key];
             if (values && values.length > 0) {
               const schemaItem = schema[key] as SchemaItem;
-              // Checkbox fields contribute 1 combination (all selected values are one parameter)
+              // Checkbox fields and object fields contribute 1 combination (treated as static config)
               // Other field types contribute values.length combinations (each value is separate)
-              if (schemaItem && schemaItem.type === 'checkbox-list') {
+              if (schemaItem && (schemaItem.type === 'checkbox-list' || schemaItem.type === 'object')) {
                 branchCombinations *= 1;
                 console.log(
-                  `🔍 Global checkbox field ${key}: contributing 1 combination (${values.length} selected values)`
+                  `🔍 Global ${schemaItem.type} field ${key}: contributing 1 combination`
                 );
               } else {
                 branchCombinations *= values.length;
@@ -753,15 +922,15 @@ export function BatchForm({
               const values = params[bpKey];
               if (values && values.length > 0) {
                 const branchSchemaItem = branchParams[bpKey];
-                // Checkbox fields contribute 1 combination (all selected values are one parameter)
+                // Checkbox fields and object fields contribute 1 combination (treated as static config)
                 // Other field types contribute values.length combinations (each value is separate)
                 if (
                   branchSchemaItem &&
-                  branchSchemaItem.type === 'checkbox-list'
+                  (branchSchemaItem.type === 'checkbox-list' || branchSchemaItem.type === 'object')
                 ) {
                   branchCombinations *= 1;
                   console.log(
-                    `🔍 Branch checkbox field ${bpKey}: contributing 1 combination (${values.length} selected values)`
+                    `🔍 Branch ${branchSchemaItem.type} field ${bpKey}: contributing 1 combination`
                   );
                 } else {
                   branchCombinations *= values.length;
@@ -780,12 +949,12 @@ export function BatchForm({
           const values = params[key];
           if (values && values.length > 0) {
             const schemaItem = schema[key] as SchemaItem;
-            // Checkbox fields contribute 1 combination (all selected values are one parameter)
+            // Checkbox fields and object fields contribute 1 combination (treated as static config)
             // Other field types contribute values.length combinations (each value is separate)
-            if (schemaItem && schemaItem.type === 'checkbox-list') {
+            if (schemaItem && (schemaItem.type === 'checkbox-list' || schemaItem.type === 'object')) {
               totalCombinations *= 1;
               console.log(
-                `🔍 Checkbox field ${key}: contributing 1 combination (${values.length} selected values)`
+                `🔍 ${schemaItem.type} field ${key}: contributing 1 combination`
               );
             } else {
               totalCombinations *= values.length;
@@ -858,6 +1027,7 @@ export function BatchForm({
             errors={errors}
             onAddDynamicValue={handleAddDynamicValue}
             onRemoveDynamicValue={handleRemoveDynamicValue}
+            onSetObjectValue={handleSetObjectValue}
           />
         ))}
       </div>
@@ -947,6 +1117,7 @@ export function BatchForm({
                   errors={errors}
                   onAddDynamicValue={handleAddDynamicValue}
                   onRemoveDynamicValue={handleRemoveDynamicValue}
+                  onSetObjectValue={handleSetObjectValue}
                 />
               );
             })}
