@@ -118,28 +118,21 @@ impl WorkflowQueries {
 
     pub async fn claim_execution(
         pool: &Pool<Postgres>,
-        machine_id: &str,
+        _machine_id: &str,
     ) -> Result<Option<WorkflowExecution>> {
-        // Convert machine_id string to integer hash for assigned_machine_id column
-        let machine_id_hash = {
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut hasher = DefaultHasher::new();
-            machine_id.hash(&mut hasher);
-            (hasher.finish() as i64).abs() as i32
-        };
+        // Don't update assigned_machine_id - it's already set by the API
+        // and must reference a valid remote_machines.id (foreign key constraint)
 
         let result = sqlx::query(
             r#"
             UPDATE workflow_executions
             SET
                 status = $1,
-                assigned_machine_id = $2,
                 started_at = NOW(),
                 updated_at = NOW()
             WHERE id = (
                 SELECT id FROM workflow_executions
-                WHERE status = $3
+                WHERE status = $2
                 AND executor_type = 'rust'
                 ORDER BY created_at ASC
                 FOR UPDATE SKIP LOCKED
@@ -154,7 +147,6 @@ impl WorkflowQueries {
             "#,
         )
         .bind("running")
-        .bind(machine_id_hash)
         .bind("queued")
         .fetch_optional(pool)
         .await?;
