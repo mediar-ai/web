@@ -561,7 +561,7 @@ export function BatchTestDialog({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border-black">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-2xl font-bold">
-            Test Run: {workflow.name}
+            Manual run options: {workflow.name}
           </DialogTitle>
           <p className="text-muted-foreground text-sm mt-1">
             Configure and run a test suite for this workflow.

@@ -15,7 +15,6 @@ import {
   MoreVertical,
   Activity,
   Eye,
-  Zap,
   Calendar,
   Pause,
   Trash2,
@@ -24,6 +23,7 @@ import {
   Copy,
   Upload,
   AlertCircle,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -384,8 +384,7 @@ export function WorkflowCardEnhanced({
                 }}
                 className="h-6 px-2 text-[11px] border-black hover:bg-black hover:text-white"
               >
-                <Zap className="w-3 h-3 mr-1" />
-                Run
+                Manual run options
               </Button>
               <Button
                 size="sm"
@@ -396,8 +395,8 @@ export function WorkflowCardEnhanced({
                 }}
                 className="h-6 px-2 text-[11px] border-black hover:bg-black hover:text-white"
               >
-                <Eye className="w-3 h-3 mr-1" />
-                View
+                <Settings className="w-3 h-3 mr-1" />
+                Settings
               </Button>
 
               {/* Action Menu */}
