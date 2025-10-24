@@ -124,8 +124,9 @@ export function Sidebar() {
         <ul className="space-y-1">
           {filteredNav.map((item) => {
             const Icon = item.icon;
+            // More precise matching: exact match OR starts with href followed by /
             const isActive = pathname === item.href ||
-                           (item.href !== '/' && pathname.startsWith(item.href));
+                           (item.href !== '/' && pathname.startsWith(item.href + '/'));
 
             return (
               <li key={item.href}>
