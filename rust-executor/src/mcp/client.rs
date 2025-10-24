@@ -174,7 +174,7 @@ impl McpClient {
                 info!("MCP session initialized: {:?}", init_result.get("result"));
 
                 // Store Mcp-Session-Id if present
-                if let Some(session_id_str) = session_id_header {
+                if let Some(ref session_id_str) = session_id_header {
                     let mut session_id = self.session_id.lock().unwrap();
                     *session_id = Some(session_id_str.clone());
                     info!("Stored MCP session ID: {}", session_id_str);
@@ -190,11 +190,20 @@ impl McpClient {
                     "params": {}
                 });
 
-                let _ = client
+                // Build request with Mcp-Session-Id header
+                let mut notify_request = client
                     .post(url)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json, text/event-stream")
-                    .header("Authorization", "Bearer ***REMOVED***")
+                    .header("Authorization", "Bearer ***REMOVED***");
+
+                // Add session ID header if we have one
+                if let Some(session_id_str) = session_id_header.as_ref() {
+                    debug!("Adding Mcp-Session-Id to initialized notification: {}", session_id_str);
+                    notify_request = notify_request.header("Mcp-Session-Id", session_id_str.clone());
+                }
+
+                let _ = notify_request
                     .json(&initialized_payload)
                     .send()
                     .await

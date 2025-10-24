@@ -322,7 +322,6 @@ impl WorkflowQueries {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
 
     #[tokio::test]
     #[ignore] // Requires database
