@@ -384,7 +384,8 @@ export function WorkflowCardEnhanced({
                 }}
                 className="h-6 px-1.5 text-[10px] border-black hover:bg-black hover:text-white whitespace-nowrap"
               >
-                Run
+                <span className="hidden xl:inline">Manual run options</span>
+                <span className="xl:hidden">Run</span>
               </Button>
               <Button
                 size="sm"
