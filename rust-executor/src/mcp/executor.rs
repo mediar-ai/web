@@ -314,11 +314,21 @@ impl WorkflowExecutor {
     ) -> Result<Value> {
         match value {
             Value::String(s) => {
-                // Check for variable reference pattern {{variable_name}}
-                if s.starts_with("{{") && s.ends_with("}}") {
-                    let var_name = s[2..s.len()-2].trim();
+                // Check for variable reference pattern ${{variable_name}} or {{variable_name}}
+                let var_start = if s.starts_with("${{") {
+                    3
+                } else if s.starts_with("{{") {
+                    2
+                } else {
+                    return Ok(Value::String(s.clone()));
+                };
+
+                if s.ends_with("}}") {
+                    let var_name = s[var_start..s.len()-2].trim();
                     if let Some(var_value) = variables.get(var_name) {
                         return Ok(var_value.clone());
+                    } else {
+                        warn!("Variable '{}' not found in workflow variables", var_name);
                     }
                 }
                 Ok(Value::String(s.clone()))
@@ -465,10 +475,16 @@ mod tests {
 
         let mut variables = Map::new();
         variables.insert("test_var".to_string(), Value::String("test_value".to_string()));
+        variables.insert("form_url".to_string(), Value::String("https://example.com/form".to_string()));
 
+        // Test {{variable}} pattern
         let input = serde_json::json!("{{test_var}}");
         let result = executor.substitute_variables(&input, &variables).unwrap();
-
         assert_eq!(result, Value::String("test_value".to_string()));
+
+        // Test ${{variable}} pattern (Python/Modal style)
+        let input_with_dollar = serde_json::json!("${{form_url}}");
+        let result_with_dollar = executor.substitute_variables(&input_with_dollar, &variables).unwrap();
+        assert_eq!(result_with_dollar, Value::String("https://example.com/form".to_string()));
     }
 }
