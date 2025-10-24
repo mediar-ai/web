@@ -381,6 +381,13 @@ export async function POST(
       '[STATS] BATCH EXECUTE: Parameter count:',
       Object.keys(dynamic_parameters).length
     );
+
+    // 🔍 Debug nested object parameters (like outlet_environments)
+    Object.entries(dynamic_parameters).forEach(([key, values]) => {
+      if (Array.isArray(values) && values.length > 0 && typeof values[0] === 'object' && values[0] !== null) {
+        console.log(`🔍 NESTED OBJECT PARAMETER DETECTED: ${key}`, JSON.stringify(values, null, 2));
+      }
+    });
     console.log(
       '🎯 BATCH EXECUTE: Machine selection is managed by backend (UI input ignored).'
     );
@@ -637,9 +644,12 @@ export async function POST(
     for (const combo of combinations) {
       // Create the final parameters for this specific job
       const finalParams = JSON.parse(JSON.stringify(static_parameters));
+      console.log('🔍 COMBINATION DEBUG:', JSON.stringify(combo, null, 2));
       for (const key in combo) {
+        console.log(`🔍 Setting parameter: ${key} = ${JSON.stringify(combo[key])}`);
         set(finalParams, key, combo[key]);
       }
+      console.log('🔍 FINAL PARAMS FOR THIS JOB:', JSON.stringify(finalParams, null, 2));
 
       // 🎯 Include machine assignment, endpoint, and partial execution fields for each job
       jobsToInsert.push({
