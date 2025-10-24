@@ -11,6 +11,7 @@ pub struct WorkflowExecution {
     pub execution_params: Option<Value>,
     #[serde(rename = "assigned_machine_id")]
     pub machine_id: Option<i32>,  // Database uses integer, not string
+    pub mcp_endpoint: Option<String>,  // MCP server endpoint for this execution
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub error_message: Option<String>,

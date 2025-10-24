@@ -197,6 +197,7 @@ impl WorkflowService {
                 client_id: row.get("client_id"),
                 execution_params: row.get("execution_params"),
                 machine_id: row.get("assigned_machine_id"),
+                mcp_endpoint: None, // Not fetched in this query
                 started_at: row.get("started_at"),
                 completed_at: row.get("completed_at"),
                 error_message: row.get("error_message"),
