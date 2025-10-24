@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
       commitAuthor.includes('workflow-manager') ||
       (headCommit?.message && (
         headCommit.message.includes('Update workflow:') ||
-        headCommit.message.includes('Add/Update workflow:')
+        headCommit.message.includes('Add/Update workflow:') ||
+        headCommit.message.includes('Update default values:')  // Ignore save-defaults pushes
       ));
 
     if (isAutomatedPush) {
