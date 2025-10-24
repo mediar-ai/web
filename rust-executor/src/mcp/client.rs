@@ -260,11 +260,13 @@ impl McpClient {
                     anyhow::bail!("MCP server returned error: {} - {}", status, response_text);
                 }
 
-                // Handle SSE format: strip "data: " prefix if present
+                // Handle SSE format: strip "data: " prefix if present and remove trailing SSE metadata
                 let json_text = if response_text.starts_with("data: ") {
-                    &response_text[6..] // Skip "data: " prefix
+                    // Skip "data: " prefix and take only first line (before any SSE metadata like "id: ")
+                    response_text[6..].lines().next().unwrap_or(&response_text[6..])
                 } else {
-                    &response_text
+                    // Even without "data: " prefix, SSE responses may have trailing "id: " lines
+                    response_text.lines().next().unwrap_or(&response_text)
                 };
 
                 // Try parsing the JSON, with fallback to sanitized version if it contains problematic Unicode
