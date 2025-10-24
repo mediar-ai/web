@@ -1779,23 +1779,23 @@ async def execute_mcp_workflow(
         logger.info("  Tool name: %s", tool_name)
         logger.info("  Request JSON: %s", json.dumps(tool_request, indent=2)[:500])
 
-        # Add explicit timeout for workflow execution (5 minutes max)
+        # Add explicit timeout for workflow execution (15 minutes max)
         # Note: httpx read timeout (30s) will trigger first if MCP hangs without sending data
         logger.info("[DEBUG] About to send POST request to MCP, starting timer...")
         request_start_time = time.time()
         try:
-            logger.info("[DEBUG] Entering asyncio.wait_for with 300s timeout...")
+            logger.info("[DEBUG] Entering asyncio.wait_for with 900s timeout...")
             response = await asyncio.wait_for(
                 _post_with_session(tool_request),
-                timeout=300.0  # 5 minutes maximum for workflow execution
+                timeout=900.0  # 15 minutes maximum for workflow execution
             )
             request_duration = time.time() - request_start_time
             logger.info("[DEBUG] POST request completed in %.2fs, status_code=%s", request_duration, response.status_code)
         except asyncio.TimeoutError:
             request_duration = time.time() - request_start_time
-            logger.error(f"[DEBUG] Workflow execution timed out after {request_duration:.2f}s (expected 300s timeout)")
+            logger.error(f"[DEBUG] Workflow execution timed out after {request_duration:.2f}s (expected 900s timeout)")
             await session_client.aclose()
-            raise Exception(f"Workflow execution timed out after 5 minutes for tool: {tool_name}")
+            raise Exception(f"Workflow execution timed out after 15 minutes for tool: {tool_name}")
         except httpx.ReadTimeout as e:
             request_duration = time.time() - request_start_time
             logger.error(f"[DEBUG] MCP server stopped sending data after {request_duration:.2f}s - httpx read timeout")
