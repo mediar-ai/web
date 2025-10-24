@@ -267,8 +267,24 @@ impl McpClient {
                     &response_text
                 };
 
-                let json_response: serde_json::Value = serde_json::from_str(json_text)
-                    .context(format!("Failed to parse MCP JSON response. Body: {}", json_text))?;
+                // Try parsing the JSON, with fallback to sanitized version if it contains problematic Unicode
+                let json_response: serde_json::Value = match serde_json::from_str(json_text) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("Initial JSON parse failed: {}. Attempting to sanitize Unicode characters...", e);
+                        // Remove zero-width spaces and other problematic Unicode characters
+                        let sanitized = json_text
+                            .chars()
+                            .filter(|c| {
+                                // Keep normal characters, filter out zero-width and control characters
+                                !matches!(*c, '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}')
+                            })
+                            .collect::<String>();
+
+                        serde_json::from_str(&sanitized)
+                            .context(format!("Failed to parse MCP JSON response even after sanitization. Original error: {}. Body: {}", e, json_text))?
+                    }
+                };
 
                 // Extract result from JSON-RPC response
                 let result_data = json_response.get("result")
