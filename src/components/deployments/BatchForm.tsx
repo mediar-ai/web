@@ -13,6 +13,7 @@ import {
 import { CornerDownLeft, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import '@/styles/custom-scrollbar.css';
 
 type JsonValue =
   | string
@@ -115,11 +116,11 @@ const CheckboxListField = ({
         placeholder="Search options..."
         value={searchTerm}
         onChange={e => setSearchTerm(e.target.value)}
-        className="mb-2 h-6 text-xs border-black"
+        className="mb-1.5 h-6 text-xs border-black"
         disabled={disabled}
       />
-      <div className="max-h-48 overflow-y-auto border border-black rounded p-2 bg-gray-50">
-        <div className="mb-2 flex items-center justify-between">
+      <div className="max-h-48 overflow-y-auto custom-scrollbar border border-black rounded p-1.5 bg-gray-50">
+        <div className="mb-1.5 flex items-center justify-between">
           <span className="text-xs text-gray-600 font-medium">
             {selectedValues.length} of {options.length} selected
           </span>
@@ -129,7 +130,7 @@ const CheckboxListField = ({
               variant="outline"
               onClick={handleSelectAll}
               disabled={disabled || selectedValues.length === options.length}
-              className="h-5 px-2 text-xs border-black hover:bg-gray-100"
+              className="h-5 px-1.5 text-xs border-black hover:bg-gray-100"
             >
               All
             </Button>
@@ -138,7 +139,7 @@ const CheckboxListField = ({
               variant="outline"
               onClick={handleDeselectAll}
               disabled={disabled || selectedValues.length === 0}
-              className="h-5 px-2 text-xs border-black hover:bg-gray-100"
+              className="h-5 px-1.5 text-xs border-black hover:bg-gray-100"
             >
               None
             </Button>
@@ -152,7 +153,7 @@ const CheckboxListField = ({
             return (
               <label
                 key={option.value}
-                className="flex items-center gap-2 p-1 hover:bg-gray-100 cursor-pointer text-xs rounded"
+                className="flex items-center gap-1.5 p-0.5 hover:bg-gray-100 cursor-pointer text-xs rounded"
               >
                 <input
                   type="checkbox"
@@ -168,7 +169,7 @@ const CheckboxListField = ({
             );
           })
         ) : (
-          <div className="text-xs text-gray-500 p-2 text-center">
+          <div className="text-xs text-gray-500 p-1.5 text-center">
             {searchTerm
               ? 'No options match your search'
               : 'No options available'}
@@ -228,23 +229,23 @@ const ArrayField = ({
   };
 
   return (
-    <div className="grid grid-cols-3 gap-3 items-start">
-      <Label className="text-sm font-medium text-gray-700 pt-0.5 col-span-1">
+    <div className="grid grid-cols-3 gap-2 items-start">
+      <Label className="text-xs font-medium text-gray-700 pt-0.5 col-span-1">
         {label}:
       </Label>
-      <div className="col-span-2 space-y-2">
+      <div className="col-span-2 space-y-1.5">
         {schema.description && (
-          <p className="text-xs text-gray-600 mb-2">{schema.description}</p>
+          <p className="text-xs text-gray-600 mb-1.5">{schema.description}</p>
         )}
 
         <div className="border-2 border-black bg-white rounded">
-          <div className="p-3 space-y-3 max-h-96 overflow-y-auto">
+          <div className="p-2 space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
             {currentValue.length === 0 ? (
               <p className="text-xs text-gray-500 italic">No items yet</p>
             ) : (
               currentValue.map((item, index) => (
-                <div key={index} className="border border-gray-300 rounded p-2 bg-gray-50">
-                  <div className="flex items-center justify-between mb-2">
+                <div key={index} className="border border-gray-300 rounded p-1.5 bg-gray-50">
+                  <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs font-mono font-bold">Item {index + 1}</span>
                     <Button
                       size="sm"
@@ -282,12 +283,12 @@ const ArrayField = ({
               ))
             )}
           </div>
-          <div className="border-t border-gray-300 p-2">
+          <div className="border-t border-gray-300 p-1.5">
             <Button
               size="sm"
               onClick={handleAddItem}
               disabled={disabled}
-              className="h-6 px-3 text-xs bg-black text-white hover:bg-gray-800"
+              className="h-6 px-2 text-xs bg-black text-white hover:bg-gray-800"
             >
               + Add Item
             </Button>
@@ -320,15 +321,15 @@ const NestedObjectField = ({
   if (!schema.properties) return null;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {Object.entries(schema.properties).map(([key, fieldSchema]) => (
-        <div key={key} className="grid grid-cols-3 gap-2 items-start">
-          <label className="text-xs font-mono text-gray-700 col-span-1 pt-1">
+        <div key={key} className="grid grid-cols-3 gap-1.5 items-start">
+          <label className="text-xs font-mono text-gray-700 col-span-1 pt-0.5">
             {fieldSchema.label || key}:
           </label>
           <div className="col-span-2">
             {fieldSchema.description && (
-              <p className="text-xs text-gray-500 mb-1">{fieldSchema.description}</p>
+              <p className="text-xs text-gray-500 mb-0.5">{fieldSchema.description}</p>
             )}
             <Input
               type="text"
@@ -336,7 +337,7 @@ const NestedObjectField = ({
               onChange={e => handleFieldChange(key, e.target.value)}
               disabled={disabled}
               placeholder={fieldSchema.default ? String(fieldSchema.default) : ''}
-              className="h-7 text-xs font-mono border-black focus:ring-2 focus:ring-black"
+              className="h-6 text-xs font-mono border-black focus:ring-2 focus:ring-black px-1.5"
             />
           </div>
         </div>
@@ -417,22 +418,22 @@ const ObjectField = ({
   };
 
   return (
-    <div className="grid grid-cols-3 gap-3 items-start">
+    <div className="grid grid-cols-3 gap-2 items-start">
       <Label
         htmlFor={path}
-        className="text-sm font-medium text-gray-700 pt-0.5 col-span-1"
+        className="text-xs font-medium text-gray-700 pt-0.5 col-span-1"
       >
         {label}:
       </Label>
       <div className="col-span-2">
         {schema.description && (
-          <p className="text-xs text-gray-600 mb-2">{schema.description}</p>
+          <p className="text-xs text-gray-600 mb-1.5">{schema.description}</p>
         )}
 
         {/* Show structured fields for objects with properties schema */}
         {hasPropertiesSchema && !showJsonEditor && !isEditing ? (
           <div className="border-2 border-black bg-white rounded">
-            <div className="p-3 space-y-4 max-h-96 overflow-y-auto">
+            <div className="p-2 space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
               {Object.entries(schema.properties!).map(([key, propSchema]) => {
                 const propValue = (currentValue as JsonObject)[key];
 
@@ -458,21 +459,21 @@ const ObjectField = ({
                   };
 
                   return (
-                    <div key={key} className="space-y-2">
+                    <div key={key} className="space-y-1.5">
                       <label className="text-xs font-mono font-bold text-gray-700">
                         {propSchema.label || key}:
                       </label>
                       {propSchema.description && (
-                        <p className="text-xs text-gray-500 mb-2">{propSchema.description}</p>
+                        <p className="text-xs text-gray-500 mb-1">{propSchema.description}</p>
                       )}
-                      <div className="border border-gray-300 rounded bg-gray-50 p-2">
-                        <div className="space-y-2 max-h-64 overflow-y-auto mb-2">
+                      <div className="border border-gray-300 rounded bg-gray-50 p-1.5">
+                        <div className="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar mb-1.5">
                           {currentArrayValue.length === 0 ? (
                             <p className="text-xs text-gray-500 italic">No items yet</p>
                           ) : (
                             currentArrayValue.map((item, index) => (
-                              <div key={index} className="border border-gray-300 rounded p-2 bg-white">
-                                <div className="flex items-center justify-between mb-2">
+                              <div key={index} className="border border-gray-300 rounded p-1.5 bg-white">
+                                <div className="flex items-center justify-between mb-1.5">
                                   <span className="text-xs font-mono font-bold">Item {index + 1}</span>
                                   <Button
                                     size="sm"
@@ -514,7 +515,7 @@ const ObjectField = ({
                           size="sm"
                           onClick={handleAddItem}
                           disabled={disabled}
-                          className="h-6 px-3 text-xs bg-black text-white hover:bg-gray-800"
+                          className="h-6 px-2 text-xs bg-black text-white hover:bg-gray-800"
                         >
                           + Add Item
                         </Button>
@@ -525,16 +526,16 @@ const ObjectField = ({
                   // Handle nested objects with value_schema (like business_to_company)
                   const nestedObj = propValue as JsonObject || {};
                   return (
-                    <div key={key} className="space-y-2">
+                    <div key={key} className="space-y-1.5">
                       <label className="text-xs font-mono font-bold text-gray-700">
                         {propSchema.label || key}:
                       </label>
                       {propSchema.description && (
-                        <p className="text-xs text-gray-500 mb-2">{propSchema.description}</p>
+                        <p className="text-xs text-gray-500 mb-1">{propSchema.description}</p>
                       )}
-                      <div className="border border-gray-300 rounded p-2 bg-gray-50 space-y-2">
+                      <div className="border border-gray-300 rounded p-1.5 bg-gray-50 space-y-1.5">
                         {Object.entries(nestedObj).map(([nestedKey, nestedVal]) => (
-                          <div key={nestedKey} className="grid grid-cols-2 gap-2 items-center">
+                          <div key={nestedKey} className="grid grid-cols-2 gap-1.5 items-center">
                             <label className="text-xs font-mono text-gray-700 truncate" title={nestedKey}>
                               {nestedKey}:
                             </label>
@@ -546,7 +547,7 @@ const ObjectField = ({
                                 handlePropertyChange(key, updated);
                               }}
                               disabled={disabled}
-                              className="h-7 text-xs font-mono border-black focus:ring-2 focus:ring-black"
+                              className="h-6 text-xs font-mono border-black focus:ring-2 focus:ring-black px-1.5"
                             />
                           </div>
                         ))}
@@ -557,13 +558,13 @@ const ObjectField = ({
                 return null;
               })}
             </div>
-            <div className="border-t border-gray-300 p-2 flex gap-2">
+            <div className="border-t border-gray-300 p-1.5 flex gap-1.5">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setShowJsonEditor(true)}
                 disabled={disabled}
-                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+                className="h-6 px-1.5 text-xs border-black hover:bg-black hover:text-white"
               >
                 Edit as JSON
               </Button>
@@ -572,7 +573,7 @@ const ObjectField = ({
                 variant="outline"
                 onClick={handleReset}
                 disabled={disabled}
-                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+                className="h-6 px-1.5 text-xs border-black hover:bg-black hover:text-white"
               >
                 Reset to Default
               </Button>
@@ -581,7 +582,7 @@ const ObjectField = ({
         ) : isFlat && !showJsonEditor && !isEditing ? (
           /* Show individual fields for flat key-value objects */
           <div className="border-2 border-black bg-white rounded">
-            <div className="p-3 space-y-3 max-h-96 overflow-y-auto">
+            <div className="p-2 space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
               {Object.entries(currentValue as JsonObject).map(([key, val]) => (
                 <div key={key} className="grid grid-cols-2 gap-2 items-center">
                   <label className="text-xs font-mono text-gray-700 truncate" title={key}>
@@ -594,12 +595,12 @@ const ObjectField = ({
                       onValueChange={value => handleFieldChange(key, value)}
                       disabled={disabled}
                     >
-                      <SelectTrigger className="h-7 text-xs border-black focus:ring-2 focus:ring-black">
+                      <SelectTrigger className="h-6 text-xs border-black focus:ring-2 focus:ring-black px-1.5">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {schema.value_options.map((option) => (
-                          <SelectItem key={option} value={option}>
+                          <SelectItem key={option} value={option} className="text-xs py-1">
                             {option}
                           </SelectItem>
                         ))}
@@ -611,19 +612,19 @@ const ObjectField = ({
                       value={String(val || '')}
                       onChange={e => handleFieldChange(key, e.target.value)}
                       disabled={disabled}
-                      className="h-7 text-xs font-mono border-black focus:ring-2 focus:ring-black"
+                      className="h-6 text-xs font-mono border-black focus:ring-2 focus:ring-black px-1.5"
                     />
                   )}
                 </div>
               ))}
             </div>
-            <div className="border-t border-gray-300 p-2 flex gap-2">
+            <div className="border-t border-gray-300 p-1.5 flex gap-1.5">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setShowJsonEditor(true)}
                 disabled={disabled}
-                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+                className="h-6 px-1.5 text-xs border-black hover:bg-black hover:text-white"
               >
                 Edit as JSON
               </Button>
@@ -632,7 +633,7 @@ const ObjectField = ({
                 variant="outline"
                 onClick={handleReset}
                 disabled={disabled}
-                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+                className="h-6 px-1.5 text-xs border-black hover:bg-black hover:text-white"
               >
                 Reset to Default
               </Button>
@@ -646,13 +647,13 @@ const ObjectField = ({
                 {prettyJson}
               </pre>
             </div>
-            <div className="border-t border-gray-300 p-2 flex gap-2">
+            <div className="border-t border-gray-300 p-1.5 flex gap-1.5">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handleEdit}
                 disabled={disabled}
-                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+                className="h-6 px-1.5 text-xs border-black hover:bg-black hover:text-white"
               >
                 Edit JSON
               </Button>
@@ -662,7 +663,7 @@ const ObjectField = ({
                   variant="outline"
                   onClick={() => setShowJsonEditor(false)}
                   disabled={disabled}
-                  className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+                  className="h-6 px-1.5 text-xs border-black hover:bg-black hover:text-white"
                 >
                   Show Fields
                 </Button>
@@ -672,7 +673,7 @@ const ObjectField = ({
                 variant="outline"
                 onClick={handleReset}
                 disabled={disabled}
-                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
+                className="h-6 px-1.5 text-xs border-black hover:bg-black hover:text-white"
               >
                 Reset to Default
               </Button>
@@ -695,12 +696,12 @@ const ObjectField = ({
                 <p className="text-xs text-red-600 font-mono">❌ {jsonError}</p>
               </div>
             )}
-            <div className="border-t border-gray-300 p-2 flex gap-2">
+            <div className="border-t border-gray-300 p-1.5 flex gap-1.5">
               <Button
                 size="sm"
                 onClick={handleSave}
                 disabled={disabled}
-                className="h-6 px-3 text-xs bg-black text-white hover:bg-gray-800"
+                className="h-6 px-2 text-xs bg-black text-white hover:bg-gray-800"
               >
                 Save
               </Button>
@@ -712,7 +713,7 @@ const ObjectField = ({
                   setShowJsonEditor(false);
                 }}
                 disabled={disabled}
-                className="h-6 px-3 text-xs border-black hover:bg-black hover:text-white"
+                className="h-6 px-2 text-xs border-black hover:bg-black hover:text-white"
               >
                 Cancel
               </Button>
@@ -838,7 +839,7 @@ const ParameterField = ({
                         value={option.value}
                         disabled={isSelected}
                         className={
-                          isSelected ? 'text-muted-foreground line-through' : ''
+                          isSelected ? 'text-muted-foreground line-through text-xs py-1' : 'text-xs py-1'
                         }
                       >
                         {option.label}
@@ -853,7 +854,7 @@ const ParameterField = ({
               variant="outline"
               onClick={handleSelectAllAvailable}
               disabled={disabled || unselectedOptions.length === 0}
-              className="h-6 px-2 text-xs border-black hover:bg-gray-100 flex-shrink-0"
+              className="h-6 px-1.5 text-xs border-black hover:bg-gray-100 flex-shrink-0"
               title={`Select all ${unselectedOptions.length} remaining options`}
             >
               All
@@ -870,7 +871,7 @@ const ParameterField = ({
           value={inputValue}
           onChange={e => handleInputChange(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleAddValue()}
-          className="flex-1 h-6 text-xs font-mono border-black"
+          className="flex-1 h-6 text-xs font-mono border-black px-1.5"
           placeholder={placeholder}
           disabled={disabled}
         />
@@ -878,7 +879,7 @@ const ParameterField = ({
           size="icon"
           variant="outline"
           onClick={handleAddValue}
-          className="h-6 w-6 flex-shrink-0 border-black p-1"
+          className="h-6 w-6 flex-shrink-0 border-black p-0.5"
           disabled={disabled}
         >
           <CornerDownLeft className="h-3 w-3" />
@@ -890,10 +891,10 @@ const ParameterField = ({
   // Special layout for checkbox-list fields - no need for tag display
   if (schema.type === 'checkbox-list') {
     return (
-      <div className="grid grid-cols-3 gap-3 items-start">
+      <div className="grid grid-cols-3 gap-2 items-start">
         <Label
           htmlFor={path}
-          className="text-sm font-medium text-gray-700 pt-0.5 col-span-1"
+          className="text-xs font-medium text-gray-700 pt-0.5 col-span-1"
         >
           {label}:
         </Label>
@@ -906,10 +907,10 @@ const ParameterField = ({
   }
 
   return (
-    <div className="grid grid-cols-3 gap-3 items-start">
+    <div className="grid grid-cols-3 gap-2 items-start">
       <Label
         htmlFor={path}
-        className="text-sm font-medium text-gray-700 pt-0.5 col-span-1"
+        className="text-xs font-medium text-gray-700 pt-0.5 col-span-1"
       >
         {label}:
       </Label>
@@ -919,15 +920,15 @@ const ParameterField = ({
             {values.map((val, index) => (
               <div
                 key={`${path}-${val}-${index}`}
-                className={`relative group flex items-center gap-1 bg-gray-100 hover:bg-gray-200 rounded-md px-1.5 py-0.5 text-xs transition-colors border ${error ? 'border-red-500' : 'border-black'}`}
+                className={`relative group flex items-center gap-0.5 bg-gray-100 hover:bg-gray-200 rounded px-1 py-[1px] text-[10px] leading-tight transition-colors border ${error ? 'border-red-500' : 'border-black'}`}
               >
                 <span>{String(val)}</span>
                 <button
                   onClick={() => onRemoveValue(path, index)}
-                  className="text-gray-500 hover:text-black"
+                  className="text-gray-500 hover:text-black p-0 flex items-center"
                   disabled={disabled}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-2.5 w-2.5" />
                 </button>
                 {error && (
                   <div className="absolute bottom-full mb-2 w-max bg-black text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity">

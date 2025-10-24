@@ -24,6 +24,7 @@ import { useSearchParams } from 'next/navigation';
 import { BatchForm } from '@/components/deployments/BatchForm';
 import { Workflow } from '@/lib/workflow-types';
 import { toast } from 'sonner';
+import '@/styles/custom-scrollbar.css';
 
 type JsonValue =
   | string
@@ -627,40 +628,40 @@ export function BatchTestDialog({
           </p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1">
           {/* Execution Settings */}
           <Card className="border-black">
-            <CardHeader className="py-3">
-              <CardTitle className="text-base flex items-center gap-2">
+            <CardHeader className="py-2 px-3">
+              <CardTitle className="text-sm flex items-center gap-2">
                 <Server className="w-4 h-4" />
                 Execution Settings
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Choose which machine to run the test on. Defaults to development
                 machine.
               </p>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="machine-select">Target Machine</Label>
+            <CardContent className="grid grid-cols-2 gap-4 py-3 px-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="machine-select" className="text-xs">Target Machine</Label>
                 {loadingMachines ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Loading machines...
                   </div>
                 ) : availableMachines.length === 0 ? (
-                  <div className="border-2 border-black p-4 bg-gray-50">
-                    <p className="text-sm font-mono mb-2">
+                  <div className="border-2 border-black p-2 bg-gray-50">
+                    <p className="text-xs font-mono mb-1">
                       No remote machines available for your organization.
                     </p>
-                    <p className="text-xs text-muted-foreground mb-3">
+                    <p className="text-xs text-muted-foreground mb-2">
                       Your organization needs access to at least one remote machine to execute workflows.
                     </p>
                     <a
                       href="https://mediar.ai/contact"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-block px-4 py-2 bg-black text-white hover:bg-gray-800 transition-colors text-sm font-mono uppercase"
+                      className="inline-block px-2 py-1 bg-black text-white hover:bg-gray-800 transition-colors text-xs font-mono uppercase"
                     >
                       Contact Support
                     </a>
@@ -673,7 +674,7 @@ export function BatchTestDialog({
                       userSelectedMachineRef.current = true; // Mark that user has made a manual selection
                     }}
                   >
-                    <SelectTrigger id="machine-select">
+                    <SelectTrigger id="machine-select" className="h-7 text-xs px-2">
                       <SelectValue placeholder="Select a machine" />
                     </SelectTrigger>
                     <SelectContent>
@@ -705,7 +706,8 @@ export function BatchTestDialog({
                           <SelectItem
                             key={`machine-${machine.id}`}
                             value={machine.id.toString()}
-                            disabled={false} // Explicitly allow selection even for unhealthy machines
+                            disabled={false}
+                            className="text-xs py-1"
                           >
                             {statusIndicator} {machine.name}{statusText} {jobsInfo} jobs
                           </SelectItem>
@@ -728,8 +730,8 @@ export function BatchTestDialog({
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="version-select">Workflow Version</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="version-select" className="text-xs">Workflow Version</Label>
                 {loadingVersions ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -744,7 +746,7 @@ export function BatchTestDialog({
                     value={selectedVersionNumber}
                     onValueChange={setSelectedVersionNumber}
                   >
-                    <SelectTrigger id="version-select">
+                    <SelectTrigger id="version-select" className="h-7 text-xs px-2">
                       <SelectValue placeholder="Active version" />
                     </SelectTrigger>
                     <SelectContent>
@@ -752,6 +754,7 @@ export function BatchTestDialog({
                         <SelectItem
                           key={`version-${version.version_id}`}
                           value={version.version_number}
+                          className="text-xs py-1"
                         >
                           <div className="flex items-center justify-between w-full">
                             <div className="flex items-center gap-2">
@@ -814,15 +817,15 @@ export function BatchTestDialog({
 
               {/* Executor Type Selection (Mediar Team Only) */}
               {isMediarTeam && (
-                <div className="col-span-2 space-y-2 mt-4 pt-4 border-t border-gray-200">
+                <div className="col-span-2 space-y-1.5 mt-2 pt-2 border-t border-gray-200">
                   <Label htmlFor="executor-select" className="font-mono text-xs uppercase">Executor Type</Label>
                   <Select value={executorType} onValueChange={(value) => setExecutorType(value as 'python' | 'rust')}>
-                    <SelectTrigger id="executor-select">
+                    <SelectTrigger id="executor-select" className="h-7 text-xs px-2">
                       <SelectValue placeholder="Select executor" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="python">Python Executor (Default)</SelectItem>
-                      <SelectItem value="rust">Rust Executor (Experimental)</SelectItem>
+                      <SelectItem value="python" className="text-xs py-1">Python Executor (Default)</SelectItem>
+                      <SelectItem value="rust" className="text-xs py-1">Rust Executor (Experimental)</SelectItem>
                     </SelectContent>
                   </Select>
                   <div className="text-xs text-muted-foreground">
@@ -834,7 +837,7 @@ export function BatchTestDialog({
               )}
 
               {/* Partial Execution (Debug Mode) */}
-              <div className="col-span-2 space-y-3 mt-4 pt-4 border-t border-gray-200">
+              <div className="col-span-2 space-y-2 mt-2 pt-2 border-t border-gray-200">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="partial-execution-toggle"
@@ -848,7 +851,7 @@ export function BatchTestDialog({
                 </div>
 
                 {showPartialExecution && (
-                  <div className="p-4 border-2 border-black rounded bg-gray-50 space-y-4">
+                  <div className="p-2 border-2 border-black rounded bg-gray-50 space-y-2">
                     {loadingSteps ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -858,16 +861,16 @@ export function BatchTestDialog({
                       <p className="text-sm text-muted-foreground">No steps available for this workflow</p>
                     ) : (
                       <>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
                             <Label htmlFor="start-step-select" className="text-xs font-mono uppercase">Start from step</Label>
                             <Select value={startFromStep} onValueChange={setStartFromStep}>
-                              <SelectTrigger id="start-step-select" className="font-mono text-sm">
+                              <SelectTrigger id="start-step-select" className="font-mono text-xs h-7 px-2">
                                 <SelectValue placeholder="From beginning" />
                               </SelectTrigger>
                               <SelectContent>
                                 {workflowSteps.map(step => (
-                                  <SelectItem key={step.id} value={step.id} className="font-mono text-sm">
+                                  <SelectItem key={step.id} value={step.id} className="font-mono text-xs py-1">
                                     {step.id}
                                     <span className="text-xs text-muted-foreground ml-2">({step.name})</span>
                                   </SelectItem>
@@ -876,15 +879,15 @@ export function BatchTestDialog({
                             </Select>
                           </div>
 
-                          <div className="space-y-2">
+                          <div className="space-y-1.5">
                             <Label htmlFor="end-step-select" className="text-xs font-mono uppercase">End at step</Label>
                             <Select value={endAtStep} onValueChange={setEndAtStep}>
-                              <SelectTrigger id="end-step-select" className="font-mono text-sm">
+                              <SelectTrigger id="end-step-select" className="font-mono text-xs h-7 px-2">
                                 <SelectValue placeholder="Until end" />
                               </SelectTrigger>
                               <SelectContent>
                                 {workflowSteps.map(step => (
-                                  <SelectItem key={step.id} value={step.id} className="font-mono text-sm">
+                                  <SelectItem key={step.id} value={step.id} className="font-mono text-xs py-1">
                                     {step.id}
                                     <span className="text-xs text-muted-foreground ml-2">({step.name})</span>
                                   </SelectItem>
@@ -894,7 +897,7 @@ export function BatchTestDialog({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4 pt-2">
+                        <div className="grid grid-cols-2 gap-3 pt-1">
                           <div className="flex items-center gap-2">
                             <Checkbox
                               id="follow-fallback"
@@ -918,7 +921,7 @@ export function BatchTestDialog({
                           </div>
                         </div>
 
-                        <div className="text-xs text-muted-foreground pt-2 border-t border-gray-300">
+                        <div className="text-xs text-muted-foreground pt-1.5 border-t border-gray-300">
                           <p className="font-mono">
                             {startFromStep || endAtStep ? (
                               <>
@@ -939,7 +942,7 @@ export function BatchTestDialog({
 
           {/* Batch Summary */}
           <Card className="border-black">
-            <CardContent className="py-3">
+            <CardContent className="py-2 px-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-6">
                   <h3 className="text-base font-semibold">Test Run Summary</h3>
@@ -1016,9 +1019,9 @@ export function BatchTestDialog({
 
           {/* Variable Configurator */}
           <Card className="border-black">
-            <CardHeader className="py-3">
-              <CardTitle className="text-base">Variable Configurator</CardTitle>
-              <p className="text-sm text-muted-foreground">
+            <CardHeader className="py-2 px-3">
+              <CardTitle className="text-sm">Variable Configurator</CardTitle>
+              <p className="text-xs text-muted-foreground">
                 Define static values or iterate over multiple dynamic values for
                 each parameter.
               </p>
@@ -1033,7 +1036,7 @@ export function BatchTestDialog({
 
                 return currentSchema &&
                   Object.keys(currentSchema).length > 0 ? (
-                  <div className="max-h-[50vh] overflow-y-auto">
+                  <div className="max-h-[50vh] overflow-y-auto custom-scrollbar">
                     {loadingVersionValidation && (
                       <div className="p-4 text-center text-sm text-muted-foreground">
                         Loading version schema...

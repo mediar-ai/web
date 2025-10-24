@@ -1,0 +1,29 @@
+/* Custom scrollbar styling - always visible black & white theme */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #000 #f1f1f1;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-left: 1px solid #000;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #000;
+  border: 2px solid #f1f1f1;
+  border-radius: 0;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #333;
+}
+
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: #f1f1f1;
+}
