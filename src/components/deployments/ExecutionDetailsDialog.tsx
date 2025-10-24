@@ -638,7 +638,7 @@ export function ExecutionDetailsDialog({
                         className="border-black bg-gray-100"
                       >
                         <XCircle className="h-4 w-4" />
-                        <AlertDescription>
+                        <AlertDescription className="break-words overflow-wrap-anywhere whitespace-pre-wrap">
                           {execution.error_message}
                         </AlertDescription>
                       </Alert>
