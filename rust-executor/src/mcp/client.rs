@@ -266,7 +266,10 @@ impl McpClient {
                     response_text[6..].lines().next().unwrap_or(&response_text[6..])
                 } else {
                     // Even without "data: " prefix, SSE responses may have trailing "id: " lines
-                    response_text.lines().next().unwrap_or(&response_text)
+                    // Take the first non-empty line
+                    response_text.lines()
+                        .find(|line| !line.trim().is_empty() && !line.starts_with("id:"))
+                        .unwrap_or(&response_text)
                 };
 
                 // Try parsing the JSON, with fallback to sanitized version if it contains problematic Unicode
@@ -291,7 +294,14 @@ impl McpClient {
                 // Extract result from JSON-RPC response
                 let result_data = json_response.get("result")
                     .cloned()
-                    .ok_or_else(|| anyhow::anyhow!("No result in MCP response"))?;
+                    .ok_or_else(|| {
+                        // Check if it's an error response instead
+                        if let Some(error) = json_response.get("error") {
+                            anyhow::anyhow!("MCP server returned error: {:?}", error)
+                        } else {
+                            anyhow::anyhow!("No result in MCP response. Full response: {}", serde_json::to_string_pretty(&json_response).unwrap_or_else(|_| format!("{:?}", json_response)))
+                        }
+                    })?;
 
                 // For HTTP transport, parse the result directly and return early
                 // The result should contain a "content" array with text/image items
