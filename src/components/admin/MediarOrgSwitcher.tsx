@@ -17,11 +17,15 @@ interface MediarOrgSwitcherProps {
   isCollapsed?: boolean;
 }
 
+// Cache admin status globally to prevent refetching on every navigation
+let adminStatusCache: { isAdmin: boolean; organizations: Organization[]; timestamp: number } | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: MediarOrgSwitcherProps) {
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [isAdmin, setIsAdmin] = useState(adminStatusCache?.isAdmin || false);
+  const [organizations, setOrganizations] = useState<Organization[]>(adminStatusCache?.organizations || []);
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!adminStatusCache);
   const [currentViewOrg, setCurrentViewOrg] = useState<string | null>(null);
 
   const router = useRouter();
@@ -29,12 +33,27 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
   const { organization } = useOrganization();
 
   const checkAdminStatus = useCallback(async () => {
+    // Check if we have valid cached data
+    if (adminStatusCache && (Date.now() - adminStatusCache.timestamp) < CACHE_DURATION) {
+      setIsAdmin(adminStatusCache.isAdmin);
+      setOrganizations(adminStatusCache.organizations);
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/admin/list-all-orgs');
       if (response.ok) {
         const data = await response.json();
         setIsAdmin(data.isMediarAdmin);
         setOrganizations(data.organizations || []);
+
+        // Update cache
+        adminStatusCache = {
+          isAdmin: data.isMediarAdmin,
+          organizations: data.organizations || [],
+          timestamp: Date.now()
+        };
       }
     } catch (error) {
       console.error('Error checking admin status:', error);
