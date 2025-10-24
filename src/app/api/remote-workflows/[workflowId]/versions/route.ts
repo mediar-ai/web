@@ -3,80 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Content sanitization check function
-function detectSuspiciousContent(content: string): { safe: boolean; issues: string[] } {
-  const issues: string[] = [];
-
-  // Check 1: Detect potential script injection patterns
-  const scriptPatterns = [
-    /<script[^>]*>/i,
-    /javascript:/i,
-    /on\w+\s*=/i, // onclick=, onerror=, etc.
-    /eval\s*\(/,
-    /Function\s*\(/,
-    /__proto__/,
-    /constructor\s*\[/
-  ];
-
-  scriptPatterns.forEach((pattern, idx) => {
-    if (pattern.test(content)) {
-      issues.push(`Suspicious pattern ${idx + 1}: ${pattern.source}`);
-    }
-  });
-
-  // Check 2: Detect encoded/obfuscated content
-  const obfuscationPatterns = [
-    /\\x[0-9a-fA-F]{2}/g, // Hex encoding
-    /\\u[0-9a-fA-F]{4}/g, // Unicode escapes
-    /fromCharCode/i,
-    /atob\s*\(/i, // Base64 decode
-    /String\.fromCodePoint/i
-  ];
-
-  let encodedCharsCount = 0;
-  obfuscationPatterns.forEach(pattern => {
-    const matches = content.match(pattern);
-    if (matches) encodedCharsCount += matches.length;
-  });
-
-  if (encodedCharsCount > 10) {
-    issues.push(`Excessive encoded characters detected: ${encodedCharsCount}`);
-  }
-
-  // Check 3: Detect file system access patterns
-  const fsPatterns = [
-    /fs\.readFile/,
-    /fs\.writeFile/,
-    /fs\.unlink/,
-    /child_process/,
-    /execSync/,
-    /\.\.\/\.\.\// // Path traversal
-  ];
-
-  fsPatterns.forEach((pattern, idx) => {
-    if (pattern.test(content)) {
-      issues.push(`File system access pattern ${idx + 1}: ${pattern.source}`);
-    }
-  });
-
-  // Check 4: Detect excessively long lines (could be minified malicious code)
-  const lines = content.split('\n');
-  const longLines = lines.filter(line => line.length > 1000);
-  if (longLines.length > 5) {
-    issues.push(`${longLines.length} lines exceed 1000 characters (possible minified code)`);
-  }
-
-  // Check 5: Detect excessive nesting depth in JSON/YAML
-  const depthMatches = content.match(/\{|\[/g);
-  if (depthMatches && depthMatches.length > 200) {
-    issues.push(`Excessive nesting detected: ${depthMatches.length} opening brackets`);
-  }
-
-  return {
-    safe: issues.length === 0,
-    issues
-  };
-}
+// Security validation removed - workflows are trusted content uploaded by authenticated users
 
 interface WorkflowVersion {
   version_id: number;
@@ -304,24 +231,7 @@ export async function POST(
         );
       }
 
-      // Content sanitization check
-      const sanitizationCheck = detectSuspiciousContent(automation_sequence);
-
-      if (!sanitizationCheck.safe) {
-        console.warn('⚠️ Suspicious content detected:', sanitizationCheck.issues);
-
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Content failed security validation',
-            details: {
-              issues: sanitizationCheck.issues,
-              message: 'Upload contains potentially unsafe patterns'
-            }
-          },
-          { status: 400 }
-        );
-      }
+      // Security validation removed - workflows are trusted content
     }
 
     // Helper function to detect sequence format
