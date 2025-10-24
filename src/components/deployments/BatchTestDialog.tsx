@@ -94,6 +94,7 @@ export function BatchTestDialog({
   const [totalCombinations, setTotalCombinations] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSpecValid, setIsSpecValid] = useState(true);
+  const [isSavingDefaults, setIsSavingDefaults] = useState(false);
 
   // Track previous workflow ID to detect changes
   const prevWorkflowIdRef = useRef<number | null>(null);
@@ -557,6 +558,55 @@ export function BatchTestDialog({
     }
   };
 
+  const handleSaveDefaults = async () => {
+    if (!workflow) return;
+
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      'This will create a new workflow version with these values as defaults. Continue?'
+    );
+
+    if (!confirmed) return;
+
+    console.log('💾 Saving defaults with spec:', batchSpec.dynamic_parameters);
+
+    setIsSavingDefaults(true);
+    try {
+      const response = await fetch(
+        `/api/remote-workflows/${workflow.id}/save-defaults`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dynamic_parameters: batchSpec.dynamic_parameters
+          }),
+        }
+      );
+
+      const data = await response.json();
+      console.log('📡 Save defaults response:', data);
+
+      if (data.success) {
+        console.log('[SUCCESS] Defaults saved:', data.version);
+        toast.success(data.message || `Saved as default (version ${data.version.version_number})`);
+
+        // Close dialog after successful save
+        onOpenChange(false);
+        if (onSubmit) {
+          onSubmit();
+        }
+      } else {
+        console.error('[ERROR] Failed to save defaults:', data.error);
+        toast.error(`Failed to save defaults: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('[ERROR] Error saving defaults:', error);
+      toast.error('Failed to save defaults');
+    } finally {
+      setIsSavingDefaults(false);
+    }
+  };
+
   const selectedMachine = availableMachines.find(
     m => m.id.toString() === selectedMachineId
   );
@@ -907,34 +957,57 @@ export function BatchTestDialog({
                     )}
                   </div>
                 </div>
-                <Button
-                  className="ml-4"
-                  size="default"
-                  disabled={
-                    (totalCombinations === 0 &&
-                      workflow.input_parameters &&
-                      Object.keys(workflow.input_parameters).length > 0) ||
-                    isSubmitting ||
-                    totalCombinations > 5000 ||
-                    !isSpecValid ||
-                    !selectedMachineId
-                  }
-                  onClick={handleBatchSubmit}
-                >
-                  {isSubmitting ? (
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Submitting...
-                    </div>
-                  ) : (
-                    (() => {
-                      const count = totalCombinations === 0 &&
-                        (!workflow.input_parameters || Object.keys(workflow.input_parameters).length === 0)
-                        ? 1 : totalCombinations;
-                      return `Queue ${count} Execution${count === 1 ? '' : 's'}`;
-                    })()
-                  )}
-                </Button>
+                <div className="flex gap-2 ml-4">
+                  <Button
+                    variant="outline"
+                    size="default"
+                    disabled={
+                      totalCombinations !== 1 ||
+                      isSavingDefaults ||
+                      isSubmitting ||
+                      !isSpecValid
+                    }
+                    onClick={handleSaveDefaults}
+                    className="border-black hover:bg-black hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSavingDefaults ? (
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving...
+                      </div>
+                    ) : (
+                      'Save as default'
+                    )}
+                  </Button>
+                  <Button
+                    size="default"
+                    disabled={
+                      (totalCombinations === 0 &&
+                        workflow.input_parameters &&
+                        Object.keys(workflow.input_parameters).length > 0) ||
+                      isSubmitting ||
+                      isSavingDefaults ||
+                      totalCombinations > 5000 ||
+                      !isSpecValid ||
+                      !selectedMachineId
+                    }
+                    onClick={handleBatchSubmit}
+                  >
+                    {isSubmitting ? (
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Submitting...
+                      </div>
+                    ) : (
+                      (() => {
+                        const count = totalCombinations === 0 &&
+                          (!workflow.input_parameters || Object.keys(workflow.input_parameters).length === 0)
+                          ? 1 : totalCombinations;
+                        return `Queue ${count} Execution${count === 1 ? '' : 's'}`;
+                      })()
+                    )}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
