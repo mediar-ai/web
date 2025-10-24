@@ -226,9 +226,9 @@ export function WorkflowCardEnhanced({
         {/* Compact Card Content */}
         <div className="p-2">
           {/* Main Single Line */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {/* Name and Status */}
-            <div className="flex items-center gap-2 w-80 flex-shrink-0">
+            <div className="flex items-center gap-2 min-w-[200px] max-w-[320px] flex-shrink">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-2 min-w-0">
@@ -314,7 +314,7 @@ export function WorkflowCardEnhanced({
             <div className="text-gray-300">|</div>
 
             {/* Metrics - Compact */}
-            <div className="flex items-center gap-3 text-xs flex-1">
+            <div className="flex items-center gap-2 text-xs flex-1 min-w-0">
               {/* Success Rate */}
               <div className="flex items-center gap-1">
                 <span className="font-mono font-medium text-[11px]">
@@ -337,10 +337,10 @@ export function WorkflowCardEnhanced({
                 <span className="font-mono font-medium text-[11px]">{metrics.totalRuns}</span>
               </div>
 
-              {/* Show inline cron schedule or sparkline */}
+              {/* Show inline cron schedule or sparkline - hide on narrow screens */}
               {getNextRunInfo ? (
                 <>
-                  <div className="flex items-center gap-1 ml-auto">
+                  <div className="hidden xl:flex items-center gap-1 ml-auto">
                     <span className="text-[11px]">⏰</span>
                     <span className={cn(
                       "font-mono text-[11px]",
@@ -352,8 +352,8 @@ export function WorkflowCardEnhanced({
                   </div>
                   {getNextRunInfo.isEnabled && getNextRunInfo.nextRunText && (
                     <>
-                      <div className="text-gray-300">|</div>
-                      <div className="flex items-center gap-1 mr-1">
+                      <div className="text-gray-300 hidden xl:block">|</div>
+                      <div className="hidden xl:flex items-center gap-1 mr-1">
                         <span className="text-gray-500 text-[11px]">Next:</span>
                         <span className="font-mono font-medium text-[11px]">
                           {getNextRunInfo.nextRunText}
@@ -363,7 +363,7 @@ export function WorkflowCardEnhanced({
                   )}
                 </>
               ) : (
-                <div className="ml-auto mr-1">
+                <div className="ml-auto mr-1 hidden xl:block">
                   <ExecutionSparkline
                     executions={executions}
                     width={50}
@@ -382,9 +382,9 @@ export function WorkflowCardEnhanced({
                   e.stopPropagation();
                   onExecute?.();
                 }}
-                className="h-6 px-2 text-[11px] border-black hover:bg-black hover:text-white"
+                className="h-6 px-1.5 text-[10px] border-black hover:bg-black hover:text-white whitespace-nowrap"
               >
-                Manual run options
+                Run
               </Button>
               <Button
                 size="sm"
@@ -393,9 +393,9 @@ export function WorkflowCardEnhanced({
                   e.stopPropagation();
                   onView?.();
                 }}
-                className="h-6 px-2 text-[11px] border-black hover:bg-black hover:text-white"
+                className="h-6 px-1.5 text-[10px] border-black hover:bg-black hover:text-white whitespace-nowrap"
               >
-                <Settings className="w-3 h-3 mr-1" />
+                <Settings className="w-3 h-3 mr-0.5" />
                 Settings
               </Button>
 
