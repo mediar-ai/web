@@ -84,16 +84,25 @@ impl QueueProcessor {
             // Load workflow sequence
             let sequence = self.load_workflow_sequence(&workflow).await?;
 
-            // Get MCP endpoint from execution params or environment
-            let mcp_endpoint = execution.execution_params
-                .as_ref()
-                .and_then(|p| p.get("mcp_endpoint"))
-                .and_then(|v| v.as_str())
-                .map(String::from)
+            // Get MCP endpoint from execution record (preferred) or execution params or environment
+            info!("DEBUG: execution.mcp_endpoint = {:?}", execution.mcp_endpoint);
+            info!("DEBUG: execution.execution_params = {:?}", execution.execution_params);
+
+            let mcp_endpoint = execution.mcp_endpoint
+                .clone()
+                .or_else(|| {
+                    execution.execution_params
+                        .as_ref()
+                        .and_then(|p| p.get("mcp_endpoint"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                })
                 .unwrap_or_else(|| {
                     std::env::var("MCP_ENDPOINT")
                         .unwrap_or_else(|_| "http://localhost:3000".to_string())
                 });
+
+            info!("DEBUG: Final mcp_endpoint = {}", mcp_endpoint);
 
             // Update total steps
             let total_steps = sequence.count_steps() as u32;

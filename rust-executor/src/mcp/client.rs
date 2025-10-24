@@ -17,15 +17,47 @@ pub enum McpTransport {
 
 pub struct McpClient {
     transport: McpTransport,
+    http_client: Option<reqwest::Client>,
+    initialized: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    session_id: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl McpClient {
     pub fn new(transport: McpTransport) -> Self {
-        Self { transport }
+        // Create HTTP client for session management
+        let http_client = match &transport {
+            McpTransport::Http(_) => Some(
+                reqwest::Client::builder()
+                    .timeout(Duration::from_secs(300))
+                    .connect_timeout(Duration::from_secs(10))
+                    .danger_accept_invalid_certs(true)
+                    .build()
+                    .expect("Failed to build HTTP client")
+            ),
+            _ => None,
+        };
+
+        Self {
+            transport,
+            http_client,
+            initialized: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            session_id: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
+    /// Normalize MCP endpoint URL to ensure it ends with /mcp
+    fn normalize_endpoint(url: &str) -> String {
+        if url.ends_with("/mcp") {
+            url.to_string()
+        } else {
+            format!("{}/mcp", url.trim_end_matches('/'))
+        }
     }
 
     pub fn from_url(url: String) -> Self {
-        Self::new(McpTransport::Http(url))
+        let normalized_url = Self::normalize_endpoint(&url);
+        info!("Normalized MCP endpoint: {} -> {}", url, normalized_url);
+        Self::new(McpTransport::Http(normalized_url))
     }
 
     pub fn from_command(command: Vec<String>) -> Self {
@@ -80,17 +112,105 @@ impl McpClient {
             McpTransport::Http(url) => {
                 info!("Calling MCP tool via HTTP: {} -> {}", url, tool_name);
 
-                // Use direct HTTP POST like Python does
-                let client = reqwest::Client::builder()
-                    .timeout(Duration::from_secs(300))
-                    .connect_timeout(Duration::from_secs(10))
-                    .danger_accept_invalid_certs(true)  // Accept self-signed certs
-                    .build()
-                    .context("Failed to build HTTP client")?;
+                let client = self.http_client.as_ref()
+                    .context("HTTP client not initialized")?;
 
+                // Initialize session only once
+                if !self.initialized.load(std::sync::atomic::Ordering::SeqCst) {
+                    info!("Initializing MCP session (first call)...");
+                    let init_payload = serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "initialize",
+                        "params": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {
+                                "roots": { "listChanged": false },
+                                "sampling": {}
+                            },
+                            "clientInfo": {
+                                "name": "rust-workflow-executor",
+                                "version": env!("CARGO_PKG_VERSION")
+                            }
+                        }
+                    });
+
+                    let init_response = client
+                        .post(url)
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Authorization", "Bearer cargorunmediar123")
+                        .json(&init_payload)
+                        .send()
+                        .await
+                        .context("Failed to initialize MCP session")?;
+
+                let init_status = init_response.status();
+
+                // Extract Mcp-Session-Id header BEFORE consuming response body
+                let session_id_header = init_response.headers().get("Mcp-Session-Id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+
+                let init_text = init_response.text().await
+                    .context("Failed to read initialization response")?;
+
+                debug!("MCP init response status: {}, body: {}", init_status, &init_text[..init_text.len().min(200)]);
+
+                if !init_status.is_success() {
+                    anyhow::bail!("MCP session initialization failed: {} - {}", init_status, init_text);
+                }
+
+                // Handle SSE format: strip "data: " prefix if present
+                let json_text = if init_text.starts_with("data: ") {
+                    &init_text[6..] // Skip "data: " prefix
+                } else {
+                    &init_text
+                };
+
+                let init_result: Value = serde_json::from_str(json_text)
+                    .context(format!("Failed to parse initialization response. Status: {}, Body: {}", init_status, json_text))?;
+
+                info!("MCP session initialized: {:?}", init_result.get("result"));
+
+                // Store Mcp-Session-Id if present
+                if let Some(session_id_str) = session_id_header {
+                    let mut session_id = self.session_id.lock().unwrap();
+                    *session_id = Some(session_id_str.clone());
+                    info!("Stored MCP session ID: {}", session_id_str);
+                } else {
+                    warn!("No Mcp-Session-Id header in initialization response");
+                }
+
+                // Step 2: Send initialized notification (required by MCP protocol)
+                info!("Sending initialized notification...");
+                let initialized_payload = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "notifications/initialized",
+                    "params": {}
+                });
+
+                let _ = client
+                    .post(url)
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json, text/event-stream")
+                    .header("Authorization", "Bearer cargorunmediar123")
+                    .json(&initialized_payload)
+                    .send()
+                    .await
+                    .context("Failed to send initialized notification")?;
+
+                // Mark as initialized
+                self.initialized.store(true, std::sync::atomic::Ordering::SeqCst);
+                info!("Session initialized successfully");
+                } else {
+                    debug!("MCP session already initialized, reusing session");
+                }
+
+                // Step 3: Call the tool
                 let payload = serde_json::json!({
                     "jsonrpc": "2.0",
-                    "id": 1,
+                    "id": 2,
                     "method": "tools/call",
                     "params": {
                         "name": tool_name,
@@ -98,12 +218,24 @@ impl McpClient {
                     }
                 });
 
-                debug!("MCP request payload: {}", serde_json::to_string(&payload)?);
+                debug!("MCP tool call payload: {}", serde_json::to_string(&payload)?);
 
-                let response = client
+                // Build request with Mcp-Session-Id header if available
+                let mut request_builder = client
                     .post(url)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json, text/event-stream")
+                    .header("Authorization", "Bearer cargorunmediar123");
+
+                // Add Mcp-Session-Id header if we have a session
+                if let Some(session_id_str) = self.session_id.lock().unwrap().as_ref() {
+                    debug!("Adding Mcp-Session-Id header: {}", session_id_str);
+                    request_builder = request_builder.header("Mcp-Session-Id", session_id_str.clone());
+                } else {
+                    warn!("No session ID available for tool call - this may fail");
+                }
+
+                let response = request_builder
                     .json(&payload)
                     .send()
                     .await
@@ -119,8 +251,15 @@ impl McpClient {
                     anyhow::bail!("MCP server returned error: {} - {}", status, response_text);
                 }
 
-                let json_response: serde_json::Value = serde_json::from_str(&response_text)
-                    .context("Failed to parse MCP JSON response")?;
+                // Handle SSE format: strip "data: " prefix if present
+                let json_text = if response_text.starts_with("data: ") {
+                    &response_text[6..] // Skip "data: " prefix
+                } else {
+                    &response_text
+                };
+
+                let json_response: serde_json::Value = serde_json::from_str(json_text)
+                    .context(format!("Failed to parse MCP JSON response. Body: {}", json_text))?;
 
                 // Extract result from JSON-RPC response
                 let result_data = json_response.get("result")
@@ -363,5 +502,26 @@ mod tests {
 
         let stdio_client = McpClient::from_command(vec!["npx".to_string(), "mcp-server".to_string()]);
         matches!(stdio_client.transport, McpTransport::Stdio(_));
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires live MCP server - run with: cargo test --ignored test_mcp_session_management
+    async fn test_mcp_session_management() {
+        // This test requires a live MCP server at http://4.227.217.44:8080/mcp
+        let client = McpClient::from_url("http://4.227.217.44:8080".to_string());
+
+        // First tool call should initialize session and succeed
+        let result1 = client.execute_tool(
+            "get_applications".to_string(),
+            None
+        ).await;
+        assert!(result1.is_ok(), "First tool call should succeed after auto-initialization");
+
+        // Second tool call should reuse session (no re-initialization) and succeed
+        let result2 = client.execute_tool(
+            "get_applications".to_string(),
+            None
+        ).await;
+        assert!(result2.is_ok(), "Second tool call should succeed with session reuse");
     }
 }

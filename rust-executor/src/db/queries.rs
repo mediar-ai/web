@@ -141,6 +141,7 @@ impl WorkflowQueries {
             RETURNING
                 id, workflow_id, status,
                 client_id, execution_params, assigned_machine_id,
+                mcp_endpoint,
                 started_at, completed_at, error_message,
                 results, execution_logs, total_steps,
                 current_step_description, created_at, updated_at
@@ -159,6 +160,7 @@ impl WorkflowQueries {
                 client_id: row.get("client_id"),
                 execution_params: row.get("execution_params"),
                 machine_id: row.get("assigned_machine_id"),
+                mcp_endpoint: row.get("mcp_endpoint"),
                 started_at: row.get("started_at"),
                 completed_at: row.get("completed_at"),
                 error_message: row.get("error_message"),
@@ -320,6 +322,7 @@ impl WorkflowQueries {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[tokio::test]
     #[ignore] // Requires database
@@ -328,7 +331,7 @@ mod tests {
             .await
             .unwrap();
 
-        let workflow_id = Uuid::new_v4();
+        let workflow_id = 1i64;
         let result = WorkflowQueries::get_workflow(&pool, workflow_id).await;
         assert!(result.is_ok());
     }
