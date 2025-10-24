@@ -501,6 +501,8 @@ export function BatchTestDialog({
       '📋 BatchTestDialog: Selected version:',
       selectedVersionNumber || 'active version'
     );
+    console.log('🔍 BatchTestDialog: dynamic_parameters:', JSON.stringify(batchSpec.dynamic_parameters, null, 2));
+    console.log('🔍 BatchTestDialog: static_parameters:', JSON.stringify(batchSpec.static_parameters, null, 2));
 
     setIsSubmitting(true);
     try {
