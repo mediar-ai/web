@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import * as yaml from 'js-yaml';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -197,6 +199,45 @@ export async function POST(
     }
 
     console.log(`✅ Created duplicate version: ${newVersion.version_number}`);
+
+    // Push duplicated workflow to GitHub
+    try {
+      const yamlContent = newVersion.automation_sequence_yaml ||
+                         yaml.dump(newVersion.automation_sequence);
+
+      const isDevelopment = newWorkflow.status === 'draft' ||
+                           newWorkflow.workflow_type === 'settings';
+
+      const githubResult = await githubWorkflowManager.saveWorkflow(
+        duplicateName,
+        yamlContent,
+        isDevelopment,
+        `Duplicate workflow from "${originalWorkflow.name}" (ID: ${workflowId})`,
+        false, // Don't create PR - push directly
+        newWorkflow.id
+      );
+
+      if (githubResult.success) {
+        console.log(`✅ Pushed duplicated workflow to GitHub: ${githubResult.path}`);
+
+        // Log sync operation
+        await supabase
+          .from('github_workflow_sync_log')
+          .insert({
+            workflow_id: newWorkflow.id,
+            operation: 'duplicate',
+            github_path: githubResult.path,
+            github_sha: githubResult.sha,
+            status: 'success'
+          });
+      } else {
+        console.warn(`⚠️ GitHub push failed: ${githubResult.error}`);
+        // Continue anyway - GitHub is optional enhancement
+      }
+    } catch (githubError) {
+      console.error('GitHub sync error during duplication:', githubError);
+      // Don't fail the whole operation - GitHub is supplementary
+    }
 
     // If the original workflow has settings workflows, we can optionally duplicate those too
     // For now, we'll skip this to keep it simple
