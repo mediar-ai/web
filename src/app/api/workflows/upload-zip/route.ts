@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
 import { createClient } from '@supabase/supabase-js';
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
+import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 
 // Content sanitization check function
 function detectSuspiciousContent(content: string): { safe: boolean; issues: string[] } {
@@ -463,6 +464,42 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+
+      // Push new workflow to GitHub
+      try {
+        const isDevelopment = newWorkflow.status === 'draft' ||
+                             newWorkflow.workflow_type === 'settings';
+
+        const githubResult = await githubWorkflowManager.saveWorkflow(
+          newWorkflow.name,
+          workflowContent,
+          isDevelopment,
+          `Create workflow from ZIP upload: ${newWorkflow.name}`,
+          false, // Don't create PR - push directly
+          newWorkflow.id // Use newWorkflow.id directly instead of workflowId
+        );
+
+        if (githubResult.success) {
+          console.log(`✅ Pushed workflow to GitHub: ${githubResult.path}`);
+
+          // Log sync operation
+          await supabase
+            .from('github_workflow_sync_log')
+            .insert({
+              workflow_id: workflowId,
+              operation: 'zip_upload_create',
+              github_path: githubResult.path,
+              github_sha: githubResult.sha,
+              status: 'success'
+            });
+        } else {
+          console.warn(`⚠️ GitHub push failed: ${githubResult.error}`);
+          // Continue anyway - GitHub is optional enhancement
+        }
+      } catch (githubError) {
+        console.error('GitHub sync error during ZIP upload:', githubError);
+        // Don't fail the whole operation - GitHub is supplementary
+      }
     } else if (formData.get('workflowId')) {
       // VERSION UPLOAD - when workflowId is provided but action !== 'create'
       workflowId = parseInt(formData.get('workflowId') as string);
@@ -534,6 +571,51 @@ export async function POST(request: NextRequest) {
           requires_files: jsFiles.length > 0
         })
         .eq('id', workflowId);
+
+      // Push new version to GitHub
+      try {
+        // Get workflow details for GitHub push
+        const { data: workflowDetails } = await supabase
+          .from('deployed_workflows')
+          .select('name, status, workflow_type')
+          .eq('id', workflowId)
+          .single();
+
+        if (workflowDetails) {
+          const isDevelopment = workflowDetails.status === 'draft' ||
+                               workflowDetails.workflow_type === 'settings';
+
+          const githubResult = await githubWorkflowManager.saveWorkflow(
+            workflowDetails.name,
+            workflowContent,
+            isDevelopment,
+            `Upload new version ${nextVersionNumber} via ZIP`,
+            false, // Don't create PR - push directly
+            workflowId
+          );
+
+          if (githubResult.success) {
+            console.log(`✅ Pushed version ${nextVersionNumber} to GitHub: ${githubResult.path}`);
+
+            // Log sync operation
+            await supabase
+              .from('github_workflow_sync_log')
+              .insert({
+                workflow_id: workflowId,
+                operation: 'zip_upload_version',
+                github_path: githubResult.path,
+                github_sha: githubResult.sha,
+                status: 'success'
+              });
+          } else {
+            console.warn(`⚠️ GitHub push failed: ${githubResult.error}`);
+            // Continue anyway - GitHub is optional enhancement
+          }
+        }
+      } catch (githubError) {
+        console.error('GitHub sync error during version upload:', githubError);
+        // Don't fail the whole operation - GitHub is supplementary
+      }
 
       console.log(`✅ Created version ${nextVersionNumber} for workflow ${workflowId}`);
 

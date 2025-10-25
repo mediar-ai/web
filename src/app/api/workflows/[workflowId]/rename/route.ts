@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import * as yaml from 'js-yaml';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,6 +80,55 @@ export async function PATCH(
         { success: false, error: `Failed to rename workflow: ${updateError.message}` },
         { status: 500 }
       );
+    }
+
+    // Push updated workflow to GitHub
+    try {
+      // Get the active version to get YAML content
+      const { data: activeVersion } = await supabase
+        .from('deployed_workflow_versions')
+        .select('automation_sequence_yaml, automation_sequence')
+        .eq('workflow_id', workflowId)
+        .eq('is_active', true)
+        .single();
+
+      if (activeVersion) {
+        const yamlContent = activeVersion.automation_sequence_yaml ||
+                           yaml.dump(activeVersion.automation_sequence);
+
+        const isDevelopment = updatedWorkflow.status === 'draft' ||
+                             updatedWorkflow.workflow_type === 'settings';
+
+        const githubResult = await githubWorkflowManager.saveWorkflow(
+          name.trim(),
+          yamlContent,
+          isDevelopment,
+          `Rename workflow: ${updatedWorkflow.name} → ${name.trim()}`,
+          false, // Don't create PR - push directly
+          workflowId
+        );
+
+        if (githubResult.success) {
+          console.log(`✅ Pushed renamed workflow to GitHub: ${githubResult.path}`);
+
+          // Log sync operation
+          await supabase
+            .from('github_workflow_sync_log')
+            .insert({
+              workflow_id: workflowId,
+              operation: 'rename',
+              github_path: githubResult.path,
+              github_sha: githubResult.sha,
+              status: 'success'
+            });
+        } else {
+          console.warn(`⚠️ GitHub push failed: ${githubResult.error}`);
+          // Continue anyway - GitHub is optional enhancement
+        }
+      }
+    } catch (githubError) {
+      console.error('GitHub sync error during rename:', githubError);
+      // Don't fail the whole operation - GitHub is supplementary
     }
 
     return NextResponse.json({
