@@ -42,7 +42,7 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                 <h4 className="font-semibold mb-2">Metadata</h4>
                 <dl className="space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Version:</dt>
+                    <dt className="text-muted-foreground">Active Version:</dt>
                     <dd className="font-mono">{workflow.version}</dd>
                   </div>
                   <div className="flex justify-between">
@@ -53,27 +53,31 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                     <dt className="text-muted-foreground">Est. Duration:</dt>
                     <dd className="font-mono">{formatDuration(workflow.estimated_duration_seconds)}</dd>
                   </div>
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Timeout:</dt>
+                    <dd className="font-mono">{workflow.timeout_minutes ? `${workflow.timeout_minutes} minutes` : '25 minutes'}</dd>
+                  </div>
                 </dl>
               </div>
-              
+
               <div>
                 <h4 className="font-semibold mb-2">Performance</h4>
                 <dl className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Total Runs:</dt>
-                    <dd className="font-mono">{workflow.total_executions || 0}</dd>
+                    <dd className="font-mono">{workflow.current_version_stats?.total_executions || workflow.total_executions || 0}</dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Success Rate:</dt>
                     <dd className="font-mono">
-                      {workflow.success_rate !== null
-                        ? `${workflow.success_rate}%` 
-                        : '—'}
+                      {(workflow.current_version_stats?.success_rate !== undefined && workflow.current_version_stats?.success_rate !== null)
+                        ? `${Math.round(workflow.current_version_stats.success_rate)}%`
+                        : (workflow.success_rate !== null ? `${Math.round(workflow.success_rate)}%` : '—')}
                     </dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Successful:</dt>
-                    <dd className="font-mono">{workflow.successful_runs || 0}</dd>
+                    <dd className="font-mono">{workflow.current_version_stats?.successful_runs || workflow.successful_runs || 0}</dd>
                   </div>
                 </dl>
               </div>
