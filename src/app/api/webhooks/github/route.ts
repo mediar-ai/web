@@ -174,15 +174,15 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        console.log(`🗑️ Deleting workflow ${workflow.name} (ID: ${workflow.id}) from folder ${folderName}`);
+        console.log(`🗑️ Archiving workflow ${workflow.name} (ID: ${workflow.id}) from folder ${folderName}`);
 
-        // Step 1: Get all storage file paths BEFORE deleting DB records
+        // Step 1: Get all storage file paths BEFORE archiving
         const { data: files } = await supabase
           .from('workflow_files')
           .select('storage_path')
           .eq('workflow_id', workflow.id);
 
-        // Step 2: Delete files from storage
+        // Step 2: Delete files from storage (files are archived in DB but removed from storage)
         if (files && files.length > 0) {
           console.log(`📦 Deleting ${files.length} storage files for workflow ${workflow.id}`);
           const storagePaths = files.map(f => f.storage_path);
@@ -193,40 +193,33 @@ export async function POST(request: NextRequest) {
 
           if (storageError) {
             console.error(`⚠️ Warning: Failed to delete some storage files: ${storageError.message}`);
-            // Continue anyway - don't block DB deletion
+            // Continue anyway - don't block archival
           } else {
             console.log(`✅ Deleted ${storagePaths.length} files from storage`);
           }
         }
 
-        // Step 3: Log deletion to sync log BEFORE deleting workflow
-        await supabase
-          .from('github_workflow_sync_log')
-          .insert({
-            workflow_id: workflow.id,
-            sync_action: 'deleted',
-            github_sha: null,
-            github_commit_message: `Deleted from GitHub by ${payload.pusher?.name || 'unknown'}`,
-            success: true,
-            sync_metadata: {
-              deleted_from_github: true,
-              github_folder: folderName,
-              deleted_at: new Date().toISOString()
-            }
+        // Step 3: Archive workflow using database function
+        // This will:
+        // - Move workflow to deleted_workflows
+        // - Move versions to deleted_workflow_versions
+        // - Move files to deleted_workflow_files
+        // - Set workflow_id = NULL in workflow_executions (preserve history)
+        // - Delete workflow from deployed_workflows (CASCADE cleans up other tables)
+        const { data: archiveResult, error: archiveError } = await supabase
+          .rpc('archive_workflow', {
+            p_workflow_id: workflow.id,
+            p_archived_by: `github_webhook:${payload.pusher?.name || 'unknown'}`,
+            p_deletion_reason: `GitHub folder deleted from ${branch} branch`
           });
 
-        // Step 4: Delete workflow (CASCADE will delete related records)
-        const { error: deleteError } = await supabase
-          .from('deployed_workflows')
-          .delete()
-          .eq('id', workflow.id);
-
-        if (deleteError) {
-          results.errors.push(`${folderName}: Failed to delete - ${deleteError.message}`);
-          console.error(`❌ Failed to delete workflow ${workflow.id}: ${deleteError.message}`);
+        if (archiveError) {
+          results.errors.push(`${folderName}: Failed to archive - ${archiveError.message}`);
+          console.error(`❌ Failed to archive workflow ${workflow.id}: ${archiveError.message}`);
         } else {
           results.deleted.push(`${workflow.name} (${folderName})`);
-          console.log(`✅ Successfully deleted workflow ${workflow.name} (ID: ${workflow.id})`);
+          console.log(`✅ Successfully archived workflow ${workflow.name} (ID: ${workflow.id})`);
+          console.log(`   Archive summary: ${JSON.stringify(archiveResult)}`);
         }
 
       } catch (error) {
