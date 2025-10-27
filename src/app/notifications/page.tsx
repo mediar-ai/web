@@ -110,6 +110,7 @@ export default function NotificationsPage() {
   const [orgMembers, setOrgMembers] = useState<string[]>([]);
   const [loadingOrgMembers, setLoadingOrgMembers] = useState(false);
   const [originalConfig, setOriginalConfig] = useState<NotificationConfig | null>(null);
+  const [showOrgAlerts, setShowOrgAlerts] = useState(false);
 
   // Check if user is Mediar admin
   const isMediarAdmin = user?.emailAddresses?.some(
@@ -131,6 +132,13 @@ export default function NotificationsPage() {
       fetchAlerts();
     }
   }, [userId, orgId]);
+
+  // Refetch alerts when showOrgAlerts toggle changes
+  useEffect(() => {
+    if (userId && orgId) {
+      fetchAlerts();
+    }
+  }, [showOrgAlerts]);
 
   // Fetch org members when selected config changes
   useEffect(() => {
@@ -200,6 +208,9 @@ export default function NotificationsPage() {
       const response = await fetch('/api/internal/notifications/alerts?limit=100');
       const data = await response.json();
       if (data.success) {
+        // Get current user's email
+        const userEmail = user?.emailAddresses?.[0]?.emailAddress?.toLowerCase();
+
         // Flatten alerts into table rows (one row per recipient)
         const flattened: AlertTableRow[] = [];
         let rowId = 0;
@@ -226,8 +237,13 @@ export default function NotificationsPage() {
               created_at: alert.created_at,
             });
           } else {
+            // Filter recipients based on showOrgAlerts toggle
+            const filteredRecipients = showOrgAlerts
+              ? recipients
+              : recipients.filter(email => email.toLowerCase() === userEmail);
+
             // Create one row per recipient
-            recipients.forEach((email) => {
+            filteredRecipients.forEach((email) => {
               flattened.push({
                 id: rowId++,
                 alert_id: alert.id,
@@ -788,11 +804,25 @@ export default function NotificationsPage() {
 
           {/* Alert History Section */}
           <div className="mt-8">
-            <div className="mb-4">
-              <h2 className="font-mono font-bold text-2xl mb-2 flex items-center gap-2">
-                Alert History
-              </h2>
-              <p className="font-mono text-gray-600 text-sm">View all notification alerts and email delivery status</p>
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h2 className="font-mono font-bold text-2xl mb-2 flex items-center gap-2">
+                  Alert History
+                </h2>
+                <p className="font-mono text-gray-600 text-sm">View all notification alerts and email delivery status</p>
+              </div>
+              <div className="flex items-center gap-2 p-3 border-2 border-gray-300 bg-gray-50">
+                <input
+                  type="checkbox"
+                  id="showOrgAlerts"
+                  checked={showOrgAlerts}
+                  onChange={(e) => setShowOrgAlerts(e.target.checked)}
+                  className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black cursor-pointer"
+                />
+                <label htmlFor="showOrgAlerts" className="font-mono text-sm cursor-pointer select-none">
+                  Show alerts for all org members
+                </label>
+              </div>
             </div>
             <AlertsDataTable
               alerts={alertTableRows}

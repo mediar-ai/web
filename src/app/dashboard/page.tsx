@@ -815,12 +815,19 @@ function DashboardContent() {
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
     const initializeData = async () => {
-      // MUST fetch workflows first because executions filter depends on workflowsRef
-      await fetchWorkflows();
+      // Start fetching workflows, live executions, and filters in parallel
+      const workflowsPromise = fetchWorkflows();
+      const liveExecutionsPromise = fetchLiveExecutions();
+      const filtersPromise = fetchExecutionFilters();
+
+      // Wait for workflows to complete (needed for executions filter to work correctly)
+      await workflowsPromise;
+
       // Now fetch executions with saved filters (workflow lookup will work)
-      fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize);
-      fetchLiveExecutions();
-      fetchExecutionFilters();
+      const executionsPromise = fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize);
+
+      // Wait for all remaining requests to complete
+      await Promise.all([executionsPromise, liveExecutionsPromise, filtersPromise]);
     };
     initializeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1160,14 +1167,30 @@ function DashboardContent() {
         <UnifiedWorkflowDialog
           workflow={selectedWorkflow}
           open={workflowDetailsOpen}
-          onOpenChange={setWorkflowDetailsOpen}
+          onOpenChange={(open) => {
+            setWorkflowDetailsOpen(open);
+            if (!open) {
+              // Remove workflow parameter from URL when closing
+              const params = new URLSearchParams(searchParams.toString());
+              params.delete('workflow');
+              router.replace(`/dashboard${params.toString() ? `?${params.toString()}` : ''}`);
+            }
+          }}
           onSettingsUpdated={() => fetchWorkflows(false)}
         />
 
         <ExecutionDetailsDialog
           execution={selectedExecution}
           open={executionDetailsOpen}
-          onOpenChange={setExecutionDetailsOpen}
+          onOpenChange={(open) => {
+            setExecutionDetailsOpen(open);
+            if (!open) {
+              // Remove execution parameter from URL when closing
+              const params = new URLSearchParams(searchParams.toString());
+              params.delete('execution');
+              router.replace(`/dashboard${params.toString() ? `?${params.toString()}` : ''}`);
+            }
+          }}
         />
 
         {selectedWorkflowForAction && (
