@@ -17,7 +17,6 @@ import {
   Eye,
   Calendar,
   Pause,
-  Trash2,
   Building2,
   Share2,
   Copy,
@@ -50,7 +49,6 @@ interface WorkflowCardEnhancedProps {
   onExecute?: () => void;
   onView?: () => void;
   onDuplicate?: () => void;
-  onDelete?: () => void;
   onToggleCron?: () => void;
   onManageOrganizations?: () => void;
   onUploadVersion?: () => void;
@@ -67,7 +65,6 @@ export function WorkflowCardEnhanced({
   onExecute,
   onView,
   onDuplicate,
-  onDelete,
   onToggleCron,
   onManageOrganizations,
   onUploadVersion,
@@ -444,14 +441,6 @@ export function WorkflowCardEnhanced({
                       Manage Organizations
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={onDelete}
-                    className="hover:bg-black hover:text-white"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete Workflow
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

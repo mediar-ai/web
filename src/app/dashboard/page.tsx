@@ -712,43 +712,6 @@ function DashboardContent() {
     setActionsDialogOpen(true);
   }, [workflows, posthog]);
 
-  const handleDeleteWorkflow = useCallback(async (workflowId: number) => {
-    const workflow = workflows.find(w => w.id === workflowId);
-    if (!workflow) return;
-
-    if (!confirm(`Are you sure you want to delete "${workflow.name}"?`)) {
-      return;
-    }
-
-    posthog?.capture('dashboard_delete_workflow', {
-      workflow_id: workflowId,
-      workflow_name: workflow.name,
-      timestamp: new Date().toISOString(),
-    });
-
-    try {
-      const response = await fetch(`/api/remote-workflows/${workflowId}`, {
-        method: 'DELETE',
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        fetchWorkflows(false);
-      } else {
-        console.error('Failed to delete workflow:', result.error);
-        // Show user-friendly error notification
-        if (response.status === 403) {
-          toast.error('This action requires organization admin privileges');
-        } else {
-          toast.error(`Failed to delete workflow: ${result.error || 'Unknown error'}`);
-        }
-      }
-    } catch (error) {
-      console.error('Error deleting workflow:', error);
-      toast.error('Error deleting workflow');
-    }
-  }, [workflows, fetchWorkflows, posthog]);
-
   const handleToggleCron = useCallback(async (workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
@@ -1113,7 +1076,6 @@ function DashboardContent() {
                       onExecute={() => handleQuickExecute(workflow.id)}
                       onView={() => fetchWorkflowOverview(workflow.id)}
                       onDuplicate={() => handleQuickDuplicate(workflow.id)}
-                      onDelete={() => handleDeleteWorkflow(workflow.id)}
                       onToggleCron={() => handleToggleCron(workflow.id)}
                       onManageOrganizations={() => handleManageOrganizations(workflow.id)}
                       onUploadVersion={() => handleUploadVersion(workflow.id)}

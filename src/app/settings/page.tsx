@@ -3,7 +3,7 @@
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { PageHeader } from '@/components/layouts/PageHeader';
 import { useOrganization, useUser } from '@clerk/nextjs';
-import { Key, Users } from 'lucide-react';
+import { Key, Users, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SettingsPage() {
@@ -15,6 +15,7 @@ export default function SettingsPage() {
     description: string;
     href: string;
     icon: any;
+    isDanger?: boolean;
   }> = [
     {
       title: 'Secrets',
@@ -27,6 +28,13 @@ export default function SettingsPage() {
       description: 'Manage team members and invitations',
       href: '/settings/team',
       icon: Users,
+    },
+    {
+      title: 'Danger Zone',
+      description: 'Delete workflows and other destructive actions',
+      href: '/settings/danger-zone',
+      icon: AlertTriangle,
+      isDanger: true,
     },
   ];
 
@@ -48,14 +56,16 @@ export default function SettingsPage() {
               <Link
                 key={section.href}
                 href={section.href}
-                className="block border-2 border-black p-6 hover:bg-gray-50 transition-colors"
+                className={`block border-2 p-6 hover:bg-gray-50 transition-colors ${
+                  section.isDanger ? 'border-black' : 'border-black'
+                }`}
               >
                 <div className="flex items-start gap-4">
-                  <div className="p-3 bg-black text-white">
+                  <div className={`p-3 ${section.isDanger ? 'bg-black text-white' : 'bg-black text-white'}`}>
                     <Icon className="w-6 h-6" />
                   </div>
                   <div className="flex-1">
-                    <h2 className="font-mono font-bold text-lg mb-1">{section.title}</h2>
+                    <h2 className="font-mono font-bold text-lg mb-1 uppercase">{section.title}</h2>
                     <p className="font-mono text-sm text-gray-600">{section.description}</p>
                   </div>
                 </div>
