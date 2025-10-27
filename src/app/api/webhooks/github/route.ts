@@ -84,8 +84,18 @@ export async function POST(request: NextRequest) {
         const yamlMatch = file.match(/^([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
         if (yamlMatch) {
           const folderName = yamlMatch[1];
-          deletedWorkflows.add(folderName);
-          console.log(`🗑️ Detected workflow deletion: ${folderName}`);
+          const removedFileName = yamlMatch[2];
+          console.log(`🗑️ Detected YAML file removal: ${folderName}/${removedFileName}`);
+
+          // SMART DELETION: Check if OTHER YAML files still exist in the folder
+          const otherYamlsExist = await checkGitHubFolderForYamls(folderName, branch);
+
+          if (!otherYamlsExist) {
+            deletedWorkflows.add(folderName);
+            console.log(`   ✓ Marking ${folderName} for deletion - no YAML files remain`);
+          } else {
+            console.log(`   ℹ️ NOT deleting ${folderName} - other YAML files still exist`);
+          }
         }
       }
 
@@ -722,6 +732,50 @@ async function fetchWorkflowFiles(
   } catch (error) {
     console.error(`Error fetching files from GitHub folder ${folderName}:`, error);
     return { jsFiles: [] };
+  }
+}
+
+/**
+ * Check if a GitHub folder still contains any YAML workflow files
+ * Used to prevent premature deletion when multiple YAMLs exist in one folder
+ */
+async function checkGitHubFolderForYamls(
+  folderName: string,
+  branch: string = 'main'
+): Promise<boolean> {
+  try {
+    console.log(`🔍 Checking GitHub folder ${folderName} for remaining YAML files...`);
+
+    const { data: contents } = await octokit.repos.getContent({
+      owner: 'mediar-ai',
+      repo: 'workflows',
+      path: folderName,
+      ref: branch
+    });
+
+    if (!Array.isArray(contents)) {
+      return false;
+    }
+
+    // Check for any workflow YAML files
+    const yamlFiles = contents.filter(
+      file => file.type === 'file' && /^(workflow|terminator)\.ya?ml$/.test(file.name)
+    );
+
+    const hasYamls = yamlFiles.length > 0;
+    console.log(`   ${hasYamls ? '✓' : '✗'} Found ${yamlFiles.length} YAML file(s) in ${folderName}`);
+
+    return hasYamls;
+  } catch (error) {
+    // If folder doesn't exist (404), no YAMLs remain
+    if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
+      console.log(`   ✗ Folder ${folderName} not found (deleted or empty)`);
+      return false;
+    }
+
+    console.error(`⚠️ Error checking folder ${folderName}:`, error instanceof Error ? error.message : error);
+    // On error, assume YAMLs might exist (safe default - don't delete)
+    return true;
   }
 }
 
