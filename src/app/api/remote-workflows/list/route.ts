@@ -492,7 +492,6 @@ export async function GET(request: NextRequest) {
         current_version,
         status,
         category,
-        estimated_duration_seconds,
         overall_total_executions,
         overall_successful_runs,
         overall_failed_runs,
@@ -532,14 +531,16 @@ export async function GET(request: NextRequest) {
     const cronData: Record<number, any> = {};
 
     if (workflowIds.length > 0) {
-      // First, fetch cron data directly from deployed_workflows table
-      // (deployed_workflows_with_sequence view doesn't have cron fields)
+      // First, fetch cron data and other config directly from deployed_workflows table
+      // (deployed_workflows_with_sequence view doesn't have all fields)
       const { data: cronWorkflows, error: cronError } = await supabase
         .from('deployed_workflows')
         .select(
           `
           id,
           organization_id,
+          estimated_duration_seconds,
+          timeout_minutes,
           cron_expression,
           cron_timezone,
           cron_enabled,
@@ -565,6 +566,8 @@ export async function GET(request: NextRequest) {
           }
           cronData[cw.id] = {
             organization_id: cw.organization_id,
+            estimated_duration_seconds: cw.estimated_duration_seconds,
+            timeout_minutes: cw.timeout_minutes,
             cron_expression: cw.cron_expression,
             cron_timezone: cw.cron_timezone,
             cron_enabled: cw.cron_enabled,
@@ -781,6 +784,9 @@ export async function GET(request: NextRequest) {
           successful_runs: workflow.overall_successful_runs,
           failed_runs: workflow.overall_failed_runs,
           total_executions: workflow.overall_total_executions,
+          // Add config fields
+          estimated_duration_seconds: automationSequences[workflow.id]?.estimated_duration_seconds,
+          timeout_minutes: automationSequences[workflow.id]?.timeout_minutes,
           // Add automation sequence from separate query
           automation_sequence:
             automationSequences[workflow.id]?.automation_sequence,
