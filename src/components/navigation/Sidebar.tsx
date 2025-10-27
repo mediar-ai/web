@@ -21,6 +21,7 @@ import {
   Key
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface NavItem {
   label: string;
@@ -35,12 +36,14 @@ import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { organization, membership } = useOrganization();
-  const { user } = useUser();
+  const { organization, membership, isLoaded: orgLoaded } = useOrganization();
+  const { user, isLoaded: userLoaded } = useUser();
   const { signOut } = useClerk();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMediarAdmin, setIsMediarAdmin] = useState(false);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
+
+  const isLoading = !orgLoaded || !userLoaded;
 
   // Load collapsed state from localStorage after mount to avoid hydration mismatch
   useEffect(() => {
@@ -160,26 +163,52 @@ export function Sidebar() {
 
       {/* Organization Switcher */}
       <div className={`${isCollapsed ? 'px-2' : 'px-6'} py-4 border-b border-gray-200`}>
-        <Suspense fallback={
-          organization && !isCollapsed ? (
-            <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4" />
-              <span className="font-mono text-sm truncate">{organization.name}</span>
-            </div>
-          ) : isCollapsed && organization ? (
+        {isLoading ? (
+          isCollapsed ? (
             <div className="flex items-center justify-center">
-              <Building2 className="w-4 h-4" />
+              <Skeleton className="w-4 h-4" />
             </div>
-          ) : null
-        }>
-          <MediarOrgSwitcher inSidebar={true} isCollapsed={isCollapsed} />
-        </Suspense>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Skeleton className="w-4 h-4" />
+              <Skeleton className="w-24 h-4" />
+            </div>
+          )
+        ) : (
+          <Suspense fallback={
+            organization && !isCollapsed ? (
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4" />
+                <span className="font-mono text-sm truncate">{organization.name}</span>
+              </div>
+            ) : isCollapsed && organization ? (
+              <div className="flex items-center justify-center">
+                <Building2 className="w-4 h-4" />
+              </div>
+            ) : null
+          }>
+            <MediarOrgSwitcher inSidebar={true} isCollapsed={isCollapsed} />
+          </Suspense>
+        )}
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 p-4">
         <ul className="space-y-1">
-          {filteredNav.map((item) => {
+          {isLoading ? (
+            // Navigation skeleton
+            <>
+              {[1, 2, 3, 4].map((i) => (
+                <li key={i} className="px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="w-4 h-4" />
+                    {!isCollapsed && <Skeleton className="w-20 h-4" />}
+                  </div>
+                </li>
+              ))}
+            </>
+          ) : (
+            filteredNav.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href ||
                            (item.href !== '/' && pathname.startsWith(item.href + '/'));
@@ -304,42 +333,61 @@ export function Sidebar() {
                 )}
               </li>
             );
-          })}
+          })
+          )}
         </ul>
       </nav>
 
       {/* User Section */}
       <div className="p-4 border-t-2 border-black space-y-2">
-        <div className={`flex items-center gap-3 py-2 ${isCollapsed ? 'justify-center' : 'px-3'}`}>
-          <div className="w-8 h-8 bg-black text-white flex items-center justify-center font-mono text-xs flex-shrink-0">
-            {user?.firstName?.[0] || user?.username?.[0] || 'U'}
-          </div>
-          {!isCollapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="font-mono text-sm truncate">
-                {user?.firstName || user?.username || 'User'}
-              </p>
-              <p className="font-mono text-xs text-gray-500 truncate">
-                {membership?.role?.replace('org:', '')}
-              </p>
+        {isLoading ? (
+          <>
+            {/* Skeleton */}
+            <div className={`flex items-center gap-3 py-2 ${isCollapsed ? 'justify-center' : 'px-3'}`}>
+              <Skeleton className="w-8 h-8 flex-shrink-0" />
+              {!isCollapsed && (
+                <div className="flex-1 min-w-0 space-y-2">
+                  <Skeleton className="w-20 h-4" />
+                  <Skeleton className="w-16 h-3" />
+                </div>
+              )}
             </div>
-          )}
-        </div>
+            <Skeleton className={`w-full h-10 ${isCollapsed ? '' : 'px-3'}`} />
+          </>
+        ) : (
+          <>
+            <div className={`flex items-center gap-3 py-2 ${isCollapsed ? 'justify-center' : 'px-3'}`}>
+              <div className="w-8 h-8 bg-black text-white flex items-center justify-center font-mono text-xs flex-shrink-0" suppressHydrationWarning>
+                {user?.firstName?.[0] || user?.username?.[0] || 'U'}
+              </div>
+              {!isCollapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className="font-mono text-sm truncate" suppressHydrationWarning>
+                    {user?.firstName || user?.username || 'User'}
+                  </p>
+                  <p className="font-mono text-xs text-gray-500 truncate" suppressHydrationWarning>
+                    {membership?.role?.replace('org:', '')}
+                  </p>
+                </div>
+              )}
+            </div>
 
-        {/* Logout Button */}
-        <button
-          onClick={() => signOut()}
-          className={`
-            w-full flex items-center gap-3 px-3 py-2 font-mono text-sm
-            text-black hover:bg-black hover:text-white
-            border-2 border-black transition-colors
-            ${isCollapsed ? 'justify-center' : ''}
-          `}
-          title={isCollapsed ? 'Sign Out' : undefined}
-        >
-          <LogOut className="w-4 h-4 flex-shrink-0" />
-          {!isCollapsed && <span>Sign Out</span>}
-        </button>
+            {/* Logout Button */}
+            <button
+              onClick={() => signOut()}
+              className={`
+                w-full flex items-center gap-3 px-3 py-2 font-mono text-sm
+                text-black hover:bg-black hover:text-white
+                border-2 border-black transition-colors
+                ${isCollapsed ? 'justify-center' : ''}
+              `}
+              title={isCollapsed ? 'Sign Out' : undefined}
+            >
+              <LogOut className="w-4 h-4 flex-shrink-0" />
+              {!isCollapsed && <span>Sign Out</span>}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

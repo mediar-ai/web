@@ -26,6 +26,7 @@ import {
 } from '@/lib/workflow-types';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 
 function DashboardContent() {
   const { isLoaded, userId } = useAuth();
@@ -911,10 +912,63 @@ function DashboardContent() {
     return (
       <DashboardLayout>
         <div className="p-4">
-          <div className="flex items-center justify-center py-20">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-4"></div>
-              <p className="text-gray-600 font-mono">Loading...</p>
+          <div className="max-w-7xl mx-auto">
+            <PageHeader
+              title="Dashboard"
+              subtitle="Welcome back to your workspace"
+            />
+
+            {/* Stats Bar Skeleton */}
+            <div className="border-2 border-black p-2 mb-4 flex items-center gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Skeleton className="w-4 h-4" />
+                  <div className="flex items-baseline gap-1.5">
+                    <Skeleton className="w-24 h-4" />
+                    <Skeleton className="w-12 h-5" />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Header Skeleton */}
+            <div className="flex items-center justify-between mb-3">
+              <Skeleton className="w-40 h-4" />
+              <div className="flex items-center gap-2">
+                <Skeleton className="w-32 h-10" />
+                <Skeleton className="w-40 h-10" />
+              </div>
+            </div>
+
+            {/* Workflow Cards Skeleton */}
+            <div className="border-2 border-black divide-y divide-gray-200 mb-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="p-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {/* Name and status */}
+                    <div className="flex items-center gap-2 min-w-[200px] max-w-[320px] flex-shrink">
+                      <Skeleton className="w-32 h-5" />
+                      <Skeleton className="w-12 h-4" />
+                    </div>
+
+                    <div className="text-gray-300">|</div>
+
+                    {/* Metrics */}
+                    <div className="flex items-center gap-2 flex-1">
+                      <Skeleton className="w-16 h-4" />
+                      <Skeleton className="w-12 h-4" />
+                      <Skeleton className="w-12 h-4" />
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 ml-auto">
+                      <Skeleton className="w-16 h-8" />
+                      <Skeleton className="w-20 h-8" />
+                      <Skeleton className="w-8 h-8" />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -933,12 +987,60 @@ function DashboardContent() {
           />
 
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-4"></div>
-                <p className="text-gray-600 font-mono">Loading dashboard...</p>
+            <>
+              {/* Stats Bar Skeleton */}
+              <div className="border-2 border-black p-2 mb-4 flex items-center gap-6">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Skeleton className="w-4 h-4" />
+                    <div className="flex items-baseline gap-1.5">
+                      <Skeleton className="w-24 h-4" />
+                      <Skeleton className="w-12 h-5" />
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+
+              {/* Header Skeleton */}
+              <div className="flex items-center justify-between mb-3">
+                <Skeleton className="w-40 h-4" />
+                <div className="flex items-center gap-2">
+                  <Skeleton className="w-32 h-10" />
+                  <Skeleton className="w-40 h-10" />
+                </div>
+              </div>
+
+              {/* Workflow Cards Skeleton */}
+              <div className="border-2 border-black divide-y divide-gray-200 mb-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="p-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {/* Name and status */}
+                      <div className="flex items-center gap-2 min-w-[200px] max-w-[320px] flex-shrink">
+                        <Skeleton className="w-32 h-5" />
+                        <Skeleton className="w-12 h-4" />
+                      </div>
+
+                      <div className="text-gray-300">|</div>
+
+                      {/* Metrics */}
+                      <div className="flex items-center gap-2 flex-1">
+                        <Skeleton className="w-16 h-4" />
+                        <Skeleton className="w-12 h-4" />
+                        <Skeleton className="w-12 h-4" />
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 ml-auto">
+                        <Skeleton className="w-16 h-8" />
+                        <Skeleton className="w-20 h-8" />
+                        <Skeleton className="w-8 h-8" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <>
               {/* Stats Bar - Inline */}

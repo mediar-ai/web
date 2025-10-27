@@ -1,0 +1,65 @@
+/* Shimmer Animation */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Simple fade pulse for reliability feel */
+@keyframes fadePulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Animated wireframe border drawing */
+@keyframes borderDraw {
+  0% {
+    stroke-dashoffset: 400;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Base Skeleton */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: rgb(249, 250, 251); /* bg-gray-50 */
+}
+
+/* Shimmer Style */
+.shimmer {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  animation: shimmer 2s infinite;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(0, 0, 0, 0.05),
+    transparent
+  );
+}
+
+/* Wireframe Style - Clean workflow aesthetic */
+.wireframe {
+  background-color: rgb(249, 250, 251); /* bg-gray-50 */
+  border: 1px solid #e5e7eb; /* gray-200 */
+}
+
+/* Workflow path SVG - full width and height */
+.workflowPath {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}

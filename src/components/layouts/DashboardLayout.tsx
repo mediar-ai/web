@@ -10,6 +10,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState('ml-64');
+  const [isMounted, setIsMounted] = useState(false);
   const { orgId, userId } = useAuth();
   const { userMemberships, setActive, isLoaded } = useOrganizationList({
     userMemberships: {
@@ -60,8 +61,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }, [isLoaded, orgId, userMemberships, setActive, userId, hasAttemptedFallback]);
 
+  // Set mounted state
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Listen for sidebar state changes (we'll use localStorage for persistence)
   useEffect(() => {
+    if (!isMounted) return;
+
     const checkSidebarState = () => {
       const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
       setSidebarWidth(isCollapsed ? 'ml-16' : 'ml-64');
@@ -81,7 +89,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       window.removeEventListener('storage', checkSidebarState);
       window.removeEventListener('sidebarToggle', handleSidebarToggle);
     };
-  }, []);
+  }, [isMounted]);
 
   return (
     <div className="min-h-screen bg-white overflow-x-hidden">
