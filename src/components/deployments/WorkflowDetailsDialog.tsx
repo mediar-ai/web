@@ -53,10 +53,6 @@ export function WorkflowDetailsDialog({ workflow, open, onOpenChange }: Workflow
                     <dt className="text-muted-foreground">Est. Duration:</dt>
                     <dd className="font-mono">{formatDuration(workflow.estimated_duration_seconds)}</dd>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Timeout:</dt>
-                    <dd className="font-mono">{workflow.timeout_minutes ? `${workflow.timeout_minutes} minutes` : '25 minutes'}</dd>
-                  </div>
                 </dl>
               </div>
 

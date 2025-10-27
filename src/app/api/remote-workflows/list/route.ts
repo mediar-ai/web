@@ -540,7 +540,6 @@ export async function GET(request: NextRequest) {
           id,
           organization_id,
           estimated_duration_seconds,
-          timeout_minutes,
           cron_expression,
           cron_timezone,
           cron_enabled,
@@ -567,7 +566,6 @@ export async function GET(request: NextRequest) {
           cronData[cw.id] = {
             organization_id: cw.organization_id,
             estimated_duration_seconds: cw.estimated_duration_seconds,
-            timeout_minutes: cw.timeout_minutes,
             cron_expression: cw.cron_expression,
             cron_timezone: cw.cron_timezone,
             cron_enabled: cw.cron_enabled,
@@ -786,7 +784,6 @@ export async function GET(request: NextRequest) {
           total_executions: workflow.overall_total_executions,
           // Add config fields
           estimated_duration_seconds: automationSequences[workflow.id]?.estimated_duration_seconds,
-          timeout_minutes: automationSequences[workflow.id]?.timeout_minutes,
           // Add automation sequence from separate query
           automation_sequence:
             automationSequences[workflow.id]?.automation_sequence,

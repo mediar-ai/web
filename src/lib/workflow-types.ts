@@ -43,7 +43,6 @@ export interface Workflow {
   expected_outputs: Record<string, unknown>;
   sample_inputs: Record<string, unknown>;
   estimated_duration_seconds?: number;
-  timeout_minutes?: number;
   category: string;
   successful_runs: number;
   failed_runs: number;
