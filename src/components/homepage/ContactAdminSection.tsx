@@ -6,8 +6,9 @@ import { UserButton, useOrganizationList } from '@clerk/nextjs';
 import { Play } from 'lucide-react';
 import Link from 'next/link';
 import { usePostHog } from 'posthog-js/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
+import { AutomationDemo } from '@/components/homepage/AutomationDemo';
 
 interface ContactAdminSectionProps {
   userId: string;
@@ -31,6 +32,13 @@ export default function ContactAdminSection({
   const posthog = usePostHog();
   const { orgId } = useAuth();
   const { userMemberships, setActive, isLoaded } = useOrganizationList();
+  const [hasAnsweredSource, setHasAnsweredSource] = useState(true); // Default to true to avoid flash
+
+  // Check if user has already answered
+  useEffect(() => {
+    const answered = localStorage.getItem('referral_source_answered');
+    setHasAnsweredSource(!!answered);
+  }, []);
 
   // Auto-set the first organization if user has no active org
   useEffect(() => {
@@ -80,8 +88,20 @@ export default function ContactAdminSection({
         <div className="max-w-4xl w-full space-y-6">
           {/* Welcome section */}
           <div className="text-center mb-8">
-            <MediarIcon className="w-20 h-20 mx-auto mb-4" />
-            <h2 className="text-3xl font-bold text-black mb-2 font-mono">Welcome to Mediar</h2>
+            <h1 className="text-4xl font-bold text-black mb-8 font-mono">Welcome to Mediar Beta!</h1>
+
+            {/* Automation Demo - BIG */}
+            <AutomationDemo />
+
+            <p className="text-gray-600 mb-4">
+              We&apos;re in early access and things aren&apos;t perfect yet,
+              but we&apos;re here to help you succeed.
+            </p>
+            <div className="text-sm text-gray-500 space-y-1">
+              <div>✓ Full dashboard access (stable)</div>
+              <div>✓ Workflow scheduling, deployment & alerts (stable)</div>
+              <div>✓ Desktop recorder (beta - use chat if stuck)</div>
+            </div>
           </div>
 
           {/* App Access Options */}
@@ -117,7 +137,7 @@ export default function ContactAdminSection({
                   </div>
                   <h3 className="text-lg font-bold text-black font-mono">DESKTOP APP</h3>
                   <p className="text-gray-600 text-sm">
-                    Record and build workflows with AI
+                    Record workflows (Windows)
                   </p>
                   <a
                     href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/nsis-x86_64"
@@ -154,6 +174,44 @@ export default function ContactAdminSection({
               </CardContent>
             </Card>
           </div>
+
+          {/* How did you hear about us - moved below cards */}
+          {!hasAnsweredSource && (
+            <div className="mt-8 text-center">
+              <label className="text-xs font-mono text-gray-600 uppercase block mb-2">
+                How did you hear about us?
+              </label>
+              <select
+                className="w-64 mx-auto block border-2 border-black p-2 font-mono text-sm"
+                onChange={(e) => {
+                  if (e.target.value) {
+                    // Save to localStorage
+                    localStorage.setItem('referral_source_answered', e.target.value);
+                    localStorage.setItem('referral_source_date', new Date().toISOString());
+
+                    // Send to PostHog
+                    posthog?.capture('referral_source_selected', {
+                      source: e.target.value,
+                      user_id: userId,
+                      timestamp: new Date().toISOString()
+                    });
+
+                    // Hide the dropdown
+                    setHasAnsweredSource(true);
+                  }
+                }}
+              >
+                <option value="">Select...</option>
+                <option value="twitter">Twitter/X</option>
+                <option value="linkedin">LinkedIn</option>
+                <option value="hackernews">Hacker News</option>
+                <option value="producthunt">Product Hunt</option>
+                <option value="friend">Friend/Colleague</option>
+                <option value="google">Google Search</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          )}
         </div>
       </div>
     </div>
