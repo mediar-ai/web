@@ -177,12 +177,12 @@ export default function ContactAdminSection({
 
           {/* How did you hear about us - moved below cards */}
           {!hasAnsweredSource && (
-            <div className="mt-8 text-center">
+            <div className="mt-8 text-center relative z-50">
               <label className="text-xs font-mono text-gray-600 uppercase block mb-2">
                 How did you hear about us?
               </label>
               <select
-                className="w-64 mx-auto block border-2 border-black p-2 font-mono text-sm"
+                className="w-64 mx-auto block border-2 border-black p-2 font-mono text-sm relative z-50"
                 onChange={(e) => {
                   if (e.target.value) {
                     // Save to localStorage
