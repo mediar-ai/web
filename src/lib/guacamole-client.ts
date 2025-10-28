@@ -34,6 +34,13 @@ export async function authenticateGuacamole(
   username: string,
   password: string
 ): Promise<GuacamoleAuthResponse> {
+  console.log('[Guacamole Auth] Attempting authentication:', {
+    url: guacamoleUrl,
+    username,
+    passwordLength: password?.length || 0,
+    hasPassword: !!password
+  });
+
   const response = await fetch(`${guacamoleUrl}/api/tokens`, {
     method: 'POST',
     headers: {
@@ -45,8 +52,11 @@ export async function authenticateGuacamole(
     }),
   });
 
+  console.log('[Guacamole Auth] Response status:', response.status);
+
   if (!response.ok) {
     const error = await response.text();
+    console.error('[Guacamole Auth] Authentication failed:', error);
     throw new Error(`Guacamole authentication failed: ${error}`);
   }
 
