@@ -880,14 +880,14 @@ export function ExecutionDetailsDialog({
                         <p className="font-semibold">Agent RDP Viewer - Guacamole Interface</p>
                         <p className="text-sm">
                           Access the remote desktop of the agent machine executing this workflow.
-                          You'll need to log in to Guacamole with the following credentials:
+                          You&apos;ll need to log in to Guacamole with the following credentials:
                         </p>
                         <div className="font-mono text-xs bg-white p-2 rounded border border-black/20 mt-2">
                           <div><strong>Username:</strong> admin</div>
                           <div><strong>Password:</strong> mediar123</div>
                         </div>
                         <p className="text-xs text-muted-foreground mt-2">
-                          After logging in, select the appropriate RDP connection to view the agent's screen.
+                          After logging in, select the appropriate RDP connection to view the agent&apos;s screen.
                         </p>
                       </div>
                     </AlertDescription>
