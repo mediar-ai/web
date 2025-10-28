@@ -47,6 +47,117 @@ const LoadingSkeleton = () => (
   </div>
 );
 
+interface AgentScreenTabProps {
+  executionId: number;
+}
+
+const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
+  const [rdpUrl, setRdpUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [connectionInfo, setConnectionInfo] = useState<{
+    machine_name?: string;
+    connection_name?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchRdpUrl = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await fetch(`/api/rdp/access?execution_id=${executionId}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to get RDP access');
+        }
+
+        setRdpUrl(data.connection_url);
+        setConnectionInfo({
+          machine_name: data.machine_name,
+          connection_name: data.connection_name,
+        });
+      } catch (err) {
+        console.error('Error fetching RDP URL:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load RDP connection');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRdpUrl();
+  }, [executionId]);
+
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col gap-4">
+        <Alert className="border-black bg-blue-50">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <AlertDescription>
+            <p className="font-semibold">Loading agent screen access...</p>
+            <p className="text-sm mt-1">Authenticating and establishing secure connection</p>
+          </AlertDescription>
+        </Alert>
+        <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white flex items-center justify-center" style={{ minHeight: '600px' }}>
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex flex-col gap-4">
+        <Alert className="border-black bg-red-50">
+          <XCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription>
+            <p className="font-semibold text-red-900">Unable to connect to agent screen</p>
+            <p className="text-sm mt-1 text-red-700">{error}</p>
+          </AlertDescription>
+        </Alert>
+        <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white flex items-center justify-center" style={{ minHeight: '600px' }}>
+          <div className="text-center text-muted-foreground">
+            <XCircle className="h-12 w-12 mx-auto mb-2 opacity-20" />
+            <p>RDP connection unavailable</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col gap-4">
+      <Alert className="border-black bg-green-50">
+        <Monitor className="h-4 w-4 text-green-600" />
+        <AlertDescription>
+          <div className="space-y-2">
+            <p className="font-semibold text-green-900">Agent Screen - Live RDP Session</p>
+            <p className="text-sm text-green-800">
+              Connected to <strong>{connectionInfo?.machine_name || 'agent machine'}</strong>.
+              You have full mouse and keyboard control.
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">
+              This connection is authenticated and time-limited for security. Clipboard access is enabled.
+            </p>
+          </div>
+        </AlertDescription>
+      </Alert>
+      <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white" style={{ minHeight: '600px' }}>
+        {rdpUrl && (
+          <iframe
+            src={rdpUrl}
+            className="w-full h-full"
+            style={{ border: 'none' }}
+            allow="clipboard-read; clipboard-write"
+            title="Agent RDP Viewer"
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
 interface CollapsibleSectionProps {
   title: string;
   children: React.ReactNode;
@@ -872,36 +983,7 @@ export function ExecutionDetailsDialog({
               {isTabLoading || !execution ? (
                 <LoadingSkeleton />
               ) : (
-                <div className="h-full flex flex-col gap-4">
-                  <Alert className="border-black bg-blue-50">
-                    <Monitor className="h-4 w-4" />
-                    <AlertDescription>
-                      <div className="space-y-2">
-                        <p className="font-semibold">Agent RDP Viewer - Guacamole Interface</p>
-                        <p className="text-sm">
-                          Access the remote desktop of the agent machine executing this workflow.
-                          You&apos;ll need to log in to Guacamole with the following credentials:
-                        </p>
-                        <div className="font-mono text-xs bg-white p-2 rounded border border-black/20 mt-2">
-                          <div><strong>Username:</strong> admin</div>
-                          <div><strong>Password:</strong> mediar123</div>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          After logging in, select the appropriate RDP connection to view the agent&apos;s screen.
-                        </p>
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                  <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white" style={{ minHeight: '600px' }}>
-                    <iframe
-                      src="http://4.157.122.69:8080/guacamole"
-                      className="w-full h-full"
-                      style={{ border: 'none' }}
-                      allow="clipboard-read; clipboard-write"
-                      title="Agent RDP Viewer (Guacamole)"
-                    />
-                  </div>
-                </div>
+                <AgentScreenTab executionId={execution.execution_id} />
               )}
             </TabsContent>
           </div>
