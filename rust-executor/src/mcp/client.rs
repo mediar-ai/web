@@ -227,7 +227,10 @@ impl McpClient {
                     }
                 });
 
-                debug!("MCP tool call payload: {}", serde_json::to_string(&payload)?);
+                // CRITICAL DEBUG: Log the exact payload being sent to MCP server
+                info!("🔍 MCP TOOL CALL DEBUG:");
+                info!("  Tool Name: {}", tool_name);
+                info!("  Payload: {}", serde_json::to_string_pretty(&payload)?);
 
                 // Build request with Mcp-Session-Id header if available
                 let mut request_builder = client
