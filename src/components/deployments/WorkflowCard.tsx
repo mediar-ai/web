@@ -1,7 +1,6 @@
 'use client';
 
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
-import { DeleteWorkflowDialog } from '@/components/deployments/DeleteWorkflowDialog';
 import { UnifiedWorkflowDialog } from '@/components/deployments/UnifiedWorkflowDialog';
 import { CreateWorkflowDialog } from '@/components/deployments/CreateWorkflowDialogImproved';
 import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsDialog';
@@ -156,8 +155,6 @@ export function WorkflowCard({
     executionId: number;
   } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingWorkflow, setDeletingWorkflow] = useState(false);
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
   const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
   const [uploadVersionDialogOpen, setUploadVersionDialogOpen] = useState(false);
@@ -669,93 +666,6 @@ export function WorkflowCard({
     }
   };
 
-  const handleDeleteWorkflow = async (workflowId: number) => {
-    setDeletingWorkflow(true);
-    try {
-      console.log(`🗑️ Deleting workflow: ${workflow.name} (ID: ${workflowId})`);
-
-      // First test if the route is reachable with POST
-      console.log('Testing route with POST first...');
-      const testResponse = await fetch(
-        `/api/remote-workflows/${workflowId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      if (testResponse.ok) {
-        const testData = await testResponse.json();
-        console.log('✅ POST test successful:', testData);
-      } else {
-        console.error('❌ POST test failed:', testResponse.status, await testResponse.text());
-      }
-
-      // Now try DELETE
-      console.log('Now trying DELETE...');
-      const response = await fetch(
-        `/api/remote-workflows/${workflowId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      // Check if response is ok before trying to parse JSON
-      if (!response.ok) {
-        console.error(`Delete API returned status ${response.status}`);
-        const text = await response.text();
-        console.error('Response body:', text);
-
-        // Try to parse as JSON if possible
-        let errorMessage = `Server error (${response.status})`;
-        try {
-          const errorJson = JSON.parse(text);
-          errorMessage = errorJson.error || errorMessage;
-        } catch {
-          // If not JSON, use the text directly if it's not empty
-          if (text) {
-            errorMessage = text;
-          }
-        }
-
-        toast.error(`Failed to delete workflow: ${errorMessage}`);
-        return;
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        console.log(`✅ Successfully deleted workflow: ${workflow.name}`);
-
-        // Show success feedback
-        toast.success(`Workflow "${workflow.name}" deleted successfully!`);
-
-        // Close the dialog first
-        setDeleteDialogOpen(false);
-
-        // Refresh the workflows list immediately
-        if (onBatchSubmit) {
-          console.log('🔄 Triggering workflows list refresh...');
-          onBatchSubmit();
-        }
-      } else {
-        console.error('Failed to delete workflow:', result.error);
-        toast.error(`Failed to delete workflow: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Error deleting workflow:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(`Error deleting workflow: ${errorMessage}. Please check the console for details.`);
-    } finally {
-      setDeletingWorkflow(false);
-    }
-  };
-
   const handleConfirm = async () => {
     if (!pendingAction) return;
     setActionLoading(true);
@@ -1127,18 +1037,6 @@ export function WorkflowCard({
                     <Settings className="mr-2 h-4 w-4" />
                     Settings & Details
                   </DropdownMenuItem>
-                  {!isNested && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => setDeleteDialogOpen(true)}
-                        className="text-red-600 focus:text-red-600"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete Workflow
-                      </DropdownMenuItem>
-                    </>
-                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -1871,15 +1769,6 @@ export function WorkflowCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Delete Workflow Dialog - Admin only */}
-      <DeleteWorkflowDialog
-        workflow={workflow}
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        onConfirm={handleDeleteWorkflow}
-        isDeleting={deletingWorkflow}
-      />
 
       {/* Workflow Actions Dialog (Rename/Duplicate) */}
       <WorkflowActionsDialog
