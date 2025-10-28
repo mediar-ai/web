@@ -163,8 +163,10 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
             src={rdpUrl}
             className="absolute inset-0 w-full h-full"
             style={{ border: 'none', minHeight: '700px' }}
-            allow="clipboard-read; clipboard-write"
+            allow="clipboard-read; clipboard-write; cross-origin-isolated"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
             title="Agent RDP Viewer"
+            referrerPolicy="no-referrer-when-downgrade"
           />
         )}
       </div>
