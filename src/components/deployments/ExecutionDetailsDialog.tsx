@@ -157,12 +157,12 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
           </div>
         </AlertDescription>
       </Alert>
-      <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white" style={{ minHeight: '600px' }}>
+      <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white relative" style={{ minHeight: '700px', height: 'calc(100vh - 300px)' }}>
         {rdpUrl && (
           <iframe
             src={rdpUrl}
-            className="w-full h-full"
-            style={{ border: 'none' }}
+            className="absolute inset-0 w-full h-full"
+            style={{ border: 'none', minHeight: '700px' }}
             allow="clipboard-read; clipboard-write"
             title="Agent RDP Viewer"
           />
