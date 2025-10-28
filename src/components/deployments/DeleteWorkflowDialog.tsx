@@ -66,18 +66,18 @@ export function DeleteWorkflowDialog({
                 <Trash2 className="h-5 w-5 text-gray-700 mt-0.5 flex-shrink-0" />
                 <div className="space-y-2">
                   <p className="text-black font-bold">
-                    ⚠ This action cannot be undone!
+                    ⚠ Workflow will be archived
                   </p>
                   <p className="text-gray-700 text-sm">
-                    You are about to permanently delete:
+                    This workflow will be moved to the archive:
                   </p>
                   <ul className="text-gray-700 text-sm space-y-1 ml-2">
                     <li>
                       • Workflow: <strong>&quot;{workflow.name}&quot;</strong>
                     </li>
-                    <li>• All execution history and logs</li>
-                    <li>• All workflow versions</li>
-                    <li>• All associated data</li>
+                    <li>• ✓ Execution history preserved</li>
+                    <li>• ✓ All workflow versions archived</li>
+                    <li>• ✓ Can be restored by admin</li>
                   </ul>
                 </div>
               </div>
@@ -88,7 +88,7 @@ export function DeleteWorkflowDialog({
                 <p className="text-black text-sm">
                   <strong>Note:</strong> This workflow has{' '}
                   <strong>{workflow.total_executions} execution(s)</strong> that
-                  will be permanently deleted.
+                  will be preserved in the archive.
                 </p>
               </div>
             )}
@@ -134,12 +134,12 @@ export function DeleteWorkflowDialog({
             {isDeleting ? (
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Deleting...
+                Archiving...
               </div>
             ) : (
               <div className="flex items-center gap-2">
                 <Trash2 className="h-4 w-4" />
-                Confirm Delete
+                Archive Workflow
               </div>
             )}
           </AlertDialogAction>
