@@ -512,9 +512,12 @@ export function BatchTestDialog({
         { static_parameters: {}, dynamic_parameters: {} } : batchSpec;
 
       // Include machine_id, version_number, executor_type, and partial execution parameters in the request body
+      const parsedMachineId = selectedMachineId ? parseInt(selectedMachineId, 10) : NaN;
+      const validMachineId = !isNaN(parsedMachineId) && parsedMachineId > 0 ? parsedMachineId : undefined;
+
       const requestBody = {
         ...effectiveBatchSpec,
-        machine_id: parseInt(selectedMachineId),
+        machine_id: validMachineId,
         version_number: selectedVersionNumber || undefined, // Send version or undefined for active
         executor_type: executorType, // 'python' or 'rust'
         // Partial execution parameters
@@ -523,6 +526,8 @@ export function BatchTestDialog({
         follow_fallback: showPartialExecution ? followFallback : undefined,
         execute_jumps_at_end: showPartialExecution ? executeJumpsAtEnd : undefined,
       };
+
+      console.log('📤 BatchTestDialog: Request body machine_id:', requestBody.machine_id, '(parsed from selectedMachineId:', selectedMachineId, ')');
 
       const response = await fetch(
         `/api/remote-workflows/${workflow.id}/batch-execute`,

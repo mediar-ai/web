@@ -528,8 +528,10 @@ export async function POST(
     let assignment_reason: string = '';
     let mcp_endpoint: string | undefined = undefined;
 
+    console.log('[Machine Assignment] Received machine_id from request:', machine_id, 'typeof:', typeof machine_id);
+
     // Prefer explicit machine if provided
-    if (typeof machine_id === 'number') {
+    if (typeof machine_id === 'number' && !isNaN(machine_id) && machine_id > 0) {
       const { data: sel, error: selErr } = await supabase
         .from('remote_machines')
         .select('id, mcp_endpoint, name, status, health_status')
@@ -678,12 +680,13 @@ export async function POST(
 
     console.log('[DB] BATCH EXECUTE: Inserting jobs into database...');
     console.log('📝 BATCH EXECUTE: Jobs to insert:', jobsToInsert.length);
+    console.log('🔍 BATCH EXECUTE: First job assigned_machine_id:', jobsToInsert[0]?.assigned_machine_id);
 
     // Insert all jobs in a single query
     const { data: insertedJobs, error } = await supabase
       .from('workflow_executions')
       .insert(jobsToInsert)
-      .select('id');
+      .select('id, assigned_machine_id');
 
     if (error) {
       console.error('[ERROR] BATCH EXECUTE: Database insertion error:', error);
@@ -694,6 +697,10 @@ export async function POST(
     console.log(
       '🎯 BATCH EXECUTE: Execution IDs:',
       insertedJobs.map(j => j.id)
+    );
+    console.log(
+      '🔍 BATCH EXECUTE: First job returned assigned_machine_id:',
+      insertedJobs[0]?.assigned_machine_id
     );
 
     return NextResponse.json({

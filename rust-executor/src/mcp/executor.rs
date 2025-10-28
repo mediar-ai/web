@@ -202,7 +202,12 @@ impl WorkflowExecutor {
         // Process arguments with variable substitution
         let arguments = self.process_step_arguments(step, variables)?;
 
-        debug!("Executing tool {} with arguments: {:?}", tool_name, arguments);
+        // CRITICAL DEBUG: Log step execution details
+        info!("🔧 STEP EXECUTION DEBUG:");
+        info!("  Step ID: {}", step_id);
+        info!("  Tool Name: {}", tool_name);
+        info!("  Raw Step: {}", serde_json::to_string_pretty(step).unwrap_or_else(|_| "N/A".to_string()));
+        info!("  Processed Arguments: {}", serde_json::to_string_pretty(&arguments).unwrap_or_else(|_| "N/A".to_string()));
 
         // Execute with retry if configured
         let retry_count = step.retry_count.unwrap_or(0);
