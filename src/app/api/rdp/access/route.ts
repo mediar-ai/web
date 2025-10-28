@@ -97,7 +97,10 @@ export async function GET(request: NextRequest) {
 
       if (!execution.assigned_machine_id) {
         return NextResponse.json(
-          { error: 'Execution has no assigned machine' },
+          {
+            error: 'Execution has no assigned machine',
+            details: 'This execution was run without a specific machine assignment. Agent screen viewing requires a machine assignment.'
+          },
           { status: 400 }
         );
       }
