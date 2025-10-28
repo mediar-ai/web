@@ -64,6 +64,21 @@ export async function POST(
       hasOrgAccess = !!orgAccess;
     }
 
+    // DEBUG: Log authorization details
+    console.log('[AUTH DEBUG] Authorization check:', {
+      workflowId: workflowIdNum,
+      workflowName: workflow.name,
+      userId: authenticatedUserId,
+      orgId,
+      workflowCreatedBy: workflow.created_by,
+      workflowOrgId: workflow.organization_id,
+      isOwner,
+      isOrgAdmin,
+      isSameOrg,
+      hasOrgAccess,
+      willAllow: isOwner || (isOrgAdmin && isSameOrg) || hasOrgAccess
+    });
+
     // Allow modification if:
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
@@ -73,7 +88,19 @@ export async function POST(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized version activation for workflow ${workflowIdNum}`
       );
       return NextResponse.json(
-        { error: 'Forbidden - You do not have permission to modify this workflow' },
+        {
+          error: 'Forbidden - You do not have permission to modify this workflow',
+          debug: {
+            isOwner,
+            isOrgAdmin,
+            isSameOrg,
+            hasOrgAccess,
+            workflowCreatedBy: workflow.created_by,
+            workflowOrgId: workflow.organization_id,
+            yourUserId: authenticatedUserId,
+            yourOrgId: orgId
+          }
+        },
         { status: 403 }
       );
     }

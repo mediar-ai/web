@@ -1,6 +1,7 @@
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
 import { validateWorkflowOutputParser } from '@/lib/workflow-validation';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
 import { NextRequest, NextResponse } from 'next/server';
@@ -42,11 +43,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Use user's org if available, otherwise default to primary Mediar org
+    const effectiveOrgId = orgId || MEDIAR_ORG_IDS[0];
+
     if (!orgId) {
-      return NextResponse.json(
-        { success: false, error: 'Organization context required' },
-        { status: 401 }
-      );
+      console.warn(`⚠️ User ${userId} has no org context, defaulting to Mediar org: ${effectiveOrgId}`);
     }
 
     const body: CreateWorkflowRequest = await request.json();
@@ -179,8 +180,8 @@ export async function POST(request: NextRequest) {
       parent_workflow_id: body.parent_workflow_id || null,
       automation_sequence: jsonbContent || parsedSequence, // JSONB column (required)
       estimated_duration_seconds: body.estimated_duration_seconds,
-      // Organization ownership
-      organization_id: orgId,
+      // Organization ownership (use effectiveOrgId which falls back to Mediar org)
+      organization_id: effectiveOrgId,
       // Cron configuration
       cron_expression: cronConfig?.expression || null,
       cron_timezone: cronConfig?.timezone || 'UTC',
