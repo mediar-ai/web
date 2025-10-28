@@ -107,19 +107,33 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
   }
 
   if (error) {
+    const isMachineNotFound = error.includes('Machine not found') || error.includes('no assigned machine');
+
     return (
       <div className="h-full flex flex-col gap-4">
-        <Alert className="border-black bg-red-50">
-          <XCircle className="h-4 w-4 text-red-600" />
+        <Alert className="border-black bg-yellow-50">
+          <XCircle className="h-4 w-4 text-yellow-600" />
           <AlertDescription>
-            <p className="font-semibold text-red-900">Unable to connect to agent screen</p>
-            <p className="text-sm mt-1 text-red-700">{error}</p>
+            <p className="font-semibold text-yellow-900">
+              {isMachineNotFound ? 'No Agent Machine Assigned' : 'Unable to connect to agent screen'}
+            </p>
+            <p className="text-sm mt-1 text-yellow-800">
+              {isMachineNotFound
+                ? 'This execution was run without a specific machine assignment. Agent screen viewing is only available for executions with assigned machines.'
+                : error
+              }
+            </p>
           </AlertDescription>
         </Alert>
         <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white flex items-center justify-center" style={{ minHeight: '600px' }}>
           <div className="text-center text-muted-foreground">
             <XCircle className="h-12 w-12 mx-auto mb-2 opacity-20" />
-            <p>RDP connection unavailable</p>
+            <p className="text-sm">
+              {isMachineNotFound
+                ? 'This execution has no machine assignment'
+                : 'RDP connection unavailable'
+              }
+            </p>
           </div>
         </div>
       </div>
