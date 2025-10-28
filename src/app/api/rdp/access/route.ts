@@ -206,6 +206,8 @@ export async function GET(request: NextRequest) {
 
     // STEP 6: Generate Guacamole connection URL
     console.log(`[RDP Access] Generating connection URL for machine: ${machineName}`);
+    console.log(`[RDP Access] Using Guacamole URL: ${GUACAMOLE_URL}`);
+    console.log(`[RDP Access] Using Guacamole username: ${GUACAMOLE_USERNAME}`);
 
     if (!machineName) {
       return NextResponse.json(
