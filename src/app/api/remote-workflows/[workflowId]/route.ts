@@ -494,7 +494,7 @@ export async function DELETE(
       console.log('ℹ️ No github_folder - skipping GitHub deletion');
     }
 
-    // Step 2: Delete storage files BEFORE deleting workflow record
+    // Step 2: Delete storage files BEFORE archiving workflow
     try {
       const { data: files } = await supabase
         .from('workflow_files')
@@ -521,56 +521,38 @@ export async function DELETE(
       console.error('❌ Storage deletion error:', storageError);
     }
 
-    // Step 3: Delete database records in proper order
+    // Step 3: Archive workflow using database function
+    // This will:
+    // - Move workflow to deleted_workflows (archive)
+    // - Move versions to deleted_workflow_versions (archive)
+    // - Move files to deleted_workflow_files (archive)
+    // - Set workflow_id = NULL in workflow_executions (preserve execution history)
+    // - Delete workflow from deployed_workflows (CASCADE cleans up other tables)
+    console.log(`📦 Archiving workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} executions`);
 
-    // 3a. Delete all workflow executions (historical data)
-    const { error: deleteExecutionsError } = await supabase
-      .from('workflow_executions')
-      .delete()
-      .eq('workflow_id', workflowIdNum);
+    const { data: archiveResult, error: archiveError } = await supabase
+      .rpc('archive_workflow', {
+        p_workflow_id: workflowIdNum,
+        p_archived_by: `user:${authenticatedUserId}${userEmail ? `:${userEmail}` : ''}`,
+        p_deletion_reason: `Manual deletion from UI (Danger Zone)`
+      });
 
-    if (deleteExecutionsError) {
-      console.error('❌ Error deleting workflow executions:', deleteExecutionsError);
+    if (archiveError) {
+      console.error('❌ Error archiving workflow:', archiveError);
       return NextResponse.json(
-        { success: false, error: 'Failed to delete workflow executions' },
+        { success: false, error: 'Failed to archive workflow', details: archiveError.message },
         { status: 500 }
       );
     }
 
-    // 3b. Delete workflow versions
-    const { error: deleteVersionsError } = await supabase
-      .from('deployed_workflow_versions')
-      .delete()
-      .eq('workflow_id', workflowIdNum);
-
-    if (deleteVersionsError) {
-      console.error('❌ Error deleting workflow versions:', deleteVersionsError);
-      return NextResponse.json(
-        { success: false, error: 'Failed to delete workflow versions' },
-        { status: 500 }
-      );
-    }
-
-    // 3c. Delete the main workflow record (CASCADE will delete workflow_files)
-    const { error: deleteWorkflowError } = await supabase
-      .from('deployed_workflows')
-      .delete()
-      .eq('id', workflowIdNum);
-
-    if (deleteWorkflowError) {
-      console.error('❌ Error deleting workflow:', deleteWorkflowError);
-      return NextResponse.json(
-        { success: false, error: 'Failed to delete workflow' },
-        { status: 500 }
-      );
-    }
-
-    console.log(`✅ Successfully deleted workflow ${workflowIdNum} (${workflow.name}) and ${executionCount || 0} executions`);
+    console.log(`✅ Successfully archived workflow ${workflowIdNum} (${workflow.name})`);
+    console.log(`   Archive summary:`, archiveResult);
 
     return NextResponse.json({
       success: true,
-      message: `Workflow "${workflow.name}" and all associated data deleted successfully`,
-      deletedExecutions: executionCount || 0
+      message: `Workflow "${workflow.name}" archived successfully. Execution history preserved.`,
+      archived: true,
+      archiveDetails: archiveResult
     });
 
   } catch (error) {
