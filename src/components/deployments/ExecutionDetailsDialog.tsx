@@ -648,17 +648,19 @@ export function ExecutionDetailsDialog({
           className="flex-1 flex flex-col min-h-0"
         >
           <div className="px-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className={`grid w-full ${execution?.assigned_machine_id ? 'grid-cols-4' : 'grid-cols-3'}`}>
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="logs">Orchestrator server logs</TabsTrigger>
               <TabsTrigger value="qa" className="flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
                 Q&A
               </TabsTrigger>
-              <TabsTrigger value="agent-screen" className="flex items-center gap-1">
-                <Monitor className="w-3 h-3" />
-                Agent Screen
-              </TabsTrigger>
+              {execution?.assigned_machine_id && (
+                <TabsTrigger value="agent-screen" className="flex items-center gap-1">
+                  <Monitor className="w-3 h-3" />
+                  Agent Screen
+                </TabsTrigger>
+              )}
             </TabsList>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-6">
@@ -993,13 +995,15 @@ export function ExecutionDetailsDialog({
                 </div>
               )}
             </TabsContent>
-            <TabsContent value="agent-screen" className="h-full">
-              {isTabLoading || !execution ? (
-                <LoadingSkeleton />
-              ) : (
-                <AgentScreenTab executionId={execution.execution_id} />
-              )}
-            </TabsContent>
+            {execution?.assigned_machine_id && (
+              <TabsContent value="agent-screen" className="h-full">
+                {isTabLoading || !execution ? (
+                  <LoadingSkeleton />
+                ) : (
+                  <AgentScreenTab executionId={execution.execution_id} />
+                )}
+              </TabsContent>
+            )}
           </div>
         </Tabs>
       </DialogContent>
