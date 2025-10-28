@@ -163,7 +163,7 @@ export async function GET(request: NextRequest) {
     console.log('[RDP Access] Querying for machine ID:', resolvedMachineId);
     const { data: machine, error: machineError } = await supabase
       .from('remote_machines')
-      .select('id, name, is_global, ip_address')
+      .select('id, name, is_global')
       .eq('id', resolvedMachineId)
       .single();
 
