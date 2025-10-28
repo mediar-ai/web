@@ -255,6 +255,7 @@ impl WorkflowExecutor {
     fn process_variables(&self) -> Result<Map<String, Value>> {
         let mut processed = Map::new();
 
+        // 1) Honor variables schema: prefer values from inputs, fallback to defaults
         if let Some(variables) = &self.sequence.variables {
             if let Some(vars_obj) = variables.as_object() {
                 for (name, definition) in vars_obj {
@@ -284,6 +285,17 @@ impl WorkflowExecutor {
             }
         }
 
+        // 2) Align with Python executor: treat `inputs` as a general variable source
+        // This allows templates using only `inputs` (without a `variables` schema)
+        if let Some(inputs) = &self.sequence.inputs {
+            if let Some(inputs_obj) = inputs.as_object() {
+                for (k, v) in inputs_obj {
+                    // Do not overwrite values already set via variables schema
+                    processed.entry(k.clone()).or_insert_with(|| v.clone());
+                }
+            }
+        }
+
         Ok(processed)
     }
 
@@ -301,6 +313,11 @@ impl WorkflowExecutor {
                     let processed_value = self.substitute_variables(value, variables)?;
                     processed.insert(key.clone(), processed_value);
                 }
+
+                // Align with Python executor: disable monitor screenshots by default
+                // unless explicitly provided by the workflow step.
+                processed.entry("include_monitor_screenshots".to_string())
+                    .or_insert(Value::Bool(false));
 
                 return Ok(Some(processed));
             } else {

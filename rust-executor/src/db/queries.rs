@@ -11,15 +11,26 @@ impl WorkflowQueries {
         pool: &Pool<Postgres>,
         workflow_id: i64,
     ) -> Result<Option<Workflow>> {
+        // CRITICAL FIX: Join with deployed_workflow_versions to get the ACTIVE version
+        // Previously used deployed_workflows_with_sequence view which returned stale YAML
         let workflow = sqlx::query(
             r#"
             SELECT
-                id, name, version, description,
-                status, category, github_folder, github_ref,
-                automation_sequence, automation_sequence_yaml,
-                created_at, updated_at
-            FROM deployed_workflows_with_sequence
-            WHERE id = $1
+                dw.id,
+                dw.name,
+                dwv.version_number as version,
+                dw.description,
+                dw.status,
+                dw.category,
+                dw.github_folder,
+                dw.github_ref,
+                dwv.automation_sequence,
+                dwv.automation_sequence_yaml,
+                dw.created_at,
+                dw.updated_at
+            FROM deployed_workflows dw
+            JOIN deployed_workflow_versions dwv ON dw.id = dwv.workflow_id
+            WHERE dw.id = $1 AND dwv.is_active = true
             "#,
         )
         .bind(workflow_id)
