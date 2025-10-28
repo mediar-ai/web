@@ -160,6 +160,7 @@ export async function GET(request: NextRequest) {
     }
 
     // STEP 5: Get machine details and check org access
+    console.log('[RDP Access] Querying for machine ID:', resolvedMachineId);
     const { data: machine, error: machineError } = await supabase
       .from('remote_machines')
       .select('id, name, is_global, ip_address')
@@ -167,12 +168,16 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (machineError || !machine) {
-      console.error('[RDP Access] Machine not found:', resolvedMachineId);
+      console.error('[RDP Access] Machine query failed for ID:', resolvedMachineId);
+      console.error('[RDP Access] Error details:', machineError);
+      console.error('[RDP Access] Data returned:', machine);
       return NextResponse.json(
-        { error: 'Machine not found' },
+        { error: 'Machine not found', details: machineError?.message },
         { status: 404 }
       );
     }
+
+    console.log('[RDP Access] Machine found:', machine.name, 'ID:', machine.id);
 
     // Check machine access
     // Machine is accessible if:
