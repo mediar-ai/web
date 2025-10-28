@@ -29,9 +29,9 @@ import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { getDirectConnectionUrl } from '@/lib/guacamole-client';
 
-const GUACAMOLE_URL = process.env.GUACAMOLE_URL || 'http://4.157.122.69:8080/guacamole';
-const GUACAMOLE_USERNAME = process.env.GUACAMOLE_USERNAME || 'admin';
-const GUACAMOLE_PASSWORD = process.env.GUACAMOLE_PASSWORD || 'mediar123';
+const GUACAMOLE_URL = (process.env.GUACAMOLE_URL || 'http://4.157.122.69:8080/guacamole').trim();
+const GUACAMOLE_USERNAME = (process.env.GUACAMOLE_USERNAME || 'admin').trim();
+const GUACAMOLE_PASSWORD = (process.env.GUACAMOLE_PASSWORD || 'mediar123').trim();
 
 interface RdpAccessRequest {
   execution_id?: string;
