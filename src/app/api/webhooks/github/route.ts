@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
+import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import crypto from 'crypto';
 import yaml from 'js-yaml';
 import { Octokit } from '@octokit/rest';
@@ -481,7 +482,9 @@ export async function POST(request: NextRequest) {
               github_sync_status: 'synced',
               github_last_synced_at: new Date().toISOString(),
               version: '1.0.0',
-              total_versions: 1
+              total_versions: 1,
+              // Default to primary Mediar organization for all workflows created from GitHub
+              organization_id: MEDIAR_ORG_IDS[0]
             })
             .select()
             .single();
