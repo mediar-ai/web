@@ -1,19 +1,23 @@
 /**
- * Streaming proxy endpoint for Gemini that supports tool calling
+ * Streaming proxy endpoint for Gemini using Vertex AI (not free API)
  *
  * Flow:
  * 1. Client sends message + tool definitions
- * 2. Backend streams Gemini response
+ * 2. Backend streams Gemini response via Vertex AI
  * 3. On tool_use: client executes locally, sends result back
  * 4. Backend continues conversation with tool results
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { VertexAI, Content, FunctionDeclaration, Part } from '@google-cloud/vertexai';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
+
+// Vertex AI credentials (embedded, same as other routes)
+const VERTEX_CREDENTIALS_BASE64 = 'eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwicHJvamVjdF9pZCI6Im1lZGlhci0zOTQwMjIiLCJwcml2YXRlX2tleV9pZCI6ImJlNGMxMjA4YjA0YTgzMzA4ZjNlMjVkMjcyYzZjZmUzMjRjOTQwNmIiLCJwcml2YXRlX2tleSI6Ii0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLVxuTUlJRXZnSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NCS2d3Z2dTa0FnRUFBb0lCQVFEcmZsWHdtZFM4dXd2VFxuS3NobW5iY2xmMzJ3NXI1eFEzUFZjbFZaNDNlc3dobndGNTdQZTRwMnNDUGVxQUF3Mk45aW1sOWZJbkpqdUs0MVxuR0ZmWWlLRmtNcHI5VkV4UXhnbG00UlcvSlVmV2l2Y1FJYTgyTVhWN1RSV1F5MGtUd3JMbHZuanZSbjU1OW1sN1xueDYzSUdwMmovMEZYMkUvYkIwek9BbTRJb1VsVm1HYzBPN2ViVmNMUy9LSVhRNWxQTi9SeDhNOE8xL0h2V3NLaFxuM2Npa3UrT00vT0pHV2pMeXdCWW8zN1c0Q3JaV0dqa0Q0VEVXdUh2VGJvOVNtZkxhUEtjaGptYkJqbjdteXBzdVxueUxhOWNCbGZFYllrNkVSV3ZlWkRqNy9sVUM1cVJuOFhYT0ZGcnFRZW80WStsTldHSEY4REVkSUJFdEc2Q1NMdFxuZFJ4Vmcv UVZBZ01CQUFFQ2dnRUFDWS9PbzM5TGdRSkRQNmE4RGxhWENpRzhFOE82dGRTY1RtMWZBOUJWbXFFaVxuOW5tdkRCT2pFcUNpUkRja0V0ZXJjbEI4VU51UU0zWmJOSEt4bG13dHlXaTRuRktnNnFLdjNRcUVuSWRCL0hjV1xuQXdTckhaTXlodmdoU1FqSUJkSmcreTBac2ZWMXl6UHpJb0NBRU9Ecng2M2tsRkdISklpT1dNc0dkcms5eGdqZlxuTG82WU1mL25SWm5WS0I5WXZOUjFGcC93WEdScjJsWlF0RThTY1AxRU5pclh6WFZZ clFMV2ZlZUZJUWZmemQ3VFxuY0R6cFNLUVgzaG5oQSt2VWFYOWkzOEVtb3U4aW5DdE83U3AwZnhQV0k0ampUeWtOTUhUY0dhS2RlU1ZWdDNZcVxuZUNVaGhnRnU4eS91RkVHMUN1R1l4aXVRTmlOQW92WkhWUXZ4dS8wQS9RS0JnUUQ2UmFuYVUrd2tpZnRtaU02cFxuYlJoMHVqNEh3Sk5zTWVBQ3FmcFFyUDJJMTM4Uk9sSUtQRm5PVklOeVBEU1M5RmtIMkladUhNUnp4ZWhxZ3BmdFxuNkxHK3dmTi94YW9lUHJwSTJoOFVFaVNpYk96dG1FMEtXaktHc2M2c09HY1FuVGVicGhlbkdkVjdGT0ZCN0wzc1xuOTRDNnUyUmR3QXQ4MlU3cUM2Q2tHMmVXRndLQmdRRHc0aFd3TXJnWVVmRVg5eFFyT1hVNWs1NTdGSGhCdnpIclxuUytXRFVHQS9QN3RqN0JQaUVHWEFUV0pxMytPR3lSMGlRR1BCTVFySWNXaVpDL1ZKeTE1czdmdzVPd1l3YmNXUFxud24zTWQ0RTQyN201RGtGV2dxWVFpYk5QSnh2VVVnWWo5em0yNzIrZzJXRXJ4UVJKdzF6YWR5dUttaXBmSnEwY1xuTHBNU1dsMU9zd0tCZ1FDazdRdUZxUkJROCswTUlOT3Zxd2tXd3pUbGZ1Nm51aVpaR3hLdDM1SWtmMzVwSi9td1xuYlJ6eGI1Zy95NVVKMHFScEd6TmJsUEdSS2JhRG1oUHM0QTlpR2dZUkNYMlYrTmhoOGZ2UkNqUENKZTNzbFJVUFxuNFdpeWdySWpvL2VuWnpPaUNzNURmQzdHc1hmUUxlYnJKaDlhN3VxeExVRmt3UC9VRkYyRVI5cjNlUUtCZ0dsM1xuTTNPLzRTYVV5ZkJxTjZSdE5jd051L2U3a0tPSXFMeVNzRng4Rm9mYXlac0lRL1JZcFpRNnpYcHBxRjdkTXlwSlxuOHVNbEs4bHpEZzdrVTNNSjNiL251dVQ3Mk12ZlkvNTdjMFRRbGYxbEJyM2xaZW9RcmREVDJYUXdkVmpTeU9sNlxuVndTbmRNS0NLcTlWUlhsZVZnczQzaEdEU2tYNjB4Umh0L2J6SmFOTkFvR0JBSzFNZXlKMkpZZnZpODN4WENEbFxuY3UzRTc4MzBJajVtOTZCaDVqZDYxTmNzSmJxekI1YVhQZkZldUJJN3cwM0VCVW9wQnN0OGsyb3RJYWZ5b3VkY1xuTjlqellaSDlOM1g3VlFOMXJYRmo2ZU4yenBLajdZaWdMOTZhcCtCREtTTTVwYWNJaTdVWHpzWTh5N3RxK3ZoMFxuL0U0RlpmRXl5N2dDZHVkOU5DeTVzMDR2XG4tLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tXG4iLCJjbGllbnRfZW1haWwiOiJ2ZXJ0ZXgtYWktc2VydmljZS1hY2NvdW50QG1lZGlhci0zOTQwMjIuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCJjbGllbnRfaWQiOiIxMTgyNTUxNzM2MjczNDA0NjA4OTEiLCJhdXRoX3VyaSI6Imh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbS9vL29hdXRoMi9hdXRoIiwidG9rZW5fdXJpIjoiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCJhdXRoX3Byb3ZpZGVyX3g1MDlfY2VydF91cmwiOiJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9vYXV0aDIvdjEvY2VydHMiLCJjbGllbnRfeDUwOV9jZXJ0X3VybCI6Imh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL3JvYm90L3YxL21ldGFkYXRhL3g1MDkvdmVydGV4LWFpLXNlcnZpY2UtYWNjb3VudCU0MG1lZGlhci0zOTQwMjIuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCJ1bml2ZXJzZV9kb21haW4iOiJnb29nbGVhcGlzLmNvbSJ9Cg==';
+const GOOGLE_CLOUD_PROJECT = 'mediar-394022';
+const VERTEX_AI_LOCATION = 'us-central1';
 
 interface StreamProxyRequest {
   model?: string;
@@ -29,7 +33,7 @@ interface StreamProxyRequest {
   tools?: Array<{
     name: string;
     description: string;
-    parameters: Record<string, any>; // JSON Schema
+    parameters: Record<string, any>;
   }>;
   temperature?: number;
   maxTokens?: number;
@@ -41,14 +45,11 @@ async function authenticate(request: NextRequest): Promise<boolean> {
 
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
-
-    // First, check if it's the API password
     if (token === API_PASSWORD) {
       console.log('[Stream Proxy] Authenticated with API password');
       return true;
     }
 
-    // Otherwise, try to validate as desktop token
     try {
       const validation = await validateDesktopToken(token);
       if (validation.valid) {
@@ -58,7 +59,6 @@ async function authenticate(request: NextRequest): Promise<boolean> {
     } catch (error) {
       console.error('[Stream Proxy] Desktop token validation error:', error);
     }
-
     return false;
   }
 
@@ -71,35 +71,51 @@ async function authenticate(request: NextRequest): Promise<boolean> {
   return false;
 }
 
+function initVertexAI(): VertexAI {
+  const credentialsJson = Buffer.from(VERTEX_CREDENTIALS_BASE64, 'base64').toString('utf-8');
+  const credentials = JSON.parse(credentialsJson);
+
+  return new VertexAI({
+    project: GOOGLE_CLOUD_PROJECT,
+    location: VERTEX_AI_LOCATION,
+    googleAuthOptions: {
+      credentials: {
+        client_email: credentials.client_email,
+        private_key: credentials.private_key,
+      },
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body: StreamProxyRequest = await req.json();
 
-    // Validate auth (reuse existing validation)
     const isAuthenticated = await authenticate(req);
     if (!isAuthenticated) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const model = genAI.getGenerativeModel({
+    const vertexAI = initVertexAI();
+    const model = vertexAI.getGenerativeModel({
       model: body.model || 'gemini-2.0-flash-exp',
       generationConfig: {
         temperature: body.temperature ?? 0.7,
         maxOutputTokens: body.maxTokens ?? 8192,
-      }
+      },
     });
 
-    // Convert messages to Gemini format
-    const contents = convertMessagesToGemini(body.messages);
+    // Convert messages to Vertex AI Content format
+    const contents: Content[] = convertMessagesToVertex(body.messages);
 
-    // Convert tools to Gemini function declarations
-    const tools = body.tools?.map(tool => ({
-      functionDeclarations: [{
+    // Convert tools to Vertex AI function declarations
+    const tools = body.tools ? [{
+      functionDeclarations: body.tools.map(tool => ({
         name: tool.name,
         description: tool.description,
         parameters: tool.parameters,
-      }]
-    }));
+      } as FunctionDeclaration))
+    }] : undefined;
 
     // Start streaming response
     const result = await model.generateContentStream({
@@ -107,36 +123,44 @@ export async function POST(req: NextRequest) {
       tools,
     });
 
-    // Create streaming response
+    // Create SSE stream
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
           for await (const chunk of result.stream) {
-            const text = chunk.text();
-            const functionCalls = chunk.functionCalls();
+            // Extract text
+            const candidate = chunk.candidates?.[0];
+            if (!candidate) continue;
 
-            if (text) {
-              // Stream text chunks
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`)
-              );
+            const textParts = candidate.content.parts.filter(p => 'text' in p);
+            if (textParts.length > 0) {
+              for (const part of textParts) {
+                if ('text' in part && part.text) {
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ type: 'text', content: part.text })}\n\n`)
+                  );
+                }
+              }
             }
 
-            if (functionCalls && functionCalls.length > 0) {
-              // Signal tool calls to client
-              for (const call of functionCalls) {
-                controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify({
-                    type: 'tool_call',
-                    id: crypto.randomUUID(),
-                    name: call.name,
-                    args: call.args,
-                  })}\n\n`)
-                );
+            // Check for function calls
+            const functionCalls = candidate.content.parts.filter(p => 'functionCall' in p);
+            if (functionCalls.length > 0) {
+              for (const part of functionCalls) {
+                if ('functionCall' in part && part.functionCall) {
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({
+                      type: 'tool_call',
+                      id: crypto.randomUUID(),
+                      name: part.functionCall.name,
+                      args: part.functionCall.args,
+                    })}\n\n`)
+                  );
+                }
               }
 
-              // Signal that we're waiting for tool results
+              // Signal waiting for tool results
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ type: 'tool_wait' })}\n\n`)
               );
@@ -176,38 +200,46 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function convertMessagesToGemini(messages: StreamProxyRequest['messages']) {
-  return messages.map(msg => {
+function convertMessagesToVertex(messages: StreamProxyRequest['messages']): Content[] {
+  const contents: Content[] = [];
+
+  for (const msg of messages) {
+    // Handle tool results separately
+    if (msg.toolResults && msg.toolResults.length > 0) {
+      const parts: Part[] = msg.toolResults.map(tr => {
+        // Extract value from MCP content array if needed
+        let responseValue = tr.result;
+        if (Array.isArray(responseValue) && responseValue.length > 0 && responseValue[0].type === 'text') {
+          // MCP format: [{ type: 'text', text: '...' }]
+          responseValue = { content: responseValue[0].text };
+        }
+
+        return {
+          functionResponse: {
+            name: tr.toolName,
+            response: responseValue,
+          }
+        };
+      });
+      contents.push({ role: 'user', parts });
+      continue;
+    }
+
+    // Handle system messages
     if (msg.role === 'system') {
-      // System messages become the first user message
-      return {
+      contents.push({
         role: 'user',
         parts: [{ text: `[SYSTEM]\n${msg.content}` }]
-      };
+      });
+      continue;
     }
 
-    const parts: any[] = [{ text: msg.content }];
-
-    // Add tool results if present (must be in separate message from text)
-    if (msg.toolResults && msg.toolResults.length > 0) {
-      // For messages with tool results, don't include text in the same parts array
-      // Tool results go in user message, model response was in previous message
-      return {
-        role: 'user',
-        parts: msg.toolResults.map(toolResult => ({
-          functionResponse: {
-            name: toolResult.toolName,
-            response: {
-              result: toolResult.result,  // Gemini expects { result: ... }
-            },
-          }
-        }))
-      };
-    }
-
-    return {
+    // Regular messages
+    contents.push({
       role: msg.role === 'assistant' ? 'model' : 'user',
-      parts,
-    };
-  });
+      parts: [{ text: msg.content }]
+    });
+  }
+
+  return contents;
 }
