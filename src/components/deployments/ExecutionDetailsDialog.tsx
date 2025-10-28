@@ -17,7 +17,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { Loader2, Terminal, XCircle, Sparkles, Download, FolderOpen, FileText, ChevronDown, ChevronRight } from 'lucide-react';
+import { Loader2, Terminal, XCircle, Sparkles, Download, FolderOpen, FileText, ChevronDown, ChevronRight, Monitor } from 'lucide-react';
 import { useEffect, useState, Suspense, useCallback } from 'react';
 import { toast } from 'sonner';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
@@ -523,12 +523,16 @@ export function ExecutionDetailsDialog({
           className="flex-1 flex flex-col min-h-0"
         >
           <div className="px-6">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="logs">Orchestrator server logs</TabsTrigger>
               <TabsTrigger value="qa" className="flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
                 Q&A
+              </TabsTrigger>
+              <TabsTrigger value="agent-screen" className="flex items-center gap-1">
+                <Monitor className="w-3 h-3" />
+                Agent Screen
               </TabsTrigger>
             </TabsList>
           </div>
@@ -861,6 +865,42 @@ export function ExecutionDetailsDialog({
                   <Suspense fallback={<LoadingSkeleton />}>
                     <ExecutionAIChat execution={execution} />
                   </Suspense>
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="agent-screen" className="h-full">
+              {isTabLoading || !execution ? (
+                <LoadingSkeleton />
+              ) : (
+                <div className="h-full flex flex-col gap-4">
+                  <Alert className="border-black bg-blue-50">
+                    <Monitor className="h-4 w-4" />
+                    <AlertDescription>
+                      <div className="space-y-2">
+                        <p className="font-semibold">Agent RDP Viewer - Guacamole Interface</p>
+                        <p className="text-sm">
+                          Access the remote desktop of the agent machine executing this workflow.
+                          You&apos;ll need to log in to Guacamole with the following credentials:
+                        </p>
+                        <div className="font-mono text-xs bg-white p-2 rounded border border-black/20 mt-2">
+                          <div><strong>Username:</strong> admin</div>
+                          <div><strong>Password:</strong> mediar123</div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          After logging in, select the appropriate RDP connection to view the agent&apos;s screen.
+                        </p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                  <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white" style={{ minHeight: '600px' }}>
+                    <iframe
+                      src="http://4.157.122.69:8080/guacamole"
+                      className="w-full h-full"
+                      style={{ border: 'none' }}
+                      allow="clipboard-read; clipboard-write"
+                      title="Agent RDP Viewer (Guacamole)"
+                    />
+                  </div>
                 </div>
               )}
             </TabsContent>
