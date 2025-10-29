@@ -469,8 +469,8 @@ export function WorkflowCardEnhanced({
                       <DropdownMenuItem
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(`Are you sure you want to delete "${workflow.name}"? This action cannot be undone.`)) {
-                            fetch(`/api/workflows/${workflow.id}`, { method: 'DELETE' })
+                          if (confirm(`Are you sure you want to delete "${workflow.name}"? This will archive the workflow and preserve execution history.`)) {
+                            fetch(`/api/remote-workflows/${workflow.id}`, { method: 'DELETE' })
                               .then(res => res.json())
                               .then(data => {
                                 if (data.success) {
