@@ -1,17 +1,18 @@
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use std::time::Duration;
 use tokio::time::interval;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::db::{DatabasePool, queries::WorkflowQueries};
-use crate::models::{WorkflowSequence, ExecutionStatus};
+use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::mcp::{McpClient, WorkflowExecutor};
-use crate::services::{WorkflowService, GitHubLoader};
+use crate::models::{ExecutionStatus, WorkflowSequence};
+use crate::services::{GitHubLoader, WorkflowService};
 
 pub struct QueueProcessor {
     db_pool: DatabasePool,
     machine_id: String,
+    #[allow(dead_code)]
     workflow_service: WorkflowService,
 }
 
@@ -29,7 +30,10 @@ impl QueueProcessor {
 
     /// Start processing the queue
     pub async fn start(&self) -> Result<()> {
-        info!("Starting queue processor with machine_id: {}", self.machine_id);
+        info!(
+            "Starting queue processor with machine_id: {}",
+            self.machine_id
+        );
 
         let mut ticker = interval(Duration::from_secs(5));
 
@@ -52,12 +56,13 @@ impl QueueProcessor {
     /// Process the next available job
     async fn process_next_job(&self) -> Result<bool> {
         // Claim the next available execution
-        let execution = WorkflowQueries::claim_execution(&self.db_pool, &self.machine_id)
-            .await?;
+        let execution = WorkflowQueries::claim_execution(&self.db_pool, &self.machine_id).await?;
 
         if let Some(execution) = execution {
-            info!("Claimed execution {} for workflow {}",
-                  execution.id, execution.workflow_id);
+            info!(
+                "Claimed execution {} for workflow {}",
+                execution.id, execution.workflow_id
+            );
 
             // Get workflow details
             let workflow = WorkflowQueries::get_workflow(&self.db_pool, execution.workflow_id)
@@ -66,8 +71,10 @@ impl QueueProcessor {
 
             // Check for failure patterns before executing
             if WorkflowQueries::check_failure_patterns(&self.db_pool, workflow.id).await? {
-                warn!("Workflow {} has consecutive failures, skipping execution",
-                      workflow.id);
+                warn!(
+                    "Workflow {} has consecutive failures, skipping execution",
+                    workflow.id
+                );
 
                 // Cancel the execution
                 WorkflowQueries::update_execution_status(
@@ -76,7 +83,8 @@ impl QueueProcessor {
                     ExecutionStatus::Cancelled,
                     Some("Auto-cancelled due to consecutive failures".to_string()),
                     None,
-                ).await?;
+                )
+                .await?;
 
                 return Ok(false);
             }
@@ -85,13 +93,21 @@ impl QueueProcessor {
             let sequence = self.load_workflow_sequence(&workflow).await?;
 
             // Get MCP endpoint from execution record (preferred) or execution params or environment
-            info!("DEBUG: execution.mcp_endpoint = {:?}", execution.mcp_endpoint);
-            info!("DEBUG: execution.execution_params = {:?}", execution.execution_params);
+            info!(
+                "DEBUG: execution.mcp_endpoint = {:?}",
+                execution.mcp_endpoint
+            );
+            info!(
+                "DEBUG: execution.execution_params = {:?}",
+                execution.execution_params
+            );
 
-            let mcp_endpoint = execution.mcp_endpoint
+            let mcp_endpoint = execution
+                .mcp_endpoint
                 .clone()
                 .or_else(|| {
-                    execution.execution_params
+                    execution
+                        .execution_params
                         .as_ref()
                         .and_then(|p| p.get("mcp_endpoint"))
                         .and_then(|v| v.as_str())
@@ -112,7 +128,8 @@ impl QueueProcessor {
                 0,
                 total_steps,
                 None,
-            ).await?;
+            )
+            .await?;
 
             // Execute workflow
             let mcp_client = McpClient::from_url(mcp_endpoint);
@@ -133,11 +150,18 @@ impl QueueProcessor {
                         },
                         workflow_result.error.clone(),
                         workflow_result.data.clone(),
-                    ).await?;
+                    )
+                    .await?;
 
-                    info!("Execution {} completed with status: {:?}",
-                          execution.id,
-                          if workflow_result.success { "success" } else { "failure" });
+                    info!(
+                        "Execution {} completed with status: {:?}",
+                        execution.id,
+                        if workflow_result.success {
+                            "success"
+                        } else {
+                            "failure"
+                        }
+                    );
                 }
                 Err(e) => {
                     error!("Execution {} failed: {}", execution.id, e);
@@ -148,7 +172,8 @@ impl QueueProcessor {
                         ExecutionStatus::Failed,
                         Some(e.to_string()),
                         None,
-                    ).await?;
+                    )
+                    .await?;
                 }
             }
 
@@ -175,7 +200,10 @@ impl QueueProcessor {
                     return WorkflowSequence::from_yaml(&yaml_content);
                 }
                 Err(e) => {
-                    warn!("Failed to load from GitHub: {}, falling back to database", e);
+                    warn!(
+                        "Failed to load from GitHub: {}, falling back to database",
+                        e
+                    );
                 }
             }
         }

@@ -1,12 +1,12 @@
+use serde_json::json;
+use std::sync::Arc;
+use uuid::Uuid;
 /// API Simulation Test - Demonstrates the API functionality without running a server
 use workflow_executor::{
+    api,
     models::{ExecutionRequest, ExecutionResponse, ExecutionStatus, Workflow, WorkflowStatus},
     services::WorkflowService,
-    api,
 };
-use serde_json::json;
-use uuid::Uuid;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -65,9 +65,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mcp_endpoint: "http://localhost:3000".to_string(),
     };
     println!("   {{");
-    println!("     \"workflow_id\": \"{}\",", execution_request.workflow_id);
-    println!("     \"mcp_endpoint\": \"{}\",", execution_request.mcp_endpoint);
-    println!("     \"client_id\": \"{}\"", execution_request.client_id.as_ref().unwrap());
+    println!(
+        "     \"workflow_id\": \"{}\",",
+        execution_request.workflow_id
+    );
+    println!(
+        "     \"mcp_endpoint\": \"{}\",",
+        execution_request.mcp_endpoint
+    );
+    println!(
+        "     \"client_id\": \"{}\"",
+        execution_request.client_id.as_ref().unwrap()
+    );
     println!("   }}");
 
     println!("\n   Response:");
@@ -82,7 +91,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         logs: None,
     };
     println!("   {{");
-    println!("     \"execution_id\": \"{}\",", execution_response.execution_id);
+    println!(
+        "     \"execution_id\": \"{}\",",
+        execution_response.execution_id
+    );
     println!("     \"status\": \"queued\",");
     println!("     \"message\": \"{}\"", execution_response.message);
     println!("   }}\n");
@@ -97,7 +109,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   }}\n");
 
     // Simulate execution status check
-    println!("5. Get Execution Status (/api/v1/executions/{}):", execution_response.execution_id);
+    println!(
+        "5. Get Execution Status (/api/v1/executions/{}):",
+        execution_response.execution_id
+    );
     println!("   Response: {{");
     println!("     \"id\": \"{}\",", execution_response.execution_id);
     println!("     \"workflow_id\": \"{}\",", sample_workflow.id);

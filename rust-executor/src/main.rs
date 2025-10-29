@@ -1,26 +1,19 @@
 use anyhow::Result;
-use axum::{
-    Router,
-    extract::DefaultBodyLimit,
-};
+use axum::{extract::DefaultBodyLimit, Router};
 use std::net::SocketAddr;
-use tower_http::{
-    cors::CorsLayer,
-    compression::CompressionLayer,
-    trace::TraceLayer,
-};
-use tracing::{info, error};
+use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod models;
+mod api;
 mod db;
 mod mcp;
-mod api;
+mod models;
 mod services;
-mod utils;
 mod storage;
+mod utils;
 
-use crate::db::{DatabasePool, create_pool};
+use crate::db::{create_pool, DatabasePool};
 use crate::services::QueueProcessor;
 
 #[tokio::main]
@@ -33,7 +26,8 @@ async fn main() -> Result<()> {
 
     // Force flush to ensure logs are written
     eprintln!("=== RUST EXECUTOR STARTING ===");
-    eprintln!("Environment: PORT={}, RUST_LOG={}",
+    eprintln!(
+        "Environment: PORT={}, RUST_LOG={}",
         std::env::var("PORT").unwrap_or_else(|_| "not set".to_string()),
         std::env::var("RUST_LOG").unwrap_or_else(|_| "not set".to_string())
     );
@@ -44,13 +38,17 @@ async fn main() -> Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://localhost/mediar_workflows".to_string());
 
-    info!("Attempting to connect to database: {}", database_url.split('@').last().unwrap_or("unknown"));
+    info!(
+        "Attempting to connect to database: {}",
+        database_url.split('@').last().unwrap_or("unknown")
+    );
 
     // Try to connect with timeout
     let db_pool_result = tokio::time::timeout(
         std::time::Duration::from_secs(10),
-        create_pool(&database_url)
-    ).await;
+        create_pool(&database_url),
+    )
+    .await;
 
     let db_pool = match db_pool_result {
         Ok(Ok(pool)) => {
@@ -61,13 +59,21 @@ async fn main() -> Result<()> {
             error!("✗ Failed to connect to database: {}", e);
             error!("  Creating empty pool to allow API to start");
             // Return error but with better message
-            return Err(anyhow::anyhow!("Database connection failed: {}. Check network connectivity to Supabase.", e));
+            return Err(anyhow::anyhow!(
+                "Database connection failed: {}. Check network connectivity to Supabase.",
+                e
+            ));
         }
         Err(_) => {
             error!("✗ Database connection timed out after 10 seconds");
             error!("  This usually means DNS resolution or network connectivity issues");
-            error!("  Check that the container can reach: {}", database_url.split('@').last().unwrap_or("unknown"));
-            return Err(anyhow::anyhow!("Database connection timeout. Network/DNS issue suspected."));
+            error!(
+                "  Check that the container can reach: {}",
+                database_url.split('@').last().unwrap_or("unknown")
+            );
+            return Err(anyhow::anyhow!(
+                "Database connection timeout. Network/DNS issue suspected."
+            ));
         }
     };
 
@@ -95,12 +101,10 @@ async fn main() -> Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| {
-            error!("Server error: {}", e);
-            anyhow::anyhow!("Server error: {}", e)
-        })?;
+    axum::serve(listener, app).await.map_err(|e| {
+        error!("Server error: {}", e);
+        anyhow::anyhow!("Server error: {}", e)
+    })?;
 
     Ok(())
 }

@@ -1,9 +1,8 @@
-use workflow_executor::models::{
-    WorkflowResult, WorkflowState, StepResult, StepStatus,
-    ExecutionStatus, ExecutionRequest,
-};
-use uuid::Uuid;
 use serde_json::json;
+use uuid::Uuid;
+use workflow_executor::models::{
+    ExecutionRequest, ExecutionStatus, StepResult, StepStatus, WorkflowResult, WorkflowState,
+};
 
 #[test]
 fn test_workflow_result_creation() {
@@ -17,10 +16,8 @@ fn test_workflow_result_creation() {
     assert!(success_result.error.is_none());
     assert!(success_result.data.is_some());
 
-    let failure_result = WorkflowResult::failure(
-        "Workflow failed".to_string(),
-        "Error details".to_string(),
-    );
+    let failure_result =
+        WorkflowResult::failure("Workflow failed".to_string(), "Error details".to_string());
 
     assert!(!failure_result.success);
     assert_eq!(failure_result.state, WorkflowState::Failure);
@@ -122,10 +119,8 @@ fn test_step_status_transitions() {
 
 #[test]
 fn test_workflow_result_with_steps() {
-    let mut result = WorkflowResult::success(
-        "Completed".to_string(),
-        Some(json!({"final": "data"})),
-    );
+    let mut result =
+        WorkflowResult::success("Completed".to_string(), Some(json!({"final": "data"})));
 
     result.total_steps = 3;
     result.steps_completed = 3;
@@ -167,5 +162,8 @@ fn test_workflow_result_with_steps() {
     assert_eq!(result.execution_time_ms, 1500);
 
     // Verify all steps succeeded
-    assert!(result.step_results.iter().all(|s| s.status == StepStatus::Success));
+    assert!(result
+        .step_results
+        .iter()
+        .all(|s| s.status == StepStatus::Success));
 }

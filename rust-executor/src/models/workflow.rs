@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use chrono::{DateTime, Utc};
 use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -107,10 +107,10 @@ impl WorkflowSequence {
 
         for (i, step) in self.steps.iter().enumerate() {
             if step.tool_name.is_none() && step.group_name.is_none() {
-                anyhow::bail!("Step {} must have either tool_name or group_name", i);
+                anyhow::bail!("Step {i} must have either tool_name or group_name");
             }
             if step.tool_name.is_some() && step.group_name.is_some() {
-                anyhow::bail!("Step {} cannot have both tool_name and group_name", i);
+                anyhow::bail!("Step {i} cannot have both tool_name and group_name");
             }
         }
 
@@ -239,7 +239,10 @@ mod tests {
         assert_eq!(sequence.start_from_step, Some("step1".to_string()));
         assert_eq!(sequence.end_at_step, Some("step2".to_string()));
         assert_eq!(sequence.follow_fallback, Some(false));
-        assert_eq!(sequence.scripts_base_path, Some("S:\\workflows\\123\\".to_string()));
+        assert_eq!(
+            sequence.scripts_base_path,
+            Some("S:\\workflows\\123\\".to_string())
+        );
         assert!(sequence.validate().is_ok());
     }
 }

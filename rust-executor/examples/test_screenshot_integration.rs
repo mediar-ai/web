@@ -1,7 +1,7 @@
-use workflow_executor::models::{WorkflowSequence, WorkflowStep, ErrorStrategy, StepStatus};
-use workflow_executor::mcp::{McpClient, WorkflowExecutor};
 use serde_json::json;
 use uuid::Uuid;
+use workflow_executor::mcp::{McpClient, WorkflowExecutor};
+use workflow_executor::models::{ErrorStrategy, StepStatus, WorkflowSequence, WorkflowStep};
 
 /// Integration test that:
 /// 1. Starts the Terminator MCP server locally
@@ -42,7 +42,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !std::path::Path::new(terminator_binary).exists() {
         println!("   ✗ Terminator binary not found at: {}", terminator_binary);
         println!("   Please build it first:");
-        println!("     cd ../../terminator && cargo build --release --package terminator-mcp-agent");
+        println!(
+            "     cd ../../terminator && cargo build --release --package terminator-mcp-agent"
+        );
         return Err("Terminator MCP agent not found".into());
     }
 
@@ -59,7 +61,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   ✓ Connected! Available tools: {}", tools.len());
 
             // Show relevant screenshot tools
-            let screenshot_tools: Vec<_> = tools.iter()
+            let screenshot_tools: Vec<_> = tools
+                .iter()
                 .filter(|t| t.name.contains("screenshot") || t.name.contains("capture"))
                 .collect();
 
@@ -153,18 +156,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let result = match executor.execute().await {
         Ok(result) => {
             println!("\n5. Workflow execution completed!");
-            println!("   Status: {}", if result.success { "SUCCESS ✓" } else { "PARTIAL ⚠" });
+            println!(
+                "   Status: {}",
+                if result.success {
+                    "SUCCESS ✓"
+                } else {
+                    "PARTIAL ⚠"
+                }
+            );
             println!("   Message: {}", result.message);
-            println!("   Steps completed: {}/{}", result.steps_completed, result.total_steps);
+            println!(
+                "   Steps completed: {}/{}",
+                result.steps_completed, result.total_steps
+            );
             println!("   Execution time: {}ms", result.execution_time_ms);
 
             if !result.step_results.is_empty() {
                 println!("\n   Step Results:");
                 for step_result in &result.step_results {
-                    println!("     - {} ({}): {:?}",
-                             step_result.step_id,
-                             step_result.tool_name,
-                             step_result.status);
+                    println!(
+                        "     - {} ({}): {:?}",
+                        step_result.step_id, step_result.tool_name, step_result.status
+                    );
                     if let Some(error) = &step_result.error {
                         println!("       Error: {}", error);
                     }
@@ -182,7 +195,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check for screenshot results
     println!("\n6. Checking screenshot results...");
-    let screenshot_step = result.step_results.iter()
+    let screenshot_step = result
+        .step_results
+        .iter()
         .find(|s| s.step_id == "take_screenshot");
 
     if let Some(screenshot_result) = screenshot_step {
@@ -219,12 +234,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  2. ✓ Listed available automation tools");
     println!("  3. ✓ Created and validated workflow with screenshot capture");
     println!("  4. ✓ Executed workflow with browser automation");
-    println!("  5. {} Screenshot capture and upload",
-             if screenshot_step.map(|s| s.status == StepStatus::Success).unwrap_or(false) {
-                 "✓"
-             } else {
-                 "⚠"
-             });
+    println!(
+        "  5. {} Screenshot capture and upload",
+        if screenshot_step
+            .map(|s| s.status == StepStatus::Success)
+            .unwrap_or(false)
+        {
+            "✓"
+        } else {
+            "⚠"
+        }
+    );
 
     if supabase_url.is_some() {
         println!("\n💡 To test Supabase upload, check the execution in your dashboard");

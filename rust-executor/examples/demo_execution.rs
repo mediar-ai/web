@@ -1,5 +1,5 @@
-use workflow_executor::models::{WorkflowSequence, WorkflowStep, ErrorStrategy};
 use serde_json::json;
+use workflow_executor::models::{ErrorStrategy, WorkflowSequence, WorkflowStep};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -81,7 +81,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let default_id = "unnamed".to_string();
         let id = step.id.as_ref().unwrap_or(&default_id);
         let default_tool = "unknown".to_string();
-        let tool = step.tool_name.as_ref()
+        let tool = step
+            .tool_name
+            .as_ref()
             .or(step.group_name.as_ref())
             .unwrap_or(&default_tool);
         println!("   Step {}: {} ({})", i + 1, id, tool);

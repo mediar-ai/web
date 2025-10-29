@@ -65,8 +65,14 @@ mod screenshot_tests {
         let screenshots = extract_screenshots_from_response(&mock_response).unwrap();
 
         assert_eq!(screenshots.len(), 2, "Should extract 2 screenshots");
-        assert!(screenshots[0].starts_with("iVBORw0"), "First screenshot should be valid base64 PNG");
-        assert!(screenshots[1].starts_with("iVBORw0"), "Second screenshot should be valid base64 PNG");
+        assert!(
+            screenshots[0].starts_with("iVBORw0"),
+            "First screenshot should be valid base64 PNG"
+        );
+        assert!(
+            screenshots[1].starts_with("iVBORw0"),
+            "Second screenshot should be valid base64 PNG"
+        );
     }
 
     #[test]
@@ -83,7 +89,11 @@ mod screenshot_tests {
 
         let screenshots = extract_screenshots_from_response(&mock_response).unwrap();
 
-        assert_eq!(screenshots.len(), 0, "Should extract 0 screenshots from text-only response");
+        assert_eq!(
+            screenshots.len(),
+            0,
+            "Should extract 0 screenshots from text-only response"
+        );
     }
 
     #[test]
@@ -95,7 +105,11 @@ mod screenshot_tests {
 
         let screenshots = extract_screenshots_from_response(&mock_response).unwrap();
 
-        assert_eq!(screenshots.len(), 0, "Should extract 0 screenshots from empty response");
+        assert_eq!(
+            screenshots.len(),
+            0,
+            "Should extract 0 screenshots from empty response"
+        );
     }
 
     #[test]
@@ -113,7 +127,11 @@ mod screenshot_tests {
 
         let screenshots = extract_screenshots_from_response(&mock_response).unwrap();
 
-        assert_eq!(screenshots.len(), 0, "Should handle missing data field gracefully");
+        assert_eq!(
+            screenshots.len(),
+            0,
+            "Should handle missing data field gracefully"
+        );
     }
 
     /// Integration test - requires actual MCP server to be running
@@ -127,7 +145,7 @@ mod screenshot_tests {
         let client = Client::new();
 
         for endpoint in TEST_ENDPOINTS {
-            println!("Testing endpoint: {}", endpoint);
+            println!("Testing endpoint: {endpoint}");
 
             // Step 1: Initialize session
             let init_request = json!({
@@ -155,7 +173,8 @@ mod screenshot_tests {
             assert_eq!(init_response.status(), 200, "Initialization should succeed");
 
             // Extract session ID if provided
-            let session_id = init_response.headers()
+            let session_id = init_response
+                .headers()
                 .get("mcp-session-id")
                 .and_then(|v| v.to_str().ok());
 
@@ -193,7 +212,8 @@ mod screenshot_tests {
             // Parse response (handle SSE format)
             let json_text = if response_text.starts_with("data: ") {
                 // SSE format
-                response_text.lines()
+                response_text
+                    .lines()
                     .find(|line| line.starts_with("data: "))
                     .and_then(|line| line.strip_prefix("data: "))
                     .unwrap_or(&response_text)
@@ -207,11 +227,15 @@ mod screenshot_tests {
             if let Some(result) = response_json.get("result") {
                 let screenshots = extract_screenshots_from_response(result)?;
 
-                println!("Endpoint {} returned {} screenshots", endpoint, screenshots.len());
+                println!(
+                    "Endpoint {} returned {} screenshots",
+                    endpoint,
+                    screenshots.len()
+                );
 
                 // Assert we got at least one screenshot
                 assert!(
-                    screenshots.len() > 0,
+                    !screenshots.is_empty(),
                     "MCP server should return at least one screenshot when include_monitor_screenshots=true"
                 );
 
@@ -227,11 +251,11 @@ mod screenshot_tests {
                     // Base64 encoded PNGs start with "iVBORw0KGgo" (PNG signature)
                     // This is optional but helps verify data integrity
                     if screenshot.starts_with("iVBORw0KGgo") {
-                        println!("  ✓ Screenshot {} has valid PNG signature", idx);
+                        println!("  ✓ Screenshot {idx} has valid PNG signature");
                     }
                 }
             } else {
-                panic!("Response missing 'result' field: {:?}", response_json);
+                panic!("Response missing 'result' field: {response_json:?}");
             }
         }
 

@@ -144,6 +144,9 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        // Track emitted function calls to prevent duplicates
+        const emittedFunctionCalls = new Set<string>();
+
         try {
           for await (const chunk of result.stream) {
             // Extract text
@@ -164,24 +167,40 @@ export async function POST(req: NextRequest) {
             // Check for function calls
             const functionCalls = candidate.content.parts.filter(p => 'functionCall' in p);
             if (functionCalls.length > 0) {
+              let hasNewFunctionCall = false;
+
               for (const part of functionCalls) {
                 if ('functionCall' in part && part.functionCall) {
-                  controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify({
-                      type: 'tool_call',
-                      id: crypto.randomUUID(),
-                      name: part.functionCall.name,
-                      args: part.functionCall.args,
-                    })}\n\n`)
-                  );
+                  // Create signature for deduplication (name + args)
+                  const signature = `${part.functionCall.name}:${JSON.stringify(part.functionCall.args)}`;
+
+                  if (!emittedFunctionCalls.has(signature)) {
+                    emittedFunctionCalls.add(signature);
+                    hasNewFunctionCall = true;
+
+                    controller.enqueue(
+                      encoder.encode(`data: ${JSON.stringify({
+                        type: 'tool_call',
+                        id: crypto.randomUUID(),
+                        name: part.functionCall.name,
+                        args: part.functionCall.args,
+                      })}\n\n`)
+                    );
+                    console.log(`[STREAM-PROXY] Emitted tool call: ${part.functionCall.name}`);
+                  } else {
+                    console.log(`[STREAM-PROXY] Skipping duplicate tool call: ${part.functionCall.name}`);
+                  }
                 }
               }
 
-              // Signal waiting for tool results
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: 'tool_wait' })}\n\n`)
-              );
-              break; // Stop streaming, wait for tool results
+              // Only send tool_wait and break if we emitted at least one new function call
+              if (hasNewFunctionCall) {
+                // Signal waiting for tool results
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ type: 'tool_wait' })}\n\n`)
+                );
+                break; // Stop streaming, wait for tool results
+              }
             }
           }
 

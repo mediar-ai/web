@@ -1,5 +1,5 @@
-use workflow_executor::models::{WorkflowSequence, WorkflowStep, ErrorStrategy};
 use serde_json::json;
+use workflow_executor::models::{ErrorStrategy, WorkflowSequence};
 
 #[test]
 fn test_workflow_sequence_parsing() {
@@ -143,26 +143,29 @@ fn test_error_strategy_parsing() {
     assert_eq!(sequence.steps.len(), 4);
 
     match &sequence.steps[0].on_error {
-        Some(ErrorStrategy::Stop) => {},
+        Some(ErrorStrategy::Stop) => {}
         _ => panic!("Expected Stop strategy"),
     }
 
     match &sequence.steps[1].on_error {
-        Some(ErrorStrategy::Continue) => {},
+        Some(ErrorStrategy::Continue) => {}
         _ => panic!("Expected Continue strategy"),
     }
 
     match &sequence.steps[2].on_error {
-        Some(ErrorStrategy::Retry) => {},
+        Some(ErrorStrategy::Retry) => {}
         _ => panic!("Expected Retry strategy"),
     }
 
     assert_eq!(sequence.steps[2].retry_count, Some(3));
 
     match &sequence.steps[3].on_error {
-        Some(ErrorStrategy::Fallback) => {},
+        Some(ErrorStrategy::Fallback) => {}
         _ => panic!("Expected Fallback strategy"),
     }
 
-    assert_eq!(sequence.steps[3].fallback_id, Some("fallback_step".to_string()));
+    assert_eq!(
+        sequence.steps[3].fallback_id,
+        Some("fallback_step".to_string())
+    );
 }

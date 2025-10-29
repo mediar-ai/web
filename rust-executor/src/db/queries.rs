@@ -1,16 +1,13 @@
-use sqlx::{Pool, Postgres, Row};
-use chrono::Utc;
+use crate::models::{ExecutionStatus, Workflow, WorkflowExecution, WorkflowStatus};
 use anyhow::Result;
-use crate::models::{Workflow, WorkflowExecution, ExecutionStatus, WorkflowStatus};
+use chrono::Utc;
 use serde_json::Value;
+use sqlx::{Pool, Postgres, Row};
 
 pub struct WorkflowQueries;
 
 impl WorkflowQueries {
-    pub async fn get_workflow(
-        pool: &Pool<Postgres>,
-        workflow_id: i64,
-    ) -> Result<Option<Workflow>> {
+    pub async fn get_workflow(pool: &Pool<Postgres>, workflow_id: i64) -> Result<Option<Workflow>> {
         // CRITICAL FIX: Join with deployed_workflow_versions to get the ACTIVE version
         // Previously used deployed_workflows_with_sequence view which returned stale YAML
         let workflow = sqlx::query(
@@ -213,11 +210,19 @@ impl WorkflowQueries {
         .bind(status_str)
         .bind(error_message)
         .bind(result)
-        .bind(if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled | ExecutionStatus::Exception) {
-            Some(now)
-        } else {
-            None
-        })
+        .bind(
+            if matches!(
+                status,
+                ExecutionStatus::Completed
+                    | ExecutionStatus::Failed
+                    | ExecutionStatus::Cancelled
+                    | ExecutionStatus::Exception
+            ) {
+                Some(now)
+            } else {
+                None
+            },
+        )
         .bind(now)
         .bind(execution_id)
         .execute(pool)
@@ -275,10 +280,7 @@ impl WorkflowQueries {
         Ok(())
     }
 
-    pub async fn check_failure_patterns(
-        pool: &Pool<Postgres>,
-        workflow_id: i64,
-    ) -> Result<bool> {
+    pub async fn check_failure_patterns(pool: &Pool<Postgres>, workflow_id: i64) -> Result<bool> {
         let result = sqlx::query(
             r#"
             SELECT COUNT(*) as count
