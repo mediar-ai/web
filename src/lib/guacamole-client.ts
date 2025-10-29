@@ -133,7 +133,7 @@ export function generateConnectionUrl(
 
 /**
  * Helper to get a direct connection URL for a specific machine
- * Combines authentication + connection lookup + URL generation
+ * Works with file-based authentication (user-mapping.xml)
  */
 export async function getDirectConnectionUrl(
   guacamoleUrl: string,
@@ -141,36 +141,26 @@ export async function getDirectConnectionUrl(
   password: string,
   machineNameOrIp: string
 ): Promise<{ url: string; connectionName: string }> {
-  // 1. Authenticate
+  // 1. Authenticate to get token
   const auth = await authenticateGuacamole(guacamoleUrl, username, password);
 
-  // 2. Get available connections
-  const connections = await getGuacamoleConnections(
-    guacamoleUrl,
-    auth.authToken,
-    auth.dataSource
-  );
+  // 2. For file-based authentication (user-mapping.xml), the connection name
+  //    is used directly in the URL format: /client/c/{connection-name}
+  //    The connection name should match what's in user-mapping.xml
+  const connectionName = `MCP-${machineNameOrIp}`;
 
-  // 3. Find the connection for this machine
-  const connection = findConnectionByName(connections, machineNameOrIp);
+  console.log('[Guacamole] Generating connection URL:', {
+    connectionName,
+    machineNameOrIp,
+    authToken: auth.authToken.substring(0, 10) + '...',
+  });
 
-  if (!connection) {
-    throw new Error(
-      `No Guacamole connection found for machine: ${machineNameOrIp}. ` +
-      `Available connections: ${connections.map(c => c.name).join(', ')}`
-    );
-  }
-
-  // 4. Generate the direct URL
-  const url = generateConnectionUrl(
-    guacamoleUrl,
-    auth.authToken,
-    connection.identifier,
-    auth.dataSource
-  );
+  // 3. Generate URL with file-based auth format
+  // Format for user-mapping.xml: /guacamole/#/client/c/{connection-name}?token={token}
+  const url = `${guacamoleUrl}/#/client/c/${encodeURIComponent(connectionName)}?token=${auth.authToken}`;
 
   return {
     url,
-    connectionName: connection.name,
+    connectionName,
   };
 }
