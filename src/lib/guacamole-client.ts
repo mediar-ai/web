@@ -144,20 +144,27 @@ export async function getDirectConnectionUrl(
   // 1. Authenticate to get token
   const auth = await authenticateGuacamole(guacamoleUrl, username, password);
 
-  // 2. For file-based authentication (user-mapping.xml), the connection name
-  //    is used directly in the URL format: /client/c/{connection-name}
-  //    The connection name should match what's in user-mapping.xml
+  // 2. Build connection name matching user-mapping.xml format
   const connectionName = `MCP-${machineNameOrIp}`;
+
+  // 3. Guacamole uses base64-encoded connection identifiers
+  // Format: {connection-name}\0{type}\0{data-source}
+  // Example: "MCP-mcp-vm2\0c\0default" -> base64 -> "TUNQLW1jcC12bTIAYwBkZWZhdWx0"
+  const identifierParts = [connectionName, 'c', auth.dataSource];
+  const identifierString = identifierParts.join('\0');
+  const encodedIdentifier = Buffer.from(identifierString, 'utf-8').toString('base64');
 
   console.log('[Guacamole] Generating connection URL:', {
     connectionName,
     machineNameOrIp,
+    dataSource: auth.dataSource,
+    encodedIdentifier,
     authToken: auth.authToken.substring(0, 10) + '...',
   });
 
-  // 3. Generate URL with file-based auth format
-  // Format for user-mapping.xml: /guacamole/#/client/c/{connection-name}?token={token}
-  const url = `${guacamoleUrl}/#/client/c/${encodeURIComponent(connectionName)}?token=${auth.authToken}`;
+  // 4. Generate URL with base64-encoded identifier
+  // Format: /guacamole/#/client/{base64-identifier}?token={token}
+  const url = `${guacamoleUrl}/#/client/${encodedIdentifier}?token=${auth.authToken}`;
 
   return {
     url,
