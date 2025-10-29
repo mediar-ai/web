@@ -72,8 +72,28 @@ impl WorkflowExecutor {
         // Process variables
         let variables = self.process_variables()?;
 
-        // Execute each step
-        for (index, step) in self.sequence.steps.iter().enumerate() {
+        // Determine partial execution bounds
+        let mut start_index = 0usize;
+        let mut end_index = self.sequence.steps.len().saturating_sub(1);
+        if let Some(ref start_id) = self.sequence.start_from_step {
+            if let Some(i) = self.sequence.steps.iter().position(|s| s.id.as_ref() == Some(start_id)) {
+                start_index = i;
+            }
+        }
+        if let Some(ref end_id) = self.sequence.end_at_step {
+            if let Some(i) = self.sequence.steps.iter().position(|s| s.id.as_ref() == Some(end_id)) {
+                end_index = i;
+            }
+        }
+
+        // Execute each step within bounds
+        for (index, step) in self.sequence
+            .steps
+            .iter()
+            .enumerate()
+            .skip(start_index)
+            .take(end_index.saturating_sub(start_index) + 1)
+        {
             let step_id = step.id.clone()
                 .unwrap_or_else(|| format!("step_{}", index));
 
@@ -149,15 +169,51 @@ impl WorkflowExecutor {
                             continue;
                         }
                         ErrorStrategy::Retry => {
-                            // Retry logic would go here
-                            warn!("Retry not implemented yet for step {}", step_id);
+                            // Already handled by retry_count loop inside execute_step
+                            warn!("Retry attempted for step {} (using retry_count), continuing", step_id);
                             continue;
                         }
                         ErrorStrategy::Fallback => {
                             if let Some(fallback_id) = &step.fallback_id {
-                                warn!("Executing fallback step {} for failed step {}",
-                                      fallback_id, step_id);
-                                // Fallback logic would go here
+                                warn!("Executing fallback step {} for failed step {}", fallback_id, step_id);
+                                if let Some(fb_step) = self.sequence.steps.iter().find(|s| s.id.as_ref() == Some(fallback_id)) {
+                                    let fb_tool_name = fb_step.tool_name.clone().or(fb_step.group_name.clone()).context("Fallback step must have tool_name or group_name")?;
+                                    let fb_args = self.process_step_arguments(fb_step, &variables)?;
+                                    let fb_res = self.client
+                                        .execute_tool_with_timeout(
+                                            fb_tool_name.clone(),
+                                            fb_args.clone(),
+                                            fb_step.timeout,
+                                        )
+                                        .await;
+                                    match fb_res {
+                                        Ok(value) => {
+                                            let fb_duration_ms = start_time.elapsed().as_millis() as u64;
+                                            step_results.push(StepResult {
+                                                step_id: fallback_id.clone(),
+                                                tool_name: fb_tool_name,
+                                                status: StepStatus::Success,
+                                                result: Some(value),
+                                                error: None,
+                                                duration_ms: Some(fb_duration_ms),
+                                                retry_count: Some(0),
+                                            });
+                                        }
+                                        Err(fe) => {
+                                            step_results.push(StepResult {
+                                                step_id: fallback_id.clone(),
+                                                tool_name: fb_tool_name,
+                                                status: StepStatus::Failed,
+                                                result: None,
+                                                error: Some(fe.to_string()),
+                                                duration_ms: None,
+                                                retry_count: Some(0),
+                                            });
+                                        }
+                                    }
+                                } else {
+                                    warn!("Fallback step '{}' not found; continuing", fallback_id);
+                                }
                             }
                             continue;
                         }
@@ -218,7 +274,13 @@ impl WorkflowExecutor {
                 warn!("Retrying step {} (attempt {}/{})", step_id, attempt + 1, retry_count + 1);
             }
 
-            let result = self.client.execute_tool(tool_name.clone(), arguments.clone()).await;
+            let result = self.client
+                .execute_tool_with_timeout(
+                    tool_name.clone(),
+                    arguments.clone(),
+                    step.timeout, // milliseconds
+                )
+                .await;
 
             match result {
                 Ok(value) => {
@@ -318,6 +380,12 @@ impl WorkflowExecutor {
                 // unless explicitly provided by the workflow step.
                 processed.entry("include_monitor_screenshots".to_string())
                     .or_insert(Value::Bool(false));
+
+                // Propagate scripts_base_path to steps when provided at sequence level
+                if let Some(base) = &self.sequence.scripts_base_path {
+                    processed.entry("scripts_base_path".to_string())
+                        .or_insert(Value::String(base.clone()));
+                }
 
                 return Ok(Some(processed));
             } else {
