@@ -181,13 +181,15 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
 
       {/* Embedded Guacamole Viewer */}
       <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white" style={{ minHeight: '600px' }}>
-        <iframe
-          src={rdpUrl}
-          className="w-full h-full"
-          style={{ border: 'none' }}
-          title={`Agent Screen - ${connectionInfo?.machine_name || 'Machine'}`}
-          allow="clipboard-read; clipboard-write"
-        />
+        {rdpUrl && (
+          <iframe
+            src={rdpUrl}
+            className="w-full h-full"
+            style={{ border: 'none' }}
+            title={`Agent Screen - ${connectionInfo?.machine_name || 'Machine'}`}
+            allow="clipboard-read; clipboard-write"
+          />
+        )}
       </div>
     </div>
   );

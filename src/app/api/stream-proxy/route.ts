@@ -240,21 +240,28 @@ export async function POST(req: NextRequest) {
 function convertMessagesToVertex(messages: StreamProxyRequest['messages']): Content[] {
   const contents: Content[] = [];
 
+  console.log(`[STREAM-PROXY] Converting ${messages.length} messages to Vertex format`);
+
   for (const msg of messages) {
     // Handle tool results separately
     if (msg.toolResults && msg.toolResults.length > 0) {
       const parts: Part[] = msg.toolResults.map(tr => {
         // Extract value from MCP content array if needed
-        let responseValue = tr.result;
-        if (Array.isArray(responseValue) && responseValue.length > 0 && responseValue[0].type === 'text') {
+        let responseContent = tr.result;
+        if (Array.isArray(responseContent) && responseContent.length > 0 && responseContent[0].type === 'text') {
           // MCP format: [{ type: 'text', text: '...' }]
-          responseValue = { content: responseValue[0].text };
+          responseContent = responseContent[0].text;
         }
 
+        // Gemini requires function responses in specific format:
+        // response: { name: 'tool_name', content: {...} }
         return {
           functionResponse: {
             name: tr.toolName,
-            response: responseValue,
+            response: {
+              name: tr.toolName,
+              content: responseContent,
+            },
           }
         };
       });
@@ -267,6 +274,33 @@ function convertMessagesToVertex(messages: StreamProxyRequest['messages']): Cont
       contents.push({
         role: 'user',
         parts: [{ text: `[SYSTEM]\n${msg.content}` }]
+      });
+      continue;
+    }
+
+    // Handle assistant messages with function calls
+    if (msg.role === 'assistant' && (msg as any).toolCalls) {
+      const toolCalls = (msg as any).toolCalls;
+      const parts: Part[] = [];
+
+      // Add text if present
+      if (msg.content) {
+        parts.push({ text: msg.content });
+      }
+
+      // Add function calls
+      for (const call of toolCalls) {
+        parts.push({
+          functionCall: {
+            name: call.name,
+            args: call.args,
+          }
+        });
+      }
+
+      contents.push({
+        role: 'model',
+        parts,
       });
       continue;
     }
