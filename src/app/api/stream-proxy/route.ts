@@ -25,6 +25,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
+
 interface StreamProxyRequest {
   model?: string;
   messages: Array<{
@@ -87,14 +88,16 @@ function initVertexAI(): VertexAI {
     googleAuthOptions: {
       credentials: {
         client_email: credentials.client_email,
-n// Handle CORS preflight
-export async function OPTIONS(request: NextRequest) {
-  return NextResponse.json({}, { headers: corsHeaders });
-}
         private_key: credentials.private_key,
       },
     },
   });
+}
+
+
+// Handle CORS preflight
+export async function OPTIONS(request: NextRequest) {
+  return NextResponse.json({}, { headers: corsHeaders });
 }
 
 export async function POST(req: NextRequest) {
