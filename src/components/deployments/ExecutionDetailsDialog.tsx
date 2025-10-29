@@ -147,42 +147,35 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
   };
 
   return (
-    <div className="h-full flex flex-col gap-4">
-      <Alert className="border-black bg-green-50">
-        <Monitor className="h-4 w-4 text-green-600" />
-        <AlertDescription>
-          <div className="space-y-2">
-            <p className="font-semibold text-green-900">Agent Screen - Live RDP Session</p>
-            <p className="text-sm text-green-800">
-              Connected to <strong>{connectionInfo?.machine_name || 'agent machine'}</strong>.
-              You have full mouse and keyboard control.
-            </p>
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={openInNewWindow}
-                className="px-4 py-2 bg-black text-white text-sm font-mono hover:bg-gray-800 border-2 border-black"
-              >
-                OPEN IN NEW WINDOW
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              This connection is authenticated and time-limited for security. Clipboard access is enabled.
-            </p>
-          </div>
-        </AlertDescription>
-      </Alert>
-      <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white relative" style={{ minHeight: '700px', height: 'calc(100vh - 300px)' }}>
-        {rdpUrl && (
-          <iframe
-            src={rdpUrl}
-            className="absolute inset-0 w-full h-full"
-            style={{ border: 'none', minHeight: '700px' }}
-            allow="clipboard-read; clipboard-write; cross-origin-isolated"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
-            title="Agent RDP Viewer"
-            referrerPolicy="no-referrer-when-downgrade"
-          />
-        )}
+    <div className="h-full flex flex-col items-center justify-center gap-6 p-8">
+      <div className="text-center space-y-4 max-w-2xl">
+        <div className="inline-block p-4 bg-green-50 border-2 border-black rounded-lg">
+          <Monitor className="h-16 w-16 mx-auto mb-4" />
+          <h3 className="text-2xl font-mono font-bold mb-2">Agent Screen Ready</h3>
+          <p className="text-sm text-gray-700 mb-4">
+            Connected to <strong className="font-mono">{connectionInfo?.machine_name || 'agent machine'}</strong>
+          </p>
+          <button
+            onClick={openInNewWindow}
+            className="px-8 py-4 bg-black text-white text-lg font-mono font-bold hover:bg-gray-800 border-4 border-black uppercase shadow-lg transition-all hover:shadow-xl"
+          >
+            OPEN AGENT SCREEN
+          </button>
+          <p className="text-xs text-gray-600 mt-4">
+            Opens in a new window with full mouse and keyboard control.<br />
+            Clipboard access enabled. Connection is time-limited for security.
+          </p>
+        </div>
+
+        <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 text-left">
+          <p className="text-xs font-mono text-gray-600 mb-2">
+            <strong>Why a new window?</strong>
+          </p>
+          <p className="text-xs text-gray-600">
+            The RDP viewer works best in its own window for optimal performance and compatibility.
+            This gives you a dedicated space to view and control the agent desktop without browser restrictions.
+          </p>
+        </div>
       </div>
     </div>
   );
