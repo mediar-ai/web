@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
 import { ExecutionAIChat } from './ExecutionAIChat';
 import { Button } from '@/components/ui/button';
+import Image from 'next/image';
 
 interface ExecutionDetailsDialogProps {
   execution: Execution | null;
@@ -182,7 +183,7 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
           <Monitor className="h-16 w-16 mx-auto mb-4" />
           <h3 className="text-2xl font-bold mb-2">Watch Your Agent Work</h3>
           <p className="text-sm text-gray-700 mb-6">
-            See exactly what's happening on <strong>{connectionInfo?.machine_name || 'your agent machine'}</strong> in real-time
+            See exactly what&apos;s happening on <strong>{connectionInfo?.machine_name || 'your agent machine'}</strong> in real-time
           </p>
           <button
             onClick={openInNewWindow}
@@ -871,11 +872,13 @@ export function ExecutionDetailsDialog({
                                 </a>
                               </div>
                               <div className="border-2 border-black rounded-md overflow-hidden bg-gray-50">
-                                <img
+                                <Image
                                   src={imageSrc}
                                   alt={`Monitor ${idx + 1} screenshot`}
                                   className="w-full h-auto"
-                                  loading="lazy"
+                                  width={1920}
+                                  height={1080}
+                                  unoptimized
                                 />
                               </div>
                             </div>

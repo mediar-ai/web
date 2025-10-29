@@ -27,7 +27,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
   const [error, setError] = useState<Error | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [_isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [contextData, setContextData] = useState<any | null>(null);
   const [isLoadingContext, setIsLoadingContext] = useState(true);
 
