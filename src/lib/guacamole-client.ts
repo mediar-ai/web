@@ -144,8 +144,9 @@ export async function getDirectConnectionUrl(
   // 1. Authenticate to get token
   const auth = await authenticateGuacamole(guacamoleUrl, username, password);
 
-  // 2. Build connection name matching user-mapping.xml format
-  const connectionName = `MCP-${machineNameOrIp}`;
+  // 2. Use the machine name directly from the database
+  // The database should already have names in Guacamole format (e.g., "MCP-mcp-vm2")
+  const connectionName = machineNameOrIp;
 
   // 3. Guacamole uses base64-encoded connection identifiers
   // Format: {connection-name}\0{type}\0{data-source}

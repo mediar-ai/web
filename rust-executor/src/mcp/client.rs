@@ -100,6 +100,269 @@ impl McpClient {
         }
     }
 
+    async fn initialize_http_session(&self, url: &str) -> Result<()> {
+        let client = self.http_client.as_ref().context("HTTP client not initialized")?;
+
+        let init_payload = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "roots": { "listChanged": false },
+                    "sampling": {}
+                },
+                "clientInfo": {
+                    "name": "rust-workflow-executor",
+                    "version": env!("CARGO_PKG_VERSION")
+                }
+            }
+        });
+
+        // Exponential backoff for 503s to allow LB to reroute
+        let mut attempt: u32 = 0;
+        let max_retries: u32 = 5;
+        let mut backoff = Duration::from_millis(500);
+
+        loop {
+            info!("Initializing MCP session (attempt {}): {}", attempt + 1, url);
+            let init_response = client
+                .post(url)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream")
+                .header("Authorization", "Bearer cargorunmediar123")
+                .json(&init_payload)
+                .send()
+                .await
+                .context("Failed to initialize MCP session")?;
+
+            let status = init_response.status();
+
+            // Capture session header before consuming body
+            let session_header = init_response.headers().get("Mcp-Session-Id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            let body_text = init_response.text().await
+                .context("Failed to read initialization response")?;
+
+            debug!("MCP init response status: {}, body: {}", status, &body_text[..body_text.len().min(200)]);
+
+            if status.as_u16() == 503 {
+                if attempt >= max_retries {
+                    anyhow::bail!("All workers busy (503). Please retry shortly.");
+                }
+                warn!("Received 503 from MCP on initialize. Backing off for {:?}", backoff);
+                sleep(backoff).await;
+                backoff = backoff.saturating_mul(2);
+                attempt += 1;
+                continue;
+            }
+
+            if !status.is_success() {
+                anyhow::bail!("MCP session initialization failed: {} - {}", status, body_text);
+            }
+
+            // Handle SSE "data: " prefix
+            let json_text = if body_text.starts_with("data: ") { &body_text[6..] } else { &body_text };
+            let _init_result: serde_json::Value = serde_json::from_str(json_text)
+                .context(format!("Failed to parse initialization response. Status: {}, Body: {}", status, json_text))?;
+
+            if let Some(sid) = session_header {
+                let mut session_id_lock = self.session_id.lock().unwrap();
+                *session_id_lock = Some(sid.clone());
+                info!("Stored MCP session ID: {}", sid);
+            } else {
+                warn!("No Mcp-Session-Id header in initialization response");
+            }
+
+            // Send initialized notification
+            info!("Sending initialized notification...");
+            let initialized_payload = serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+                "params": {}
+            });
+
+            let mut notify_builder = client
+                .post(url)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream")
+                .header("Authorization", "Bearer cargorunmediar123");
+
+            if let Some(sid) = self.session_id.lock().unwrap().clone() {
+                notify_builder = notify_builder.header("Mcp-Session-Id", sid);
+            }
+
+            let _ = notify_builder
+                .json(&initialized_payload)
+                .send()
+                .await
+                .context("Failed to send initialized notification")?;
+
+            self.initialized.store(true, std::sync::atomic::Ordering::SeqCst);
+            info!("Session initialized successfully");
+            break;
+        }
+
+        Ok(())
+    }
+
+    async fn ensure_initialized(&self, url: &str) -> Result<()> {
+        if !self.initialized.load(std::sync::atomic::Ordering::SeqCst) {
+            self.initialize_http_session(url).await?;
+        }
+        Ok(())
+    }
+
+    async fn reinitialize_session(&self, url: &str) -> Result<()> {
+        // Reset state and re-init
+        self.initialized.store(false, std::sync::atomic::Ordering::SeqCst);
+        {
+            let mut sid = self.session_id.lock().unwrap();
+            *sid = None;
+        }
+        self.initialize_http_session(url).await
+    }
+
+    async fn build_request_with_session(&self, client: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
+        let mut rb = client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json, text/event-stream")
+            .header("Authorization", "Bearer cargorunmediar123");
+        if let Some(sid) = self.session_id.lock().unwrap().clone() {
+            rb = rb.header("Mcp-Session-Id", sid);
+        } else {
+            warn!("No session ID available for tool call - this may fail");
+        }
+        rb
+    }
+
+    /// Execute a tool with an optional per-request timeout (HTTP transport only)
+    pub async fn execute_tool_with_timeout(
+        &self,
+        tool_name: String,
+        arguments: Option<Map<String, Value>>,
+        timeout_ms: Option<u64>,
+    ) -> Result<Value> {
+        match &self.transport {
+            McpTransport::Http(url) => {
+                let client = self.http_client.as_ref().context("HTTP client not initialized")?;
+                // Ensure session
+                self.ensure_initialized(url).await?;
+
+                let payload = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/call",
+                    "params": {
+                        "name": tool_name,
+                        "arguments": arguments.unwrap_or_default(),
+                    }
+                });
+
+                info!("🔍 MCP TOOL CALL DEBUG:");
+                info!("  Payload: {}", serde_json::to_string_pretty(&payload)?);
+
+                let mut request_builder = self.build_request_with_session(client, url).await;
+                if let Some(ms) = timeout_ms { request_builder = request_builder.timeout(Duration::from_millis(ms)); }
+
+                let response = request_builder
+                    .json(&payload)
+                    .send()
+                    .await
+                    .context(format!("Failed to connect to MCP server at {}. This may be a network/firewall issue if the endpoint is on a private network.", url))?;
+
+                let status = response.status();
+                let response_text = response.text().await.context("Failed to read MCP response")?;
+
+                if status.as_u16() == 401 {
+                    warn!("Received 401 from MCP. Re-initializing session and retrying once...");
+                    self.reinitialize_session(url).await?;
+                    let mut retry_builder = self.build_request_with_session(client, url).await;
+                    if let Some(ms) = timeout_ms { retry_builder = retry_builder.timeout(Duration::from_millis(ms)); }
+                    let retry_resp = retry_builder.json(&payload).send().await.context("Failed to send retry request")?;
+                    let retry_status = retry_resp.status();
+                    let retry_text = retry_resp.text().await.context("Failed to read retry response")?;
+                    return Self::parse_http_result(retry_status, &retry_text);
+                }
+
+                Self::parse_http_result(status, &response_text)
+            }
+            _ => {
+                // Fallback to existing execute_tool for stdio
+                self.execute_tool(tool_name, arguments).await
+            }
+        }
+    }
+
+    fn parse_http_result(status: reqwest::StatusCode, response_text: &str) -> Result<Value> {
+        debug!("MCP response status: {}, body: {}", status, response_text);
+        if !status.is_success() {
+            anyhow::bail!("MCP server returned error: {} - {}", status, response_text);
+        }
+
+        let json_text = if response_text.starts_with("data: ") {
+            response_text[6..].lines().next().unwrap_or(&response_text[6..])
+        } else {
+            response_text.lines().find(|line| !line.trim().is_empty() && !line.starts_with("id:")).unwrap_or(response_text)
+        };
+
+        let json_response: serde_json::Value = match serde_json::from_str(json_text) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("Initial JSON parse failed: {}. Attempting to sanitize Unicode characters...", e);
+                let sanitized = json_text
+                    .chars()
+                    .filter(|c| !matches!(*c, '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}') )
+                    .collect::<String>();
+                serde_json::from_str(&sanitized)
+                    .context(format!("Failed to parse MCP JSON response even after sanitization. Original error: {}. Body: {}", e, json_text))?
+            }
+        };
+
+        let result_data = json_response.get("result")
+            .cloned()
+            .ok_or_else(|| {
+                if let Some(error) = json_response.get("error") {
+                    anyhow::anyhow!("MCP server returned error: {:?}", error)
+                } else {
+                    anyhow::anyhow!("No result in MCP response. Full response: {}", serde_json::to_string_pretty(&json_response).unwrap_or_else(|_| format!("{:?}", json_response)))
+                }
+            })?;
+
+        // Extract content array when available
+        if let Some(content_array) = result_data.get("content").and_then(|c| c.as_array()) {
+            let mut text_result: Option<Value> = None;
+            let mut screenshots: Vec<Value> = Vec::new();
+            for item in content_array {
+                let item_type = item.get("type").and_then(|t| t.as_str());
+                match item_type {
+                    Some("text") => {
+                        if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                            if let Ok(json_result) = serde_json::from_str::<Value>(text) {
+                                text_result = Some(json_result);
+                            } else {
+                                text_result = Some(serde_json::json!({ "type": "text", "content": text }));
+                            }
+                        }
+                    }
+                    Some("image") => {
+                        if let Some(data) = item.get("data") {
+                            screenshots.push(serde_json::json!({ "type": "image", "data": data, "mimeType": item.get("mimeType") }));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(mut text) = text_result { if !screenshots.is_empty() { if let Some(obj) = text.as_object_mut() { obj.insert("screenshots".to_string(), serde_json::json!(screenshots)); } else { return Ok(serde_json::json!({ "result": text, "screenshots": screenshots })); } } return Ok(text); }
+            if !screenshots.is_empty() { return Ok(serde_json::json!({ "screenshots": screenshots })); }
+        }
+        Ok(result_data)
+    }
+
     /// Execute a tool without retry
     pub async fn execute_tool(
         &self,
@@ -115,106 +378,8 @@ impl McpClient {
                 let client = self.http_client.as_ref()
                     .context("HTTP client not initialized")?;
 
-                // Initialize session only once
-                if !self.initialized.load(std::sync::atomic::Ordering::SeqCst) {
-                    info!("Initializing MCP session (first call)...");
-                    let init_payload = serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "initialize",
-                        "params": {
-                            "protocolVersion": "2024-11-05",
-                            "capabilities": {
-                                "roots": { "listChanged": false },
-                                "sampling": {}
-                            },
-                            "clientInfo": {
-                                "name": "rust-workflow-executor",
-                                "version": env!("CARGO_PKG_VERSION")
-                            }
-                        }
-                    });
-
-                    let init_response = client
-                        .post(url)
-                        .header("Content-Type", "application/json")
-                        .header("Accept", "application/json, text/event-stream")
-                        .header("Authorization", "Bearer cargorunmediar123")
-                        .json(&init_payload)
-                        .send()
-                        .await
-                        .context("Failed to initialize MCP session")?;
-
-                let init_status = init_response.status();
-
-                // Extract Mcp-Session-Id header BEFORE consuming response body
-                let session_id_header = init_response.headers().get("Mcp-Session-Id")
-                    .and_then(|v| v.to_str().ok())
-                    .map(|s| s.to_string());
-
-                let init_text = init_response.text().await
-                    .context("Failed to read initialization response")?;
-
-                debug!("MCP init response status: {}, body: {}", init_status, &init_text[..init_text.len().min(200)]);
-
-                if !init_status.is_success() {
-                    anyhow::bail!("MCP session initialization failed: {} - {}", init_status, init_text);
-                }
-
-                // Handle SSE format: strip "data: " prefix if present
-                let json_text = if init_text.starts_with("data: ") {
-                    &init_text[6..] // Skip "data: " prefix
-                } else {
-                    &init_text
-                };
-
-                let init_result: Value = serde_json::from_str(json_text)
-                    .context(format!("Failed to parse initialization response. Status: {}, Body: {}", init_status, json_text))?;
-
-                info!("MCP session initialized: {:?}", init_result.get("result"));
-
-                // Store Mcp-Session-Id if present
-                if let Some(ref session_id_str) = session_id_header {
-                    let mut session_id = self.session_id.lock().unwrap();
-                    *session_id = Some(session_id_str.clone());
-                    info!("Stored MCP session ID: {}", session_id_str);
-                } else {
-                    warn!("No Mcp-Session-Id header in initialization response");
-                }
-
-                // Step 2: Send initialized notification (required by MCP protocol)
-                info!("Sending initialized notification...");
-                let initialized_payload = serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "notifications/initialized",
-                    "params": {}
-                });
-
-                // Build request with Mcp-Session-Id header
-                let mut notify_request = client
-                    .post(url)
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json, text/event-stream")
-                    .header("Authorization", "Bearer cargorunmediar123");
-
-                // Add session ID header if we have one
-                if let Some(session_id_str) = session_id_header.as_ref() {
-                    debug!("Adding Mcp-Session-Id to initialized notification: {}", session_id_str);
-                    notify_request = notify_request.header("Mcp-Session-Id", session_id_str.clone());
-                }
-
-                let _ = notify_request
-                    .json(&initialized_payload)
-                    .send()
-                    .await
-                    .context("Failed to send initialized notification")?;
-
-                // Mark as initialized
-                self.initialized.store(true, std::sync::atomic::Ordering::SeqCst);
-                info!("Session initialized successfully");
-                } else {
-                    debug!("MCP session already initialized, reusing session");
-                }
+                // Ensure initialized with 503 backoff support
+                self.ensure_initialized(url).await?;
 
                 // Step 3: Call the tool
                 let payload = serde_json::json!({
@@ -232,20 +397,8 @@ impl McpClient {
                 info!("  Tool Name: {}", tool_name);
                 info!("  Payload: {}", serde_json::to_string_pretty(&payload)?);
 
-                // Build request with Mcp-Session-Id header if available
-                let mut request_builder = client
-                    .post(url)
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json, text/event-stream")
-                    .header("Authorization", "Bearer cargorunmediar123");
-
-                // Add Mcp-Session-Id header if we have a session
-                if let Some(session_id_str) = self.session_id.lock().unwrap().as_ref() {
-                    debug!("Adding Mcp-Session-Id header: {}", session_id_str);
-                    request_builder = request_builder.header("Mcp-Session-Id", session_id_str.clone());
-                } else {
-                    warn!("No session ID available for tool call - this may fail");
-                }
+                // Build request with session header
+                let request_builder = self.build_request_with_session(client, url).await;
 
                 let response = request_builder
                     .json(&payload)
@@ -257,115 +410,18 @@ impl McpClient {
                 let response_text = response.text().await
                     .context("Failed to read MCP response")?;
 
-                debug!("MCP response status: {}, body: {}", status, response_text);
-
-                if !status.is_success() {
-                    anyhow::bail!("MCP server returned error: {} - {}", status, response_text);
+                // 401 handling: re-init then retry once
+                if status.as_u16() == 401 {
+                    warn!("Received 401 from MCP. Re-initializing session and retrying once...");
+                    self.reinitialize_session(url).await?;
+                    let retry_builder = self.build_request_with_session(client, url).await;
+                    let retry_resp = retry_builder.json(&payload).send().await.context("Failed to send retry request")?;
+                    let retry_status = retry_resp.status();
+                    let retry_text = retry_resp.text().await.context("Failed to read retry response")?;
+                    return Self::parse_http_result(retry_status, &retry_text);
                 }
 
-                // Handle SSE format: strip "data: " prefix if present and remove trailing SSE metadata
-                let json_text = if response_text.starts_with("data: ") {
-                    // Skip "data: " prefix and take only first line (before any SSE metadata like "id: ")
-                    response_text[6..].lines().next().unwrap_or(&response_text[6..])
-                } else {
-                    // Even without "data: " prefix, SSE responses may have trailing "id: " lines
-                    // Take the first non-empty line
-                    response_text.lines()
-                        .find(|line| !line.trim().is_empty() && !line.starts_with("id:"))
-                        .unwrap_or(&response_text)
-                };
-
-                // Try parsing the JSON, with fallback to sanitized version if it contains problematic Unicode
-                let json_response: serde_json::Value = match serde_json::from_str(json_text) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!("Initial JSON parse failed: {}. Attempting to sanitize Unicode characters...", e);
-                        // Remove zero-width spaces and other problematic Unicode characters
-                        let sanitized = json_text
-                            .chars()
-                            .filter(|c| {
-                                // Keep normal characters, filter out zero-width and control characters
-                                !matches!(*c, '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}')
-                            })
-                            .collect::<String>();
-
-                        serde_json::from_str(&sanitized)
-                            .context(format!("Failed to parse MCP JSON response even after sanitization. Original error: {}. Body: {}", e, json_text))?
-                    }
-                };
-
-                // Extract result from JSON-RPC response
-                let result_data = json_response.get("result")
-                    .cloned()
-                    .ok_or_else(|| {
-                        // Check if it's an error response instead
-                        if let Some(error) = json_response.get("error") {
-                            anyhow::anyhow!("MCP server returned error: {:?}", error)
-                        } else {
-                            anyhow::anyhow!("No result in MCP response. Full response: {}", serde_json::to_string_pretty(&json_response).unwrap_or_else(|_| format!("{:?}", json_response)))
-                        }
-                    })?;
-
-                // For HTTP transport, parse the result directly and return early
-                // The result should contain a "content" array with text/image items
-                if let Some(content_array) = result_data.get("content").and_then(|c| c.as_array()) {
-                    let mut text_result: Option<Value> = None;
-                    let mut screenshots: Vec<Value> = Vec::new();
-
-                    for item in content_array {
-                        let item_type = item.get("type").and_then(|t| t.as_str());
-
-                        match item_type {
-                            Some("text") => {
-                                if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                                    // Try to parse as JSON, fallback to plain text
-                                    if let Ok(json_result) = serde_json::from_str::<Value>(text) {
-                                        text_result = Some(json_result);
-                                    } else {
-                                        text_result = Some(serde_json::json!({
-                                            "type": "text",
-                                            "content": text
-                                        }));
-                                    }
-                                }
-                            }
-                            Some("image") => {
-                                if let Some(data) = item.get("data") {
-                                    screenshots.push(serde_json::json!({
-                                        "type": "image",
-                                        "data": data,
-                                        "mimeType": item.get("mimeType")
-                                    }));
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    // Return combined result
-                    if let Some(mut text) = text_result {
-                        if !screenshots.is_empty() {
-                            if let Some(obj) = text.as_object_mut() {
-                                obj.insert("screenshots".to_string(), serde_json::json!(screenshots));
-                            } else {
-                                return Ok(serde_json::json!({
-                                    "result": text,
-                                    "screenshots": screenshots
-                                }));
-                            }
-                        }
-                        return Ok(text);
-                    }
-
-                    if !screenshots.is_empty() {
-                        return Ok(serde_json::json!({
-                            "screenshots": screenshots
-                        }));
-                    }
-                }
-
-                // Fallback: return raw result
-                return Ok(result_data);
+                return Self::parse_http_result(status, &response_text);
             }
             McpTransport::Stdio(command) => {
                 info!("Starting MCP server via stdio: {:?}", command);
