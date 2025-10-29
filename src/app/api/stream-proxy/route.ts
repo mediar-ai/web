@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { VertexAI, Content, FunctionDeclaration, Part } from '@google-cloud/vertexai';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
+import { convertMcpToolToVertex } from '@/lib/vertex-schema-converter';
 
 const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
 
@@ -122,12 +123,15 @@ export async function POST(req: NextRequest) {
     const contents: Content[] = convertMessagesToVertex(body.messages);
 
     // Convert tools to Vertex AI function declarations
+    // MCP tools use JSON Schema which needs to be converted to Vertex AI format
     const tools = body.tools ? [{
-      functionDeclarations: body.tools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      } as FunctionDeclaration))
+      functionDeclarations: body.tools.map(tool => 
+        convertMcpToolToVertex({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.parameters,
+        }) as FunctionDeclaration
+      )
     }] : undefined;
 
     // Start streaming response
