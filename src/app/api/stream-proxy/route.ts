@@ -19,6 +19,12 @@ const VERTEX_CREDENTIALS_BASE64 = 'eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwicHJvamVjd
 const GOOGLE_CLOUD_PROJECT = 'mediar-394022';
 const VERTEX_AI_LOCATION = 'us-central1';
 
+// CORS headers for desktop app
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
 interface StreamProxyRequest {
   model?: string;
   messages: Array<{
@@ -81,6 +87,10 @@ function initVertexAI(): VertexAI {
     googleAuthOptions: {
       credentials: {
         client_email: credentials.client_email,
+n// Handle CORS preflight
+export async function OPTIONS(request: NextRequest) {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
         private_key: credentials.private_key,
       },
     },
@@ -93,7 +103,7 @@ export async function POST(req: NextRequest) {
 
     const isAuthenticated = await authenticate(req);
     if (!isAuthenticated) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders });
     }
 
     const vertexAI = initVertexAI();
@@ -185,6 +195,7 @@ export async function POST(req: NextRequest) {
 
     return new NextResponse(stream, {
       headers: {
+        ...corsHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
@@ -195,7 +206,7 @@ export async function POST(req: NextRequest) {
     console.error('Proxy error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
