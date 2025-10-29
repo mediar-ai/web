@@ -1,5 +1,30 @@
 # CLAUDE.md - Project Style Guidelines
 
+> "We believe in the extraordinary capacity of human beings—to think, to create, to solve. But that capacity is wasted when it's spent on repetitive work. Automation should serve human potential, not replace it."
+>
+> — The Mediar Team
+
+## Design Philosophy
+
+### Why This Aesthetic?
+Mediar's interface reflects our belief in **clarity over decoration**, **function over form**, and **human potential over algorithmic noise**. We use black and white not as a limitation, but as a lens—focusing attention on what matters: the work itself.
+
+- **Black & White = Universal**: Works for colorblind users, prints perfectly, translates across cultures
+- **Animation = Life**: Movement indicates activity, progress, and system health
+- **Typography = Hierarchy**: Weight and size communicate importance, not color
+- **Minimalism = Respect**: We respect your time by removing visual clutter
+
+### Inspiration
+We draw from products that prioritize **speed and clarity**:
+- **Linear**: Fast, keyboard-driven, minimal visual noise
+- **Stripe Dashboard**: Data-dense yet scannable, excellent use of whitespace
+- **Notion**: Smooth animations, clear hierarchy, feels alive but not distracting
+- **Apple HIG**: Consistent, predictable, respects platform conventions
+
+**Key principle:** Every pixel should earn its place. If it doesn't inform or delight, remove it.
+
+---
+
 ## Architecture Context
 
 ### Workflow System (GitHub-First)
@@ -25,8 +50,10 @@
 - **Primary colors**: Black (#000) and White (#FFF) only
 - **Accent colors**: Use gray shades sparingly (#333, #666, #999, #CCC, #F9FAFB for bg-gray-50)
 - **NO COLOR CODING**: Avoid red, green, yellow, blue, orange for status indicators
-- **Status differentiation**: Use borders, text weight, and animations instead of colors
-- **Exception**: Red (#DC2626) only for Mediar admin sections and destructive actions
+- **Status differentiation**: Use borders, text weight, border styles (dashed/solid), and animations instead of colors
+- **Exception**: Red (#DC2626) only for destructive actions (delete, cancel) - use sparingly
+
+**Rationale:** Color-coding fails for 8% of men (colorblindness), doesn't print well, and creates visual noise. Motion and typography are more accessible and elegant.
 
 ### Component Styling
 
@@ -39,14 +66,22 @@
 - Keyboard shortcuts: `<kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black rounded font-mono">N</kbd>`
 
 #### Status Badges
+**Reference:** `src/components/ui/animated-badge.tsx`
+
 ```
-- Active/Running: bg-black text-white animate-pulse
-- Success/Completed: bg-white text-black border-2 border-black
-- Error/Failed: bg-black text-white font-bold
-- Pending/Queued: bg-yellow-100 text-yellow-800 border border-yellow-300
-- Disabled: bg-gray-200 text-gray-800
-- Admin/Owner: bg-black text-white (with Crown icon for owners)
+- Active/Running: bg-black text-white border-2 border-black + animate-pulse dot
+- Success/Completed: bg-white text-black border-2 border-black + static dot
+- Error/Failed: bg-black text-white border-2 border-black font-bold + static dot
+- Pending/Queued: bg-gray-100 text-gray-800 border-2 border-dashed border-gray-400 + animate-ping dot
+- Paused: bg-gray-200 text-gray-800 border-2 border-gray-400 + static dot
+- Disabled: bg-gray-200 text-gray-500 border border-gray-300
 ```
+
+**Pattern:** Status = border style + animation, not color
+- Solid border = stable state
+- Dashed border = waiting/queued
+- Pulsing dot = actively running
+- Ping animation = queued/waiting
 
 #### Forms & Inputs
 - All inputs: `border-2 border-black focus:outline-none focus:ring-2 focus:ring-black font-mono`
@@ -80,6 +115,68 @@
 - Use **spacing** generously (p-4, p-6, p-8)
 - Use **UPPERCASE** for labels and important buttons
 - Icons should be 4-6 in size, consistent throughout
+
+### Animation Guidelines
+
+**Philosophy:** Animations should feel **fast, purposeful, and alive**—like Notion's smooth transitions or Linear's snappy interactions.
+
+#### Core Animation Patterns
+
+1. **Loading States** (system is working)
+   ```tsx
+   // Spinner: Fast rotation, black border
+   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black" />
+   // OR with icon
+   <Loader2 className="w-4 h-4 animate-spin" />
+   ```
+
+2. **Live/Active States** (data is updating in real-time)
+   ```tsx
+   // Pulsing badge for running workflows/executions
+   <Badge className="bg-black text-white animate-pulse">RUNNING</Badge>
+
+   // Pulsing dot for active status
+   <span className="animate-ping absolute h-2 w-2 bg-black rounded-full opacity-75" />
+   <span className="relative h-2 w-2 bg-black rounded-full" /> {/* Static dot beneath */}
+   ```
+
+3. **Queued/Waiting States** (system will act soon)
+   ```tsx
+   // Dashed border + ping animation
+   <div className="border-2 border-dashed border-gray-400 bg-gray-100">
+     <span className="animate-ping h-2 w-2 bg-gray-500 rounded-full" />
+   </div>
+   ```
+
+4. **Modal/Dropdown Transitions** (UI appearing/disappearing)
+   ```tsx
+   // Radix UI patterns - smooth fade + zoom
+   data-[state=open]:animate-in
+   data-[state=closed]:animate-out
+   fade-in-0 fade-out-0
+   zoom-in-95 zoom-out-95
+   duration-200
+   ```
+
+5. **Hover States** (interactive elements)
+   ```tsx
+   // Invert colors - black becomes white, white becomes black
+   <Button className="bg-black text-white hover:bg-white hover:text-black transition-colors duration-150" />
+   ```
+
+#### Animation Speed Guidelines
+- **Instant feedback**: 0-150ms (hover states, button presses)
+- **Quick transitions**: 150-250ms (modal open/close, dropdowns)
+- **Noticeable but smooth**: 300-500ms (page transitions, loading states)
+- **Never**: 500ms+ (feels sluggish)
+
+#### What NOT to Animate
+- ❌ Text appearing (hard to read)
+- ❌ Layout shifts (jarring)
+- ❌ Multiple elements at once (overwhelming)
+- ❌ Infinite animations without purpose (distracting)
+
+**Reference:** See `src/components/ui/animated-badge.tsx` for the canonical animation patterns.
 
 ### Interaction Patterns
 - Hover states should invert colors (black ↔ white transition)

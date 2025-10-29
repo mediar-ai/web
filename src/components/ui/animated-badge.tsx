@@ -8,36 +8,37 @@ interface AnimatedBadgeProps {
 }
 
 export function AnimatedBadge({ status, children, className }: AnimatedBadgeProps) {
+  // Black & white theme - status differentiated by border style and animation
   const statusStyles = {
     deployed: {
-      base: 'bg-green-50 text-green-700 border-green-200',
-      dot: 'bg-green-500',
+      base: 'bg-white text-black border-2 border-black',
+      dot: 'bg-black',
       pulse: false,
     },
     running: {
-      base: 'bg-blue-50 text-blue-700 border-blue-200',
-      dot: 'bg-blue-500',
-      pulse: true,
+      base: 'bg-black text-white border-2 border-black',
+      dot: 'bg-white',
+      pulse: true, // Pulsing indicates active execution
     },
     paused: {
-      base: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-      dot: 'bg-yellow-500',
-      pulse: false,
-    },
-    failed: {
-      base: 'bg-red-50 text-red-700 border-red-200',
-      dot: 'bg-red-500',
-      pulse: false,
-    },
-    completed: {
-      base: 'bg-gray-50 text-gray-700 border-gray-200',
+      base: 'bg-gray-200 text-gray-800 border-2 border-gray-400',
       dot: 'bg-gray-500',
       pulse: false,
     },
+    failed: {
+      base: 'bg-black text-white border-2 border-black font-bold',
+      dot: 'bg-white',
+      pulse: false, // Bold font weight indicates error
+    },
+    completed: {
+      base: 'bg-white text-black border-2 border-black',
+      dot: 'bg-gray-400',
+      pulse: false,
+    },
     queued: {
-      base: 'bg-purple-50 text-purple-700 border-purple-200',
-      dot: 'bg-purple-500',
-      pulse: true,
+      base: 'bg-gray-100 text-gray-800 border-2 border-dashed border-gray-400',
+      dot: 'bg-gray-500',
+      pulse: true, // Dashed border + pulse indicates waiting
     },
   };
 
