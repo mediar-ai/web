@@ -140,6 +140,12 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
     );
   }
 
+  const openInNewWindow = () => {
+    if (rdpUrl) {
+      window.open(rdpUrl, '_blank', 'width=1650,height=950,menubar=no,toolbar=no,location=no,status=no');
+    }
+  };
+
   return (
     <div className="h-full flex flex-col gap-4">
       <Alert className="border-black bg-green-50">
@@ -151,6 +157,14 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
               Connected to <strong>{connectionInfo?.machine_name || 'agent machine'}</strong>.
               You have full mouse and keyboard control.
             </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={openInNewWindow}
+                className="px-4 py-2 bg-black text-white text-sm font-mono hover:bg-gray-800 border-2 border-black"
+              >
+                OPEN IN NEW WINDOW
+              </button>
+            </div>
             <p className="text-xs text-muted-foreground mt-2">
               This connection is authenticated and time-limited for security. Clipboard access is enabled.
             </p>
