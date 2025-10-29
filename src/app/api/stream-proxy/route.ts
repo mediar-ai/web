@@ -98,7 +98,10 @@ function initVertexAI(): VertexAI {
 
 // Handle CORS preflight
 export async function OPTIONS(request: NextRequest) {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
 }
 
 export async function POST(req: NextRequest) {
