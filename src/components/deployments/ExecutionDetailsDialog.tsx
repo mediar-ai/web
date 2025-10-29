@@ -146,35 +146,66 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
     }
   };
 
+  const openCrispChat = () => {
+    // Trigger Crisp chat widget
+    if (typeof window !== 'undefined' && (window as any).$crisp) {
+      (window as any).$crisp.push(['do', 'chat:open']);
+      (window as any).$crisp.push(['do', 'message:send', ['text', 'Hi! I\'m interested in learning more about the production plan for Agent Screen.']]);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col items-center justify-center gap-6 p-8">
       <div className="text-center space-y-4 max-w-2xl">
-        <div className="inline-block p-4 bg-green-50 border-2 border-black rounded-lg">
+        {/* Security Warning Banner */}
+        <div className="bg-red-50 border-2 border-red-600 rounded-lg p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 mt-0.5">
+              <svg className="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="text-left">
+              <h4 className="font-bold text-red-900 mb-1">Important Security Notice</h4>
+              <p className="text-sm text-red-800 mb-2">
+                Please do not expose sensitive data on this machine. These are shared development environments.
+              </p>
+              <p className="text-sm text-red-800">
+                Need a production plan with dedicated, isolated machines? Contact us to learn more about our enterprise options.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Agent Screen Card */}
+        <div className="inline-block p-6 bg-white border-2 border-black rounded-lg shadow-lg">
           <Monitor className="h-16 w-16 mx-auto mb-4" />
-          <h3 className="text-2xl font-mono font-bold mb-2">Agent Screen Ready</h3>
-          <p className="text-sm text-gray-700 mb-4">
-            Connected to <strong className="font-mono">{connectionInfo?.machine_name || 'agent machine'}</strong>
+          <h3 className="text-2xl font-bold mb-2">Watch Your Agent Work</h3>
+          <p className="text-sm text-gray-700 mb-6">
+            See exactly what's happening on <strong>{connectionInfo?.machine_name || 'your agent machine'}</strong> in real-time
           </p>
           <button
             onClick={openInNewWindow}
-            className="px-8 py-4 bg-black text-white text-lg font-mono font-bold hover:bg-gray-800 border-4 border-black uppercase shadow-lg transition-all hover:shadow-xl"
+            className="px-8 py-4 bg-black text-white text-lg font-bold hover:bg-gray-800 border-4 border-black uppercase shadow-lg transition-all hover:shadow-xl"
           >
             OPEN AGENT SCREEN
           </button>
           <p className="text-xs text-gray-600 mt-4">
-            Opens in a new window with full mouse and keyboard control.<br />
-            Clipboard access enabled. Connection is time-limited for security.
+            Opens in a new window. Your connection is automatically secured and will expire after 60 minutes.
           </p>
         </div>
 
-        <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 text-left">
-          <p className="text-xs font-mono text-gray-600 mb-2">
-            <strong>Why a new window?</strong>
+        {/* Contact for Production */}
+        <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4">
+          <p className="text-sm text-gray-700 mb-3">
+            <strong>Need dedicated machines for production workloads?</strong>
           </p>
-          <p className="text-xs text-gray-600">
-            The RDP viewer works best in its own window for optimal performance and compatibility.
-            This gives you a dedicated space to view and control the agent desktop without browser restrictions.
-          </p>
+          <button
+            onClick={openCrispChat}
+            className="px-6 py-2 bg-white text-black border-2 border-black hover:bg-black hover:text-white font-bold uppercase transition-all"
+          >
+            Talk to Us About Production Plans
+          </button>
         </div>
       </div>
     </div>
