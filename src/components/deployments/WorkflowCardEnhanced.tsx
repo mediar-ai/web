@@ -23,6 +23,7 @@ import {
   Upload,
   AlertCircle,
   Settings,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -74,6 +75,9 @@ export function WorkflowCardEnhanced({
   const [isHovered, setIsHovered] = useState(false);
   const [liveCountdown, setLiveCountdown] = useState<string>('');
   const cardRef = useRef<HTMLDivElement>(null);
+
+  // Debug: Log admin status
+  console.log('[WorkflowCardEnhanced] isMediarAdmin:', isMediarAdmin, 'workflow:', workflow.name);
 
   // Calculate metrics from workflow stats (not from limited executions array)
   const metrics = useMemo(() => {
@@ -381,6 +385,7 @@ export function WorkflowCardEnhanced({
                 }}
                 className="h-6 px-1.5 text-[10px] border-black hover:bg-black hover:text-white whitespace-nowrap"
               >
+                <Play className="w-3 h-3 mr-0.5" />
                 <span className="hidden xl:inline">Manual run options</span>
                 <span className="xl:hidden">Run</span>
               </Button>
@@ -404,22 +409,32 @@ export function WorkflowCardEnhanced({
                     variant="ghost"
                     size="sm"
                     className="h-6 w-6 p-0 hover:bg-gray-100"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <MoreVertical className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={onExecute}>
+                  <DropdownMenuItem onClick={(e) => {
+                    e.stopPropagation();
+                    onExecute?.();
+                  }}>
                     <Play className="mr-2 h-4 w-4" />
                     Execute Now
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={onView}>
+                  <DropdownMenuItem onClick={(e) => {
+                    e.stopPropagation();
+                    onView?.();
+                  }}>
                     <Eye className="mr-2 h-4 w-4" />
                     View Details
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {workflow.cron_expression && (
-                    <DropdownMenuItem onClick={onToggleCron}>
+                    <DropdownMenuItem onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleCron?.();
+                    }}>
                       {workflow.cron_enabled ? (
                         <><Pause className="mr-2 h-4 w-4" />Pause Schedule</>
                       ) : (
@@ -427,19 +442,54 @@ export function WorkflowCardEnhanced({
                       )}
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={onDuplicate}>
+                  <DropdownMenuItem onClick={(e) => {
+                    e.stopPropagation();
+                    onDuplicate?.();
+                  }}>
                     <Copy className="mr-2 h-4 w-4" />
                     Duplicate
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={onUploadVersion}>
+                  <DropdownMenuItem onClick={(e) => {
+                    e.stopPropagation();
+                    onUploadVersion?.();
+                  }}>
                     <Upload className="mr-2 h-4 w-4" />
                     Upload Version
                   </DropdownMenuItem>
                   {isMediarAdmin && (
-                    <DropdownMenuItem onClick={onManageOrganizations}>
-                      <Building2 className="mr-2 h-4 w-4" />
-                      Manage Organizations
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation();
+                        onManageOrganizations?.();
+                      }}>
+                        <Building2 className="mr-2 h-4 w-4" />
+                        Manage Organizations
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Are you sure you want to delete "${workflow.name}"? This action cannot be undone.`)) {
+                            fetch(`/api/workflows/${workflow.id}`, { method: 'DELETE' })
+                              .then(res => res.json())
+                              .then(data => {
+                                if (data.success) {
+                                  window.location.reload();
+                                } else {
+                                  alert(`Failed to delete workflow: ${data.error}`);
+                                }
+                              })
+                              .catch(err => {
+                                alert(`Error deleting workflow: ${err.message}`);
+                              });
+                          }
+                        }}
+                        className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete Workflow
+                      </DropdownMenuItem>
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
