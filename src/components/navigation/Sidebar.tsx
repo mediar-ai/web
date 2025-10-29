@@ -77,7 +77,7 @@ export function Sidebar() {
   const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
   const _isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
 
-  const navigation: NavItem[] = [
+  const navigation: NavItem[] = useMemo(() => [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
     { label: 'Alerts', href: '/notifications', icon: Bell },
     {
@@ -92,7 +92,7 @@ export function Sidebar() {
     },
     { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
     { label: 'Observability', href: '/observability', icon: Database, mediarOnly: true },
-  ];
+  ], []);
 
   const filteredNav = useMemo(() => {
     return navigation.map(item => {
@@ -111,7 +111,7 @@ export function Sidebar() {
       if (item.mediarOnly && !isMediarAdmin) return false;
       return true;
     });
-  }, [isAdmin, isMediarAdmin]);
+  }, [navigation, isAdmin, isMediarAdmin]);
 
   const toggleExpanded = (label: string) => {
     setExpandedItems(prev =>

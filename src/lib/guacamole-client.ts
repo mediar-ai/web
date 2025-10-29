@@ -124,7 +124,7 @@ export function generateConnectionUrl(
   guacamoleUrl: string,
   authToken: string,
   connectionId: string,
-  dataSource: string = 'default'
+  _dataSource: string = 'default'
 ): string {
   // Build the client URL with auth token
   // Format: /guacamole/#/client/{connectionId}?token={authToken}
