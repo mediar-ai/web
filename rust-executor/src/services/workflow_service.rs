@@ -1,13 +1,13 @@
-use anyhow::{Result, Context};
-use tracing::{info, error, warn};
+use anyhow::{Context, Result};
 use sqlx::Row;
+use tracing::{error, info, warn};
 
-use crate::db::{DatabasePool, queries::WorkflowQueries};
-use crate::models::{
-    Workflow, WorkflowSequence, WorkflowExecution, ExecutionRequest,
-    ExecutionResponse, ExecutionStatus,
-};
+use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::mcp::{McpClient, WorkflowExecutor};
+use crate::models::{
+    ExecutionRequest, ExecutionResponse, ExecutionStatus, Workflow, WorkflowExecution,
+    WorkflowSequence,
+};
 use crate::services::GitHubLoader;
 
 pub struct WorkflowService {
@@ -27,12 +27,11 @@ impl WorkflowService {
     }
 
     /// Execute a workflow by ID
-    pub async fn execute_workflow(
-        &self,
-        request: ExecutionRequest,
-    ) -> Result<ExecutionResponse> {
-        info!("Processing workflow execution request for workflow {}",
-              request.workflow_id);
+    pub async fn execute_workflow(&self, request: ExecutionRequest) -> Result<ExecutionResponse> {
+        info!(
+            "Processing workflow execution request for workflow {}",
+            request.workflow_id
+        );
 
         // Get workflow from database
         let workflow = WorkflowQueries::get_workflow(&self.db_pool, request.workflow_id)
@@ -57,7 +56,8 @@ impl WorkflowService {
         let sequence = self.load_workflow_sequence(&workflow).await?;
 
         // Validate sequence
-        sequence.validate()
+        sequence
+            .validate()
             .context("Workflow sequence validation failed")?;
 
         // Create execution record
@@ -66,10 +66,13 @@ impl WorkflowService {
             request.workflow_id,
             request.client_id.clone(),
             request.execution_params.clone(),
-        ).await?;
+        )
+        .await?;
 
-        info!("Created execution {} for workflow {}",
-              execution_id, request.workflow_id);
+        info!(
+            "Created execution {} for workflow {}",
+            execution_id, request.workflow_id
+        );
 
         // Create MCP client
         let mcp_client = McpClient::from_url(request.mcp_endpoint.clone());
@@ -92,7 +95,8 @@ impl WorkflowService {
                     },
                     workflow_result.error.clone(),
                     workflow_result.data.clone(),
-                ).await?;
+                )
+                .await?;
 
                 Ok(ExecutionResponse {
                     execution_id,
@@ -118,7 +122,8 @@ impl WorkflowService {
                     ExecutionStatus::Failed,
                     Some(e.to_string()),
                     None,
-                ).await?;
+                )
+                .await?;
 
                 Ok(ExecutionResponse {
                     execution_id,
@@ -140,13 +145,20 @@ impl WorkflowService {
         if let Some(github_folder) = &workflow.github_folder {
             let github_ref = workflow.github_ref.as_deref().unwrap_or("main");
 
-            match self.github_loader.load_workflow(github_folder, github_ref).await {
+            match self
+                .github_loader
+                .load_workflow(github_folder, github_ref)
+                .await
+            {
                 Ok(yaml_content) => {
                     info!("Loaded workflow from GitHub: {}", github_folder);
                     return WorkflowSequence::from_yaml(&yaml_content);
                 }
                 Err(e) => {
-                    warn!("Failed to load from GitHub: {}, falling back to database", e);
+                    warn!(
+                        "Failed to load from GitHub: {}, falling back to database",
+                        e
+                    );
                 }
             }
         }
@@ -169,10 +181,7 @@ impl WorkflowService {
     }
 
     /// Get execution status
-    pub async fn get_execution(
-        &self,
-        execution_id: i64,
-    ) -> Result<Option<WorkflowExecution>> {
+    pub async fn get_execution(&self, execution_id: i64) -> Result<Option<WorkflowExecution>> {
         let row = sqlx::query(
             r#"
             SELECT
@@ -183,7 +192,7 @@ impl WorkflowService {
                 current_step_description, created_at, updated_at
             FROM workflow_executions
             WHERE id = $1
-            "#
+            "#,
         )
         .bind(execution_id)
         .fetch_optional(&self.db_pool)
@@ -226,25 +235,28 @@ impl WorkflowService {
             FROM deployed_workflows_with_sequence
             WHERE status = 'deployed'
             ORDER BY created_at DESC
-            "#
+            "#,
         )
         .fetch_all(&self.db_pool)
         .await?;
 
-        let workflows = rows.into_iter().map(|row| Workflow {
-            id: row.get("id"),
-            name: row.get("name"),
-            version: row.get("version"),
-            description: row.get("description"),
-            status: crate::models::WorkflowStatus::Deployed,
-            category: row.get("category"),
-            github_folder: row.get("github_folder"),
-            github_ref: row.get("github_ref"),
-            automation_sequence: row.get("automation_sequence"),
-            automation_sequence_yaml: row.get("automation_sequence_yaml"),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        }).collect();
+        let workflows = rows
+            .into_iter()
+            .map(|row| Workflow {
+                id: row.get("id"),
+                name: row.get("name"),
+                version: row.get("version"),
+                description: row.get("description"),
+                status: crate::models::WorkflowStatus::Deployed,
+                category: row.get("category"),
+                github_folder: row.get("github_folder"),
+                github_ref: row.get("github_ref"),
+                automation_sequence: row.get("automation_sequence"),
+                automation_sequence_yaml: row.get("automation_sequence_yaml"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            })
+            .collect();
 
         Ok(workflows)
     }

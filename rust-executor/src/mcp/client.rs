@@ -1,11 +1,13 @@
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use rmcp::{
-    model::{CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation, Tool},
+    model::{
+        CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation, Tool,
+    },
     service::{RoleClient, RunningService},
     transport::{StreamableHttpClientTransport, TokioChildProcess},
     ServiceExt,
 };
-use serde_json::{Value, Map};
+use serde_json::{Map, Value};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -131,7 +133,11 @@ impl McpClient {
         let mut backoff = Duration::from_millis(500);
 
         for attempt in 0..=max_retries {
-            info!("Creating HTTP MCP service (attempt {}): {}", attempt + 1, url);
+            info!(
+                "Creating HTTP MCP service (attempt {}): {}",
+                attempt + 1,
+                url
+            );
 
             match Self::create_http_service(url).await {
                 Ok(service) => {
@@ -142,7 +148,10 @@ impl McpClient {
                 Err(e) => {
                     let error_str = e.to_string();
                     if error_str.contains("503") && attempt < max_retries {
-                        warn!("Received 503 from MCP server. Backing off for {:?}", backoff);
+                        warn!(
+                            "Received 503 from MCP server. Backing off for {:?}",
+                            backoff
+                        );
                         sleep(backoff).await;
                         backoff = backoff.saturating_mul(2);
                     } else {
@@ -168,7 +177,9 @@ impl McpClient {
             },
         };
 
-        client_info.serve(transport).await
+        client_info
+            .serve(transport)
+            .await
             .context("Failed to connect to MCP server via HTTP")
     }
 
@@ -182,7 +193,10 @@ impl McpClient {
         let mut retry_count = 0;
 
         loop {
-            match self.execute_tool(tool_name.clone(), arguments.clone()).await {
+            match self
+                .execute_tool(tool_name.clone(), arguments.clone())
+                .await
+            {
                 Ok(result) => return Ok(result),
                 Err(e) => {
                     let error_str = e.to_string();
@@ -196,8 +210,13 @@ impl McpClient {
                     if is_retryable && retry_count < max_retries {
                         retry_count += 1;
                         let delay = Duration::from_secs(2u64.pow(retry_count));
-                        warn!("Tool execution failed: {}. Retrying in {} seconds... (attempt {}/{})",
-                              error_str, delay.as_secs(), retry_count, max_retries);
+                        warn!(
+                            "Tool execution failed: {}. Retrying in {} seconds... (attempt {}/{})",
+                            error_str,
+                            delay.as_secs(),
+                            retry_count,
+                            max_retries
+                        );
 
                         // Clear cached service on retryable errors
                         if let McpTransport::Http(_) = &self.transport {
@@ -215,7 +234,6 @@ impl McpClient {
         }
     }
 
-
     /// Execute a tool with an optional per-request timeout
     /// Note: Timeout support varies by transport (HTTP may not support per-request timeout)
     pub async fn execute_tool_with_timeout(
@@ -228,7 +246,7 @@ impl McpClient {
             // Wrap execution in tokio timeout
             tokio::time::timeout(
                 Duration::from_millis(ms),
-                self.execute_tool(tool_name, arguments)
+                self.execute_tool(tool_name, arguments),
             )
             .await
             .context("Tool execution timed out")?
@@ -247,22 +265,27 @@ impl McpClient {
 
         let result = match &self.transport {
             McpTransport::Http(url) => {
-                info!("Calling MCP tool via HTTP (RMCP SDK): {} -> {}", url, tool_name);
+                info!(
+                    "Calling MCP tool via HTTP (RMCP SDK): {} -> {}",
+                    url, tool_name
+                );
 
                 // Ensure we have a connection
                 self.get_or_create_http_service(url).await?;
 
                 // Get service reference and make the call
                 let service_lock = self.http_service.lock().await;
-                let service = service_lock.as_ref()
+                let service = service_lock
+                    .as_ref()
                     .expect("Service should be initialized");
 
-                service.call_tool(CallToolRequestParam {
-                    name: tool_name.clone().into(),
-                    arguments,
-                })
-                .await
-                .context(format!("Failed to execute tool: {}", tool_name))?
+                service
+                    .call_tool(CallToolRequestParam {
+                        name: tool_name.clone().into(),
+                        arguments,
+                    })
+                    .await
+                    .context(format!("Failed to execute tool: {tool_name}"))?
             }
             McpTransport::Stdio(command) => {
                 info!("Starting MCP server via stdio: {:?}", command);
@@ -281,8 +304,8 @@ impl McpClient {
                     cmd.env("RUST_LOG", "info");
                 }
 
-                let transport = TokioChildProcess::new(cmd)
-                    .context("Failed to start MCP server process")?;
+                let transport =
+                    TokioChildProcess::new(cmd).context("Failed to start MCP server process")?;
 
                 let client_info = ClientInfo {
                     protocol_version: Default::default(),
@@ -293,20 +316,25 @@ impl McpClient {
                     },
                 };
 
-                let service = client_info.serve(transport).await
+                let service = client_info
+                    .serve(transport)
+                    .await
                     .context("Failed to connect to MCP server")?;
 
                 if let Some(info) = service.peer_info() {
-                    info!("Connected to MCP server: {} v{}",
-                         info.server_info.name, info.server_info.version);
+                    info!(
+                        "Connected to MCP server: {} v{}",
+                        info.server_info.name, info.server_info.version
+                    );
                 }
 
-                service.call_tool(CallToolRequestParam {
-                    name: tool_name.clone().into(),
-                    arguments,
-                })
-                .await
-                .context(format!("Failed to execute tool: {}", tool_name))?
+                service
+                    .call_tool(CallToolRequestParam {
+                        name: tool_name.clone().into(),
+                        arguments,
+                    })
+                    .await
+                    .context(format!("Failed to execute tool: {tool_name}"))?
             }
         };
 
@@ -323,10 +351,13 @@ impl McpClient {
 
                 // Get service reference and list tools
                 let service_lock = self.http_service.lock().await;
-                let service = service_lock.as_ref()
+                let service = service_lock
+                    .as_ref()
                     .expect("Service should be initialized");
 
-                service.list_all_tools().await
+                service
+                    .list_all_tools()
+                    .await
                     .context("Failed to list tools")
             }
             McpTransport::Stdio(command) => {
@@ -340,8 +371,8 @@ impl McpClient {
                 let mut cmd = tokio::process::Command::new(&executable);
                 cmd.args(&args);
 
-                let transport = TokioChildProcess::new(cmd)
-                    .context("Failed to start MCP server process")?;
+                let transport =
+                    TokioChildProcess::new(cmd).context("Failed to start MCP server process")?;
 
                 let client_info = ClientInfo {
                     protocol_version: Default::default(),
@@ -352,10 +383,14 @@ impl McpClient {
                     },
                 };
 
-                let service = client_info.serve(transport).await
+                let service = client_info
+                    .serve(transport)
+                    .await
                     .context("Failed to connect to MCP server")?;
 
-                service.list_all_tools().await
+                service
+                    .list_all_tools()
+                    .await
                     .context("Failed to list tools")
             }
         }
@@ -371,7 +406,8 @@ mod tests {
         let http_client = McpClient::from_url("http://localhost:3000".to_string());
         matches!(http_client.transport, McpTransport::Http(_));
 
-        let stdio_client = McpClient::from_command(vec!["npx".to_string(), "mcp-server".to_string()]);
+        let stdio_client =
+            McpClient::from_command(vec!["npx".to_string(), "mcp-server".to_string()]);
         matches!(stdio_client.transport, McpTransport::Stdio(_));
     }
 
@@ -382,17 +418,21 @@ mod tests {
         let client = McpClient::from_url("http://4.227.217.44:8080".to_string());
 
         // First tool call should initialize session and succeed
-        let result1 = client.execute_tool(
-            "get_applications".to_string(),
-            None
-        ).await;
-        assert!(result1.is_ok(), "First tool call should succeed after auto-initialization");
+        let result1 = client
+            .execute_tool("get_applications".to_string(), None)
+            .await;
+        assert!(
+            result1.is_ok(),
+            "First tool call should succeed after auto-initialization"
+        );
 
         // Second tool call should reuse session (no re-initialization) and succeed
-        let result2 = client.execute_tool(
-            "get_applications".to_string(),
-            None
-        ).await;
-        assert!(result2.is_ok(), "Second tool call should succeed with session reuse");
+        let result2 = client
+            .execute_tool("get_applications".to_string(), None)
+            .await;
+        assert!(
+            result2.is_ok(),
+            "Second tool call should succeed with session reuse"
+        );
     }
 }

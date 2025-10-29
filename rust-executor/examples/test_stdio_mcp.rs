@@ -1,7 +1,7 @@
-use workflow_executor::models::{WorkflowSequence, WorkflowStep, ErrorStrategy};
-use workflow_executor::mcp::{McpClient, WorkflowExecutor};
 use serde_json::json;
 use uuid::Uuid;
+use workflow_executor::mcp::{McpClient, WorkflowExecutor};
+use workflow_executor::models::{ErrorStrategy, WorkflowSequence, WorkflowStep};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,21 +14,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a simple test workflow
     let workflow = WorkflowSequence {
-        steps: vec![
-            WorkflowStep {
-                id: Some("screenshot".to_string()),
-                tool_name: Some("screenshot".to_string()),
-                group_name: None,
-                arguments: Some(json!({
-                    "display": 0
-                })),
-                description: Some("Take a screenshot".to_string()),
-                retry_count: None,
-                timeout: None,
-                on_error: Some(ErrorStrategy::Stop),
-                fallback_id: None,
-            },
-        ],
+        steps: vec![WorkflowStep {
+            id: Some("screenshot".to_string()),
+            tool_name: Some("screenshot".to_string()),
+            group_name: None,
+            arguments: Some(json!({
+                "display": 0
+            })),
+            description: Some("Take a screenshot".to_string()),
+            retry_count: None,
+            timeout: None,
+            on_error: Some(ErrorStrategy::Stop),
+            fallback_id: None,
+        }],
         variables: None,
         selectors: None,
         inputs: None,
@@ -46,7 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n2. Creating MCP client with stdio transport...");
 
     // Path to the Terminator MCP agent executable
-    let terminator_path = "../terminator/terminator-mcp-agent/npm/win32-x64-msvc/terminator-mcp-agent.exe";
+    let terminator_path =
+        "../terminator/terminator-mcp-agent/npm/win32-x64-msvc/terminator-mcp-agent.exe";
     let command = vec![terminator_path.to_string()];
 
     println!("   Using command: {:?}", command);
@@ -79,18 +78,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match executor.execute().await {
         Ok(result) => {
             println!("\n5. Workflow execution completed!");
-            println!("   Status: {}", if result.success { "SUCCESS ✓" } else { "FAILED ✗" });
+            println!(
+                "   Status: {}",
+                if result.success {
+                    "SUCCESS ✓"
+                } else {
+                    "FAILED ✗"
+                }
+            );
             println!("   Message: {}", result.message);
-            println!("   Steps completed: {}/{}", result.steps_completed, result.total_steps);
+            println!(
+                "   Steps completed: {}/{}",
+                result.steps_completed, result.total_steps
+            );
             println!("   Execution time: {}ms", result.execution_time_ms);
 
             if !result.step_results.is_empty() {
                 println!("\n   Step Results:");
                 for step_result in &result.step_results {
-                    println!("     - {} ({}): {:?}",
-                             step_result.step_id,
-                             step_result.tool_name,
-                             step_result.status);
+                    println!(
+                        "     - {} ({}): {:?}",
+                        step_result.step_id, step_result.tool_name, step_result.status
+                    );
                 }
             }
         }

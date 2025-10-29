@@ -1,7 +1,7 @@
-use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
+use anyhow::{Context, Result};
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use std::time::Duration;
-use anyhow::{Result, Context};
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 pub mod queries;
 
@@ -66,7 +66,10 @@ impl Database {
                         }
                     } else {
                         // Different error, don't retry
-                        error!("❌ Database connection failed (non-SSL error): {}", error_msg);
+                        error!(
+                            "❌ Database connection failed (non-SSL error): {}",
+                            error_msg
+                        );
                         return Err(last_error.unwrap());
                     }
                 }
@@ -74,7 +77,8 @@ impl Database {
         }
 
         // All retries exhausted
-        Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Database connection failed: Unknown error")))
+        Err(last_error
+            .unwrap_or_else(|| anyhow::anyhow!("Database connection failed: Unknown error")))
     }
 
     async fn try_connect(database_url: &str) -> Result<DatabasePool> {
@@ -104,8 +108,8 @@ pub async fn create_pool(database_url: &str) -> Result<DatabasePool> {
 }
 
 pub async fn create_pool_from_env() -> Result<DatabasePool> {
-    let database_url = std::env::var("DATABASE_URL")
-        .map_err(|_| anyhow::anyhow!("DATABASE_URL not set"))?;
+    let database_url =
+        std::env::var("DATABASE_URL").map_err(|_| anyhow::anyhow!("DATABASE_URL not set"))?;
     create_pool(&database_url).await
 }
 

@@ -1,7 +1,7 @@
-use workflow_executor::models::{WorkflowSequence, WorkflowStep, ErrorStrategy};
-use workflow_executor::mcp::{McpClient, WorkflowExecutor};
 use serde_json::json;
 use uuid::Uuid;
+use workflow_executor::mcp::{McpClient, WorkflowExecutor};
+use workflow_executor::models::{ErrorStrategy, WorkflowSequence, WorkflowStep};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -97,18 +97,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match executor.execute().await {
         Ok(result) => {
             println!("\n5. Workflow execution completed!");
-            println!("   Status: {}", if result.success { "SUCCESS ✓" } else { "FAILED ✗" });
+            println!(
+                "   Status: {}",
+                if result.success {
+                    "SUCCESS ✓"
+                } else {
+                    "FAILED ✗"
+                }
+            );
             println!("   Message: {}", result.message);
-            println!("   Steps completed: {}/{}", result.steps_completed, result.total_steps);
+            println!(
+                "   Steps completed: {}/{}",
+                result.steps_completed, result.total_steps
+            );
             println!("   Execution time: {}ms", result.execution_time_ms);
 
             if !result.step_results.is_empty() {
                 println!("\n   Step Results:");
                 for step_result in &result.step_results {
-                    println!("     - {} ({}): {:?}",
-                             step_result.step_id,
-                             step_result.tool_name,
-                             step_result.status);
+                    println!(
+                        "     - {} ({}): {:?}",
+                        step_result.step_id, step_result.tool_name, step_result.status
+                    );
                     if let Some(error) = &step_result.error {
                         println!("       Error: {}", error);
                     }
@@ -116,12 +126,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if let Some(data) = &result.data {
-                println!("\n   Result data: {}",
-                         serde_json::to_string_pretty(data)?
-                         .lines()
-                         .take(10)
-                         .collect::<Vec<_>>()
-                         .join("\n"));
+                println!(
+                    "\n   Result data: {}",
+                    serde_json::to_string_pretty(data)?
+                        .lines()
+                        .take(10)
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
             }
         }
         Err(e) => {
@@ -134,7 +146,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Check execution history on server
     println!("\n6. Checking server execution history...");
     let client = reqwest::Client::new();
-    let response = client.get("http://localhost:3000/executions")
+    let response = client
+        .get("http://localhost:3000/executions")
         .send()
         .await?;
 

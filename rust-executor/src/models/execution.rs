@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowExecution {
@@ -10,17 +10,17 @@ pub struct WorkflowExecution {
     pub client_id: Option<String>,
     pub execution_params: Option<Value>,
     #[serde(rename = "assigned_machine_id")]
-    pub machine_id: Option<i32>,  // Database uses integer, not string
-    pub mcp_endpoint: Option<String>,  // MCP server endpoint for this execution
+    pub machine_id: Option<i32>, // Database uses integer, not string
+    pub mcp_endpoint: Option<String>, // MCP server endpoint for this execution
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub error_message: Option<String>,
     #[serde(rename = "results")]
     pub result: Option<Value>,
     #[serde(rename = "execution_logs")]
-    pub logs: Option<Value>,  // Database uses jsonb, not text
-    pub total_steps: Option<i32>,  // Database uses integer
-    #[serde(skip)]  // This column doesn't exist in database
+    pub logs: Option<Value>, // Database uses jsonb, not text
+    pub total_steps: Option<i32>, // Database uses integer
+    #[serde(skip)] // This column doesn't exist in database
     pub completed_steps: Option<u32>,
     #[serde(rename = "current_step_description")]
     pub current_step: Option<String>,
@@ -37,7 +37,7 @@ pub enum ExecutionStatus {
     Failed,
     Cancelled,
     Paused,
-    Exception,  // NEW: Critical system errors, timeouts, etc.
+    Exception, // NEW: Critical system errors, timeouts, etc.
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,7 +104,7 @@ pub enum WorkflowState {
     Failure,
     Skipped,
     Cancelled,
-    Exception,  // NEW: Critical/exceptional failures (system errors, not business logic)
+    Exception, // NEW: Critical/exceptional failures (system errors, not business logic)
 }
 
 impl WorkflowResult {
@@ -188,10 +188,8 @@ mod tests {
 
     #[test]
     fn test_workflow_result_failure() {
-        let result = WorkflowResult::failure(
-            "Test failed".to_string(),
-            "Error details".to_string(),
-        );
+        let result =
+            WorkflowResult::failure("Test failed".to_string(), "Error details".to_string());
 
         assert!(!result.success);
         assert_eq!(result.state, WorkflowState::Failure);
@@ -217,7 +215,10 @@ mod tests {
 
         assert!(!result.success);
         assert_eq!(result.state, WorkflowState::Exception);
-        assert_eq!(result.error, Some("Database connection timeout after 3 retries".to_string()));
+        assert_eq!(
+            result.error,
+            Some("Database connection timeout after 3 retries".to_string())
+        );
         assert_eq!(result.message, "Critical system error");
     }
 

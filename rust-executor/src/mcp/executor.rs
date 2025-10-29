@@ -1,13 +1,13 @@
-use anyhow::{Result, Context};
-use serde_json::{Value, Map};
+use anyhow::{Context, Result};
+use serde_json::{Map, Value};
 use std::time::Instant;
-use tracing::{info, debug, warn, error};
+use tracing::{debug, error, info, warn};
 
-use crate::models::{
-    WorkflowSequence, WorkflowStep, WorkflowResult, WorkflowState,
-    StepResult, StepStatus, ErrorStrategy,
-};
 use crate::mcp::McpClient;
+use crate::models::{
+    ErrorStrategy, StepResult, StepStatus, WorkflowResult, WorkflowSequence, WorkflowState,
+    WorkflowStep,
+};
 use crate::storage::SupabaseStorage;
 
 pub struct WorkflowExecutor {
@@ -28,22 +28,22 @@ impl WorkflowExecutor {
         // Initialize storage if environment variables are available
         let storage = match (
             std::env::var("SUPABASE_URL"),
-            std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+            std::env::var("SUPABASE_SERVICE_ROLE_KEY"),
         ) {
-            (Ok(url), Ok(key)) => {
-                match SupabaseStorage::new(url, key) {
-                    Ok(s) => {
-                        debug!("Supabase Storage initialized successfully");
-                        Some(s)
-                    }
-                    Err(e) => {
-                        warn!("Failed to initialize Supabase Storage: {}", e);
-                        None
-                    }
+            (Ok(url), Ok(key)) => match SupabaseStorage::new(url, key) {
+                Ok(s) => {
+                    debug!("Supabase Storage initialized successfully");
+                    Some(s)
                 }
-            }
+                Err(e) => {
+                    warn!("Failed to initialize Supabase Storage: {}", e);
+                    None
+                }
+            },
             _ => {
-                warn!("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set, screenshot upload disabled");
+                warn!(
+                    "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set, screenshot upload disabled"
+                );
                 None
             }
         };
@@ -66,8 +66,10 @@ impl WorkflowExecutor {
         let mut workflow_data = None;
         let mut all_screenshot_urls: Vec<String> = Vec::new();
 
-        info!("Starting workflow execution {} with {} steps",
-              self.execution_id, total_steps);
+        info!(
+            "Starting workflow execution {} with {} steps",
+            self.execution_id, total_steps
+        );
 
         // Process variables
         let variables = self.process_variables()?;
@@ -76,32 +78,47 @@ impl WorkflowExecutor {
         let mut start_index = 0usize;
         let mut end_index = self.sequence.steps.len().saturating_sub(1);
         if let Some(ref start_id) = self.sequence.start_from_step {
-            if let Some(i) = self.sequence.steps.iter().position(|s| s.id.as_ref() == Some(start_id)) {
+            if let Some(i) = self
+                .sequence
+                .steps
+                .iter()
+                .position(|s| s.id.as_ref() == Some(start_id))
+            {
                 start_index = i;
             }
         }
         if let Some(ref end_id) = self.sequence.end_at_step {
-            if let Some(i) = self.sequence.steps.iter().position(|s| s.id.as_ref() == Some(end_id)) {
+            if let Some(i) = self
+                .sequence
+                .steps
+                .iter()
+                .position(|s| s.id.as_ref() == Some(end_id))
+            {
                 end_index = i;
             }
         }
 
         // Execute each step within bounds
-        for (index, step) in self.sequence
+        for (index, step) in self
+            .sequence
             .steps
             .iter()
             .enumerate()
             .skip(start_index)
             .take(end_index.saturating_sub(start_index) + 1)
         {
-            let step_id = step.id.clone()
-                .unwrap_or_else(|| format!("step_{}", index));
+            let step_id = step.id.clone().unwrap_or_else(|| format!("step_{index}"));
 
-            info!("Executing step {}/{}: {} ({})",
-                  index + 1, total_steps,
-                  step.tool_name.as_ref().or(step.group_name.as_ref())
-                      .unwrap_or(&"unknown".to_string()),
-                  step_id);
+            info!(
+                "Executing step {}/{}: {} ({})",
+                index + 1,
+                total_steps,
+                step.tool_name
+                    .as_ref()
+                    .or(step.group_name.as_ref())
+                    .unwrap_or(&"unknown".to_string()),
+                step_id
+            );
 
             let step_result = self.execute_step(step, &variables).await;
 
@@ -115,7 +132,9 @@ impl WorkflowExecutor {
 
                         // Extract and upload screenshots if present
                         if let Some(ref result_data) = result.result {
-                            if let Some(screenshot_urls) = self.process_screenshots(result_data).await {
+                            if let Some(screenshot_urls) =
+                                self.process_screenshots(result_data).await
+                            {
                                 all_screenshot_urls.extend(screenshot_urls);
                             }
                         }
@@ -128,7 +147,9 @@ impl WorkflowExecutor {
 
                     let failed_result = StepResult {
                         step_id: step_id.clone(),
-                        tool_name: step.tool_name.clone()
+                        tool_name: step
+                            .tool_name
+                            .clone()
                             .unwrap_or_else(|| "unknown".to_string()),
                         status: StepStatus::Failed,
                         result: None,
@@ -146,14 +167,13 @@ impl WorkflowExecutor {
                     } else {
                         ErrorStrategy::Continue
                     };
-                    let error_strategy = step.on_error.as_ref()
-                        .unwrap_or(&default_strategy);
+                    let error_strategy = step.on_error.as_ref().unwrap_or(&default_strategy);
 
                     match error_strategy {
                         ErrorStrategy::Stop => {
                             return Ok(WorkflowResult {
                                 success: false,
-                                message: format!("Workflow failed at step {}", step_id),
+                                message: format!("Workflow failed at step {step_id}"),
                                 state: WorkflowState::Failure,
                                 data: workflow_data,
                                 error: Some(e.to_string()),
@@ -170,16 +190,35 @@ impl WorkflowExecutor {
                         }
                         ErrorStrategy::Retry => {
                             // Already handled by retry_count loop inside execute_step
-                            warn!("Retry attempted for step {} (using retry_count), continuing", step_id);
+                            warn!(
+                                "Retry attempted for step {} (using retry_count), continuing",
+                                step_id
+                            );
                             continue;
                         }
                         ErrorStrategy::Fallback => {
                             if let Some(fallback_id) = &step.fallback_id {
-                                warn!("Executing fallback step {} for failed step {}", fallback_id, step_id);
-                                if let Some(fb_step) = self.sequence.steps.iter().find(|s| s.id.as_ref() == Some(fallback_id)) {
-                                    let fb_tool_name = fb_step.tool_name.clone().or(fb_step.group_name.clone()).context("Fallback step must have tool_name or group_name")?;
-                                    let fb_args = self.process_step_arguments(fb_step, &variables)?;
-                                    let fb_res = self.client
+                                warn!(
+                                    "Executing fallback step {} for failed step {}",
+                                    fallback_id, step_id
+                                );
+                                if let Some(fb_step) = self
+                                    .sequence
+                                    .steps
+                                    .iter()
+                                    .find(|s| s.id.as_ref() == Some(fallback_id))
+                                {
+                                    let fb_tool_name = fb_step
+                                        .tool_name
+                                        .clone()
+                                        .or(fb_step.group_name.clone())
+                                        .context(
+                                            "Fallback step must have tool_name or group_name",
+                                        )?;
+                                    let fb_args =
+                                        self.process_step_arguments(fb_step, &variables)?;
+                                    let fb_res = self
+                                        .client
                                         .execute_tool_with_timeout(
                                             fb_tool_name.clone(),
                                             fb_args.clone(),
@@ -188,7 +227,8 @@ impl WorkflowExecutor {
                                         .await;
                                     match fb_res {
                                         Ok(value) => {
-                                            let fb_duration_ms = start_time.elapsed().as_millis() as u64;
+                                            let fb_duration_ms =
+                                                start_time.elapsed().as_millis() as u64;
                                             step_results.push(StepResult {
                                                 step_id: fallback_id.clone(),
                                                 tool_name: fb_tool_name,
@@ -224,11 +264,14 @@ impl WorkflowExecutor {
 
         let execution_time_ms = start_time.elapsed().as_millis() as u64;
 
-        info!("Workflow execution completed with {} screenshot URLs", all_screenshot_urls.len());
+        info!(
+            "Workflow execution completed with {} screenshot URLs",
+            all_screenshot_urls.len()
+        );
 
         Ok(WorkflowResult {
             success: true,
-            message: format!("Workflow completed successfully in {}ms", execution_time_ms),
+            message: format!("Workflow completed successfully in {execution_time_ms}ms"),
             state: WorkflowState::Success,
             data: workflow_data,
             error: None,
@@ -247,11 +290,12 @@ impl WorkflowExecutor {
         variables: &Map<String, Value>,
     ) -> Result<StepResult> {
         let start_time = Instant::now();
-        let step_id = step.id.clone()
-            .unwrap_or_else(|| "unnamed".to_string());
+        let step_id = step.id.clone().unwrap_or_else(|| "unnamed".to_string());
 
         // Get tool name
-        let tool_name = step.tool_name.clone()
+        let tool_name = step
+            .tool_name
+            .clone()
             .or(step.group_name.clone())
             .context("Step must have either tool_name or group_name")?;
 
@@ -262,8 +306,14 @@ impl WorkflowExecutor {
         info!("🔧 STEP EXECUTION DEBUG:");
         info!("  Step ID: {}", step_id);
         info!("  Tool Name: {}", tool_name);
-        info!("  Raw Step: {}", serde_json::to_string_pretty(step).unwrap_or_else(|_| "N/A".to_string()));
-        info!("  Processed Arguments: {}", serde_json::to_string_pretty(&arguments).unwrap_or_else(|_| "N/A".to_string()));
+        info!(
+            "  Raw Step: {}",
+            serde_json::to_string_pretty(step).unwrap_or_else(|_| "N/A".to_string())
+        );
+        info!(
+            "  Processed Arguments: {}",
+            serde_json::to_string_pretty(&arguments).unwrap_or_else(|_| "N/A".to_string())
+        );
 
         // Execute with retry if configured
         let retry_count = step.retry_count.unwrap_or(0);
@@ -271,10 +321,16 @@ impl WorkflowExecutor {
 
         for attempt in 0..=retry_count {
             if attempt > 0 {
-                warn!("Retrying step {} (attempt {}/{})", step_id, attempt + 1, retry_count + 1);
+                warn!(
+                    "Retrying step {} (attempt {}/{})",
+                    step_id,
+                    attempt + 1,
+                    retry_count + 1
+                );
             }
 
-            let result = self.client
+            let result = self
+                .client
                 .execute_tool_with_timeout(
                     tool_name.clone(),
                     arguments.clone(),
@@ -378,12 +434,14 @@ impl WorkflowExecutor {
 
                 // Align with Python executor: disable monitor screenshots by default
                 // unless explicitly provided by the workflow step.
-                processed.entry("include_monitor_screenshots".to_string())
+                processed
+                    .entry("include_monitor_screenshots".to_string())
                     .or_insert(Value::Bool(false));
 
                 // Propagate scripts_base_path to steps when provided at sequence level
                 if let Some(base) = &self.sequence.scripts_base_path {
-                    processed.entry("scripts_base_path".to_string())
+                    processed
+                        .entry("scripts_base_path".to_string())
                         .or_insert(Value::String(base.clone()));
                 }
 
@@ -397,11 +455,8 @@ impl WorkflowExecutor {
     }
 
     /// Substitute variables in a value
-    fn substitute_variables(
-        &self,
-        value: &Value,
-        variables: &Map<String, Value>,
-    ) -> Result<Value> {
+    #[allow(clippy::only_used_in_recursion)]
+    fn substitute_variables(&self, value: &Value, variables: &Map<String, Value>) -> Result<Value> {
         match value {
             Value::String(s) => {
                 // Check for variable reference pattern ${{variable_name}} or {{variable_name}}
@@ -414,7 +469,7 @@ impl WorkflowExecutor {
                 };
 
                 if s.ends_with("}}") {
-                    let var_name = s[var_start..s.len()-2].trim();
+                    let var_name = s[var_start..s.len() - 2].trim();
                     if let Some(var_value) = variables.get(var_name) {
                         return Ok(var_value.clone());
                     } else {
@@ -478,11 +533,10 @@ impl WorkflowExecutor {
 
         // Upload to storage if available
         if let Some(ref storage) = self.storage {
-            match storage.upload_screenshots(
-                self.execution_id,
-                org_id,
-                base64_screenshots
-            ).await {
+            match storage
+                .upload_screenshots(self.execution_id, org_id, base64_screenshots)
+                .await
+            {
                 Ok(urls) => {
                     info!("Successfully uploaded {} screenshots", urls.len());
                     Some(urls)
@@ -508,19 +562,17 @@ mod tests {
     async fn test_workflow_executor_creation() {
         let client = McpClient::new(McpTransport::Http("http://localhost:3000".to_string()));
         let sequence = WorkflowSequence {
-            steps: vec![
-                WorkflowStep {
-                    id: Some("step1".to_string()),
-                    tool_name: Some("test_tool".to_string()),
-                    group_name: None,
-                    arguments: Some(serde_json::json!({"test": "value"})),
-                    description: None,
-                    retry_count: None,
-                    timeout: None,
-                    on_error: None,
-                    fallback_id: None,
-                }
-            ],
+            steps: vec![WorkflowStep {
+                id: Some("step1".to_string()),
+                tool_name: Some("test_tool".to_string()),
+                group_name: None,
+                arguments: Some(serde_json::json!({"test": "value"})),
+                description: None,
+                retry_count: None,
+                timeout: None,
+                on_error: None,
+                fallback_id: None,
+            }],
             variables: None,
             selectors: None,
             inputs: None,
@@ -564,8 +616,14 @@ mod tests {
         let executor = WorkflowExecutor::new(client, sequence, 1, None);
 
         let mut variables = Map::new();
-        variables.insert("test_var".to_string(), Value::String("test_value".to_string()));
-        variables.insert("form_url".to_string(), Value::String("https://example.com/form".to_string()));
+        variables.insert(
+            "test_var".to_string(),
+            Value::String("test_value".to_string()),
+        );
+        variables.insert(
+            "form_url".to_string(),
+            Value::String("https://example.com/form".to_string()),
+        );
 
         // Test {{variable}} pattern
         let input = serde_json::json!("{{test_var}}");
@@ -574,7 +632,12 @@ mod tests {
 
         // Test ${{variable}} pattern (Python/Modal style)
         let input_with_dollar = serde_json::json!("${{form_url}}");
-        let result_with_dollar = executor.substitute_variables(&input_with_dollar, &variables).unwrap();
-        assert_eq!(result_with_dollar, Value::String("https://example.com/form".to_string()));
+        let result_with_dollar = executor
+            .substitute_variables(&input_with_dollar, &variables)
+            .unwrap();
+        assert_eq!(
+            result_with_dollar,
+            Value::String("https://example.com/form".to_string())
+        );
     }
 }

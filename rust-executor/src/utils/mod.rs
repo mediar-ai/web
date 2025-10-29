@@ -1,5 +1,5 @@
-use serde_json::Value;
 use anyhow::Result;
+use serde_json::Value;
 
 /// Normalize an endpoint URL by removing trailing slashes
 pub fn normalize_endpoint(url: &str) -> String {
@@ -17,7 +17,8 @@ pub fn merge_json_objects(base: &Value, override_obj: &Value) -> Result<Value> {
     }
 
     let mut result = base.clone();
-    if let (Some(base_obj), Some(override_map)) = (result.as_object_mut(), override_obj.as_object()) {
+    if let (Some(base_obj), Some(override_map)) = (result.as_object_mut(), override_obj.as_object())
+    {
         for (key, value) in override_map {
             base_obj.insert(key.clone(), value.clone());
         }
@@ -38,9 +39,18 @@ mod tests {
 
     #[test]
     fn test_normalize_endpoint() {
-        assert_eq!(normalize_endpoint("http://example.com/"), "http://example.com");
-        assert_eq!(normalize_endpoint("http://example.com///"), "http://example.com");
-        assert_eq!(normalize_endpoint("http://example.com"), "http://example.com");
+        assert_eq!(
+            normalize_endpoint("http://example.com/"),
+            "http://example.com"
+        );
+        assert_eq!(
+            normalize_endpoint("http://example.com///"),
+            "http://example.com"
+        );
+        assert_eq!(
+            normalize_endpoint("http://example.com"),
+            "http://example.com"
+        );
     }
 
     #[test]
@@ -56,11 +66,14 @@ mod tests {
         });
 
         let merged = merge_json_objects(&base, &override_obj).unwrap();
-        assert_eq!(merged, json!({
-            "a": 1,
-            "b": 3,
-            "c": 4,
-        }));
+        assert_eq!(
+            merged,
+            json!({
+                "a": 1,
+                "b": 3,
+                "c": 4,
+            })
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use octocrab::Octocrab;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 pub struct GitHubLoader {
     client: Option<Octocrab>,
@@ -9,9 +9,7 @@ pub struct GitHubLoader {
 impl GitHubLoader {
     pub fn new(token: Option<String>) -> Self {
         let client = if let Some(token) = token {
-            match Octocrab::builder()
-                .personal_token(token)
-                .build() {
+            match Octocrab::builder().personal_token(token).build() {
                 Ok(client) => Some(client),
                 Err(e) => {
                     tracing::warn!("Failed to create GitHub client: {}", e);
@@ -27,7 +25,9 @@ impl GitHubLoader {
 
     /// Load workflow YAML from GitHub
     pub async fn load_workflow(&self, folder: &str, git_ref: &str) -> Result<String> {
-        let client = self.client.as_ref()
+        let client = self
+            .client
+            .as_ref()
             .context("GitHub client not initialized")?;
 
         info!("Loading workflow from GitHub: {}/{}", folder, git_ref);
@@ -36,10 +36,12 @@ impl GitHubLoader {
         let (owner, repo) = Self::parse_repo_info()?;
 
         // Fetch workflow.yaml from the specified folder
-        let file_path = format!("{}/workflow.yaml", folder);
+        let file_path = format!("{folder}/workflow.yaml");
 
-        debug!("Fetching file: {} from {}/{} ref: {}",
-               file_path, owner, repo, git_ref);
+        debug!(
+            "Fetching file: {} from {}/{} ref: {}",
+            file_path, owner, repo, git_ref
+        );
 
         let content = client
             .repos(&owner, &repo)
@@ -57,11 +59,12 @@ impl GitHubLoader {
                     // Decode base64 content
                     let decoded = base64::Engine::decode(
                         &base64::engine::general_purpose::STANDARD,
-                        encoded_content.replace('\n', "")
-                    ).context("Failed to decode base64 content")?;
+                        encoded_content.replace('\n', ""),
+                    )
+                    .context("Failed to decode base64 content")?;
 
-                    let yaml_content = String::from_utf8(decoded)
-                        .context("Invalid UTF-8 in workflow content")?;
+                    let yaml_content =
+                        String::from_utf8(decoded).context("Invalid UTF-8 in workflow content")?;
 
                     return Ok(yaml_content);
                 }
@@ -74,8 +77,8 @@ impl GitHubLoader {
     /// Parse repository info from environment or config
     fn parse_repo_info() -> Result<(String, String)> {
         // Default to mediar-ai/workflows repository
-        let repo = std::env::var("GITHUB_REPO")
-            .unwrap_or_else(|_| "mediar-ai/workflows".to_string());
+        let repo =
+            std::env::var("GITHUB_REPO").unwrap_or_else(|_| "mediar-ai/workflows".to_string());
 
         let parts: Vec<&str> = repo.split('/').collect();
         if parts.len() != 2 {

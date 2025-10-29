@@ -1,9 +1,9 @@
 use axum::{
-    Router,
-    routing::{get, post},
-    extract::{State, Path},
-    response::Json,
+    extract::{Path, State},
     http::StatusCode,
+    response::Json,
+    routing::{get, post},
+    Router,
 };
 use serde::Serialize;
 use sqlx::Row;
@@ -16,16 +16,13 @@ pub fn routes() -> Router<DatabasePool> {
     Router::new()
         // Health check
         .route("/health", get(health_check))
-
         // Workflow endpoints
         .route("/workflows", get(list_workflows))
         .route("/workflows/:id", get(get_workflow))
-
         // Execution endpoints
         .route("/executions", post(create_execution))
         .route("/executions/:id", get(get_execution))
         .route("/executions/:id/cancel", post(cancel_execution))
-
         // Queue status
         .route("/queue/status", get(queue_status))
 }
@@ -48,7 +45,8 @@ async fn list_workflows(
 ) -> Result<Json<Vec<Workflow>>, (StatusCode, String)> {
     let service = WorkflowService::new(db_pool);
 
-    service.list_workflows()
+    service
+        .list_workflows()
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -74,7 +72,8 @@ async fn create_execution(
 ) -> Result<Json<ExecutionResponse>, (StatusCode, String)> {
     let service = WorkflowService::new(db_pool);
 
-    service.execute_workflow(request)
+    service
+        .execute_workflow(request)
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -86,7 +85,8 @@ async fn get_execution(
 ) -> Result<Json<WorkflowExecution>, (StatusCode, String)> {
     let service = WorkflowService::new(db_pool);
 
-    let execution = service.get_execution(id)
+    let execution = service
+        .get_execution(id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -145,7 +145,7 @@ async fn queue_status(
             COUNT(*) FILTER (WHERE status = 'completed') as completed_count
         FROM workflow_executions
         WHERE created_at > NOW() - INTERVAL '24 hours'
-        "#
+        "#,
     )
     .fetch_one(&db_pool)
     .await
