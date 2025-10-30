@@ -85,6 +85,116 @@ describe('vertex-schema-converter', () => {
       expect(result.properties.enabled.additionalProperties).toBeUndefined();
       expect(result.properties.enabled.readOnly).toBeUndefined();
     });
+
+    it('should skip properties with boolean values (like env: true)', () => {
+      // Real-world case from execute_browser_script MCP tool
+      const input = {
+        type: 'object',
+        properties: {
+          script: {
+            type: 'string',
+            nullable: true
+          },
+          env: true, // ❌ Invalid - should be a schema object, not boolean
+          selector: {
+            type: 'string',
+            description: 'Element selector'
+          }
+        },
+        required: ['selector']
+      };
+
+      const result = convertToVertexSchema(input);
+
+      // Should keep valid properties
+      expect(result.type).toBe('object');
+      expect(result.properties.script).toBeDefined();
+      expect(result.properties.script.type).toBe('string');
+      expect(result.properties.selector).toBeDefined();
+      expect(result.properties.selector.type).toBe('string');
+      expect(result.required).toEqual(['selector']);
+
+      // Should skip the boolean property
+      expect(result.properties.env).toBeUndefined();
+    });
+
+    it('should handle complex nested schemas with multiple invalid properties', () => {
+      const input = {
+        type: 'object',
+        properties: {
+          config: {
+            type: 'object',
+            properties: {
+              enabled: {
+                type: 'boolean'
+              },
+              settings: true, // ❌ Invalid boolean
+              metadata: {
+                type: 'object',
+                properties: {
+                  tags: {
+                    type: 'array',
+                    items: { type: 'string' }
+                  },
+                  extra: false // ❌ Invalid boolean
+                },
+                additionalProperties: true // ❌ Not supported
+              }
+            },
+            readOnly: true // ❌ Not supported
+          },
+          data: true // ❌ Invalid boolean
+        },
+        $schema: 'http://json-schema.org/draft-07/schema#' // ❌ Not supported
+      };
+
+      const result = convertToVertexSchema(input);
+
+      // Root level
+      expect(result.type).toBe('object');
+      expect(result.$schema).toBeUndefined();
+      expect(result.properties.data).toBeUndefined(); // Boolean property skipped
+
+      // First nested level
+      expect(result.properties.config).toBeDefined();
+      expect(result.properties.config.type).toBe('object');
+      expect(result.properties.config.readOnly).toBeUndefined(); // Unsupported field
+      expect(result.properties.config.properties.enabled).toBeDefined();
+      expect(result.properties.config.properties.settings).toBeUndefined(); // Boolean property skipped
+
+      // Second nested level
+      expect(result.properties.config.properties.metadata).toBeDefined();
+      expect(result.properties.config.properties.metadata.additionalProperties).toBeUndefined(); // Unsupported field
+      expect(result.properties.config.properties.metadata.properties.tags).toBeDefined();
+      expect(result.properties.config.properties.metadata.properties.tags.type).toBe('array');
+      expect(result.properties.config.properties.metadata.properties.extra).toBeUndefined(); // Boolean property skipped
+    });
+
+    it('should handle arrays with invalid item schemas', () => {
+      const input = {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            data: true, // ❌ Invalid boolean
+            meta: {
+              type: 'object',
+              additionalProperties: false // ❌ Not supported
+            }
+          }
+        }
+      };
+
+      const result = convertToVertexSchema(input);
+
+      expect(result.type).toBe('array');
+      expect(result.items).toBeDefined();
+      expect(result.items.properties.id).toBeDefined();
+      expect(result.items.properties.data).toBeUndefined(); // Boolean property skipped
+      expect(result.items.properties.meta).toBeDefined();
+      expect(result.items.properties.meta.additionalProperties).toBeUndefined(); // Unsupported field
+    });
   });
 
   describe('convertMcpToolToVertex', () => {
