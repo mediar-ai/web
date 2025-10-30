@@ -70,31 +70,41 @@ export class GitHubWorkflowManager {
         throw new Error('workflowId is required');
       }
 
-      // Check if workflow already has a github_folder - if so, preserve it!
+      // Check if workflow already has a github_path - preserve exact existing structure!
       const { data: existingWorkflow } = await supabase
         .from('deployed_workflows')
-        .select('github_folder, organization_id')
+        .select('github_folder, github_path, organization_id')
         .eq('id', workflowId)
         .single();
 
+      let filePath: string;
       let folderName: string;
-      if (existingWorkflow?.github_folder) {
-        // PRESERVE existing folder name - don't regenerate
-        folderName = existingWorkflow.github_folder;
-        console.log(`📁 Using existing GitHub folder: ${folderName} (preserving for workflow ${workflowId})`);
+
+      // BACKWARD COMPATIBILITY: If workflow already has github_path, use it exactly
+      if (existingWorkflow?.github_path) {
+        filePath = existingWorkflow.github_path;
+        folderName = existingWorkflow.github_folder || this.generateFolderName(workflowName);
+        console.log(`📁 PRESERVING existing path: ${filePath} (workflow ${workflowId})`);
       } else {
-        // Generate new folder name for workflows without one
-        folderName = this.generateFolderName(workflowName);
-        console.log(`📁 Creating new GitHub folder: ${folderName} (for workflow ${workflowId})`);
+        // New workflow or legacy without github_path
+        if (existingWorkflow?.github_folder) {
+          // PRESERVE existing folder name - don't regenerate
+          folderName = existingWorkflow.github_folder;
+          console.log(`📁 Using existing GitHub folder: ${folderName} (preserving for workflow ${workflowId})`);
+        } else {
+          // Generate new folder name for workflows without one
+          folderName = this.generateFolderName(workflowName);
+          console.log(`📁 Creating new GitHub folder: ${folderName} (for workflow ${workflowId})`);
+        }
+
+        // Determine org prefix - ONLY for new workflows
+        const effectiveOrgId = organizationId || existingWorkflow?.organization_id;
+        const isMediarOrg = effectiveOrgId && MEDIAR_ORG_IDS.includes(effectiveOrgId);
+        const orgPrefix = (effectiveOrgId && !isMediarOrg) ? `org-${effectiveOrgId}/` : '';
+        filePath = `${orgPrefix}${folderName}/workflow.yaml`;
+
+        console.log(`📁 New workflow path: ${filePath} (org: ${effectiveOrgId || 'Mediar'})`);
       }
-
-      // Determine org prefix for new workflows
-      const effectiveOrgId = organizationId || existingWorkflow?.organization_id;
-      const isMediarOrg = effectiveOrgId && MEDIAR_ORG_IDS.includes(effectiveOrgId);
-      const orgPrefix = (effectiveOrgId && !isMediarOrg) ? `org-${effectiveOrgId}/` : '';
-      const filePath = `${orgPrefix}${folderName}/workflow.yaml`;
-
-      console.log(`📁 File path: ${filePath} (org: ${effectiveOrgId || 'Mediar'})`);
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const branchName = `workflow/${folderName}-${timestamp}`;
       const targetBranch = isDevelopment ? this.devBranch : this.baseBranch;
